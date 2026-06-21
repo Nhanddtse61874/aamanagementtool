@@ -1,10 +1,13 @@
+using System.Collections.Generic;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using TimesheetApp.Config;
 using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
+using TimesheetApp.Models;
 using TimesheetApp.Services;
 using TimesheetApp.ViewModels;
+using TimesheetApp.Views.Dialogs;
 
 namespace TimesheetApp;
 
@@ -58,6 +61,7 @@ public partial class App : Application
         });
 
         // ViewModels (transient).
+        sc.AddTransient<MainViewModel>();
         sc.AddTransient<TimesheetViewModel>();
         sc.AddTransient<RequestsViewModel>();
         sc.AddTransient<UsersViewModel>();
@@ -69,8 +73,21 @@ public partial class App : Application
         // One-time bootstrap BEFORE the first window: schema + migrations + DEFAULT seed.
         await Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
 
-        // NOTE: the first window (MainWindow + MainViewModel) is wired in a later phase; those
-        // types do not exist yet in P3. The DI container + DB bootstrap above are complete and the
-        // TimesheetViewModel is resolvable now (Services.GetRequiredService<TimesheetViewModel>()).
+        // Shell startup: resolve MainViewModel and run its InitializeAsync (current-user resolution +
+        // XC-08 conflict scan + best-effort tab loads). The SelectUserDialog is shown from this View/App
+        // layer via the injected selector — the VM stays WPF-free (spec §5/§6, XC-07).
+        var mainVm = Services.GetRequiredService<MainViewModel>();
+        await mainVm.InitializeAsync(ShowSelectUserDialog);
+
+        MainWindow = new MainWindow { DataContext = mainVm };
+        MainWindow.Show();
+    }
+
+    // View-layer picker passed to MainViewModel on NeedsSelection. Returns the chosen user, or null
+    // when the user cancels.
+    private static User? ShowSelectUserDialog(IReadOnlyList<User> activeUsers)
+    {
+        var dialog = new SelectUserDialog(activeUsers);
+        return dialog.ShowDialog() == true ? dialog.SelectedUser : null;
     }
 }
