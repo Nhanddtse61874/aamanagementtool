@@ -4,6 +4,14 @@ namespace TimesheetApp.Models;
 // Only the smart-input types are defined here for P2 Task 1; later P2/P3 tasks extend
 // this file with TimeLogReportRow, WeekGrid, WeekRow, etc.
 
+// Flat report/export join row — INNER JOIN by id with NO is_active filter (XC-06),
+// so soft-deleted task/user names still resolve. Shape VERBATIM from architecture spec §2.
+public sealed record TimeLogReportRow(
+    int UserId, string UserName,
+    string RequestCode, string Project,
+    int TaskId, string TaskName,
+    DateOnly WorkDate, decimal Hours);
+
 // Smart-input preview cell (pure math output; also the apply unit). (SI-01/05)
 public readonly record struct CellAssignment(DateOnly Date, decimal Hours);
 
