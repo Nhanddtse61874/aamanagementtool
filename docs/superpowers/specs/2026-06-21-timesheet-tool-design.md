@@ -324,3 +324,20 @@ TimesheetApp/
 2. **User identity:** map theo Windows username (`Environment.UserName`) → cột `Users.windows_username`; fallback `SelectUserDialog` 1 lần.
 3. **TimeLogs:** 1 FK `task_id` duy nhất; DefaultTasks gộp vào `Tasks` qua Request ẩn `DEFAULT`.
 4. **Concurrency:** single-writer / last-write-wins, connection ngắn; conflict ở mức file là rủi ro chấp nhận.
+
+## Appendix — Resolved decisions after research (2026-06-21, STEP 4)
+
+**Tech (hội tụ từ research):**
+- CommunityToolkit.Mvvm 8.4.2 · Dapper 2.1.79 · Microsoft.Data.Sqlite **8.0.x** (pin 8.x) · ClosedXML 0.105.0 · DI = Microsoft.Extensions.DependencyInjection (bare ServiceCollection in App.xaml.cs).
+- **`PRAGMA journal_mode=DELETE`** (KHÔNG WAL) — tránh corruption sidecar trên OneDrive. Kèm: connection ngắn, `Pooling=False`, `Foreign Keys=True`, single-writer, advisory edit-lock, phát hiện conflict-copy lúc startup.
+- Migrations qua `PRAGMA user_version` (forward-only/additive).
+
+**Policy/scope (user quyết 2026-06-21):**
+1. Markdown DEFAULT header: **nhóm theo tên task** → `### DEFAULT — Annual Leave` (khớp ví dụ spec).
+2. Smart Input vào ô đã có giờ: **ghi đè** (upsert), preview + validate tổng ngày ≤ 8h sau merge.
+3. Cảnh báo "chưa log N ngày": **tính cả hôm nay**.
+4. Request trong v1: **không soft-delete** (chỉ Task soft-delete được).
+5. 8h validation: enforce **per-cell (đỏ ngay) + per-save (tổng ngày)**.
+6. Banner hiển thị số **N** cấu hình (không tính gap thực).
+7. Rename DefaultTask: coi như **soft-delete + insert mới** (giữ TimeLogs), flag UAT.
+8. Lưu giờ kiểu **REAL**, round 1 chữ số thập phân trước khi upsert.
