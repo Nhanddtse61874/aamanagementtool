@@ -15,14 +15,14 @@
 
 | Phase | Theme | REQ-IDs |
 |---|---|---|
-| **P1** | Data + Schema (DB init, schema, seed, migrations, connection model) | DATA-01, DATA-02, DATA-03, DATA-04, DATA-05, DATA-06, DATA-07, XC-01, XC-08 |
-| **P2** | Services (validation, smart-input math, soft-delete, current-user, sync, report projection) | XC-02, XC-03, XC-04, XC-05, XC-06, XC-07, SI-01, SI-02, SI-03, SI-04 |
+| **P1** | Data + Schema (DB init, schema, seed, migrations, connection model) | DATA-01, DATA-02, DATA-03, DATA-04, DATA-05, DATA-06, DATA-07, XC-01, XC-08, XC-09 |
+| **P2** | Services (validation, smart-input math, soft-delete, current-user, sync, report projection) | XC-02, XC-03, XC-04, XC-05, XC-06, XC-07, XC-10, SI-01, SI-02, SI-03, SI-04 |
 | **P3** | Timesheet + Smart Input UI | TS-01, TS-02, TS-03, TS-04, TS-05, TS-06, TS-07, SI-05, SI-06 |
 | **P4** | Requests + Users UI | REQ-01, REQ-02, REQ-03, REQ-04, USR-01, USR-02, USR-03 |
 | **P5** | Reports | RPT-01, RPT-02, RPT-03, RPT-04 |
 | **P6** | Settings + Export | SET-01, SET-02, SET-03, SET-04, EXP-01, EXP-02, EXP-03, EXP-04 |
 
-Total: **43 requirements**, every one mapped to exactly one phase.
+Total: **45 requirements**, every one mapped to exactly one phase.
 
 ---
 
@@ -91,6 +91,14 @@ Acceptance: Match → current user set and name shown top-corner. No match → `
 ### XC-08 — Conflict-copy detection on startup (P1)
 Statement: On startup the app scans the DB folder for OneDrive conflict-copy siblings and alerts the user.
 Acceptance: When a `*-<MACHINE>.db` sibling exists next to the DB, a visible warning is shown at startup. [ASSUMED] (research §2.1 mitigation 6 — mandatory mitigation, not in literal spec)
+
+### XC-09 — Verify rollback journal is gone after each write (P1)
+Statement: After each write transaction, the app verifies the `-journal` sidecar has been removed (clean commit) before the connection is considered released for OneDrive sync.
+Acceptance: Following a committed write, no `<db>-journal` file remains; if one persists, the app logs/surfaces a warning rather than letting OneDrive copy a mid-transaction state. Cheap, deterministic check on the write path. (promoted from research §2.1 mitigation 3, user-approved 2026-06-21)
+
+### XC-10 — Backup before bulk writes (P2)
+Statement: Before a multi-row write (smart-input apply, DefaultTasks seed/sync), the app makes a one-shot `File.Copy` backup of the `.db`.
+Acceptance: A timestamped backup copy is created immediately before the bulk transaction; single-cell edits do NOT trigger a backup (avoids OneDrive churn). On a corrupting bulk write the prior good copy survives. (promoted from research §2.1 mitigation 7, user-approved 2026-06-21)
 
 ---
 
@@ -259,7 +267,7 @@ Acceptance: Whole hours show no decimal; fractional show 1 decimal; a task name 
 - Notification system (email/Teams alerts).
 - Request soft-delete (only Task/User soft-delete in v1 — decision 4).
 - True offline multi-writer reconciliation (GUID/ULID + sync engine).
-- Advisory edit-lock is **listed as a research mitigation but is NOT a v1 requirement** unless promoted later; not included above to avoid speculative scope.
+- Advisory edit-lock: **deferred** (user decision 2026-06-21) — the lock itself rides OneDrive sync and can be stale exactly when needed; XC-08 conflict-copy detection covers the dominant failure mode. Revisit only if UAT shows frequent collisions.
 
 ---
 
@@ -267,4 +275,4 @@ Acceptance: Whole hours show no decimal; fractional show 1 decimal; a task name 
 
 None. All 8 research open questions were resolved by the user (spec Appendix "Resolved decisions after research") and are encoded above as firm REQs. Architecture (STEP 5 architecture-lead) may proceed.
 
-[ASSUMED] note: The advisory single-editor lock (research §2.1 mitigation 4) and "verify `-journal` gone after each write" (mitigation 3) and "backup before bulk writes" (mitigation 7) are recommended mitigations not captured as v1 REQs. If the architecture lead wants them enforced in v1, they should be promoted to REQs before planning — flagged here rather than silently added.
+Resolution (2026-06-21): architecture lead recommended and **user approved** promoting "verify `-journal` gone" → **XC-09** and "backup before bulk writes" → **XC-10**. The advisory single-editor lock remains **deferred** (see Out-of-Scope). No open questions remain.
