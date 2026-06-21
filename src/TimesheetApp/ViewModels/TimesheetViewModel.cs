@@ -1,0 +1,159 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using TimesheetApp.Services;
+
+namespace TimesheetApp.ViewModels;
+
+public enum DayColumn { Mon, Tue, Wed, Thu, Fri }
+
+/// Timesheet tab VM (TS-01..07 + hosts SI-05/06 panel).
+/// Owns week navigation, row shaping, per-column footer totals, Save gating, and per-cell persistence.
+public sealed partial class TimesheetViewModel : ObservableObject
+{
+    private readonly ITimeLogService _timeLogs;
+    private readonly IClock _clock;
+    private readonly Func<int> _currentUserId;
+    private bool _suppressTotals;
+
+    public TimesheetViewModel(
+        ITimeLogService timeLogs, ISmartInputService smartInput, IClock clock, Func<int> currentUserId)
+    {
+        _timeLogs = timeLogs;
+        _clock = clock;
+        _currentUserId = currentUserId;
+
+        SmartInput = new SmartInputPanelVm(smartInput, timeLogs, currentUserId);
+        SmartInput.Applied += async () => await ReloadAsync();
+
+        CurrentWeek = MondayOf(_clock.Today);
+    }
+
+    public SmartInputPanelVm SmartInput { get; }
+
+    [ObservableProperty] private DateOnly _currentWeek;
+
+    public ObservableCollection<TimesheetRowVm> Rows { get; } = new();
+
+    [ObservableProperty] private decimal _monTotal;
+    [ObservableProperty] private decimal _tueTotal;
+    [ObservableProperty] private decimal _wedTotal;
+    [ObservableProperty] private decimal _thuTotal;
+    [ObservableProperty] private decimal _friTotal;
+
+    public string MonHeader => Header(0);
+    public string TueHeader => Header(1);
+    public string WedHeader => Header(2);
+    public string ThuHeader => Header(3);
+    public string FriHeader => Header(4);
+
+    private string Header(int offset)
+    {
+        var d = CurrentWeek.AddDays(offset);
+        var dow = d.DayOfWeek.ToString()[..3]; // Mon/Tue/...
+        return $"{dow} {d:dd/MM}";
+    }
+
+    /// Hard-coded Monday week start (NOT culture-derived) — spec §7.2.
+    public static DateOnly MondayOf(DateOnly date) => date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
+
+    [RelayCommand]
+    private Task LoadAsync() => ReloadAsync();
+
+    [RelayCommand]
+    private async Task NextWeekAsync()
+    {
+        CurrentWeek = CurrentWeek.AddDays(7);
+        await ReloadAsync();
+    }
+
+    [RelayCommand]
+    private async Task PreviousWeekAsync()
+    {
+        CurrentWeek = CurrentWeek.AddDays(-7);
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var grid = await _timeLogs.GetWeekAsync(_currentUserId(), CurrentWeek);
+
+        _suppressTotals = true;
+        foreach (var r in Rows) r.DayChanged -= OnRowDayChanged;
+        Rows.Clear();
+        foreach (var wr in grid.Rows)
+        {
+            var row = new TimesheetRowVm
+            {
+                TaskId = wr.TaskId,
+                RequestCode = wr.RequestCode,
+                Project = "",
+                TaskName = wr.TaskName,
+                Mon = wr.Mon,
+                Tue = wr.Tue,
+                Wed = wr.Wed,
+                Thu = wr.Thu,
+                Fri = wr.Fri
+            };
+            row.DayChanged += OnRowDayChanged;
+            Rows.Add(row);
+        }
+        _suppressTotals = false;
+
+        OnPropertyChanged(nameof(MonHeader));
+        OnPropertyChanged(nameof(TueHeader));
+        OnPropertyChanged(nameof(WedHeader));
+        OnPropertyChanged(nameof(ThuHeader));
+        OnPropertyChanged(nameof(FriHeader));
+        RecomputeTotals();
+    }
+
+    private void OnRowDayChanged()
+    {
+        if (_suppressTotals) return;
+        RecomputeTotals();
+    }
+
+    private void RecomputeTotals()
+    {
+        MonTotal = Rows.Sum(r => r.Mon ?? 0);
+        TueTotal = Rows.Sum(r => r.Tue ?? 0);
+        WedTotal = Rows.Sum(r => r.Wed ?? 0);
+        ThuTotal = Rows.Sum(r => r.Thu ?? 0);
+        FriTotal = Rows.Sum(r => r.Fri ?? 0);
+        SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool AnyDayOverEight() =>
+        new[] { MonTotal, TueTotal, WedTotal, ThuTotal, FriTotal }.Any(t => t > 8m);
+
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private async Task SaveAsync()
+    {
+        foreach (var row in Rows)
+            foreach (DayColumn col in Enum.GetValues<DayColumn>())
+                await SaveCellAsync(row, col);
+        await ReloadAsync();
+    }
+
+    private bool CanSave() => !AnyDayOverEight();
+
+    /// Persist one cell: value -> upsert on natural key (TS-07); empty -> delete (TS-03).
+    public async Task SaveCellAsync(TimesheetRowVm row, DayColumn col)
+    {
+        var date = CurrentWeek.AddDays((int)col);
+        var value = col switch
+        {
+            DayColumn.Mon => row.Mon,
+            DayColumn.Tue => row.Tue,
+            DayColumn.Wed => row.Wed,
+            DayColumn.Thu => row.Thu,
+            _ => row.Fri
+        };
+        if (value is { } v) await _timeLogs.SaveCellAsync(_currentUserId(), row.TaskId, date, v);
+        else await _timeLogs.ClearCellAsync(_currentUserId(), row.TaskId, date);
+    }
+
+    // Test-only hook to exercise the Applied -> reload wiring without WPF dispatcher.
+    internal void RaiseSmartInputAppliedForTest() => _ = ReloadAsync();
+}
