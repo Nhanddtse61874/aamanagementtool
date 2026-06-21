@@ -12,7 +12,15 @@
 User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-P1 COMPLETE (26 tests green). Dispatch P2 Wave 1 (T1 SmartInputService, T2 CurrentUserService, T3 DbBackupHelper — pure/standalone). Build order: P1 → P2 → {P3,P4,P5} → P6.
+P1 + P2 COMPLETE (78 tests green). Dispatch P3 Wave 1 (TimesheetRowVm, SmartInputPanelVm). **P3 must establish the FULL DI container in App.xaml.cs per architecture spec §6** (App.xaml.cs currently has ZERO DI registrations — only scaffold). Register all repos (User/Request/Task/TimeLog/Settings/DefaultTask) + services (SmartInput/CurrentUser/DbBackup/TimeLog/DefaultTaskSync/IClock) + VMs. Later P4/P5/P6 add their specifics (ITaskTemplateRepository, their VMs).
+Build order: P1 → P2 → {P3,P4,P5} → P6.
+
+## Carry-over notes for UI phases
+- `IClock` has `UtcNow` + `Today` (Services/IClock.cs); `SystemClock` impl exists.
+- ReadModels.cs holds: CellAssignment, SmartInputResult, CurrentUserResult/Outcome, TimeLogReportRow, WeekGrid, WeekRow, SaveResult.
+- **GetWeekAsync `WeekRow.RequestCode` is empty** (ITaskRepository.GetActiveForTimesheetAsync returns TaskItem w/o request_code) — P3 must join request_code in the VM or extend the query for grouping.
+- ValidateDayTotals/ApplySmartInput assume ≤1 cell per (taskId,date) — P3 must not pass duplicate same-day cells per task.
+- Interfaces NOT to recreate: IUserRepository, IRequestRepository, ITaskRepository, ITimeLogRepository, ISettingsRepository, IDefaultTaskRepository, ICurrentUserService, ISmartInputService, ITimeLogService, IDefaultTaskSyncService, IDbBackupHelper, IClock, IAppConfig, IConnectionFactory, IDatabaseInitializer.
 
 ## Execution Notes (standing corrections — apply to ALL tasks)
 - **Test project TFM:** `TimesheetApp.Tests` targets **`net8.0-windows` + `<UseWPF>false</UseWPF>`** (NOT bare `net8.0` — net8.0 cannot reference the net8.0-windows app on SDK 8.0.205). Plans that say `net8.0` for tests are superseded by this.
@@ -23,6 +31,9 @@ P1 COMPLETE (26 tests green). Dispatch P2 Wave 1 (T1 SmartInputService, T2 Curre
 - **P1 COMPLETE** (6 tasks, 26 tests green, controller-verified). Commits: 2add21a, 4244ef9, 98657ea, 5a598eb, af895a1, a4a159f.
   - T1 solution/projects/NuGet · T2 models · T3 JsonAppConfig (`IAppConfig.DbPath`+`SetDbPath`) · T4 SqliteConnectionFactory (journal=DELETE/FK/Pooling off) · T5 SqliteMaintenance (XC-08/09) · T6 DatabaseInitializer (schema+seed+migrations).
   - Cross-phase fix: P6 plan patched to use `IAppConfig.SetDbPath()` (P1 used method, not property setter).
+- **P2 COMPLETE** (7 tasks, 78 tests green, controller-verified). Commits: 84905f3, 0a54ada, 0375308, 9d958a0, 2e49b73, dffd5db, 64408a5.
+  - T1 SmartInputService (integer-tenths) · T2 CurrentUserService · T3 DbBackupHelper · T4 TimeLogRepository (+TestDb.cs) · T5 User/Task/Request/Settings repos · T6 TimeLogService (8h validation, atomic apply) · T7 DefaultTaskSyncService (+IDefaultTaskRepository).
+  - P2 filled several P1 carry-over gaps (ITimeLogService, WeekGrid/SaveResult, IClock, ReadModels types) — all from architecture spec verbatim.
 
 ## Resolved Items
 - **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).
