@@ -10,3 +10,7 @@ public readonly record struct CellAssignment(DateOnly Date, decimal Hours);
 // Smart-input result. Ok=false => no-op with a message (SI-03).
 public readonly record struct SmartInputResult(
     bool Ok, IReadOnlyList<CellAssignment> Cells, string? Error);
+
+// Current-user resolution outcome (XC-07). Shapes VERBATIM from architecture spec §2.
+public enum CurrentUserOutcome { Resolved, NeedsSelection }
+public readonly record struct CurrentUserResult(CurrentUserOutcome Outcome, User? User);
