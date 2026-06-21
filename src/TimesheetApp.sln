@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TimesheetApp", "TimesheetApp\TimesheetApp.csproj", "{5C25D2E0-A848-4BB5-92F9-D28C81ADA52C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TimesheetApp.Tests", "TimesheetApp.Tests\TimesheetApp.Tests.csproj", "{E42DCE74-FA65-4314-BD13-92B76CC8C8A3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5C25D2E0-A848-4BB5-92F9-D28C81ADA52C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5C25D2E0-A848-4BB5-92F9-D28C81ADA52C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5C25D2E0-A848-4BB5-92F9-D28C81ADA52C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5C25D2E0-A848-4BB5-92F9-D28C81ADA52C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E42DCE74-FA65-4314-BD13-92B76CC8C8A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E42DCE74-FA65-4314-BD13-92B76CC8C8A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E42DCE74-FA65-4314-BD13-92B76CC8C8A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E42DCE74-FA65-4314-BD13-92B76CC8C8A3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

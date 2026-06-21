@@ -1,0 +1,21 @@
+## .NET / MSBuild artifacts
+bin/
+obj/
+
+## Visual Studio
+*.user
+*.suo
+.vs/
+*.rsuser
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## OS
+.DS_Store
+Thumbs.db
