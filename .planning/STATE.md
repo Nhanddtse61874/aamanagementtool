@@ -12,8 +12,9 @@
 User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-P1+P2+P3+P4 COMPLETE (126 tests green, build OK). Dispatch P5 Wave 1 (T1 Report read-models). Then P6, then final MainWindow wiring.
-Build order: P1 → P2 → P3 → P4 ✓ → P5 → P6 → MainWindow closeout.
+P1-P5 COMPLETE (137 tests green, build OK). Dispatch P6 Wave 1 (T1 ExportService, T2 SettingsViewModel). Then MainWindow closeout.
+Build order: P1 → P2 → P3 → P4 → P5 ✓ → P6 → MainWindow closeout.
+**Settings N-days key:** canonical `ReportsViewModel.NDaysKey = "chua_log_n_days"` — P6 SettingsViewModel must write to THIS key (P6 plan patched). Reports reads it.
 **MainWindow + MainViewModel do NOT exist yet** (P3 T3 deferred first-window show) — must be created in a final wiring task to host the 5 tabs (Timesheet/Requests/Users/Reports/Settings), current-user resolution + conflict-copy banner, and actually run the app. Track this as a required closeout task.
 
 ## Carry-over notes for UI phases
@@ -41,6 +42,9 @@ Build order: P1 → P2 → P3 → P4 ✓ → P5 → P6 → MainWindow closeout.
 - **P4 COMPLETE** (5 tasks, 126 tests green, build OK). Commits: 730e0e5, 2e75938, bab9bf1, 8b79636, c268585.
   - T1 ITaskTemplateRepository (canonical CRUD + DI) · T2 RequestEditorViewModel/EditableTaskRowVm · T4 UsersViewModel · T3 RequestsViewModel (search→explicit RefreshCommand) · T5 Requests/UsersTab.xaml (+RequestsVM/UsersVM in DI).
   - DI now registers: all repos+services (P3), ITaskTemplateRepository, RequestsViewModel, UsersViewModel, TimesheetViewModel.
+- **P5 COMPLETE** (4 tasks, 137 tests green, build OK). Commits: 6203d0f, de977be, 95f4825, b934444.
+  - T1 report read-models · T2 ReportAggregator (pure, distinct-by-TaskId, no is_active filter) · T3 ReportsViewModel + DI (IReportAggregator + ReportsViewModel) · T4 ReportsTab.xaml + DateOnlyConverter (local resource).
+  - Cross-phase fix: settings N-days key reconciled to `ReportsViewModel.NDaysKey="chua_log_n_days"` (P6 plan patched to write same key).
 
 ## Resolved Items
 - **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).

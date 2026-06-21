@@ -19,7 +19,7 @@ must_haves:
     - "ExportService → ITimeLogRepository.GetExportRowsAsync(from,to,projectFilter) for the row set, IUserRepository.GetByIdAsync for the user filter, IRequestRepository.GetByCodeAsync('DEFAULT') to detect the DEFAULT request."
     - "SettingsViewModel → IDefaultTaskSyncService.SyncAsync() invoked after any DefaultTask add/edit/hide."
     - "SettingsViewModel.SaveDbPath → IAppConfig.DbPath setter (app-local appsettings.json), never ISettingsRepository."
-    - "SettingsViewModel N-days → ISettingsRepository.GetAsync/SetAsync('warning_days') in the shared DB."
+    - "SettingsViewModel N-days → ISettingsRepository.GetAsync/SetAsync(ReportsViewModel.NDaysKey='chua_log_n_days') in the shared DB."
     - "App.xaml.cs DI already registers IExportService + SettingsViewModel (spec §6) — no DI change needed in P6 beyond confirming the registrations exist."
   key_links:
     - "EXP-01 → ExportService.ExportExcelAsync + ExportServiceTests Excel-reopen test"
@@ -27,7 +27,7 @@ must_haves:
     - "EXP-03 → ExportService DEFAULT-by-task-name grouping + DEFAULT-header test"
     - "EXP-04 → ExportService.FormatHours + EscapePipe + formatting test"
     - "SET-01 → SettingsViewModel.BrowseDbPathCommand → IAppConfig.DbPath"
-    - "SET-02 → SettingsViewModel.WarningDays (default 3) → ISettingsRepository('warning_days')"
+    - "SET-02 → SettingsViewModel.WarningDays (default 3) → ISettingsRepository(ReportsViewModel.NDaysKey)"
     - "SET-03 → SettingsViewModel template CRUD → ITaskTemplateRepository (canonical, from P4 Task 1)"
     - "SET-04 → SettingsViewModel DefaultTask edit → IDefaultTaskSyncService.SyncAsync()"
 ---
@@ -473,7 +473,7 @@ git commit -m "feat(P6): ExportService markdown+excel (EXP-01..04)"
 
 > Dependency note (executor): `ITaskTemplateRepository` is delivered by **P4 Task 1** (interface + Dapper impl + DI registration). Since P4 builds before P6 in the wave order, the interface already exists at compile time. Do NOT add template methods to `ITaskRepository` and do NOT create any other template interface.
 
-**Settings key constant:** `warning_days` (shared `Settings` table); default `3` (SET-02).
+**Settings key constant:** use `ReportsViewModel.NDaysKey` (= `"chua_log_n_days"`, already shipped by P5) so Settings-write and Reports-read share ONE key; default `3` (SET-02). Do NOT introduce a new `"warning_days"` literal.
 
 - [ ] **Step 2.1: Write the failing tests (full file)**
 
@@ -503,7 +503,7 @@ public class SettingsViewModelTests
         config = new Mock<IAppConfig>();
         config.Setup(c => c.DbPath).Returns(@"C:\old\timesheet.db");
         settings = new Mock<ISettingsRepository>();
-        settings.Setup(s => s.GetAsync("warning_days")).ReturnsAsync(warningDays);
+        settings.Setup(s => s.GetAsync(ReportsViewModel.NDaysKey)).ReturnsAsync(warningDays);
         templates = new Mock<ITaskTemplateRepository>();
         // Canonical template store = ITaskTemplateRepository (reconciliation 2026-06-21).
         templates.Setup(t => t.GetAllAsync())
@@ -536,7 +536,7 @@ public class SettingsViewModelTests
         await vm.LoadAsync();
         vm.WarningDays = 5;
         await vm.SaveWarningDaysCommand.ExecuteAsync(null);
-        settings.Verify(s => s.SetAsync("warning_days", "5"), Times.Once);
+        settings.Verify(s => s.SetAsync(ReportsViewModel.NDaysKey, "5"), Times.Once);
     }
 
     // ---------- SET-01: DB path -> app-local config, NOT shared DB ----------
@@ -623,7 +623,10 @@ namespace TimesheetApp.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
-    private const string WarningDaysKey = "warning_days";
+    // RECONCILED 2026-06-21: single source of truth — P5 ReportsViewModel already shipped
+    // `public const string NDaysKey = "chua_log_n_days"`. Reference it so Settings(write) and
+    // Reports(read) can never drift apart. (Both VMs are in namespace TimesheetApp.ViewModels.)
+    private const string WarningDaysKey = ReportsViewModel.NDaysKey;
     private const int DefaultWarningDays = 3;
 
     private readonly IAppConfig _config;
