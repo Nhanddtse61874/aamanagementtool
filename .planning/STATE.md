@@ -12,9 +12,7 @@
 User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-P1-P5 COMPLETE (137 tests green, build OK). Dispatch P6 Wave 1 (T1 ExportService, T2 SettingsViewModel). Then MainWindow closeout.
-Build order: P1 → P2 → P3 → P4 → P5 ✓ → P6 → MainWindow closeout.
-**Settings N-days key:** canonical `ReportsViewModel.NDaysKey = "chua_log_n_days"` — P6 SettingsViewModel must write to THIS key (P6 plan patched). Reports reads it.
+P1-P6 COMPLETE (152 tests green, build OK). Dispatch FINAL WIRING task: MainWindow + MainViewModel (host 5 tabs, current-user resolution + SelectUserDialog XC-07, conflict-copy banner XC-08, show window on startup). Then UAT/QA (Steps 8-9) + ship (Step 11).
 **MainWindow + MainViewModel do NOT exist yet** (P3 T3 deferred first-window show) — must be created in a final wiring task to host the 5 tabs (Timesheet/Requests/Users/Reports/Settings), current-user resolution + conflict-copy banner, and actually run the app. Track this as a required closeout task.
 
 ## Carry-over notes for UI phases
@@ -45,6 +43,10 @@ Build order: P1 → P2 → P3 → P4 → P5 ✓ → P6 → MainWindow closeout.
 - **P5 COMPLETE** (4 tasks, 137 tests green, build OK). Commits: 6203d0f, de977be, 95f4825, b934444.
   - T1 report read-models · T2 ReportAggregator (pure, distinct-by-TaskId, no is_active filter) · T3 ReportsViewModel + DI (IReportAggregator + ReportsViewModel) · T4 ReportsTab.xaml + DateOnlyConverter (local resource).
   - Cross-phase fix: settings N-days key reconciled to `ReportsViewModel.NDaysKey="chua_log_n_days"` (P6 plan patched to write same key).
+- **P6 COMPLETE** (3 tasks, 152 tests green, build OK). Commits: ae99e13, 5847146, 4cea478.
+  - T1 ExportService (Markdown+Excel, EXP-01..04, DI) · T2 SettingsViewModel (SET-01..04, uses NDaysKey/SetDbPath/ITaskTemplateRepository) · T3 SettingsTab.xaml (Browse via OpenFileDialog code-behind).
+  - T2 was committed on a stray feature branch by the subagent; controller merged it back to main (ff).
+- **ALL 6 BUILD PHASES DONE. 152 tests, build clean.** Remaining: MainWindow+MainViewModel closeout (app not yet runnable — no window shown), then UAT/QA/ship.
 
 ## Resolved Items
 - **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).
