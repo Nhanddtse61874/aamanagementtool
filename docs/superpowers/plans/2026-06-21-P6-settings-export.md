@@ -11,7 +11,7 @@ must_haves:
     - "Editing DefaultTasks then saving calls `IDefaultTaskSyncService.SyncAsync()`; a rename is soft-delete-old + insert-new with TimeLogs preserved (SET-04)."
   required_artifacts:
     - "src/TimesheetApp/Services/ExportService.cs implements IExportService (Markdown via StringBuilder + Excel via ClosedXML); returns byte[]/string, never opens SaveFileDialog."
-    - "src/TimesheetApp/ViewModels/SettingsViewModel.cs (CommunityToolkit.Mvvm) wiring IAppConfig + ISettingsRepository + ITaskRepository (templates) + IDefaultTaskSyncService + IExportService."
+    - "src/TimesheetApp/ViewModels/SettingsViewModel.cs (CommunityToolkit.Mvvm) wiring IAppConfig + ISettingsRepository + ITaskTemplateRepository (template CRUD) + IDefaultTaskSyncService + IExportService."
     - "src/TimesheetApp/Views/Tabs/SettingsTab.xaml + .xaml.cs binding the SettingsViewModel."
     - "src/TimesheetApp.Tests/Services/ExportServiceTests.cs — markdown structure, DEFAULT-by-task-name, hours/escaping, Excel reopen assertions."
     - "src/TimesheetApp.Tests/ViewModels/SettingsViewModelTests.cs — N-days default/persist, DB-path browse, template CRUD, DefaultTask sync trigger."
@@ -28,7 +28,7 @@ must_haves:
     - "EXP-04 → ExportService.FormatHours + EscapePipe + formatting test"
     - "SET-01 → SettingsViewModel.BrowseDbPathCommand → IAppConfig.DbPath"
     - "SET-02 → SettingsViewModel.WarningDays (default 3) → ISettingsRepository('warning_days')"
-    - "SET-03 → SettingsViewModel template CRUD → ITaskRepository/ISettingsRepository template store"
+    - "SET-03 → SettingsViewModel template CRUD → ITaskTemplateRepository (canonical, from P4 Task 1)"
     - "SET-04 → SettingsViewModel DefaultTask edit → IDefaultTaskSyncService.SyncAsync()"
 ---
 
@@ -464,16 +464,14 @@ git commit -m "feat(P6): ExportService markdown+excel (EXP-01..04)"
 - `IAppConfig` (spec §1.4 line 61, §6 line 337): treat as `{ string DbPath { get; set; } }` — app-local `%APPDATA%\TimesheetApp\appsettings.json`. `[ASSUMED]` member name `DbPath`; if P1 named it differently, STOP and reconcile (item 1 below).
 - `ISettingsRepository` (spec §3 lines 210-215): `Task<string?> GetAsync(string key)`, `Task SetAsync(string key, string value)`.
 - `IDefaultTaskSyncService` (spec §4 lines 270-274): `Task SyncAsync()`.
-- **Template persistence = `ITaskRepository (templates)`** per spec §5 line 314 ("RequestsViewModel/SettingsViewModel … `ITaskRepository` (templates)") and traceability matrix line 434 (`ISettingsRepository` SET-03 template store). The spec NAMES `ITaskRepository` as the template-store owner but spec §3 lines 186-195 only enumerates its `TaskItem` methods — it does NOT list template methods. This is a real internal gap in the approved contracts, so the spec-faithful move is to consume the **spec-named** owner (`ITaskRepository`) and treat the three template methods as a **required additive extension to `ITaskRepository`** that P1 must expose — NOT to fabricate a separate `ITemplateRepository`.
-
-  Template methods consumed on `ITaskRepository` (additive — escalate as P1 contract gap, see item 2):
+- **Template persistence = `ITaskTemplateRepository`** (RECONCILED 2026-06-21, user-approved). The canonical single home for TaskTemplates is `ITaskTemplateRepository`, created in **P4 Task 1** and used by BOTH RequestsViewModel (read) and SettingsViewModel (CRUD). Template methods are NOT on `ITaskRepository`. Methods consumed here (architecture spec §3 reconciliation block):
   ```csharp
-  Task<IReadOnlyList<TaskTemplate>> GetTemplatesAsync();
-  Task<int> InsertTemplateAsync(TaskTemplate template);
-  Task DeleteTemplateAsync(int templateId);
+  Task<IReadOnlyList<TaskTemplate>> GetAllAsync();   // load/reload templates (SET-03)
+  Task<int> InsertAsync(TaskTemplate template);      // add (SET-03)
+  Task DeleteAsync(int id);                           // delete (SET-03)
   ```
 
-> Reconciliation note for executor (BLOCKING — resolve before writing Task 2 tests): SET-03's template store is the one underspecified surface in P6. Spec §5 says `ITaskRepository (templates)`; spec §3 lists no template methods on it. Before writing Task 2: (a) grep P1's actual `ITaskRepository.cs` for template methods; (b) if present, bind to the real names verbatim; (c) if absent, this is a **P1 contract gap to escalate to the architecture lead** — add the three additive `*Template*` methods above to `ITaskRepository` (where the spec already routes templates), do NOT create a new `ITemplateRepository`. The tests below mock `ITaskRepository`'s template methods; keep behavior identical regardless of final method names.
+> Dependency note (executor): `ITaskTemplateRepository` is delivered by **P4 Task 1** (interface + Dapper impl + DI registration). Since P4 builds before P6 in the wave order, the interface already exists at compile time. Do NOT add template methods to `ITaskRepository` and do NOT create any other template interface.
 
 **Settings key constant:** `warning_days` (shared `Settings` table); default `3` (SET-02).
 
@@ -498,7 +496,7 @@ public class SettingsViewModelTests
     private static SettingsViewModel Build(
         out Mock<IAppConfig> config,
         out Mock<ISettingsRepository> settings,
-        out Mock<ITaskRepository> tasks,
+        out Mock<ITaskTemplateRepository> templates,
         out Mock<IDefaultTaskSyncService> sync,
         string? warningDays = "3")
     {
@@ -506,12 +504,12 @@ public class SettingsViewModelTests
         config.SetupProperty(c => c.DbPath, @"C:\old\timesheet.db");
         settings = new Mock<ISettingsRepository>();
         settings.Setup(s => s.GetAsync("warning_days")).ReturnsAsync(warningDays);
-        tasks = new Mock<ITaskRepository>();
-        // Template store routed through ITaskRepository per spec §5 line 314.
-        tasks.Setup(t => t.GetTemplatesAsync())
+        templates = new Mock<ITaskTemplateRepository>();
+        // Canonical template store = ITaskTemplateRepository (reconciliation 2026-06-21).
+        templates.Setup(t => t.GetAllAsync())
              .ReturnsAsync(new[] { new TaskTemplate(1, "Std", "Implement", 0) });
         sync = new Mock<IDefaultTaskSyncService>();
-        return new SettingsViewModel(config.Object, settings.Object, tasks.Object, sync.Object);
+        return new SettingsViewModel(config.Object, settings.Object, templates.Object, sync.Object);
     }
 
     // ---------- SET-02: N-days default 3 + persist ----------
@@ -553,11 +551,11 @@ public class SettingsViewModelTests
         settings.Verify(s => s.SetAsync(It.Is<string>(k => k.Contains("path")), It.IsAny<string>()), Times.Never);
     }
 
-    // ---------- SET-03: template CRUD (via ITaskRepository template methods) ----------
+    // ---------- SET-03: template CRUD (via ITaskTemplateRepository) ----------
     [Fact]
     public async Task LoadAsync_LoadsTemplates()
     {
-        var vm = Build(out _, out _, out var tasks, out _);
+        var vm = Build(out _, out _, out var templates, out _);
         await vm.LoadAsync();
         Assert.Single(vm.Templates);
         Assert.Equal("Std", vm.Templates[0].TemplateName);
@@ -566,26 +564,26 @@ public class SettingsViewModelTests
     [Fact]
     public async Task AddTemplate_InsertsAndReloads()
     {
-        var vm = Build(out _, out _, out var tasks, out _);
+        var vm = Build(out _, out _, out var templates, out _);
         await vm.LoadAsync();
         vm.NewTemplateName = "Bugfix";
         vm.NewTemplateTaskName = "Triage";
         await vm.AddTemplateCommand.ExecuteAsync(null);
-        tasks.Verify(t => t.InsertTemplateAsync(
+        templates.Verify(t => t.InsertAsync(
             It.Is<TaskTemplate>(x => x.TemplateName == "Bugfix" && x.TaskName == "Triage")),
             Times.Once);
-        tasks.Verify(t => t.GetTemplatesAsync(), Times.Exactly(2)); // initial load + reload
+        templates.Verify(t => t.GetAllAsync(), Times.Exactly(2)); // initial load + reload
     }
 
     [Fact]
     public async Task DeleteTemplate_RemovesAndReloads()
     {
-        var vm = Build(out _, out _, out var tasks, out _);
+        var vm = Build(out _, out _, out var templates, out _);
         await vm.LoadAsync();
         vm.SelectedTemplate = vm.Templates[0];
         await vm.DeleteTemplateCommand.ExecuteAsync(null);
-        tasks.Verify(t => t.DeleteTemplateAsync(1), Times.Once);
-        tasks.Verify(t => t.GetTemplatesAsync(), Times.Exactly(2));
+        templates.Verify(t => t.DeleteAsync(1), Times.Once);
+        templates.Verify(t => t.GetAllAsync(), Times.Exactly(2));
     }
 
     // ---------- SET-04: DefaultTask edit triggers sync ----------
@@ -603,11 +601,11 @@ public class SettingsViewModelTests
 - [ ] **Step 2.2: Run tests to verify they fail**
 
 Run: `dotnet test src/TimesheetApp.Tests --filter "FullyQualifiedName~SettingsViewModelTests"`
-Expected: FAIL — `SettingsViewModel` not defined (and `ITaskRepository` template methods not yet present). (<60s.)
+Expected: FAIL — `SettingsViewModel` not defined. (<60s.)
 
 - [ ] **Step 2.3: Write the implementation (full file)**
 
-> Template CRUD binds to `ITaskRepository`'s template methods (the spec-named owner, §5 line 314). If P1's `ITaskRepository` does not yet expose `GetTemplatesAsync`/`InsertTemplateAsync`/`DeleteTemplateAsync`, add them additively to that interface + its Dapper implementation (escalate to architecture lead — see reconciliation item 2). Do NOT introduce a separate `ITemplateRepository`.
+> Template CRUD binds to `ITaskTemplateRepository` (canonical, delivered by P4 Task 1). Do NOT add template methods to `ITaskRepository` and do NOT create any other template interface.
 
 `src/TimesheetApp/ViewModels/SettingsViewModel.cs`:
 
@@ -630,18 +628,18 @@ public partial class SettingsViewModel : ObservableObject
 
     private readonly IAppConfig _config;
     private readonly ISettingsRepository _settings;
-    private readonly ITaskRepository _tasks;   // also the template store (spec §5 line 314)
+    private readonly ITaskTemplateRepository _templates;   // canonical template store (reconciliation 2026-06-21)
     private readonly IDefaultTaskSyncService _sync;
 
     public SettingsViewModel(
         IAppConfig config,
         ISettingsRepository settings,
-        ITaskRepository tasks,
+        ITaskTemplateRepository templates,
         IDefaultTaskSyncService sync)
     {
         _config = config;
         _settings = settings;
-        _tasks = tasks;
+        _templates = templates;
         _sync = sync;
     }
 
@@ -678,11 +676,11 @@ public partial class SettingsViewModel : ObservableObject
     private Task SaveWarningDaysAsync() =>
         _settings.SetAsync(WarningDaysKey, WarningDays.ToString(CultureInfo.InvariantCulture));
 
-    // SET-03: template CRUD (via ITaskRepository template methods — spec §5 line 314).
+    // SET-03: template CRUD (via ITaskTemplateRepository — canonical store).
     [RelayCommand]
     private async Task AddTemplateAsync()
     {
-        await _tasks.InsertTemplateAsync(new TaskTemplate(0, NewTemplateName, NewTemplateTaskName, 0));
+        await _templates.InsertAsync(new TaskTemplate(0, NewTemplateName, NewTemplateTaskName, 0));
         NewTemplateName = "";
         NewTemplateTaskName = "";
         await ReloadTemplatesAsync();
@@ -692,7 +690,7 @@ public partial class SettingsViewModel : ObservableObject
     private async Task DeleteTemplateAsync()
     {
         if (SelectedTemplate is null) return;
-        await _tasks.DeleteTemplateAsync(SelectedTemplate.Id);
+        await _templates.DeleteAsync(SelectedTemplate.Id);
         await ReloadTemplatesAsync();
     }
 
@@ -702,21 +700,14 @@ public partial class SettingsViewModel : ObservableObject
 
     private async Task ReloadTemplatesAsync()
     {
-        var items = await _tasks.GetTemplatesAsync();
+        var items = await _templates.GetAllAsync();
         Templates.Clear();
         foreach (var t in items) Templates.Add(t);
     }
 }
 ```
 
-**Additive `ITaskRepository` template methods (escalate to architecture lead — spec §5 routes templates here but §3 omits the methods).** Add to the existing `src/TimesheetApp/Data/Repositories/ITaskRepository.cs` and its Dapper implementation — do NOT create a new interface:
-
-```csharp
-// added to ITaskRepository (templates store, SET-03 / REQ-02)
-Task<IReadOnlyList<TaskTemplate>> GetTemplatesAsync();
-Task<int> InsertTemplateAsync(TaskTemplate template);
-Task DeleteTemplateAsync(int templateId);
-```
+> `ITaskTemplateRepository` already exists from P4 Task 1 (interface + Dapper impl + DI). No new repository code is needed in P6 — only consume it.
 
 - [ ] **Step 2.4: Run tests to verify they pass**
 

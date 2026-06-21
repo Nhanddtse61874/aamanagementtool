@@ -169,11 +169,14 @@ namespace TimesheetApp.Data.Repositories;
 
 using TimesheetApp.Models;
 
+// CANONICAL interface (reconciliation 2026-06-21): single home for TaskTemplates, used by BOTH
+// P4 RequestsViewModel (GetAllAsync → VM groups by TemplateName, REQ-02) and P6 SettingsViewModel
+// (GetAllAsync/InsertAsync/DeleteAsync CRUD, SET-03). Template methods are NOT on ITaskRepository.
 public interface ITaskTemplateRepository
 {
-    // All template rows across all templates, ordered by TemplateName then OrderIndex.
-    // Source for REQ-02 (apply template -> auto tasks). P6/SET-03 owns CRUD.
-    Task<IReadOnlyList<TaskTemplate>> GetAllAsync();
+    Task<IReadOnlyList<TaskTemplate>> GetAllAsync();   // all rows ordered by template_name,order_index
+    Task<int> InsertAsync(TaskTemplate template);      // SET-03 add (returns new id)
+    Task DeleteAsync(int id);                           // SET-03 delete (hard delete — seed data, no TimeLog FK)
 }
 ```
 
@@ -231,6 +234,30 @@ public sealed class TaskTemplateRepositoryTests : IDisposable
         Assert.Equal("Build", rows[2].TaskName);
     }
 
+    [Fact] // SET-03: insert returns new id and the row is retrievable
+    public async Task InsertAsync_adds_row_and_returns_id()
+    {
+        var repo = new TaskTemplateRepository(_factory);
+
+        var id = await repo.InsertAsync(new TaskTemplate(0, "Bugfix", "Triage", 0));
+
+        Assert.True(id > 0);
+        var rows = await repo.GetAllAsync();
+        Assert.Contains(rows, r => r.Id == id && r.TemplateName == "Bugfix" && r.TaskName == "Triage");
+    }
+
+    [Fact] // SET-03: delete removes the row
+    public async Task DeleteAsync_removes_row()
+    {
+        var repo = new TaskTemplateRepository(_factory);
+        var id = await repo.InsertAsync(new TaskTemplate(0, "Temp", "X", 0));
+
+        await repo.DeleteAsync(id);
+
+        var rows = await repo.GetAllAsync();
+        Assert.DoesNotContain(rows, r => r.Id == id);
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
@@ -269,13 +296,29 @@ public sealed class TaskTemplateRepository : ITaskTemplateRepository
             """);
         return rows.AsList();
     }
+
+    public async Task<int> InsertAsync(TaskTemplate template)
+    {
+        using var c = _factory.Create();
+        return await c.ExecuteScalarAsync<int>("""
+            INSERT INTO TaskTemplates(template_name, task_name, order_index)
+            VALUES(@TemplateName, @TaskName, @OrderIndex);
+            SELECT last_insert_rowid();
+            """, template);
+    }
+
+    public async Task DeleteAsync(int id)
+    {
+        using var c = _factory.Create();
+        await c.ExecuteAsync("DELETE FROM TaskTemplates WHERE id = @id;", new { id });
+    }
 }
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `dotnet test src/TimesheetApp.Tests --filter FullyQualifiedName~TaskTemplateRepositoryTests`
-Expected: PASS (1 test).
+Expected: PASS (3 tests).
 
 - [ ] **Step 6: Register in DI**
 
@@ -294,7 +337,7 @@ Expected: Build succeeded, 0 errors.
 
 ```bash
 git add src/TimesheetApp/Data/Repositories/ITaskTemplateRepository.cs src/TimesheetApp/Data/Repositories/TaskTemplateRepository.cs src/TimesheetApp.Tests/Data/TaskTemplateRepositoryTests.cs src/TimesheetApp/App.xaml.cs
-git commit -m "feat(p4): add ITaskTemplateRepository read seam for REQ-02 templates [ASSUMED interface]"
+git commit -m "feat(p4): add canonical ITaskTemplateRepository (GetAll/Insert/Delete) for REQ-02 + SET-03"
 ```
 
 **done (grep-verifiable):**
@@ -302,7 +345,7 @@ git commit -m "feat(p4): add ITaskTemplateRepository read seam for REQ-02 templa
 - `grep -q "AddSingleton<ITaskTemplateRepository, TaskTemplateRepository>" src/TimesheetApp/App.xaml.cs`
 
 **verify (automated, <60s):**
-- `dotnet test src/TimesheetApp.Tests --filter FullyQualifiedName~TaskTemplateRepositoryTests` → 1 passed.
+- `dotnet test src/TimesheetApp.Tests --filter FullyQualifiedName~TaskTemplateRepositoryTests` → 3 passed.
 
 ---
 

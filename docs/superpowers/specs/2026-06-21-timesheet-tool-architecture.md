@@ -69,7 +69,8 @@ TimesheetApp/
 │       ├── IRequestRepository.cs    / RequestRepository.cs
 │       ├── ITaskRepository.cs       / TaskRepository.cs
 │       ├── ITimeLogRepository.cs    / TimeLogRepository.cs
-│       └── ISettingsRepository.cs   / SettingsRepository.cs
+│       ├── ISettingsRepository.cs   / SettingsRepository.cs
+│       └── ITaskTemplateRepository.cs / TaskTemplateRepository.cs
 ├── Services/
 │   ├── IClock.cs / SystemClock.cs   -- deterministic "today" (test seam)
 │   ├── ITimeLogService.cs           / TimeLogService.cs
@@ -213,6 +214,17 @@ public interface ISettingsRepository
     Task SetAsync(string key, string value);                      // INSERT OR REPLACE (SET-02)
     Task<IReadOnlyDictionary<string,string>> GetAllAsync();
 }
+
+// RECONCILIATION (2026-06-21, user-approved): single home for TaskTemplates, used by BOTH
+// RequestsViewModel (read all → VM groups by TemplateName, REQ-02) and SettingsViewModel (CRUD, SET-03).
+// Template methods are NOT placed on ITaskRepository (that interface stays Task-only).
+// DI: AddSingleton<ITaskTemplateRepository, TaskTemplateRepository>().
+public interface ITaskTemplateRepository
+{
+    Task<IReadOnlyList<TaskTemplate>> GetAllAsync();   // all rows ordered by template_name,order_index — P4 read (VM groups) + P6 reload
+    Task<int> InsertAsync(TaskTemplate template);      // add a template task row (SET-03)
+    Task DeleteAsync(int id);                           // hard delete a template row — seed data, no TimeLog FK (SET-03)
+}
 ```
 
 **Notes & boundaries:**
@@ -308,10 +320,10 @@ VMs use `CommunityToolkit.Mvvm` (`ObservableObject`, `[ObservableProperty]`, `[R
 |---|---|---|---|
 | **MainViewModel** | TabControl host; current-user display (top corner); on startup calls `ICurrentUserService.ResolveAsync()`; on `NeedsSelection` opens `SelectUserDialog` then `SetWindowsUsernameAsync`; shows conflict-copy startup warning banner (XC-08); resolves child VMs via ctor injection | `ICurrentUserService`, `IDatabaseInitializer` (already run in App) | SQL |
 | **TimesheetViewModel** | `CurrentWeek` (Monday), Prev/Next nav recomputing concrete column dates; `ObservableCollection<TimesheetRowVm>`; per-column footer totals (`MonTotal..FriTotal`); `SaveCommand.CanExecute=false` when any day >8 (TS-06); red-cell state via `INotifyDataErrorInfo`; hosts the Smart Input panel (two modes + preview) | `ITimeLogService` (`GetWeekAsync`/`SaveCellAsync`/`ClearCellAsync`), `ISmartInputService`, `IClock` | business math, SQL |
-| **RequestsViewModel** | request list + search box; create dialog (code/project + optional template + add/remove/reorder tasks); edit (name + add task) | `IRequestRepository`, `ITaskRepository`, `ISettingsRepository` (templates) | SQL strings |
+| **RequestsViewModel** | request list + search box; create dialog (code/project + optional template + add/remove/reorder tasks); edit (name + add task) | `IRequestRepository`, `ITaskRepository`, `ITaskTemplateRepository` (read templates) | SQL strings |
 | **UsersViewModel** | user list w/ Active/Inactive; add user; soft-delete (set inactive) | `IUserRepository` | SQL |
 | **ReportsViewModel** | weekly view (totals by day), monthly view (by request/task), drill-down TreeView (Project→Request→Task→Date); "chưa log" banner showing configured N (RPT-04) | `ITimeLogService` (`GetUsersMissingLogsAsync`), `ITimeLogRepository` (`GetReportRowsAsync`), `ISettingsRepository` (N) | SQL, business math |
-| **SettingsViewModel** | DB path Browse → writes `IAppConfig`; N-days (default 3) → `Settings` table; TaskTemplates CRUD; DefaultTasks add/edit/hide → then calls `IDefaultTaskSyncService.SyncAsync()` | `IAppConfig`, `ISettingsRepository`, `ITaskRepository`(templates), `IDefaultTaskSyncService` | SQL |
+| **SettingsViewModel** | DB path Browse → writes `IAppConfig`; N-days (default 3) → `Settings` table; TaskTemplates CRUD; DefaultTasks add/edit/hide → then calls `IDefaultTaskSyncService.SyncAsync()` | `IAppConfig`, `ISettingsRepository`, `ITaskTemplateRepository` (template CRUD), `IDefaultTaskSyncService` | SQL |
 
 `TimesheetRowVm : ObservableObject` holds `TaskId`, labels, and 5 nullable `decimal?` day properties (`null=empty=0h`); a `DayChanged` handler raises `SaveCommand.NotifyCanExecuteChanged()` and recomputes footer totals (RESEARCH §4.3). Columns are **static** Mon–Fri XAML (Sat/Sun do not exist as columns — cleanest XC-05 enforcement); headers bind dates via `RelativeSource` to the grid DataContext.
 
@@ -344,6 +356,7 @@ public partial class App : Application
         sc.AddSingleton<ITaskRepository, TaskRepository>();
         sc.AddSingleton<ITimeLogRepository, TimeLogRepository>();
         sc.AddSingleton<ISettingsRepository, SettingsRepository>();
+        sc.AddSingleton<ITaskTemplateRepository, TaskTemplateRepository>();
 
         // Services
         sc.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
