@@ -1,0 +1,12 @@
+namespace TimesheetApp.Models;
+
+// --- Read / projection models. Shapes are VERBATIM from architecture spec §2. ---
+// Only the smart-input types are defined here for P2 Task 1; later P2/P3 tasks extend
+// this file with TimeLogReportRow, WeekGrid, WeekRow, etc.
+
+// Smart-input preview cell (pure math output; also the apply unit). (SI-01/05)
+public readonly record struct CellAssignment(DateOnly Date, decimal Hours);
+
+// Smart-input result. Ok=false => no-op with a message (SI-03).
+public readonly record struct SmartInputResult(
+    bool Ok, IReadOnlyList<CellAssignment> Cells, string? Error);
