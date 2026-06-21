@@ -69,6 +69,9 @@ public sealed partial class SmartInputPanelVm : ObservableObject
         CanApply = true;
     }
 
+    [RelayCommand] private void SetDistributeEven() => Mode = SmartInputMode.DistributeEven;
+    [RelayCommand] private void SetFull8h() => Mode = SmartInputMode.FillFull8h;
+
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {

@@ -123,4 +123,14 @@ public class SmartInputPanelVmTests
         await vm.ApplyCommand.ExecuteAsync(null);
         tl.Verify(t => t.ApplySmartInputAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<IReadOnlyList<CellAssignment>>()), Times.Never);
     }
+
+    [Fact]
+    public void ModeCommands_SwitchMode()
+    {
+        var (vm, _, _) = Make();
+        vm.SetFull8hCommand.Execute(null);
+        Assert.Equal(SmartInputMode.FillFull8h, vm.Mode);
+        vm.SetDistributeEvenCommand.Execute(null);
+        Assert.Equal(SmartInputMode.DistributeEven, vm.Mode);
+    }
 }
