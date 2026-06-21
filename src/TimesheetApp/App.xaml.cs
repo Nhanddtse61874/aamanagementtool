@@ -45,6 +45,7 @@ public partial class App : Application
         sc.AddSingleton<IDefaultTaskSyncService, DefaultTaskSyncService>();
         sc.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
         sc.AddSingleton<IReportAggregator, ReportAggregator>(); // pure roll-up, stateless
+        sc.AddSingleton<IExportService, ExportService>();       // headless export (EXP-01..04)
 
         // Current-user-id provider (Func<int>) per plan/spec: TimesheetViewModel persists cells for
         // the logged-in user. Resolution defers to ICurrentUserService.Current (set by login flow);

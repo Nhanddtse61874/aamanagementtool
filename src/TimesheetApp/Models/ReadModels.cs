@@ -30,6 +30,9 @@ public sealed record WeekRow(
 // from architecture spec §2. (XC-02/03/04/05)
 public readonly record struct SaveResult(bool Ok, string? Error);
 
+// Export selection (user/month/project). Shape VERBATIM from architecture spec §2. (EXP-01..04)
+public readonly record struct ExportFilter(int? UserId, int Year, int Month, string? Project);
+
 // Current-user resolution outcome (XC-07). Shapes VERBATIM from architecture spec §2.
 public enum CurrentUserOutcome { Resolved, NeedsSelection }
 public readonly record struct CurrentUserResult(CurrentUserOutcome Outcome, User? User);
