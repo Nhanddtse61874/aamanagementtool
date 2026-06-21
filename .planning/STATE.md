@@ -12,8 +12,8 @@
 User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-P1+P2+P3 COMPLETE (104 tests green, build OK, DI container live in App.xaml.cs). Dispatch P4 Wave 1 (T1 ITaskTemplateRepository canonical GetAll/Insert/Delete + DI). Then P5, P6.
-Build order: P1 → P2 → P3 ✓ → {P4,P5} → P6.
+P1+P2+P3+P4 COMPLETE (126 tests green, build OK). Dispatch P5 Wave 1 (T1 Report read-models). Then P6, then final MainWindow wiring.
+Build order: P1 → P2 → P3 → P4 ✓ → P5 → P6 → MainWindow closeout.
 **MainWindow + MainViewModel do NOT exist yet** (P3 T3 deferred first-window show) — must be created in a final wiring task to host the 5 tabs (Timesheet/Requests/Users/Reports/Settings), current-user resolution + conflict-copy banner, and actually run the app. Track this as a required closeout task.
 
 ## Carry-over notes for UI phases
@@ -37,7 +37,10 @@ Build order: P1 → P2 → P3 ✓ → {P4,P5} → P6.
   - P2 filled several P1 carry-over gaps (ITimeLogService, WeekGrid/SaveResult, IClock, ReadModels types) — all from architecture spec verbatim.
 - **P3 COMPLETE** (5 tasks, 104 tests green, build OK). Commits: 44f9110, 8341dd1, 978535f, 6cc685f, eb2e417.
   - T1 TimesheetRowVm · T2 SmartInputPanelVm · T3 TimesheetViewModel + **full DI container in App.xaml.cs** (all repos+services+VM, InitializeAsync at startup) · T4 TimesheetTab.xaml · T5 SmartInputPreviewDialog.xaml.
-  - DI does NOT yet register IExportService (P6) or ITaskTemplateRepository (P4) or VMs for other tabs — each later phase adds its own.
+  - DI does NOT yet register IExportService (P6) or VMs for other tabs — each later phase adds its own.
+- **P4 COMPLETE** (5 tasks, 126 tests green, build OK). Commits: 730e0e5, 2e75938, bab9bf1, 8b79636, c268585.
+  - T1 ITaskTemplateRepository (canonical CRUD + DI) · T2 RequestEditorViewModel/EditableTaskRowVm · T4 UsersViewModel · T3 RequestsViewModel (search→explicit RefreshCommand) · T5 Requests/UsersTab.xaml (+RequestsVM/UsersVM in DI).
+  - DI now registers: all repos+services (P3), ITaskTemplateRepository, RequestsViewModel, UsersViewModel, TimesheetViewModel.
 
 ## Resolved Items
 - **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).
