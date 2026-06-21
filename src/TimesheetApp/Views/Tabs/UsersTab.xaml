@@ -1,0 +1,42 @@
+<UserControl x:Class="TimesheetApp.Views.Tabs.UsersTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- USR-02: add user input row -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,8">
+            <Button Content="Add User"
+                    Command="{Binding AddUserCommand}"
+                    DockPanel.Dock="Right" Padding="10,4" Margin="4,0,0,0"/>
+            <TextBox Text="{Binding NewUserName, UpdateSourceTrigger=PropertyChanged}"/>
+        </DockPanel>
+
+        <!-- USR-01: user list with Active/Inactive status indicator -->
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" AutoGenerateColumns="False"
+                  IsReadOnly="True" SelectionMode="Single">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Status"
+                                    Binding="{Binding IsActive,
+                                              Converter={StaticResource ActiveStatusConverter}}"
+                                    Width="Auto"/>
+                <DataGridTemplateColumn Header="">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <!-- USR-03: deactivate — disabled for already-inactive users -->
+                            <Button Content="Deactivate"
+                                    IsEnabled="{Binding IsActive}"
+                                    Command="{Binding DataContext.DeactivateCommand,
+                                              RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    CommandParameter="{Binding Id}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

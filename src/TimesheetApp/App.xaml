@@ -4,5 +4,8 @@
              xmlns:conv="clr-namespace:TimesheetApp.Views.Converters">
   <Application.Resources>
     <conv:OverEightTagConverter x:Key="OverEightTag"/>
+    <conv:NullToCollapsedConverter x:Key="NullToCollapsedConverter"/>
+    <conv:BoolToVisibilityConverter x:Key="BoolToVisibleConverter"/>
+    <conv:ActiveStatusConverter x:Key="ActiveStatusConverter"/>
   </Application.Resources>
 </Application>
