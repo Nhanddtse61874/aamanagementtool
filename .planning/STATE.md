@@ -3,16 +3,20 @@
 **Last updated:** 2026-06-21
 
 ## Current Position
-- **Phase:** Step 6 — Plan (all 6 phase plans written + orchestrator-reviewed)
-- **Status:** waiting_for_user (approval of full plan set + 1 cross-plan reconciliation before any implementer dispatch)
+- **Phase:** Step 7 — Execute (Subagent-Driven, autonomous all 6 phases)
+- **Status:** in_progress — building P1 Wave 1
 - **Approved Mode:** Mode B (user override from suggested Mode A, 2026-06-21)
+- **Execution mode:** Subagent-Driven (fresh subagent per task, controller reviews between tasks), **autonomous all 6 phases** (user approved 2026-06-21 — user does final UAT when product complete). Commit atomic per task.
+
+## Autonomous-run deviation (this project, 2026-06-21)
+User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-User to approve the 6 plans in `docs/superpowers/plans/` and the template-repository reconciliation (see Open Items). On approval: choose execution mode (Inline executing-plans vs Subagent-Driven), then build phase-by-phase P1→P6 (P1 is prerequisite for all; dependencies: P1→P2→{P3,P4,P5}→P6).
+Dispatch P1 Wave 1 (T1 solution+projects+NuGet). Build order: P1 → P2 → {P3,P4,P5} → P6. Each task: dispatch implementer-dotnet-csharp with task `<read_first>` + model (quality-shifted), atomic commit, controller review.
 
-## Open Items (must resolve before execution)
-- **CONFLICT — TaskTemplate repository home:** P4 plan added `ITaskTemplateRepository.GetAllAsync()` (read for request creation); P6 plan routed template CRUD through `ITaskRepository` template methods. These contradict. **Recommended fix:** single `ITaskTemplateRepository` with full CRUD (GetAll/Insert/Delete/GetTasksForTemplate) used by BOTH P4 and P6; remove template methods from ITaskRepository. Requires patching architecture spec + P4 + P6 plans before execution. (Awaiting user OK.)
-- **Minor — `IAppConfig.DbPath` member name:** reconcile at pre-task confirmation (one-line grep).
+## Resolved Items
+- **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).
+- **Minor — `IAppConfig.DbPath` member name:** confirm during P1 (IAppConfig defined in P1 Task 3) — canonical name `DbPath`.
 
 ## Plan Set (Step 6)
 | Phase | Plan file | Tasks / Waves | REQ coverage |
