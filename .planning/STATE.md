@@ -12,8 +12,9 @@
 User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-P1 + P2 COMPLETE (78 tests green). Dispatch P3 Wave 1 (TimesheetRowVm, SmartInputPanelVm). **P3 must establish the FULL DI container in App.xaml.cs per architecture spec §6** (App.xaml.cs currently has ZERO DI registrations — only scaffold). Register all repos (User/Request/Task/TimeLog/Settings/DefaultTask) + services (SmartInput/CurrentUser/DbBackup/TimeLog/DefaultTaskSync/IClock) + VMs. Later P4/P5/P6 add their specifics (ITaskTemplateRepository, their VMs).
-Build order: P1 → P2 → {P3,P4,P5} → P6.
+P1+P2+P3 COMPLETE (104 tests green, build OK, DI container live in App.xaml.cs). Dispatch P4 Wave 1 (T1 ITaskTemplateRepository canonical GetAll/Insert/Delete + DI). Then P5, P6.
+Build order: P1 → P2 → P3 ✓ → {P4,P5} → P6.
+**MainWindow + MainViewModel do NOT exist yet** (P3 T3 deferred first-window show) — must be created in a final wiring task to host the 5 tabs (Timesheet/Requests/Users/Reports/Settings), current-user resolution + conflict-copy banner, and actually run the app. Track this as a required closeout task.
 
 ## Carry-over notes for UI phases
 - `IClock` has `UtcNow` + `Today` (Services/IClock.cs); `SystemClock` impl exists.
@@ -34,6 +35,9 @@ Build order: P1 → P2 → {P3,P4,P5} → P6.
 - **P2 COMPLETE** (7 tasks, 78 tests green, controller-verified). Commits: 84905f3, 0a54ada, 0375308, 9d958a0, 2e49b73, dffd5db, 64408a5.
   - T1 SmartInputService (integer-tenths) · T2 CurrentUserService · T3 DbBackupHelper · T4 TimeLogRepository (+TestDb.cs) · T5 User/Task/Request/Settings repos · T6 TimeLogService (8h validation, atomic apply) · T7 DefaultTaskSyncService (+IDefaultTaskRepository).
   - P2 filled several P1 carry-over gaps (ITimeLogService, WeekGrid/SaveResult, IClock, ReadModels types) — all from architecture spec verbatim.
+- **P3 COMPLETE** (5 tasks, 104 tests green, build OK). Commits: 44f9110, 8341dd1, 978535f, 6cc685f, eb2e417.
+  - T1 TimesheetRowVm · T2 SmartInputPanelVm · T3 TimesheetViewModel + **full DI container in App.xaml.cs** (all repos+services+VM, InitializeAsync at startup) · T4 TimesheetTab.xaml · T5 SmartInputPreviewDialog.xaml.
+  - DI does NOT yet register IExportService (P6) or ITaskTemplateRepository (P4) or VMs for other tabs — each later phase adds its own.
 
 ## Resolved Items
 - **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).
