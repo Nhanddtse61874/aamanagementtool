@@ -1,0 +1,42 @@
+<UserControl x:Class="TimesheetApp.Views.Tabs.SettingsTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel Margin="16">
+
+            <!-- SET-01: DB path + Browse -->
+            <TextBlock Text="Database file" FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
+                <TextBox Width="420" Text="{Binding DbPath, UpdateSourceTrigger=PropertyChanged}"/>
+                <Button Content="Browse..." Margin="8,0,0,0" Click="OnBrowse"/>
+                <Button Content="Apply" Margin="8,0,0,0" Command="{Binding ApplyDbPathCommand}"/>
+            </StackPanel>
+
+            <!-- SET-02: N-days warning (default 3) -->
+            <TextBlock Text="&quot;Chua log&quot; warning window (working days)" FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
+                <TextBox Width="60" Text="{Binding WarningDays, UpdateSourceTrigger=PropertyChanged}"/>
+                <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveWarningDaysCommand}"/>
+            </StackPanel>
+
+            <!-- SET-03: TaskTemplates CRUD -->
+            <TextBlock Text="Task templates" FontWeight="Bold"/>
+            <ListBox ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}"
+                     Height="120" DisplayMemberPath="TemplateName" Margin="0,4,0,4"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <TextBox Width="160" Text="{Binding NewTemplateName, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Template name"/>
+                <TextBox Width="160" Margin="8,0,0,0"
+                         Text="{Binding NewTemplateTaskName, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Default task name"/>
+                <Button Content="Add" Margin="8,0,0,0" Command="{Binding AddTemplateCommand}"/>
+                <Button Content="Delete" Margin="8,0,0,0" Command="{Binding DeleteTemplateCommand}"/>
+            </StackPanel>
+
+            <!-- SET-04: DefaultTasks sync -->
+            <TextBlock Text="Default tasks" FontWeight="Bold"/>
+            <Button Content="Sync default tasks" HorizontalAlignment="Left"
+                    Margin="0,4,0,0" Command="{Binding SaveDefaultTasksCommand}"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
