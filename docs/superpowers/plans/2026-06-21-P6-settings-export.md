@@ -501,7 +501,7 @@ public class SettingsViewModelTests
         string? warningDays = "3")
     {
         config = new Mock<IAppConfig>();
-        config.SetupProperty(c => c.DbPath, @"C:\old\timesheet.db");
+        config.Setup(c => c.DbPath).Returns(@"C:\old\timesheet.db");
         settings = new Mock<ISettingsRepository>();
         settings.Setup(s => s.GetAsync("warning_days")).ReturnsAsync(warningDays);
         templates = new Mock<ITaskTemplateRepository>();
@@ -547,7 +547,7 @@ public class SettingsViewModelTests
         await vm.LoadAsync();
         vm.DbPath = @"D:\new\timesheet.db";
         await vm.ApplyDbPathCommand.ExecuteAsync(null);
-        config.VerifySet(c => c.DbPath = @"D:\new\timesheet.db", Times.Once);
+        config.Verify(c => c.SetDbPath(@"D:\new\timesheet.db"), Times.Once);
         settings.Verify(s => s.SetAsync(It.Is<string>(k => k.Contains("path")), It.IsAny<string>()), Times.Never);
     }
 
@@ -667,7 +667,7 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private Task ApplyDbPathAsync()
     {
-        _config.DbPath = DbPath;
+        _config.SetDbPath(DbPath);   // IAppConfig persists path to %APPDATA% (P1 contract: get + SetDbPath)
         return Task.CompletedTask;
     }
 

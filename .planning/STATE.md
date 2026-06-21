@@ -12,7 +12,17 @@
 User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-Dispatch P1 Wave 1 (T1 solution+projects+NuGet). Build order: P1 → P2 → {P3,P4,P5} → P6. Each task: dispatch implementer-dotnet-csharp with task `<read_first>` + model (quality-shifted), atomic commit, controller review.
+P1 COMPLETE (26 tests green). Dispatch P2 Wave 1 (T1 SmartInputService, T2 CurrentUserService, T3 DbBackupHelper — pure/standalone). Build order: P1 → P2 → {P3,P4,P5} → P6.
+
+## Execution Notes (standing corrections — apply to ALL tasks)
+- **Test project TFM:** `TimesheetApp.Tests` targets **`net8.0-windows` + `<UseWPF>false</UseWPF>`** (NOT bare `net8.0` — net8.0 cannot reference the net8.0-windows app on SDK 8.0.205). Plans that say `net8.0` for tests are superseded by this.
+- **Every test file** must include `using Xunit;` (plan test templates omit it; xUnit 2.9.2 has no implicit usings).
+- `.gitignore` exists (bin/obj ignored).
+
+## Progress (Step 7)
+- **P1 COMPLETE** (6 tasks, 26 tests green, controller-verified). Commits: 2add21a, 4244ef9, 98657ea, 5a598eb, af895a1, a4a159f.
+  - T1 solution/projects/NuGet · T2 models · T3 JsonAppConfig (`IAppConfig.DbPath`+`SetDbPath`) · T4 SqliteConnectionFactory (journal=DELETE/FK/Pooling off) · T5 SqliteMaintenance (XC-08/09) · T6 DatabaseInitializer (schema+seed+migrations).
+  - Cross-phase fix: P6 plan patched to use `IAppConfig.SetDbPath()` (P1 used method, not property setter).
 
 ## Resolved Items
 - **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).
