@@ -1,0 +1,98 @@
+<UserControl x:Class="TimesheetApp.Views.Tabs.ReportsTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:m="clr-namespace:TimesheetApp.Models"
+             xmlns:conv="clr-namespace:TimesheetApp.Views.Converters">
+  <UserControl.Resources>
+    <!-- Local resource: DateOnly<->DateTime? for DatePicker bindings. Declared here (not App.xaml)
+         so the StaticResource resolves at runtime without cross-phase dependency. -->
+    <conv:DateOnlyConverter x:Key="DateOnlyConverter"/>
+  </UserControl.Resources>
+
+  <DockPanel Margin="8">
+
+    <!-- RPT-04 banner: visible only when BannerText is non-empty -->
+    <Border DockPanel.Dock="Top" Background="#FFF4CE" BorderBrush="#E0C200" BorderThickness="1"
+            Padding="8" Margin="0,0,0,8">
+      <Border.Style>
+        <Style TargetType="Border">
+          <Setter Property="Visibility" Value="Visible"/>
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding BannerText}" Value="">
+              <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="#7A5C00"/>
+    </Border>
+
+    <!-- Controls: user id + week picker + month picker -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+      <TextBlock Text="User Id:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+      <TextBox Width="48" Text="{Binding SelectedUserId, UpdateSourceTrigger=PropertyChanged}"/>
+      <TextBlock Text="Week (Mon):" VerticalAlignment="Center" Margin="12,0,4,0"/>
+      <DatePicker SelectedDate="{Binding SelectedWeekMonday, Converter={StaticResource DateOnlyConverter}}"/>
+      <Button Content="Weekly" Command="{Binding LoadWeeklyCommand}" Margin="4,0"/>
+      <TextBlock Text="Month:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+      <DatePicker SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnlyConverter}}"/>
+      <Button Content="Monthly" Command="{Binding LoadMonthlyCommand}" Margin="4,0"/>
+      <Button Content="Refresh banner" Command="{Binding LoadBannerCommand}" Margin="12,0,0,0"/>
+    </StackPanel>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+
+      <!-- Left column: RPT-01 weekly grid + RPT-02 monthly grid -->
+      <DockPanel Grid.Column="0" Margin="0,0,8,0">
+        <TextBlock DockPanel.Dock="Top" Text="Weekly (by day)" FontWeight="Bold"/>
+        <!-- RPT-01: one row per weekday with summed hours -->
+        <DataGrid DockPanel.Dock="Top" Height="160" ItemsSource="{Binding WeeklyRows}"
+                  AutoGenerateColumns="False" IsReadOnly="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=ddd dd/MM}"/>
+            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}"/>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock DockPanel.Dock="Top" Text="Monthly (by request / task)" FontWeight="Bold" Margin="0,8,0,0"/>
+        <!-- RPT-02: one row per (RequestCode, Project, TaskName) with summed hours -->
+        <DataGrid ItemsSource="{Binding MonthlyRows}" AutoGenerateColumns="False" IsReadOnly="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Request" Binding="{Binding RequestCode}"/>
+            <DataGridTextColumn Header="Project" Binding="{Binding Project}"/>
+            <DataGridTextColumn Header="Task" Binding="{Binding TaskName}"/>
+            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}"/>
+          </DataGrid.Columns>
+        </DataGrid>
+      </DockPanel>
+
+      <!-- Right column: RPT-03 drill-down TreeView (Project -> Request -> Task -> Date) -->
+      <DockPanel Grid.Column="1">
+        <TextBlock DockPanel.Dock="Top" Text="Drill-down (Project -> Request -> Task -> Date)" FontWeight="Bold"/>
+        <TreeView ItemsSource="{Binding ProjectTree}">
+          <TreeView.Resources>
+            <!-- Level 1: ProjectNode — children are Requests -->
+            <HierarchicalDataTemplate DataType="{x:Type m:ProjectNode}" ItemsSource="{Binding Requests}">
+              <TextBlock Text="{Binding Project}" FontWeight="Bold"/>
+            </HierarchicalDataTemplate>
+            <!-- Level 2: RequestNode — children are Tasks -->
+            <HierarchicalDataTemplate DataType="{x:Type m:RequestNode}" ItemsSource="{Binding Tasks}">
+              <TextBlock Text="{Binding RequestCode}"/>
+            </HierarchicalDataTemplate>
+            <!-- Level 3: TaskNode — children are Dates -->
+            <HierarchicalDataTemplate DataType="{x:Type m:TaskNode}" ItemsSource="{Binding Dates}">
+              <TextBlock Text="{Binding TaskName}"/>
+            </HierarchicalDataTemplate>
+            <!-- Level 4 leaf: DateEntry -->
+            <DataTemplate DataType="{x:Type m:DateEntry}">
+              <TextBlock Text="{Binding Date, StringFormat=yyyy-MM-dd}"/>
+            </DataTemplate>
+          </TreeView.Resources>
+        </TreeView>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</UserControl>
