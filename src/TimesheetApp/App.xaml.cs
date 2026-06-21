@@ -44,6 +44,7 @@ public partial class App : Application
         sc.AddSingleton<ITimeLogService, TimeLogService>();
         sc.AddSingleton<IDefaultTaskSyncService, DefaultTaskSyncService>();
         sc.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
+        sc.AddSingleton<IReportAggregator, ReportAggregator>(); // pure roll-up, stateless
 
         // Current-user-id provider (Func<int>) per plan/spec: TimesheetViewModel persists cells for
         // the logged-in user. Resolution defers to ICurrentUserService.Current (set by login flow);
@@ -59,6 +60,7 @@ public partial class App : Application
         sc.AddTransient<TimesheetViewModel>();
         sc.AddTransient<RequestsViewModel>();
         sc.AddTransient<UsersViewModel>();
+        sc.AddTransient<ReportsViewModel>();
 
         Services = sc.BuildServiceProvider();
 
