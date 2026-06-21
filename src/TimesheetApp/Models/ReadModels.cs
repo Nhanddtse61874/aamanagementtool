@@ -33,3 +33,21 @@ public readonly record struct SaveResult(bool Ok, string? Error);
 // Current-user resolution outcome (XC-07). Shapes VERBATIM from architecture spec §2.
 public enum CurrentUserOutcome { Resolved, NeedsSelection }
 public readonly record struct CurrentUserResult(CurrentUserOutcome Outcome, User? User);
+
+// ---- P5 Reports read-models (projections built from TimeLogReportRow) ----
+
+// RPT-01: one row per weekday in the selected week.
+public sealed record WeeklyDayTotal(DateOnly Date, decimal TotalHours);
+
+// RPT-02: one row per (request, task) in the selected month.
+public sealed record MonthlyRequestTaskTotal(
+    string RequestCode, string Project, string TaskName, decimal TotalHours);
+
+// RPT-03: 4-level drill-down tree (Project -> Request -> Task -> Date).
+public sealed record ProjectNode(string Project, decimal TotalHours, IReadOnlyList<RequestNode> Requests);
+public sealed record RequestNode(string RequestCode, string Project, decimal TotalHours, IReadOnlyList<TaskNode> Tasks);
+public sealed record TaskNode(int TaskId, string TaskName, decimal TotalHours, IReadOnlyList<DateEntry> Dates);
+public sealed record DateEntry(DateOnly Date, decimal TotalHours);
+
+// RPT-04: one flagged active user (banner shows the configured N, not the actual gap).
+public sealed record MissingLogWarning(string UserName);
