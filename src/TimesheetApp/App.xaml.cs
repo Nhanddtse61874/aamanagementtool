@@ -62,6 +62,7 @@ public partial class App : Application
         sc.AddTransient<RequestsViewModel>();
         sc.AddTransient<UsersViewModel>();
         sc.AddTransient<ReportsViewModel>();
+        sc.AddTransient<SettingsViewModel>();
 
         Services = sc.BuildServiceProvider();
 
