@@ -34,6 +34,7 @@ public partial class App : Application
         sc.AddSingleton<ITaskRepository, TaskRepository>();
         sc.AddSingleton<ITimeLogRepository, TimeLogRepository>();
         sc.AddSingleton<ISettingsRepository, SettingsRepository>();
+        sc.AddSingleton<ITaskTemplateRepository, TaskTemplateRepository>();
         sc.AddSingleton<IDefaultTaskRepository, DefaultTaskRepository>();
 
         // Services (singletons).
