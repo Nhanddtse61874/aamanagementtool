@@ -25,6 +25,27 @@ public sealed class RequestEditorViewModelTests
         Assert.Equal(new[] { "API", "Web" }, vm.TemplateNames); // distinct, ordered
     }
 
+    [Fact] // UX fix: selecting a template auto-applies its tasks (no separate Apply click needed)
+    public void SelectingTemplate_autoApplies_withoutExplicitApplyCall()
+    {
+        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+
+        vm.SelectedTemplateName = "Web"; // auto-apply on selection
+
+        Assert.Equal(2, vm.Tasks.Count); // Setup + Build appended without calling ApplyTemplate()
+    }
+
+    [Fact] // Applying the same template again must NOT duplicate its tasks
+    public void SameTemplate_appliedAgain_doesNotDuplicate()
+    {
+        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+
+        vm.SelectedTemplateName = "Web"; // auto-applies (2)
+        vm.ApplyTemplate();               // explicit re-apply, same template
+
+        Assert.Equal(2, vm.Tasks.Count);
+    }
+
     [Fact] // REQ-02: applying a template appends only that template's tasks, ordered
     public void ApplyTemplate_appends_selected_template_tasks_in_order()
     {

@@ -58,10 +58,21 @@ public sealed partial class RequestEditorViewModel : ObservableObject
 
     private int NextOrderIndex() => Tasks.Count == 0 ? 0 : Tasks.Max(t => t.OrderIndex) + 1;
 
+    // Tracks the template whose tasks were last appended, so picking it (or clicking Apply again)
+    // does not duplicate. Picking a DIFFERENT template appends that one's tasks.
+    private string? _lastAppliedTemplate;
+
+    // UX: selecting a template in the dropdown auto-applies it — the user no longer has to click a
+    // separate "Apply Template" button (the missing click was why templates appeared to do nothing).
+    partial void OnSelectedTemplateNameChanged(string? value) => ApplyTemplate();
+
     [RelayCommand]
     public void ApplyTemplate()
     {
         if (string.IsNullOrWhiteSpace(SelectedTemplateName)) return;
+        if (SelectedTemplateName == _lastAppliedTemplate) return; // already applied — no duplicate
+        _lastAppliedTemplate = SelectedTemplateName;
+
         var rows = _templates
             .Where(t => t.TemplateName == SelectedTemplateName)
             .OrderBy(t => t.OrderIndex);
