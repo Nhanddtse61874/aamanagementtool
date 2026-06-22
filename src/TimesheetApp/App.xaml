@@ -3,9 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:conv="clr-namespace:TimesheetApp.Views.Converters">
   <Application.Resources>
-    <conv:OverEightTagConverter x:Key="OverEightTag"/>
-    <conv:NullToCollapsedConverter x:Key="NullToCollapsedConverter"/>
-    <conv:BoolToVisibilityConverter x:Key="BoolToVisibleConverter"/>
-    <conv:ActiveStatusConverter x:Key="ActiveStatusConverter"/>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Views/Theme/Theme.xaml"/>
+      </ResourceDictionary.MergedDictionaries>
+      <conv:OverEightTagConverter x:Key="OverEightTag"/>
+      <conv:NullToCollapsedConverter x:Key="NullToCollapsedConverter"/>
+      <conv:BoolToVisibilityConverter x:Key="BoolToVisibleConverter"/>
+      <conv:ActiveStatusConverter x:Key="ActiveStatusConverter"/>
+    </ResourceDictionary>
   </Application.Resources>
 </Application>

@@ -4,26 +4,44 @@
         xmlns:tabs="clr-namespace:TimesheetApp.Views.Tabs"
         Title="Timesheet Tool"
         Width="1100" Height="720"
+        Background="{StaticResource WindowBg}"
         WindowStartupLocation="CenterScreen">
   <Grid>
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
 
-    <!-- Top corner: current user (XC-07) -->
-    <TextBlock Grid.Row="0"
-               HorizontalAlignment="Right" Margin="12,8"
-               FontWeight="SemiBold">
-      <Run Text="Người dùng: "/>
-      <Run Text="{Binding CurrentUserName, Mode=OneWay}"/>
-    </TextBlock>
+    <!-- Header bar: app title (left) + current-user chip (right, XC-07) -->
+    <Border Grid.Row="0" Background="{StaticResource Surface}"
+            BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="20,12">
+      <Grid>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Border Background="{StaticResource Accent}" CornerRadius="7" Width="30" Height="30"
+                  Margin="0,0,10,0">
+            <TextBlock Text="T" Foreground="White" FontWeight="Bold" FontSize="16"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <TextBlock Text="Timesheet Tool" FontSize="18" FontWeight="SemiBold"
+                     VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                Background="{StaticResource AccentSoft}" CornerRadius="14" Padding="12,5">
+          <TextBlock VerticalAlignment="Center" Foreground="{StaticResource Accent}" FontWeight="SemiBold">
+            <Run Text="&#128100; "/>
+            <Run Text="{Binding CurrentUserName, Mode=OneWay, TargetNullValue='(chưa chọn)', FallbackValue='(chưa chọn)'}"/>
+          </TextBlock>
+        </Border>
+      </Grid>
+    </Border>
 
     <!-- XC-08: conflict-copy startup banner, collapsed when the warning string is empty -->
     <Border Grid.Row="1"
-            Background="#FFF3CD" BorderBrush="#FFE69C" BorderThickness="1"
-            Padding="8,6" Margin="12,0,12,8">
+            Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1" CornerRadius="8"
+            Padding="12,8" Margin="20,12,20,0">
       <Border.Style>
         <Style TargetType="Border">
           <Setter Property="Visibility" Value="Visible"/>
@@ -35,10 +53,11 @@
         </Style>
       </Border.Style>
       <TextBlock Text="{Binding ConflictWarning, Mode=OneWay}"
-                 TextWrapping="Wrap" Foreground="#664D03"/>
+                 TextWrapping="Wrap" Foreground="#92400E"/>
     </Border>
 
-    <TabControl Grid.Row="2" Margin="8">
+    <!-- Tab strip -->
+    <TabControl Grid.Row="3" Margin="20,12,20,0">
       <TabItem Header="Timesheet">
         <tabs:TimesheetTab DataContext="{Binding Timesheet}"/>
       </TabItem>
