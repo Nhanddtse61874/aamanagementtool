@@ -1,4 +1,5 @@
 using System.Data;
+using System.IO;
 using Microsoft.Data.Sqlite;
 using TimesheetApp.Config;
 
@@ -18,6 +19,15 @@ public sealed class SqliteConnectionFactory : IConnectionFactory
 
     public IDbConnection Create()
     {
+        // First-run safety: SQLite ReadWriteCreate creates the .db FILE but NOT missing parent
+        // directories (e.g. %APPDATA%\TimesheetApp on a fresh machine) -> "unable to open database
+        // file". Ensure the directory exists before opening. Idempotent; no-op for bare filenames.
+        var dir = Path.GetDirectoryName(_config.DbPath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
         var connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = _config.DbPath,

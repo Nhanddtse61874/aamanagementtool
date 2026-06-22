@@ -79,6 +79,23 @@ public class SqliteConnectionFactoryTests : IDisposable
         Assert.True(File.Exists(_dbPath + ".moved"));
     }
 
+    [Fact]
+    public void Create_AutoCreates_Missing_Parent_Directory()
+    {
+        // First-run regression: DB path under a directory that does NOT exist yet
+        // (e.g. %APPDATA%\TimesheetApp on a fresh machine). SQLite cannot create the
+        // file without its parent dir -> "unable to open database file" (SQLite Error 14).
+        var nestedDir = Path.Combine(_dir, "does", "not", "exist", "yet");
+        Assert.False(Directory.Exists(nestedDir));
+        var cfg = new JsonAppConfig(Path.Combine(_dir, "appsettings2.json"), Path.Combine(nestedDir, "timesheet.db"));
+        var factory = new SqliteConnectionFactory(cfg);
+
+        using var conn = factory.Create();
+
+        Assert.Equal(ConnectionState.Open, conn.State);
+        Assert.True(Directory.Exists(nestedDir));
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
