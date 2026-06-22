@@ -1,4 +1,5 @@
 using Moq;
+using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
@@ -12,6 +13,8 @@ public class TimeLogServiceTests
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<ITaskRepository> _tasks = new();
     private readonly Mock<IDbBackupHelper> _backup = new();
+    private readonly Mock<IAppConfig> _config = new();
+    private readonly SpyJournalWarningSink _journal = new();
 
     private sealed class FakeClock : IClock
     {
@@ -19,8 +22,16 @@ public class TimeLogServiceTests
         public DateTimeOffset UtcNow { get; init; } = new(2026, 6, 21, 0, 0, 0, TimeSpan.Zero);
     }
 
+    // Records every warning so a test can assert IsJournalGone IS consulted on the bulk path (XC-09).
+    private sealed class SpyJournalWarningSink : IJournalWarningSink
+    {
+        public List<string> Warnings { get; } = new();
+        public void Warn(string message) => Warnings.Add(message);
+    }
+
     private TimeLogService Make(DateOnly today)
-        => new(_logs.Object, _users.Object, _tasks.Object, _backup.Object, new FakeClock { Today = today });
+        => new(_logs.Object, _users.Object, _tasks.Object, _backup.Object, new FakeClock { Today = today },
+               _config.Object, _journal);
 
     private static readonly DateOnly Tue = new(2026, 6, 16); // weekday
     private static readonly DateOnly Sat = new(2026, 6, 20); // weekend
@@ -194,5 +205,57 @@ public class TimeLogServiceTests
 
         Assert.Single(missing);
         Assert.Equal(2, missing[0].Id);
+    }
+
+    [Fact]
+    public async Task ApplySmartInput_warns_when_rollback_journal_persists_after_bulk_write()  // XC-09
+    {
+        // Point DbPath at a temp file and leave a lingering "<db>-journal" so IsJournalGone is false.
+        // Proves the bulk path CONSULTS SqliteMaintenance.IsJournalGone and surfaces (not swallows) it.
+        var dir = Path.Combine(Path.GetTempPath(), "tslog-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var dbPath = Path.Combine(dir, "timesheet.db");
+        await File.WriteAllTextAsync(dbPath + "-journal", "interrupted");
+        try
+        {
+            _config.SetupGet(c => c.DbPath).Returns(dbPath);
+            _logs.Setup(r => r.GetByUserAndRangeAsync(1, It.IsAny<DateOnly>(), It.IsAny<DateOnly>()))
+                 .ReturnsAsync(Array.Empty<TimeLog>());
+            var svc = Make(Tue);
+
+            var result = await svc.ApplySmartInputAsync(1, taskId: 5, new[] { new CellAssignment(Tue, 3m) });
+
+            Assert.True(result.Ok);                                   // warning is non-fatal
+            _logs.Verify(r => r.UpsertBatchAsync(It.IsAny<IReadOnlyList<TimeLog>>()), Times.Once);
+            Assert.Single(_journal.Warnings);                         // XC-09 consulted + surfaced
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task ApplySmartInput_does_not_warn_when_no_journal_after_bulk_write()  // XC-09 (clean path)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "tslog-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var dbPath = Path.Combine(dir, "timesheet.db");          // no "-journal" sibling
+        try
+        {
+            _config.SetupGet(c => c.DbPath).Returns(dbPath);
+            _logs.Setup(r => r.GetByUserAndRangeAsync(1, It.IsAny<DateOnly>(), It.IsAny<DateOnly>()))
+                 .ReturnsAsync(Array.Empty<TimeLog>());
+            var svc = Make(Tue);
+
+            var result = await svc.ApplySmartInputAsync(1, taskId: 5, new[] { new CellAssignment(Tue, 3m) });
+
+            Assert.True(result.Ok);
+            Assert.Empty(_journal.Warnings);                         // journal gone => no warning
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
     }
 }

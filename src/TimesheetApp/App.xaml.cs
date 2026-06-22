@@ -30,6 +30,9 @@ public partial class App : Application
         sc.AddSingleton<IAppConfig, JsonAppConfig>();
         sc.AddSingleton<IClock, SystemClock>();
         sc.AddSingleton<IConnectionFactory, SqliteConnectionFactory>();
+        // XC-09 observability seam: bulk-write services route lingering-journal warnings here
+        // (System.Windows-free; default trace sink, never swallowed).
+        sc.AddSingleton<IJournalWarningSink, TraceJournalWarningSink>();
 
         // Repositories (singletons — stateless; connection opened per method).
         sc.AddSingleton<IUserRepository, UserRepository>();
@@ -72,6 +75,13 @@ public partial class App : Application
 
         // One-time bootstrap BEFORE the first window: schema + migrations + DEFAULT seed.
         await Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
+
+        // FIX C1 (DATA-03/TS-02): on a fresh DB the seeded DefaultTasks have no matching Tasks row
+        // under the hidden DEFAULT request, so they never appear as Timesheet rows. SyncAsync was
+        // only invoked from SettingsViewModel, so it never ran at startup. Run it here AFTER init
+        // commits — SyncAsync opens its own connections/transactions, so App-level placement is
+        // correct (it must not run inside the initializer's open transaction).
+        await Services.GetRequiredService<IDefaultTaskSyncService>().SyncAsync();
 
         // Shell startup: resolve MainViewModel and run its InitializeAsync (current-user resolution +
         // XC-08 conflict scan + best-effort tab loads). The SelectUserDialog is shown from this View/App

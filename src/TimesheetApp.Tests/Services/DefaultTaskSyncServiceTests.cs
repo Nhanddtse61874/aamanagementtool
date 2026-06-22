@@ -1,4 +1,5 @@
 using Moq;
+using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
@@ -21,6 +22,14 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
     private TaskRepository _tasks = null!;
     private DefaultTaskRepository _defaults = null!;
     private DefaultTaskSyncService _svc = null!;
+    private SpyJournalWarningSink _journal = null!;
+
+    // Records every warning so a test can assert IsJournalGone IS consulted on the bulk path (XC-09).
+    private sealed class SpyJournalWarningSink : IJournalWarningSink
+    {
+        public List<string> Warnings { get; } = new();
+        public void Warn(string message) => Warnings.Add(message);
+    }
 
     public async Task InitializeAsync()
     {
@@ -30,7 +39,11 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
         _defaults = new DefaultTaskRepository(_db);
         var backup = new Mock<IDbBackupHelper>();
         backup.Setup(b => b.BackupAsync()).ReturnsAsync((string?)null);
-        _svc = new DefaultTaskSyncService(_requests, _tasks, _defaults, backup.Object);
+        var config = new Mock<IAppConfig>();
+        config.SetupGet(c => c.DbPath).Returns(_db.Path);
+        _journal = new SpyJournalWarningSink();
+        _svc = new DefaultTaskSyncService(
+            _requests, _tasks, _defaults, backup.Object, config.Object, _journal);
     }
 
     public Task DisposeAsync()
@@ -136,6 +149,50 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
         Assert.Equal(
             first.Select(t => (t.Id, t.TaskName)).OrderBy(x => x.Id),
             second.Select(t => (t.Id, t.TaskName)).OrderBy(x => x.Id));
+    }
+
+    // ---- FIX C1 (DATA-03/TS-02): the seeded default "Annual Leave" must surface as a Timesheet
+    //      row after InitializeAsync -> SyncAsync. TestDb.CreateAsync() already ran the REAL
+    //      DatabaseInitializer (schema + DEFAULT request + seed DefaultTasks); running SyncAsync
+    //      then materializes them as active Tasks under DEFAULT, which is what App.OnStartup now does.
+    [Fact]
+    public async Task Sync_after_init_materializes_seeded_default_AnnualLeave_for_timesheet()
+    {
+        await _svc.SyncAsync();
+
+        var timesheetTasks = await _tasks.GetActiveForTimesheetAsync();
+        Assert.Contains(timesheetTasks, t => t.TaskName == "Annual Leave");
+    }
+
+    // ---- FIX I1 / XC-09: SyncAsync is a bulk write path and MUST consult IsJournalGone.
+    //      Point IAppConfig.DbPath at a separate path that holds a lingering "<db>-journal" (no
+    //      SQLite connection touches it, so SQLite won't clean it) -> IsJournalGone is false and
+    //      the warning must be surfaced (never swallowed). Guards XC-09 against regressing to dead
+    //      code. The real writes still go to _db (TestDb's own factory-backed connections).
+    [Fact]
+    public async Task Sync_warns_when_rollback_journal_persists_after_bulk_write()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "tsdtsync-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var watchedDbPath = Path.Combine(dir, "timesheet.db");
+        await File.WriteAllTextAsync(watchedDbPath + "-journal", "interrupted");
+        try
+        {
+            var config = new Mock<IAppConfig>();
+            config.SetupGet(c => c.DbPath).Returns(watchedDbPath);
+            var backup = new Mock<IDbBackupHelper>();
+            backup.Setup(b => b.BackupAsync()).ReturnsAsync((string?)null);
+            var svc = new DefaultTaskSyncService(
+                _requests, _tasks, _defaults, backup.Object, config.Object, _journal);
+
+            await svc.SyncAsync();
+
+            Assert.Single(_journal.Warnings);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
     }
 
     private int? _seededUser;

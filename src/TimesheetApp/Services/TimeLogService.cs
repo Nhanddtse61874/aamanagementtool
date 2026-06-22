@@ -1,3 +1,5 @@
+using TimesheetApp.Config;
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 
@@ -15,12 +17,16 @@ public sealed class TimeLogService : ITimeLogService
     private readonly ITaskRepository _tasks;
     private readonly IDbBackupHelper _backup;
     private readonly IClock _clock;
+    private readonly IAppConfig _config;
+    private readonly IJournalWarningSink _journalWarnings;
 
     public TimeLogService(
         ITimeLogRepository logs, IUserRepository users, ITaskRepository tasks,
-        IDbBackupHelper backup, IClock clock)
+        IDbBackupHelper backup, IClock clock,
+        IAppConfig config, IJournalWarningSink journalWarnings)
     {
         _logs = logs; _users = users; _tasks = tasks; _backup = backup; _clock = clock;
+        _config = config; _journalWarnings = journalWarnings;
     }
 
     public async Task<SaveResult> SaveCellAsync(int userId, int taskId, DateOnly date, decimal hours)
@@ -71,6 +77,14 @@ public sealed class TimeLogService : ITimeLogService
             .Select(c => new TimeLog(0, userId, taskId, c.Date, Round1(c.Hours), _clock.UtcNow))
             .ToList();
         await _logs.UpsertBatchAsync(logs); // SI-05 atomic batch
+
+        // XC-09: after the bulk commit the rollback journal must be gone. A lingering
+        // "<db>-journal" means the batch was interrupted; surface it instead of swallowing.
+        if (!SqliteMaintenance.IsJournalGone(_config.DbPath))
+            _journalWarnings.Warn(
+                $"A SQLite rollback journal persists next to '{_config.DbPath}' after a smart-input apply. " +
+                "The last bulk write may have been interrupted; verify the database integrity.");
+
         return Ok();
     }
 
