@@ -1,17 +1,23 @@
 # ROADMAP — TimesheetApp
 
-**Last updated:** 2026-06-21
+**Last updated:** 2026-06-22
 
-## Active Milestone
-**M1 — WPF Desktop Timesheet Tool v1** (.NET 8 / WPF MVVM / SQLite). 45 REQs across 6 build phases. Plans written (Step 6); awaiting execution approval.
+## Shipped
+- **M1 — WPF Desktop Timesheet Tool v1** — build complete, 162 tests green, QA-passed. Awaiting user UAT.
+  - [x] P1 Data + Schema
+  - [x] P2 Services
+  - [x] P3 Timesheet + Smart Input UI
+  - [x] P4 Requests + Users UI
+  - [x] P5 Reports
+  - [x] P6 Settings + Export
+  - [x] App shell (MainWindow/MainViewModel) + startup
+  - See `.planning/M1-SUMMARY.md`.
 
-### Phases
-- [ ] **P1 — Data + Schema** (prerequisite for all)
-- [ ] **P2 — Services** (depends on P1)
-- [ ] **P3 — Timesheet + Smart Input UI** (depends on P1, P2)
-- [ ] **P4 — Requests + Users UI** (depends on P1, P2)
-- [ ] **P5 — Reports** (depends on P1, P2)
-- [ ] **P6 — Settings + Export** (depends on P1, P2)
+## Backlog / deferred (non-blocking, from QA)
+- XC-09 journal warning → surface to a UI banner (currently `Trace`).
+- XC-10 backup retention prune + same-ms filename collision guard.
+- Timesheet row labels show request_code (GetWeekAsync RequestCode).
+- Advisory single-editor lock (deferred by design).
 
-## Planned Milestones
-- (none beyond M1 v1; out-of-scope items in REQUIREMENTS.md §Out of Scope)
+## Out of scope (v1, per REQUIREMENTS §Out of Scope)
+Auth/login, multi-tenant/cloud, mobile/Mac, real-time multi-writer sync, email/Teams notifications, Request soft-delete.

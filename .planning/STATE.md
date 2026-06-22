@@ -3,16 +3,17 @@
 **Last updated:** 2026-06-21
 
 ## Current Position
-- **Phase:** Step 7 — Execute (Subagent-Driven, autonomous all 6 phases)
-- **Status:** in_progress — building P1 Wave 1
+- **Phase:** Steps 7-11 complete (build + QA + ship docs). **Awaiting user UAT (Step 8a).**
+- **Status:** waiting_for_user (final UAT of the running app)
 - **Approved Mode:** Mode B (user override from suggested Mode A, 2026-06-21)
+- **Result:** 45 REQs implemented · 162 tests green · build clean · app launches · QA APPROVE (C1+I1 cleared). 34 commits on `main`. See `.planning/M1-SUMMARY.md`.
 - **Execution mode:** Subagent-Driven (fresh subagent per task, controller reviews between tasks), **autonomous all 6 phases** (user approved 2026-06-21 — user does final UAT when product complete). Commit atomic per task.
 
 ## Autonomous-run deviation (this project, 2026-06-21)
 User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
 
 ## Next Action
-P1-P6 COMPLETE (152 tests green, build OK). Dispatch FINAL WIRING task: MainWindow + MainViewModel (host 5 tabs, current-user resolution + SelectUserDialog XC-07, conflict-copy banner XC-08, show window on startup). Then UAT/QA (Steps 8-9) + ship (Step 11).
+USER UAT: run `src/TimesheetApp` and verify the manual-verify items in M1-SUMMARY.md "For UAT". Report any differences. After UAT sign-off → merge/tag as desired (currently all on `main`).
 **MainWindow + MainViewModel do NOT exist yet** (P3 T3 deferred first-window show) — must be created in a final wiring task to host the 5 tabs (Timesheet/Requests/Users/Reports/Settings), current-user resolution + conflict-copy banner, and actually run the app. Track this as a required closeout task.
 
 ## Carry-over notes for UI phases
