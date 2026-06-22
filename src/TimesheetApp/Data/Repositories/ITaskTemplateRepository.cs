@@ -10,4 +10,5 @@ public interface ITaskTemplateRepository
     Task<IReadOnlyList<TaskTemplate>> GetAllAsync();   // all rows ordered by template_name,order_index
     Task<int> InsertAsync(TaskTemplate template);      // SET-03 add (returns new id)
     Task DeleteAsync(int id);                           // SET-03 delete (hard delete — seed data, no TimeLog FK)
+    Task DeleteByTemplateNameAsync(string templateName); // SET-03 delete a whole template (all its rows); used by edit (delete-then-reinsert)
 }

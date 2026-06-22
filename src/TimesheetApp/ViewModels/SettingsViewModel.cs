@@ -40,11 +40,15 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private string _dbPath = "";
     [ObservableProperty] private int _warningDays = DefaultWarningDays;
-    [ObservableProperty] private string _newTemplateName = "";
-    [ObservableProperty] private string _newTemplateTaskName = "";
-    [ObservableProperty] private TaskTemplate? _selectedTemplate;
 
-    public ObservableCollection<TaskTemplate> Templates { get; } = new();
+    // The template editor overlay; null = hidden (mirrors RequestsViewModel.Editor).
+    [ObservableProperty] private TemplateEditorViewModel? _templateEditor;
+
+    // All raw template rows (kept so BeginEditTemplate can hand the matching rows to ForEdit).
+    private IReadOnlyList<TaskTemplate> _allTemplateRows = Array.Empty<TaskTemplate>();
+
+    // Templates grouped for the Settings list: one entry per template name + its task count (SET-03).
+    public ObservableCollection<TemplateSummary> TemplateGroups { get; } = new();
 
     public async Task LoadAsync()
     {
@@ -72,21 +76,50 @@ public partial class SettingsViewModel : ObservableObject
         _settings.SetAsync(WarningDaysKey, WarningDays.ToString(CultureInfo.InvariantCulture));
 
     // SET-03: template CRUD (via ITaskTemplateRepository — canonical store).
+    // A template = the set of rows sharing one template_name. The editor lets the user name the
+    // template once and manage an ordered list of task names, then Save persists all rows at once.
+
     [RelayCommand]
-    private async Task AddTemplateAsync()
+    private void BeginCreateTemplate() => TemplateEditor = TemplateEditorViewModel.ForCreate();
+
+    [RelayCommand]
+    private void BeginEditTemplate(string name)
     {
-        await _templates.InsertAsync(new TaskTemplate(0, NewTemplateName, NewTemplateTaskName, 0));
-        NewTemplateName = "";
-        NewTemplateTaskName = "";
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var rows = _allTemplateRows.Where(t => t.TemplateName == name).ToList();
+        TemplateEditor = TemplateEditorViewModel.ForEdit(name, rows);
+    }
+
+    [RelayCommand]
+    private async Task SaveTemplateAsync()
+    {
+        var editor = TemplateEditor;
+        if (editor is null) return;
+
+        var name = editor.TemplateName.Trim();
+        var taskNames = editor.OrderedTaskNames;
+        if (string.IsNullOrWhiteSpace(name) || taskNames.Count == 0) return; // need a name + ≥1 task
+
+        // Edit = delete-then-reinsert all rows (handles rename + reorder + add/remove in one shot).
+        if (editor.IsEditMode)
+            await _templates.DeleteByTemplateNameAsync(editor.OriginalTemplateName);
+
+        for (var i = 0; i < taskNames.Count; i++)
+            await _templates.InsertAsync(new TaskTemplate(0, name, taskNames[i], i));
+
+        TemplateEditor = null;
         await ReloadTemplatesAsync();
         _messenger.Send(new DataChangedMessage(DataKind.Templates)); // live-sync: Requests template list
     }
 
     [RelayCommand]
-    private async Task DeleteTemplateAsync()
+    private void CancelTemplate() => TemplateEditor = null;
+
+    [RelayCommand]
+    private async Task DeleteTemplateAsync(string name)
     {
-        if (SelectedTemplate is null) return;
-        await _templates.DeleteAsync(SelectedTemplate.Id);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        await _templates.DeleteByTemplateNameAsync(name);
         await ReloadTemplatesAsync();
         _messenger.Send(new DataChangedMessage(DataKind.Templates));
     }
@@ -101,8 +134,11 @@ public partial class SettingsViewModel : ObservableObject
 
     private async Task ReloadTemplatesAsync()
     {
-        var items = await _templates.GetAllAsync();
-        Templates.Clear();
-        foreach (var t in items) Templates.Add(t);
+        _allTemplateRows = await _templates.GetAllAsync();
+        TemplateGroups.Clear();
+        foreach (var g in _allTemplateRows
+                     .GroupBy(t => t.TemplateName)
+                     .OrderBy(g => g.Key, StringComparer.Ordinal))
+            TemplateGroups.Add(new TemplateSummary(g.Key, g.Count()));
     }
 }

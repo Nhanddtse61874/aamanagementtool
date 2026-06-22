@@ -38,6 +38,12 @@ public sealed class TaskTemplateRepository : ITaskTemplateRepository
         await c.ExecuteAsync("DELETE FROM TaskTemplates WHERE id = @id;", new { id });
     }
 
+    public async Task DeleteByTemplateNameAsync(string templateName)
+    {
+        using var c = _factory.Create();
+        await c.ExecuteAsync("DELETE FROM TaskTemplates WHERE template_name = @n;", new { n = templateName });
+    }
+
     private static TaskTemplate MapTemplate(TaskTemplateRaw r) =>
         new((int)r.id, r.template_name, r.task_name, (int)r.order_index);
 

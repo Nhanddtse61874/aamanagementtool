@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using Moq;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
@@ -43,7 +44,10 @@ public class TimesheetViewModelTests
         tl.Setup(t => t.ClearCellAsync(userId, It.IsAny<int>(), It.IsAny<DateOnly>()))
           .Returns(Task.CompletedTask);
 
-        var vm = new TimesheetViewModel(tl.Object, tasks.Object, si.Object, clock.Object, () => userId);
+        // Isolated messenger per VM: the default WeakReferenceMessenger is process-wide, so VMs from
+        // other tests would otherwise stay subscribed and react to broadcasts, double-counting reloads.
+        var vm = new TimesheetViewModel(
+            tl.Object, tasks.Object, si.Object, clock.Object, () => userId, new WeakReferenceMessenger());
         return (vm, tl, si);
     }
 
@@ -195,7 +199,8 @@ public class TimesheetViewModelTests
         clock.SetupGet(c => c.Today).Returns(Wed);
         tl.Setup(t => t.GetWeekGroupedAsync(1, It.IsAny<DateOnly>())).ReturnsAsync(groups);
 
-        var vm = new TimesheetViewModel(tl.Object, tasks.Object, si.Object, clock.Object, () => 1);
+        var vm = new TimesheetViewModel(
+            tl.Object, tasks.Object, si.Object, clock.Object, () => 1, new WeakReferenceMessenger());
         await vm.LoadCommand.ExecuteAsync(null);
         tl.Invocations.Clear();
 

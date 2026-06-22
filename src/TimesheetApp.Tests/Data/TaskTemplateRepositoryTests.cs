@@ -60,4 +60,19 @@ public sealed class TaskTemplateRepositoryTests
         var rows = await repo.GetAllAsync();
         Assert.DoesNotContain(rows, r => r.Id == id);
     }
+
+    [Fact] // SET-03: delete-by-name removes every row of a template, leaving others intact
+    public async Task DeleteByTemplateNameAsync_removes_all_rows_of_that_template_only()
+    {
+        using var db = await TestDb.CreateAsync();
+        await SeedAsync(db); // Web(Setup,Build) + API(Design)
+        var repo = new TaskTemplateRepository(db);
+
+        await repo.DeleteByTemplateNameAsync("Web");
+
+        var rows = await repo.GetAllAsync();
+        Assert.DoesNotContain(rows, r => r.TemplateName == "Web");
+        Assert.Single(rows);
+        Assert.Equal("API", rows[0].TemplateName);
+    }
 }

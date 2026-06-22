@@ -24,8 +24,14 @@ public class SettingsViewModelTests
         settings.Setup(s => s.GetAsync(ReportsViewModel.NDaysKey)).ReturnsAsync(warningDays);
         templates = new Mock<ITaskTemplateRepository>();
         // Canonical template store = ITaskTemplateRepository (reconciliation 2026-06-21).
+        // "Std" has 2 task rows, "Bug" has 1 — exercises grouping by template name.
         templates.Setup(t => t.GetAllAsync())
-             .ReturnsAsync(new[] { new TaskTemplate(1, "Std", "Implement", 0) });
+             .ReturnsAsync(new[]
+             {
+                 new TaskTemplate(1, "Std", "Implement", 0),
+                 new TaskTemplate(2, "Std", "Review", 1),
+                 new TaskTemplate(3, "Bug", "Triage", 0),
+             });
         sync = new Mock<IDefaultTaskSyncService>();
         return new SettingsViewModel(config.Object, settings.Object, templates.Object, sync.Object);
     }
@@ -69,39 +75,110 @@ public class SettingsViewModelTests
         settings.Verify(s => s.SetAsync(It.Is<string>(k => k.Contains("path")), It.IsAny<string>()), Times.Never);
     }
 
-    // ---------- SET-03: template CRUD (via ITaskTemplateRepository) ----------
+    // ---------- SET-03: template CRUD (editor-based, via ITaskTemplateRepository) ----------
     [Fact]
-    public async Task LoadAsync_LoadsTemplates()
+    public async Task LoadAsync_GroupsTemplatesByName()
     {
-        var vm = Build(out _, out _, out var templates, out _);
+        var vm = Build(out _, out _, out _, out _);
         await vm.LoadAsync();
-        Assert.Single(vm.Templates);
-        Assert.Equal("Std", vm.Templates[0].TemplateName);
+        // "Bug" (1 task) + "Std" (2 tasks), ordered by name.
+        Assert.Equal(2, vm.TemplateGroups.Count);
+        Assert.Equal("Bug", vm.TemplateGroups[0].Name);
+        Assert.Equal(1, vm.TemplateGroups[0].TaskCount);
+        Assert.Equal("Std", vm.TemplateGroups[1].Name);
+        Assert.Equal(2, vm.TemplateGroups[1].TaskCount);
     }
 
     [Fact]
-    public async Task AddTemplate_InsertsAndReloads()
+    public async Task BeginCreateTemplate_OpensEmptyEditor()
+    {
+        var vm = Build(out _, out _, out _, out _);
+        await vm.LoadAsync();
+        vm.BeginCreateTemplateCommand.Execute(null);
+        Assert.NotNull(vm.TemplateEditor);
+        Assert.False(vm.TemplateEditor!.IsEditMode);
+        Assert.Empty(vm.TemplateEditor.Tasks);
+    }
+
+    [Fact]
+    public async Task BeginEditTemplate_LoadsExistingRowsIntoEditor()
+    {
+        var vm = Build(out _, out _, out _, out _);
+        await vm.LoadAsync();
+        vm.BeginEditTemplateCommand.Execute("Std");
+        Assert.NotNull(vm.TemplateEditor);
+        Assert.True(vm.TemplateEditor!.IsEditMode);
+        Assert.Equal("Std", vm.TemplateEditor.TemplateName);
+        Assert.Equal(2, vm.TemplateEditor.Tasks.Count); // Implement, Review
+    }
+
+    [Fact]
+    public async Task SaveTemplate_Create_InsertsOneRowPerTask()
     {
         var vm = Build(out _, out _, out var templates, out _);
         await vm.LoadAsync();
-        vm.NewTemplateName = "Bugfix";
-        vm.NewTemplateTaskName = "Triage";
-        await vm.AddTemplateCommand.ExecuteAsync(null);
+        vm.BeginCreateTemplateCommand.Execute(null);
+        vm.TemplateEditor!.TemplateName = "Bugfix";
+        vm.TemplateEditor.AddTask("Triage");
+        vm.TemplateEditor.AddTask("Fix");
+        vm.TemplateEditor.AddTask("Verify");
+
+        await vm.SaveTemplateCommand.ExecuteAsync(null);
+
         templates.Verify(t => t.InsertAsync(
-            It.Is<TaskTemplate>(x => x.TemplateName == "Bugfix" && x.TaskName == "Triage")),
-            Times.Once);
-        templates.Verify(t => t.GetAllAsync(), Times.Exactly(2)); // initial load + reload
+            It.Is<TaskTemplate>(x => x.TemplateName == "Bugfix")), Times.Exactly(3));
+        templates.Verify(t => t.DeleteByTemplateNameAsync(It.IsAny<string>()), Times.Never);
+        Assert.Null(vm.TemplateEditor); // editor closes on save
     }
 
     [Fact]
-    public async Task DeleteTemplate_RemovesAndReloads()
+    public async Task SaveTemplate_Edit_DeletesOriginalThenReinserts()
     {
         var vm = Build(out _, out _, out var templates, out _);
         await vm.LoadAsync();
-        vm.SelectedTemplate = vm.Templates[0];
-        await vm.DeleteTemplateCommand.ExecuteAsync(null);
-        templates.Verify(t => t.DeleteAsync(1), Times.Once);
-        templates.Verify(t => t.GetAllAsync(), Times.Exactly(2));
+        vm.BeginEditTemplateCommand.Execute("Std");
+        vm.TemplateEditor!.AddTask("Deploy");
+
+        await vm.SaveTemplateCommand.ExecuteAsync(null);
+
+        templates.Verify(t => t.DeleteByTemplateNameAsync("Std"), Times.Once);
+        templates.Verify(t => t.InsertAsync(
+            It.Is<TaskTemplate>(x => x.TemplateName == "Std")), Times.Exactly(3)); // Implement, Review, Deploy
+    }
+
+    [Fact]
+    public async Task SaveTemplate_DoesNothing_WhenNameOrTasksBlank()
+    {
+        var vm = Build(out _, out _, out var templates, out _);
+        await vm.LoadAsync();
+        vm.BeginCreateTemplateCommand.Execute(null);
+        vm.TemplateEditor!.TemplateName = "  "; // blank name, no tasks
+
+        await vm.SaveTemplateCommand.ExecuteAsync(null);
+
+        templates.Verify(t => t.InsertAsync(It.IsAny<TaskTemplate>()), Times.Never);
+        Assert.NotNull(vm.TemplateEditor); // stays open
+    }
+
+    [Fact]
+    public async Task CancelTemplate_ClosesEditorWithoutSaving()
+    {
+        var vm = Build(out _, out _, out var templates, out _);
+        await vm.LoadAsync();
+        vm.BeginCreateTemplateCommand.Execute(null);
+        vm.CancelTemplateCommand.Execute(null);
+        Assert.Null(vm.TemplateEditor);
+        templates.Verify(t => t.InsertAsync(It.IsAny<TaskTemplate>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteTemplate_DeletesAllRowsByNameAndReloads()
+    {
+        var vm = Build(out _, out _, out var templates, out _);
+        await vm.LoadAsync();
+        await vm.DeleteTemplateCommand.ExecuteAsync("Std");
+        templates.Verify(t => t.DeleteByTemplateNameAsync("Std"), Times.Once);
+        templates.Verify(t => t.GetAllAsync(), Times.Exactly(2)); // initial load + reload
     }
 
     // ---------- SET-04: DefaultTask edit triggers sync ----------
