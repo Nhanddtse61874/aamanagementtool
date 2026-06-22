@@ -20,17 +20,20 @@ public sealed class CrossTabSyncTests
         var bus = new WeakReferenceMessenger();
 
         var svc = new Mock<ITimeLogService>();
-        var empty = new WeekGrid(new DateOnly(2026, 6, 15), System.Array.Empty<WeekRow>());
-        var withTask = new WeekGrid(new DateOnly(2026, 6, 15),
-            new[] { new WeekRow(5, "R1", "New Task", 0, null, null, null, null, null) });
-        svc.SetupSequence(s => s.GetWeekAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
+        var empty = System.Array.Empty<WeekRequestGroup>();
+        var withTask = new[]
+        {
+            new WeekRequestGroup(1, "R1", "P",
+                new[] { new WeekRow(5, "R1", "New Task", 0, null, null, null, null, null) })
+        };
+        svc.SetupSequence(s => s.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
             .ReturnsAsync(empty)     // initial load
             .ReturnsAsync(withTask); // reload triggered by the broadcast
 
         var timesheet = new TimesheetViewModel(
-            svc.Object, Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 1, bus);
+            svc.Object, Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 1, bus);
         await timesheet.LoadCommand.ExecuteAsync(null);
-        Assert.Empty(timesheet.Rows);
+        Assert.Empty(timesheet.Groups);
 
         var reqRepo = new Mock<IRequestRepository>();
         reqRepo.Setup(r => r.InsertAsync(It.IsAny<Request>())).ReturnsAsync(10);
@@ -44,8 +47,9 @@ public sealed class CrossTabSyncTests
         await requests.SaveNewCommand.ExecuteAsync(null);
 
         // The broadcast reloaded the timesheet grid live (no tab switch).
-        Assert.Single(timesheet.Rows);
-        Assert.Equal("New Task", timesheet.Rows[0].TaskName);
+        Assert.Single(timesheet.Groups);
+        Assert.Single(timesheet.Groups[0].Tasks);
+        Assert.Equal("New Task", timesheet.Groups[0].Tasks[0].TaskName);
     }
 
     [Fact] // Adding a user broadcasts -> Reports "chưa log" banner reloads live.

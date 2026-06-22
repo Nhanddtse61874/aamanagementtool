@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using TimesheetApp.Data.Repositories;
 using TimesheetApp.Services;
 
 namespace TimesheetApp.ViewModels;
@@ -13,16 +14,18 @@ public enum DayColumn { Mon, Tue, Wed, Thu, Fri }
 public sealed partial class TimesheetViewModel : ObservableObject
 {
     private readonly ITimeLogService _timeLogs;
+    private readonly ITaskRepository _tasks;
     private readonly IClock _clock;
     private readonly Func<int> _currentUserId;
     private readonly IMessenger _messenger;
     private bool _suppressTotals;
 
     public TimesheetViewModel(
-        ITimeLogService timeLogs, ISmartInputService smartInput, IClock clock, Func<int> currentUserId,
-        IMessenger? messenger = null)
+        ITimeLogService timeLogs, ITaskRepository tasks, ISmartInputService smartInput, IClock clock,
+        Func<int> currentUserId, IMessenger? messenger = null)
     {
         _timeLogs = timeLogs;
+        _tasks = tasks;
         _clock = clock;
         _currentUserId = currentUserId;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
@@ -45,7 +48,10 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
     [ObservableProperty] private DateOnly _currentWeek;
 
-    public ObservableCollection<TimesheetRowVm> Rows { get; } = new();
+    public ObservableCollection<RequestGroupVm> Groups { get; } = new();
+
+    /// All task rows across every group — used for footer totals + Save iteration.
+    private IEnumerable<TimesheetRowVm> AllRows => Groups.SelectMany(g => g.Tasks);
 
     [ObservableProperty] private decimal _monTotal;
     [ObservableProperty] private decimal _tueTotal;
@@ -88,27 +94,40 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
     private async Task ReloadAsync()
     {
-        var grid = await _timeLogs.GetWeekAsync(_currentUserId(), CurrentWeek);
+        var grouped = await _timeLogs.GetWeekGroupedAsync(_currentUserId(), CurrentWeek);
 
         _suppressTotals = true;
-        foreach (var r in Rows) r.DayChanged -= OnRowDayChanged;
-        Rows.Clear();
-        foreach (var wr in grid.Rows)
+
+        // Preserve each group's expand/collapse state across reloads, keyed by RequestId.
+        var expandedById = Groups.ToDictionary(g => g.RequestId, g => g.IsExpanded);
+        foreach (var r in AllRows) r.DayChanged -= OnRowDayChanged;
+        Groups.Clear();
+
+        foreach (var grp in grouped)
         {
-            var row = new TimesheetRowVm
+            var groupVm = new RequestGroupVm(
+                grp.RequestId, grp.RequestCode, grp.Project, _tasks, OnTaskAddedAsync);
+            if (expandedById.TryGetValue(grp.RequestId, out var wasExpanded))
+                groupVm.IsExpanded = wasExpanded;
+
+            foreach (var wr in grp.Tasks)
             {
-                TaskId = wr.TaskId,
-                RequestCode = wr.RequestCode,
-                Project = "",
-                TaskName = wr.TaskName,
-                Mon = wr.Mon,
-                Tue = wr.Tue,
-                Wed = wr.Wed,
-                Thu = wr.Thu,
-                Fri = wr.Fri
-            };
-            row.DayChanged += OnRowDayChanged;
-            Rows.Add(row);
+                var row = new TimesheetRowVm
+                {
+                    TaskId = wr.TaskId,
+                    RequestCode = wr.RequestCode,
+                    Project = grp.Project,
+                    TaskName = wr.TaskName,
+                    Mon = wr.Mon,
+                    Tue = wr.Tue,
+                    Wed = wr.Wed,
+                    Thu = wr.Thu,
+                    Fri = wr.Fri
+                };
+                row.DayChanged += OnRowDayChanged;
+                groupVm.Tasks.Add(row);
+            }
+            Groups.Add(groupVm);
         }
         _suppressTotals = false;
 
@@ -128,12 +147,21 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
     private void RecomputeTotals()
     {
-        MonTotal = Rows.Sum(r => r.Mon ?? 0);
-        TueTotal = Rows.Sum(r => r.Tue ?? 0);
-        WedTotal = Rows.Sum(r => r.Wed ?? 0);
-        ThuTotal = Rows.Sum(r => r.Thu ?? 0);
-        FriTotal = Rows.Sum(r => r.Fri ?? 0);
+        var rows = AllRows.ToList();
+        MonTotal = rows.Sum(r => r.Mon ?? 0);
+        TueTotal = rows.Sum(r => r.Tue ?? 0);
+        WedTotal = rows.Sum(r => r.Wed ?? 0);
+        ThuTotal = rows.Sum(r => r.Thu ?? 0);
+        FriTotal = rows.Sum(r => r.Fri ?? 0);
         SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    /// Inline add-task callback handed to each RequestGroupVm: after the Task is inserted, reload the
+    /// grid (so the new empty row appears) and broadcast so other tabs refresh too.
+    private async Task OnTaskAddedAsync()
+    {
+        await ReloadAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Tasks));
     }
 
     private bool AnyDayOverEight() =>
@@ -142,7 +170,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
-        foreach (var row in Rows)
+        foreach (var row in AllRows.ToList())
             foreach (DayColumn col in Enum.GetValues<DayColumn>())
                 await SaveCellAsync(row, col);
         await ReloadAsync();

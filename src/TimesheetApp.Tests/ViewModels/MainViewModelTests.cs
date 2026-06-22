@@ -26,7 +26,7 @@ public sealed class MainViewModelTests
     private MainViewModel CreateVm(Func<string>? windowsUserName = null, string? dbPath = null)
     {
         var timesheet = new TimesheetViewModel(
-            Mock.Of<ITimeLogService>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 0);
+            Mock.Of<ITimeLogService>(), Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 0);
         var requests = new RequestsViewModel(
             Mock.Of<IRequestRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>());
         var usersVm = new UsersViewModel(Mock.Of<IUserRepository>());
@@ -128,13 +128,14 @@ public sealed class MainViewModelTests
     public async Task ActivateTab_reloads_timesheet_rows()
     {
         var svc = new Mock<ITimeLogService>();
-        var grid = new WeekGrid(new DateOnly(2026, 6, 15), new[]
+        var groups = new[]
         {
-            new WeekRow(42, "REQ-1", "New Task", 0, null, null, null, null, null)
-        });
-        svc.Setup(s => s.GetWeekAsync(It.IsAny<int>(), It.IsAny<DateOnly>())).ReturnsAsync(grid);
+            new WeekRequestGroup(1, "REQ-1", "P",
+                new[] { new WeekRow(42, "REQ-1", "New Task", 0, null, null, null, null, null) })
+        };
+        svc.Setup(s => s.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>())).ReturnsAsync(groups);
 
-        var timesheet = new TimesheetViewModel(svc.Object, Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 1);
+        var timesheet = new TimesheetViewModel(svc.Object, Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 1);
         var vm = new MainViewModel(
             timesheet,
             new RequestsViewModel(Mock.Of<IRequestRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>()),
@@ -143,10 +144,11 @@ public sealed class MainViewModelTests
             new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>()),
             _currentUser.Object, _users.Object, _config.Object, () => "tester");
 
-        Assert.Empty(timesheet.Rows);
+        Assert.Empty(timesheet.Groups);
         await vm.ActivateTabAsync(0);
-        Assert.Single(timesheet.Rows);
-        Assert.Equal("New Task", timesheet.Rows[0].TaskName);
+        Assert.Single(timesheet.Groups);
+        Assert.Single(timesheet.Groups[0].Tasks);
+        Assert.Equal("New Task", timesheet.Groups[0].Tasks[0].TaskName);
     }
 
     [Fact] // XC-08: no sibling -> ConflictWarning empty (banner stays collapsed)

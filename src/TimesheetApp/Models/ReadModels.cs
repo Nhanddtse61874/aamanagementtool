@@ -26,6 +26,11 @@ public sealed record WeekRow(
     int TaskId, string RequestCode, string TaskName, int OrderIndex,
     decimal? Mon, decimal? Tue, decimal? Wed, decimal? Thu, decimal? Fri);  // null = empty = 0h
 
+// Grouped-by-request shape for the Timesheet tab: EVERY request (incl. DEFAULT and empty ones)
+// becomes one collapsible group; Tasks may be empty so an empty request still renders + is loggable.
+public sealed record WeekRequestGroup(
+    int RequestId, string RequestCode, string Project, IReadOnlyList<WeekRow> Tasks);
+
 // Save / validation result. Ok=false => no write, with a user-facing message. Shape VERBATIM
 // from architecture spec §2. (XC-02/03/04/05)
 public readonly record struct SaveResult(bool Ok, string? Error);

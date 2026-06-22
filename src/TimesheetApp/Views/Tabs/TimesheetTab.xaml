@@ -15,6 +15,9 @@
         </DataTrigger>
       </Style.Triggers>
     </Style>
+
+    <!-- Shared day-cell binding template columns are declared per-DataGrid below; the per-group
+         DataGrids all use the same Mon..Fri bindings (LostFocus + ValidatesOnNotifyDataErrors). -->
   </UserControl.Resources>
 
   <DockPanel LastChildFill="True">
@@ -39,10 +42,9 @@
               ToolTip="Điền giờ tự động cho 1 task trong khoảng ngày (chia đều / full 8h)"/>
     </StackPanel>
 
-    <!-- Per-column footer totals strip (TS-05, TS-06) -->
+    <!-- Per-column footer totals strip across ALL groups (TS-05, TS-06) -->
     <Grid DockPanel.Dock="Bottom" Margin="8,4,8,8">
       <Grid.ColumnDefinitions>
-        <!-- Task col + Total col = 3*, five day cols = 1* each (matches DataGrid widths below) -->
         <ColumnDefinition Width="2*"/>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="*"/>
@@ -79,82 +81,112 @@
                  Tag="{Binding FriTotal, Converter={StaticResource OverEightTag}}"
                  Style="{StaticResource TotalTextBlock}"/>
 
-      <!-- Column 6 is blank — aligns with RowTotal read-only column in the grid -->
       <TextBlock Grid.Column="6"/>
     </Grid>
 
-    <!-- Main editable DataGrid (TS-01/02/03/04) -->
-    <DataGrid ItemsSource="{Binding Rows}"
-              AutoGenerateColumns="False"
-              CanUserAddRows="False"
-              CanUserDeleteRows="False"
-              SelectionUnit="Cell"
-              Margin="8,0">
+    <!-- Column-header strip so the per-group DataGrids (headers hidden) stay aligned -->
+    <Grid DockPanel.Dock="Top" Margin="8,4,8,2">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="2*"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock Grid.Column="0" Text="Task" FontWeight="Bold"/>
+      <TextBlock Grid.Column="1" Text="{Binding MonHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
+      <TextBlock Grid.Column="2" Text="{Binding TueHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
+      <TextBlock Grid.Column="3" Text="{Binding WedHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
+      <TextBlock Grid.Column="4" Text="{Binding ThuHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
+      <TextBlock Grid.Column="5" Text="{Binding FriHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
+      <TextBlock Grid.Column="6" Text="Total" FontWeight="Bold" HorizontalAlignment="Center"/>
+    </Grid>
 
-      <DataGrid.Columns>
-        <!-- Task name (read-only, 2* wide to match footer layout) -->
-        <DataGridTextColumn Header="Task"
-                            Binding="{Binding TaskName}"
-                            IsReadOnly="True"
-                            Width="2*"/>
+    <!-- Grouped-by-request body: one collapsible Expander per request (incl. empty ones) -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,0">
+      <ItemsControl ItemsSource="{Binding Groups}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Expander IsExpanded="{Binding IsExpanded}" Margin="0,2">
+              <Expander.Header>
+                <TextBlock Text="{Binding Header}" FontWeight="Bold"/>
+              </Expander.Header>
 
-        <!-- Mon (TS-01: header = MonHeader from the DataGrid's DataContext = TimesheetViewModel) -->
-        <DataGridTextColumn Width="*"
-            Header="{Binding DataContext.MonHeader,
-                     RelativeSource={RelativeSource AncestorType=DataGrid}}"
-            Binding="{Binding Mon,
-                      UpdateSourceTrigger=LostFocus,
-                      TargetNullValue='',
-                      ValidatesOnNotifyDataErrors=True,
-                      NotifyOnValidationError=True}"/>
+              <StackPanel Margin="16,2,0,8">
+                <!-- Editable task rows for this request (headers hidden; the strip above labels them) -->
+                <DataGrid ItemsSource="{Binding Tasks}"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          HeadersVisibility="None"
+                          SelectionUnit="Cell">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="Task"
+                                        Binding="{Binding TaskName}"
+                                        IsReadOnly="True"
+                                        Width="2*"/>
 
-        <!-- Tue -->
-        <DataGridTextColumn Width="*"
-            Header="{Binding DataContext.TueHeader,
-                     RelativeSource={RelativeSource AncestorType=DataGrid}}"
-            Binding="{Binding Tue,
-                      UpdateSourceTrigger=LostFocus,
-                      TargetNullValue='',
-                      ValidatesOnNotifyDataErrors=True,
-                      NotifyOnValidationError=True}"/>
+                    <DataGridTextColumn Width="*"
+                        Binding="{Binding Mon,
+                                  UpdateSourceTrigger=LostFocus,
+                                  TargetNullValue='',
+                                  ValidatesOnNotifyDataErrors=True,
+                                  NotifyOnValidationError=True}"/>
 
-        <!-- Wed -->
-        <DataGridTextColumn Width="*"
-            Header="{Binding DataContext.WedHeader,
-                     RelativeSource={RelativeSource AncestorType=DataGrid}}"
-            Binding="{Binding Wed,
-                      UpdateSourceTrigger=LostFocus,
-                      TargetNullValue='',
-                      ValidatesOnNotifyDataErrors=True,
-                      NotifyOnValidationError=True}"/>
+                    <DataGridTextColumn Width="*"
+                        Binding="{Binding Tue,
+                                  UpdateSourceTrigger=LostFocus,
+                                  TargetNullValue='',
+                                  ValidatesOnNotifyDataErrors=True,
+                                  NotifyOnValidationError=True}"/>
 
-        <!-- Thu -->
-        <DataGridTextColumn Width="*"
-            Header="{Binding DataContext.ThuHeader,
-                     RelativeSource={RelativeSource AncestorType=DataGrid}}"
-            Binding="{Binding Thu,
-                      UpdateSourceTrigger=LostFocus,
-                      TargetNullValue='',
-                      ValidatesOnNotifyDataErrors=True,
-                      NotifyOnValidationError=True}"/>
+                    <DataGridTextColumn Width="*"
+                        Binding="{Binding Wed,
+                                  UpdateSourceTrigger=LostFocus,
+                                  TargetNullValue='',
+                                  ValidatesOnNotifyDataErrors=True,
+                                  NotifyOnValidationError=True}"/>
 
-        <!-- Fri -->
-        <DataGridTextColumn Width="*"
-            Header="{Binding DataContext.FriHeader,
-                     RelativeSource={RelativeSource AncestorType=DataGrid}}"
-            Binding="{Binding Fri,
-                      UpdateSourceTrigger=LostFocus,
-                      TargetNullValue='',
-                      ValidatesOnNotifyDataErrors=True,
-                      NotifyOnValidationError=True}"/>
+                    <DataGridTextColumn Width="*"
+                        Binding="{Binding Thu,
+                                  UpdateSourceTrigger=LostFocus,
+                                  TargetNullValue='',
+                                  ValidatesOnNotifyDataErrors=True,
+                                  NotifyOnValidationError=True}"/>
 
-        <!-- Row total (read-only; no Sat/Sun columns — TS-01) -->
-        <DataGridTextColumn Header="Total"
-                            Binding="{Binding RowTotal, StringFormat=N1}"
-                            IsReadOnly="True"
-                            Width="*"/>
-      </DataGrid.Columns>
-    </DataGrid>
+                    <DataGridTextColumn Width="*"
+                        Binding="{Binding Fri,
+                                  UpdateSourceTrigger=LostFocus,
+                                  TargetNullValue='',
+                                  ValidatesOnNotifyDataErrors=True,
+                                  NotifyOnValidationError=True}"/>
+
+                    <DataGridTextColumn Header="Total"
+                                        Binding="{Binding RowTotal, StringFormat=N1}"
+                                        IsReadOnly="True"
+                                        Width="*"/>
+                  </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- Inline add-task row: turns an empty request into a loggable one without leaving the tab -->
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                  <TextBox Width="220"
+                           Text="{Binding NewTaskName, UpdateSourceTrigger=PropertyChanged}"
+                           VerticalContentAlignment="Center"
+                           ToolTip="Tên task mới cho request này"/>
+                  <Button Content="&#10133; Add task"
+                          Command="{Binding AddTaskCommand}"
+                          Margin="8,0,0,0"
+                          Padding="10,2"/>
+                </StackPanel>
+              </StackPanel>
+            </Expander>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
 
   </DockPanel>
 </UserControl>

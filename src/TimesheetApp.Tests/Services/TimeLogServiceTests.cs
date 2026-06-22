@@ -12,6 +12,7 @@ public class TimeLogServiceTests
     private readonly Mock<ITimeLogRepository> _logs = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<ITaskRepository> _tasks = new();
+    private readonly Mock<IRequestRepository> _requests = new();
     private readonly Mock<IDbBackupHelper> _backup = new();
     private readonly Mock<IAppConfig> _config = new();
     private readonly SpyJournalWarningSink _journal = new();
@@ -30,8 +31,8 @@ public class TimeLogServiceTests
     }
 
     private TimeLogService Make(DateOnly today)
-        => new(_logs.Object, _users.Object, _tasks.Object, _backup.Object, new FakeClock { Today = today },
-               _config.Object, _journal);
+        => new(_logs.Object, _users.Object, _tasks.Object, _requests.Object, _backup.Object,
+               new FakeClock { Today = today }, _config.Object, _journal);
 
     private static readonly DateOnly Tue = new(2026, 6, 16); // weekday
     private static readonly DateOnly Sat = new(2026, 6, 20); // weekend
@@ -257,5 +258,66 @@ public class TimeLogServiceTests
         {
             try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
         }
+    }
+
+    // ---- GetWeekGroupedAsync: every request becomes a group, incl. DEFAULT + empty ones (TS-01/02) ----
+
+    private static Request Req(int id, string code, string project = "P") =>
+        new(id, code, project, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+    [Fact]
+    public async Task GetWeekGrouped_returns_one_group_per_request_with_tasks_under_correct_request()
+    {
+        var monday = new DateOnly(2026, 6, 15);
+        _requests.Setup(r => r.SearchAsync(null)).ReturnsAsync(new[]
+        {
+            Req(1, "DEFAULT"), Req(2, "REQ-001"), Req(3, "REQ-002")
+        });
+        _tasks.Setup(t => t.GetActiveForTimesheetAsync()).ReturnsAsync(new[]
+        {
+            new TaskItem(10, 2, "Implement", 0, true),
+            new TaskItem(11, 2, "Review", 1, true),
+            new TaskItem(12, 1, "Annual Leave", 0, true)
+        });
+        _logs.Setup(l => l.GetByUserAndRangeAsync(1, monday, monday.AddDays(4)))
+             .ReturnsAsync(new[] { new TimeLog(0, 1, 10, monday, 4m, DateTimeOffset.UtcNow) });
+        var svc = Make(monday);
+
+        var groups = await svc.GetWeekGroupedAsync(1, monday);
+
+        // Ordered by request_code (Ordinal): DEFAULT, REQ-001, REQ-002.
+        Assert.Equal(3, groups.Count);
+        Assert.Equal("DEFAULT", groups[0].RequestCode);
+        Assert.Equal("REQ-001", groups[1].RequestCode);
+        Assert.Equal("REQ-002", groups[2].RequestCode);
+
+        // REQ-001 has both its tasks, with the logged 4h landing on Monday for task 10.
+        Assert.Equal(2, groups[1].Tasks.Count);
+        Assert.Equal("REQ-001", groups[1].Tasks[0].RequestCode); // RequestCode now populated (no longer "")
+        Assert.Equal(4m, groups[1].Tasks[0].Mon);
+
+        // DEFAULT carries its one task.
+        Assert.Single(groups[0].Tasks);
+        Assert.Equal("Annual Leave", groups[0].Tasks[0].TaskName);
+    }
+
+    [Fact]
+    public async Task GetWeekGrouped_includes_request_with_no_tasks_as_empty_group()
+    {
+        var monday = new DateOnly(2026, 6, 15);
+        _requests.Setup(r => r.SearchAsync(null)).ReturnsAsync(new[]
+        {
+            Req(1, "DEFAULT"), Req(7, "REQ-EMPTY")
+        });
+        _tasks.Setup(t => t.GetActiveForTimesheetAsync()).ReturnsAsync(Array.Empty<TaskItem>());
+        _logs.Setup(l => l.GetByUserAndRangeAsync(1, monday, monday.AddDays(4)))
+             .ReturnsAsync(Array.Empty<TimeLog>());
+        var svc = Make(monday);
+
+        var groups = await svc.GetWeekGroupedAsync(1, monday);
+
+        var empty = Assert.Single(groups, g => g.RequestCode == "REQ-EMPTY");
+        Assert.Empty(empty.Tasks);
+        Assert.Contains(groups, g => g.RequestCode == "DEFAULT"); // DEFAULT still present
     }
 }

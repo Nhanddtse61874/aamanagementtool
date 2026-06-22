@@ -1,4 +1,5 @@
 using Moq;
+using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
 using TimesheetApp.ViewModels;
@@ -12,24 +13,37 @@ public class TimesheetViewModelTests
     private static readonly DateOnly Wed = new(2026, 6, 17);
     private static readonly DateOnly Mon = new(2026, 6, 15);
 
-    private static WeekGrid Grid(DateOnly monday, params WeekRow[] rows) => new(monday, rows);
+    // Build the grouped shape from flat WeekRows: each distinct RequestCode becomes one group.
+    private static IReadOnlyList<WeekRequestGroup> Groups(params WeekRow[] rows)
+    {
+        var id = 1;
+        return rows
+            .GroupBy(r => r.RequestCode)
+            .Select(g => new WeekRequestGroup(id++, g.Key, "", g.ToList()))
+            .ToList();
+    }
+
+    // Convenience: all task rows across all groups, flattened, in group order.
+    private static IReadOnlyList<TimesheetRowVm> AllTasks(TimesheetViewModel vm) =>
+        vm.Groups.SelectMany(g => g.Tasks).ToList();
 
     private static (TimesheetViewModel vm, Mock<ITimeLogService> tl, Mock<ISmartInputService> si) Make(
-        WeekGrid? initial = null, int userId = 1)
+        IReadOnlyList<WeekRequestGroup>? initial = null, int userId = 1)
     {
         var tl = new Mock<ITimeLogService>();
         var si = new Mock<ISmartInputService>();
+        var tasks = new Mock<ITaskRepository>();
         var clock = new Mock<IClock>();
         clock.SetupGet(c => c.Today).Returns(Wed);
 
-        tl.Setup(t => t.GetWeekAsync(userId, It.IsAny<DateOnly>()))
-          .ReturnsAsync((int _, DateOnly m) => initial ?? Grid(m));
+        tl.Setup(t => t.GetWeekGroupedAsync(userId, It.IsAny<DateOnly>()))
+          .ReturnsAsync((int _, DateOnly _) => initial ?? System.Array.Empty<WeekRequestGroup>());
         tl.Setup(t => t.SaveCellAsync(userId, It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<decimal>()))
           .ReturnsAsync(new SaveResult(true, null));
         tl.Setup(t => t.ClearCellAsync(userId, It.IsAny<int>(), It.IsAny<DateOnly>()))
           .Returns(Task.CompletedTask);
 
-        var vm = new TimesheetViewModel(tl.Object, si.Object, clock.Object, () => userId);
+        var vm = new TimesheetViewModel(tl.Object, tasks.Object, si.Object, clock.Object, () => userId);
         return (vm, tl, si);
     }
 
@@ -57,7 +71,7 @@ public class TimesheetViewModelTests
         await vm.LoadCommand.ExecuteAsync(null);
         await vm.NextWeekCommand.ExecuteAsync(null);
         Assert.Equal(Mon.AddDays(7), vm.CurrentWeek);
-        tl.Verify(t => t.GetWeekAsync(1, Mon.AddDays(7)), Times.Once);
+        tl.Verify(t => t.GetWeekGroupedAsync(1, Mon.AddDays(7)), Times.Once);
     }
 
     [Fact]
@@ -70,58 +84,75 @@ public class TimesheetViewModelTests
     }
 
     [Fact]
-    public async Task Rows_ShapedFromWeekGrid_OneRowPerTask()
+    public async Task Groups_ShapedFromWeek_OneGroupPerRequest_TasksUnderEach()
     {
-        var grid = Grid(Mon,
+        var groups = Groups(
             new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, 3m, null, null),
             new WeekRow(9, "DEFAULT", "Annual Leave", 0, null, null, null, null, 8m));
-        var (vm, _, _) = Make(grid);
+        var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
-        Assert.Equal(2, vm.Rows.Count);
-        Assert.Equal(7, vm.Rows[0].TaskId);
-        Assert.Equal(4m, vm.Rows[0].Mon);
-        Assert.Equal("Annual Leave", vm.Rows[1].TaskName);
+
+        Assert.Equal(2, vm.Groups.Count);
+        Assert.Equal("REQ-001", vm.Groups[0].RequestCode);
+        Assert.Equal(7, vm.Groups[0].Tasks[0].TaskId);
+        Assert.Equal(4m, vm.Groups[0].Tasks[0].Mon);
+        Assert.Equal("DEFAULT", vm.Groups[1].RequestCode);
+        Assert.Equal("Annual Leave", vm.Groups[1].Tasks[0].TaskName);
     }
 
     [Fact]
-    public async Task ColumnTotals_SumAllRows_AndUpdateOnCellChange()
+    public async Task EmptyRequest_RendersAsGroupWithNoTasks()
     {
-        var grid = Grid(Mon,
+        // One request that has NO tasks -> a group with an empty Tasks list still shows.
+        var groups = new[] { new WeekRequestGroup(3, "REQ-EMPTY", "Proj", System.Array.Empty<WeekRow>()) };
+        var (vm, _, _) = Make(groups);
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        Assert.Single(vm.Groups);
+        Assert.Equal("REQ-EMPTY", vm.Groups[0].RequestCode);
+        Assert.Empty(vm.Groups[0].Tasks);
+    }
+
+    [Fact]
+    public async Task ColumnTotals_SumAllTasksAcrossGroups_AndUpdateOnCellChange()
+    {
+        var groups = Groups(
             new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, null, null, null),
             new WeekRow(9, "DEFAULT", "Meeting", 1, 2m, null, null, null, null));
-        var (vm, _, _) = Make(grid);
+        var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
         Assert.Equal(6m, vm.MonTotal);
 
-        vm.Rows[0].Mon = 5m;               // 5 + 2
+        AllTasks(vm)[0].Mon = 5m;               // 5 + 2
         Assert.Equal(7m, vm.MonTotal);
     }
 
     [Fact]
     public async Task Save_DisabledWhenAnyColumnExceedsEight()
     {
-        var grid = Grid(Mon,
+        var groups = Groups(
             new WeekRow(7, "REQ-001", "Implement", 0, 5m, null, null, null, null),
             new WeekRow(9, "DEFAULT", "Meeting", 1, 4m, null, null, null, null)); // Mon = 9 > 8
-        var (vm, _, _) = Make(grid);
+        var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
         Assert.False(vm.SaveCommand.CanExecute(null));
 
-        vm.Rows[1].Mon = 2m;               // Mon now 7
+        AllTasks(vm)[1].Mon = 2m;               // Mon now 7
         Assert.True(vm.SaveCommand.CanExecute(null));
     }
 
     [Fact]
     public async Task SaveCell_WithValue_UpsertsOnNaturalKey()
     {
-        var grid = Grid(Mon, new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null));
-        var (vm, tl, _) = Make(grid);
+        var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null));
+        var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
-        await vm.SaveCellAsync(vm.Rows[0], DayColumn.Mon);
+        var row = AllTasks(vm)[0];
+        await vm.SaveCellAsync(row, DayColumn.Mon);
         // value still null -> nothing yet
-        vm.Rows[0].Mon = 4m;
-        await vm.SaveCellAsync(vm.Rows[0], DayColumn.Mon);
+        row.Mon = 4m;
+        await vm.SaveCellAsync(row, DayColumn.Mon);
 
         tl.Verify(t => t.SaveCellAsync(1, 7, Mon, 4m), Times.Once);
     }
@@ -129,12 +160,13 @@ public class TimesheetViewModelTests
     [Fact]
     public async Task SaveCell_WithEmptyValue_DeletesLog()
     {
-        var grid = Grid(Mon, new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, null, null, null));
-        var (vm, tl, _) = Make(grid);
+        var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, null, null, null));
+        var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
-        vm.Rows[0].Mon = null;             // cleared
-        await vm.SaveCellAsync(vm.Rows[0], DayColumn.Mon);
+        var row = AllTasks(vm)[0];
+        row.Mon = null;             // cleared
+        await vm.SaveCellAsync(row, DayColumn.Mon);
 
         tl.Verify(t => t.ClearCellAsync(1, 7, Mon), Times.Once);
         tl.Verify(t => t.SaveCellAsync(1, 7, Mon, It.IsAny<decimal>()), Times.Never);
@@ -149,6 +181,47 @@ public class TimesheetViewModelTests
 
         vm.RaiseSmartInputAppliedForTest();   // internal test hook -> ReloadAsync
 
-        tl.Verify(t => t.GetWeekAsync(1, Mon), Times.Once);
+        tl.Verify(t => t.GetWeekGroupedAsync(1, Mon), Times.Once);
+    }
+
+    [Fact] // Inline add-task on a group inserts a Task under that request, then reloads + broadcasts.
+    public async Task AddTask_OnGroup_InsertsTaskUnderRequest_AndReloads()
+    {
+        var groups = new[] { new WeekRequestGroup(42, "REQ-001", "Proj", System.Array.Empty<WeekRow>()) };
+        var tl = new Mock<ITimeLogService>();
+        var si = new Mock<ISmartInputService>();
+        var tasks = new Mock<ITaskRepository>();
+        var clock = new Mock<IClock>();
+        clock.SetupGet(c => c.Today).Returns(Wed);
+        tl.Setup(t => t.GetWeekGroupedAsync(1, It.IsAny<DateOnly>())).ReturnsAsync(groups);
+
+        var vm = new TimesheetViewModel(tl.Object, tasks.Object, si.Object, clock.Object, () => 1);
+        await vm.LoadCommand.ExecuteAsync(null);
+        tl.Invocations.Clear();
+
+        var grp = vm.Groups[0];
+        grp.NewTaskName = "  New Task  ";
+        await grp.AddTaskCommand.ExecuteAsync(null);
+
+        tasks.Verify(r => r.InsertAsync(It.Is<TaskItem>(
+            t => t.RequestId == 42 && t.TaskName == "New Task" && t.IsActive)), Times.Once);
+        // Add reloads the grid (then broadcasts; the VM also self-reloads on that broadcast -> >=1).
+        tl.Verify(t => t.GetWeekGroupedAsync(1, It.IsAny<DateOnly>()), Times.AtLeastOnce);
+        Assert.Equal("", grp.NewTaskName); // cleared after add
+    }
+
+    [Fact] // Blank task name is a no-op: no insert, no reload.
+    public async Task AddTask_BlankName_DoesNothing()
+    {
+        var groups = new[] { new WeekRequestGroup(42, "REQ-001", "Proj", System.Array.Empty<WeekRow>()) };
+        var (vm, tl, _) = Make(groups);
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        var grp = vm.Groups[0];
+        grp.NewTaskName = "   ";
+        await grp.AddTaskCommand.ExecuteAsync(null);
+
+        // initial GetWeekGroupedAsync ran once (load); no extra reload from a no-op add.
+        tl.Verify(t => t.GetWeekGroupedAsync(1, It.IsAny<DateOnly>()), Times.Once);
     }
 }
