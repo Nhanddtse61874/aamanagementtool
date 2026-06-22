@@ -90,6 +90,23 @@ public sealed partial class MainViewModel : ObservableObject
         await LoadTabsAsync();
     }
 
+    /// <summary>
+    /// Reload the activated tab's data so changes made in another tab are reflected (e.g. a task
+    /// created in Requests appears in the Timesheet grid). Wired to the TabControl's SelectionChanged.
+    /// Index order matches MainWindow: 0 Timesheet, 1 Requests, 2 Users, 3 Reports, 4 Settings.
+    /// </summary>
+    public async Task ActivateTabAsync(int index)
+    {
+        switch (index)
+        {
+            case 0: await SafeLoad(() => Timesheet.LoadCommand.ExecuteAsync(null)); break;
+            case 1: await SafeLoad(() => Requests.LoadAsync()); break;
+            case 2: await SafeLoad(() => Users.LoadAsync()); break;
+            case 3: await SafeLoad(() => Reports.LoadBannerAsync()); break;
+            case 4: await SafeLoad(() => Settings.LoadAsync()); break;
+        }
+    }
+
     private async Task ResolveCurrentUserAsync(Func<IReadOnlyList<User>, User?> selectUser)
     {
         var result = await _currentUser.ResolveAsync();

@@ -32,6 +32,11 @@
       <Button Content="Save"
               Command="{Binding SaveCommand}"
               Width="80" Margin="24,0,0,0"/>
+      <Button Content="&#9889; Smart fill"
+              Click="OnSmartFill"
+              Style="{StaticResource GhostButton}"
+              Width="110" Margin="8,0,0,0"
+              ToolTip="Điền giờ tự động cho 1 task trong khoảng ngày (chia đều / full 8h)"/>
     </StackPanel>
 
     <!-- Per-column footer totals strip (TS-05, TS-06) -->

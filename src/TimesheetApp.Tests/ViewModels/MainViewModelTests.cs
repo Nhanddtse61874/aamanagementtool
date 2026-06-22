@@ -124,6 +124,31 @@ public sealed class MainViewModelTests
         }
     }
 
+    [Fact] // Refresh bug: switching to the Timesheet tab reloads its rows so a task created elsewhere appears
+    public async Task ActivateTab_reloads_timesheet_rows()
+    {
+        var svc = new Mock<ITimeLogService>();
+        var grid = new WeekGrid(new DateOnly(2026, 6, 15), new[]
+        {
+            new WeekRow(42, "REQ-1", "New Task", 0, null, null, null, null, null)
+        });
+        svc.Setup(s => s.GetWeekAsync(It.IsAny<int>(), It.IsAny<DateOnly>())).ReturnsAsync(grid);
+
+        var timesheet = new TimesheetViewModel(svc.Object, Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 1);
+        var vm = new MainViewModel(
+            timesheet,
+            new RequestsViewModel(Mock.Of<IRequestRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>()),
+            new UsersViewModel(Mock.Of<IUserRepository>()),
+            new ReportsViewModel(Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>()),
+            new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>()),
+            _currentUser.Object, _users.Object, _config.Object, () => "tester");
+
+        Assert.Empty(timesheet.Rows);
+        await vm.ActivateTabAsync(0);
+        Assert.Single(timesheet.Rows);
+        Assert.Equal("New Task", timesheet.Rows[0].TaskName);
+    }
+
     [Fact] // XC-08: no sibling -> ConflictWarning empty (banner stays collapsed)
     public async Task No_conflict_copy_leaves_warning_empty()
     {

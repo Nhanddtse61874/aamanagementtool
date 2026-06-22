@@ -57,7 +57,7 @@
     </Border>
 
     <!-- Tab strip -->
-    <TabControl Grid.Row="3" Margin="20,12,20,0">
+    <TabControl Grid.Row="3" Margin="20,12,20,0" SelectionChanged="OnTabChanged">
       <TabItem Header="Timesheet">
         <tabs:TimesheetTab DataContext="{Binding Timesheet}"/>
       </TabItem>
