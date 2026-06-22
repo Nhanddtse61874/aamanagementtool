@@ -97,7 +97,8 @@ public partial class App : Application
     // when the user cancels.
     private static User? ShowSelectUserDialog(IReadOnlyList<User> activeUsers)
     {
-        var dialog = new SelectUserDialog(activeUsers);
+        // Pass the user repository so the dialog can create a user inline on a fresh (empty) DB.
+        var dialog = new SelectUserDialog(activeUsers, Services.GetRequiredService<IUserRepository>());
         return dialog.ShowDialog() == true ? dialog.SelectedUser : null;
     }
 }
