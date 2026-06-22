@@ -16,6 +16,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     private readonly ITimeLogRepository _timeLogs;
     private readonly ITimeLogService _timeLogService;
     private readonly ISettingsRepository _settings;
+    private readonly IUserRepository _users;
     private readonly IClock _clock;
     private readonly IReportAggregator _aggregator;
     private readonly IMessenger _messenger;
@@ -24,6 +25,7 @@ public sealed partial class ReportsViewModel : ObservableObject
         ITimeLogRepository timeLogs,
         ITimeLogService timeLogService,
         ISettingsRepository settings,
+        IUserRepository users,
         IClock clock,
         IReportAggregator aggregator,
         IMessenger? messenger = null)
@@ -31,6 +33,7 @@ public sealed partial class ReportsViewModel : ObservableObject
         _timeLogs = timeLogs;
         _timeLogService = timeLogService;
         _settings = settings;
+        _users = users;
         _clock = clock;
         _aggregator = aggregator;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
@@ -40,15 +43,29 @@ public sealed partial class ReportsViewModel : ObservableObject
         SelectedWeekMonday = MondayOf(today);
         SelectedMonth = new DateOnly(today.Year, today.Month, 1);
 
-        // Live cross-tab sync: refresh the "chưa log" banner when logs or users change elsewhere.
+        // default report target = whole team until users are loaded
+        SelectedTarget = TeamTarget;
+        Targets.Add(TeamTarget);
+
+        // Live cross-tab sync: refresh the "chưa log" banner when logs or users change elsewhere;
+        // also rebuild the report-target dropdown when the user list changes (Users tab add/remove).
         _messenger.Register<ReportsViewModel, DataChangedMessage>(this, static (r, m) =>
         {
             if (m.Kind is DataKind.Logs or DataKind.Users)
                 _ = r.LoadBannerAsync();
+            if (m.Kind is DataKind.Users)
+                _ = r.LoadUsersAsync();
         });
     }
 
-    [ObservableProperty] private int _selectedUserId;
+    // UserId == 0 means the whole team (all users combined).
+    public sealed record ReportTarget(int UserId, string Display);
+
+    private static readonly ReportTarget TeamTarget = new(0, "Cả team (tất cả)");
+
+    public ObservableCollection<ReportTarget> Targets { get; } = new();
+
+    [ObservableProperty] private ReportTarget? _selectedTarget;
     [ObservableProperty] private DateOnly _selectedWeekMonday;
     [ObservableProperty] private DateOnly _selectedMonth; // first of month
 
@@ -62,12 +79,38 @@ public sealed partial class ReportsViewModel : ObservableObject
     internal static DateOnly MondayOf(DateOnly date) =>
         date.AddDays(-(((int)date.DayOfWeek + 6) % 7)); // Monday-start, culture-independent (spec §7.2)
 
+    /// <summary>
+    /// Rebuild the report-target dropdown: a leading "whole team" option followed by one option per
+    /// active user (by name). Preserves the current selection when it still exists, else defaults to team.
+    /// </summary>
+    public async Task LoadUsersAsync()
+    {
+        var active = await _users.GetActiveAsync();
+        var previousId = SelectedTarget?.UserId ?? 0;
+
+        Targets.Clear();
+        Targets.Add(TeamTarget);
+        foreach (var u in active) Targets.Add(new ReportTarget(u.Id, u.Name));
+
+        SelectedTarget = Targets.FirstOrDefault(t => t.UserId == previousId) ?? TeamTarget;
+    }
+
+    // Report rows for the selected target over [from, to]: whole team uses the all-users export query,
+    // a single user uses the per-user report query.
+    private Task<IReadOnlyList<TimeLogReportRow>> GetRowsForTargetAsync(DateOnly from, DateOnly to)
+    {
+        var target = SelectedTarget;
+        return target is null || target.UserId == 0
+            ? _timeLogs.GetExportRowsAsync(from, to, null)
+            : _timeLogs.GetReportRowsAsync(target.UserId, from, to);
+    }
+
     [RelayCommand]
     public async Task LoadWeeklyAsync()
     {
         var monday = SelectedWeekMonday;
         var friday = monday.AddDays(4);
-        var rows = await _timeLogs.GetReportRowsAsync(SelectedUserId, monday, friday);
+        var rows = await GetRowsForTargetAsync(monday, friday);
         WeeklyRows.Clear();
         foreach (var r in _aggregator.WeeklyDayTotals(rows)) WeeklyRows.Add(r);
     }
@@ -77,7 +120,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     {
         var first = SelectedMonth;
         var last = first.AddMonths(1).AddDays(-1);
-        var rows = await _timeLogs.GetReportRowsAsync(SelectedUserId, first, last);
+        var rows = await GetRowsForTargetAsync(first, last);
         MonthlyRows.Clear();
         foreach (var r in _aggregator.MonthlyRequestTaskTotals(rows)) MonthlyRows.Add(r);
         ProjectTree.Clear();

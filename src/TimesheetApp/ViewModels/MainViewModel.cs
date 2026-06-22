@@ -102,7 +102,10 @@ public sealed partial class MainViewModel : ObservableObject
             case 0: await SafeLoad(() => Timesheet.LoadCommand.ExecuteAsync(null)); break;
             case 1: await SafeLoad(() => Requests.LoadAsync()); break;
             case 2: await SafeLoad(() => Users.LoadAsync()); break;
-            case 3: await SafeLoad(() => Reports.LoadBannerAsync()); break;
+            case 3:
+                await SafeLoad(() => Reports.LoadUsersAsync());
+                await SafeLoad(() => Reports.LoadBannerAsync());
+                break;
             case 4: await SafeLoad(() => Settings.LoadAsync()); break;
         }
     }

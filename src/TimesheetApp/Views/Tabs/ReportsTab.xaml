@@ -27,10 +27,11 @@
       <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="#7A5C00"/>
     </Border>
 
-    <!-- Controls: user id + week picker + month picker -->
+    <!-- Controls: report target (user name / whole team) + week picker + month picker -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-      <TextBlock Text="User Id:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-      <TextBox Width="48" Text="{Binding SelectedUserId, UpdateSourceTrigger=PropertyChanged}"/>
+      <TextBlock Text="Báo cáo cho:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+      <ComboBox Width="180" ItemsSource="{Binding Targets}"
+                SelectedItem="{Binding SelectedTarget}" DisplayMemberPath="Display"/>
       <TextBlock Text="Week (Mon):" VerticalAlignment="Center" Margin="12,0,4,0"/>
       <DatePicker SelectedDate="{Binding SelectedWeekMonday, Converter={StaticResource DateOnlyConverter}}"/>
       <Button Content="Weekly" Command="{Binding LoadWeeklyCommand}" Margin="4,0"/>

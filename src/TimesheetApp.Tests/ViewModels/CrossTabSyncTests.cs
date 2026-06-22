@@ -64,7 +64,7 @@ public sealed class CrossTabSyncTests
         settings.Setup(s => s.GetAsync(ReportsViewModel.NDaysKey)).ReturnsAsync("3");
 
         var reports = new ReportsViewModel(
-            Mock.Of<ITimeLogRepository>(), svc.Object, settings.Object, Mock.Of<IClock>(),
+            Mock.Of<ITimeLogRepository>(), svc.Object, settings.Object, Mock.Of<IUserRepository>(), Mock.Of<IClock>(),
             Mock.Of<IReportAggregator>(), bus);
         Assert.Equal(string.Empty, reports.BannerText);
 

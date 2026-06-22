@@ -32,7 +32,7 @@ public sealed class MainViewModelTests
         var usersVm = new UsersViewModel(Mock.Of<IUserRepository>());
         var reports = new ReportsViewModel(
             Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(),
-            Mock.Of<IClock>(), Mock.Of<IReportAggregator>());
+            Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>());
         var settings = new SettingsViewModel(
             Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(),
             Mock.Of<IDefaultTaskSyncService>());
@@ -140,7 +140,7 @@ public sealed class MainViewModelTests
             timesheet,
             new RequestsViewModel(Mock.Of<IRequestRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>()),
             new UsersViewModel(Mock.Of<IUserRepository>()),
-            new ReportsViewModel(Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>()),
+            new ReportsViewModel(Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(), Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>()),
             new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>()),
             _currentUser.Object, _users.Object, _config.Object, () => "tester");
 
