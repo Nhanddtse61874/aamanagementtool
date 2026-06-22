@@ -22,6 +22,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // The SelectUserDialog (XC-07) may be shown modally BEFORE MainWindow exists. With the default
+        // OnLastWindowClose, closing/cancelling that dialog would shut the app down before the main
+        // window appears. Hold shutdown explicit during startup; switch to main-window-bound after Show().
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
         var sc = new ServiceCollection();
 
         // Config + connection seam. SqliteConnectionFactory + JsonAppConfig resolve the DB path
@@ -91,6 +96,9 @@ public partial class App : Application
 
         MainWindow = new MainWindow { DataContext = mainVm };
         MainWindow.Show();
+
+        // Window is up: bind shutdown to it so closing the main window exits the app normally.
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
     }
 
     // View-layer picker passed to MainViewModel on NeedsSelection. Returns the chosen user, or null
