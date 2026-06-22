@@ -1,84 +1,49 @@
-# STATE — TimesheetApp
+# STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-21
+**Last updated:** 2026-06-22
+**How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
-## Current Position
-- **Phase:** Steps 7-11 complete (build + QA + ship docs). **Awaiting user UAT (Step 8a).**
-- **Status:** waiting_for_user (final UAT of the running app)
-- **Approved Mode:** Mode B (user override from suggested Mode A, 2026-06-21)
-- **Result:** 45 REQs implemented · 162 tests green · build clean · app launches · QA APPROVE (C1+I1 cleared). 34 commits on `main`. See `.planning/M1-SUMMARY.md`.
-- **Execution mode:** Subagent-Driven (fresh subagent per task, controller reviews between tasks), **autonomous all 6 phases** (user approved 2026-06-21 — user does final UAT when product complete). Commit atomic per task.
+## What this is
+WPF Desktop Timesheet Tool (.NET 8 / WPF MVVM / SQLite+Dapper / ClosedXML / CommunityToolkit.Mvvm).
+App project: `src/TimesheetApp`. Tests: `src/TimesheetApp.Tests`. Branch: `main`.
 
-## Autonomous-run deviation (this project, 2026-06-21)
-User instruction: build the full WPF Timesheet Tool autonomously, Subagent-Driven, P1→P6, user checks result at the end. Skip per-task confirmation + per-phase UAT gates; controller owns review between tasks + cross-plan consistency. Hard stops: 3-attempt unresolvable test failure, genuine ambiguity not derivable from spec/plans, or scope beyond the 45 REQs. Do NOT fabricate REQ-IDs.
+## Current status
+- **181 tests green**, `dotnet build` clean, app launches and is usable.
+- Full M1 (P1–P6 + shell + QA) was built autonomously (Mode B), then a long **UAT-driven UI rework** (this session). All planning artifacts in `.planning/` + `docs/superpowers/`.
 
-## Next Action
-USER UAT: run `src/TimesheetApp` and verify the manual-verify items in M1-SUMMARY.md "For UAT". Report any differences. After UAT sign-off → merge/tag as desired (currently all on `main`).
-**MainWindow + MainViewModel do NOT exist yet** (P3 T3 deferred first-window show) — must be created in a final wiring task to host the 5 tabs (Timesheet/Requests/Users/Reports/Settings), current-user resolution + conflict-copy banner, and actually run the app. Track this as a required closeout task.
+## Commands
+- Build: `dotnet build src/TimesheetApp.sln`
+- Test: `dotnet test src/TimesheetApp.sln`
+- Run: `dotnet run --project src/TimesheetApp` (or run the built exe in `bin/Debug/net8.0-windows/TimesheetApp.exe`)
+- DB lives at `%USERPROFILE%\Documents\TimesheetApp\timesheet.db` (path stored in `%APPDATA%\TimesheetApp\appsettings.json`).
 
-## Carry-over notes for UI phases
-- `IClock` has `UtcNow` + `Today` (Services/IClock.cs); `SystemClock` impl exists.
-- ReadModels.cs holds: CellAssignment, SmartInputResult, CurrentUserResult/Outcome, TimeLogReportRow, WeekGrid, WeekRow, SaveResult.
-- **GetWeekAsync `WeekRow.RequestCode` is empty** (ITaskRepository.GetActiveForTimesheetAsync returns TaskItem w/o request_code) — P3 must join request_code in the VM or extend the query for grouping.
-- ValidateDayTotals/ApplySmartInput assume ≤1 cell per (taskId,date) — P3 must not pass duplicate same-day cells per task.
-- Interfaces NOT to recreate: IUserRepository, IRequestRepository, ITaskRepository, ITimeLogRepository, ISettingsRepository, IDefaultTaskRepository, ICurrentUserService, ISmartInputService, ITimeLogService, IDefaultTaskSyncService, IDbBackupHelper, IClock, IAppConfig, IConnectionFactory, IDatabaseInitializer.
+## UAT fixes completed THIS session (newest last)
+1. Interim **Modern Light theme** (`Views/Theme/Theme.xaml`, accent #2563EB) — to be superseded by the user's own visual design (they will send one).
+2. First-run: **SelectUserDialog can create a user inline** + `ShutdownMode=OnExplicitShutdown` during startup (cancel no longer kills app).
+3. **DB parent-dir auto-create** on first run (was crashing with SQLite Error 14).
+4. QA gate fixes: **C1** startup `DefaultTaskSync.SyncAsync` runs at App.OnStartup; **I1** XC-09 journal check wired to bulk write paths.
+5. **Live cross-tab sync** via `WeakReferenceMessenger` (`Services/DataChangedMessage.cs`): producers Send on save, consumers reload (Requests→Timesheet, Settings→Timesheet, Users→Reports, Timesheet→Reports). + tab-activation reload (`MainViewModel.ActivateTabAsync` + MainWindow SelectionChanged).
+6. **Smart Input** wired into Timesheet (a "⚡ Smart fill" button opens `SmartInputPreviewDialog`).
+7. **Grouped/expandable Timesheet by Request** (Expander ▼/▶): every request shows even if empty; inline "➕ Add task" per group; footer totals across all groups. (`RequestGroupVm`, `TimeLogService.GetWeekGroupedAsync`, `WeekRequestGroup`.)
+8. **Template editor dialog** (`TemplateEditorViewModel`): name once + multi-task list, labeled; Edit/Delete; `ITaskTemplateRepository.DeleteByTemplateNameAsync`. All Settings inputs labeled.
+9. **Reports**: user-NAME dropdown + **"Cả team (tất cả)"** option (`ReportTarget`; team uses `GetExportRowsAsync`, single user uses `GetReportRowsAsync`).
+10. **Auto-apply template on dropdown selection** (picking a template now adds its tasks immediately; guard prevents duplicate). Root cause: user selected template but never clicked the separate Apply button → request saved empty (DB-verified).
 
-## Execution Notes (standing corrections — apply to ALL tasks)
-- **Test project TFM:** `TimesheetApp.Tests` targets **`net8.0-windows` + `<UseWPF>false</UseWPF>`** (NOT bare `net8.0` — net8.0 cannot reference the net8.0-windows app on SDK 8.0.205). Plans that say `net8.0` for tests are superseded by this.
-- **Every test file** must include `using Xunit;` (plan test templates omit it; xUnit 2.9.2 has no implicit usings).
-- `.gitignore` exists (bin/obj ignored).
+## Remaining UX backlog (user feedback — NOT yet done)
+- **Auto-save cells** (remove the Save-button friction; persist on cell commit + surface validation/revert).
+- **Week DatePicker** to jump to any week (currently Prev/Next only).
+- **Smart Input usability**: replace raw "Task Id" + text dates with a **task dropdown + DatePickers**.
+- **First-run zero-config**: auto-use Windows username (currently prefilled inline create).
+- **Visual redesign**: user said *"tôi sẽ thiết kế và gửi cho bạn"* — apply their design to `Views/Theme/Theme.xaml` + tabs when received.
+- XC-09 warning → surface to a UI banner (currently Trace). XC-10 `.bak` files **accumulate unbounded** in the DB folder (many already) — add a keep-last-N prune.
 
-## Progress (Step 7)
-- **P1 COMPLETE** (6 tasks, 26 tests green, controller-verified). Commits: 2add21a, 4244ef9, 98657ea, 5a598eb, af895a1, a4a159f.
-  - T1 solution/projects/NuGet · T2 models · T3 JsonAppConfig (`IAppConfig.DbPath`+`SetDbPath`) · T4 SqliteConnectionFactory (journal=DELETE/FK/Pooling off) · T5 SqliteMaintenance (XC-08/09) · T6 DatabaseInitializer (schema+seed+migrations).
-  - Cross-phase fix: P6 plan patched to use `IAppConfig.SetDbPath()` (P1 used method, not property setter).
-- **P2 COMPLETE** (7 tasks, 78 tests green, controller-verified). Commits: 84905f3, 0a54ada, 0375308, 9d958a0, 2e49b73, dffd5db, 64408a5.
-  - T1 SmartInputService (integer-tenths) · T2 CurrentUserService · T3 DbBackupHelper · T4 TimeLogRepository (+TestDb.cs) · T5 User/Task/Request/Settings repos · T6 TimeLogService (8h validation, atomic apply) · T7 DefaultTaskSyncService (+IDefaultTaskRepository).
-  - P2 filled several P1 carry-over gaps (ITimeLogService, WeekGrid/SaveResult, IClock, ReadModels types) — all from architecture spec verbatim.
-- **P3 COMPLETE** (5 tasks, 104 tests green, build OK). Commits: 44f9110, 8341dd1, 978535f, 6cc685f, eb2e417.
-  - T1 TimesheetRowVm · T2 SmartInputPanelVm · T3 TimesheetViewModel + **full DI container in App.xaml.cs** (all repos+services+VM, InitializeAsync at startup) · T4 TimesheetTab.xaml · T5 SmartInputPreviewDialog.xaml.
-  - DI does NOT yet register IExportService (P6) or VMs for other tabs — each later phase adds its own.
-- **P4 COMPLETE** (5 tasks, 126 tests green, build OK). Commits: 730e0e5, 2e75938, bab9bf1, 8b79636, c268585.
-  - T1 ITaskTemplateRepository (canonical CRUD + DI) · T2 RequestEditorViewModel/EditableTaskRowVm · T4 UsersViewModel · T3 RequestsViewModel (search→explicit RefreshCommand) · T5 Requests/UsersTab.xaml (+RequestsVM/UsersVM in DI).
-  - DI now registers: all repos+services (P3), ITaskTemplateRepository, RequestsViewModel, UsersViewModel, TimesheetViewModel.
-- **P5 COMPLETE** (4 tasks, 137 tests green, build OK). Commits: 6203d0f, de977be, 95f4825, b934444.
-  - T1 report read-models · T2 ReportAggregator (pure, distinct-by-TaskId, no is_active filter) · T3 ReportsViewModel + DI (IReportAggregator + ReportsViewModel) · T4 ReportsTab.xaml + DateOnlyConverter (local resource).
-  - Cross-phase fix: settings N-days key reconciled to `ReportsViewModel.NDaysKey="chua_log_n_days"` (P6 plan patched to write same key).
-- **P6 COMPLETE** (3 tasks, 152 tests green, build OK). Commits: ae99e13, 5847146, 4cea478.
-  - T1 ExportService (Markdown+Excel, EXP-01..04, DI) · T2 SettingsViewModel (SET-01..04, uses NDaysKey/SetDbPath/ITaskTemplateRepository) · T3 SettingsTab.xaml (Browse via OpenFileDialog code-behind).
-  - T2 was committed on a stray feature branch by the subagent; controller merged it back to main (ff).
-- **ALL 6 BUILD PHASES DONE. 152 tests, build clean.** Remaining: MainWindow+MainViewModel closeout (app not yet runnable — no window shown), then UAT/QA/ship.
+## Current DB data (for context)
+- User: `Nhan` (windows_username=`Admin`).
+- Requests: DEFAULT, SHOKAI_QA_REQ-8739, SHOKAI_QA_REQ-44444 (tasks "d","sdfs"), SHOKAI_QA_REQ-1234.
+- Template: **"Default Task"** = Design / Investigate / Implement / Automation Test / IT.
 
-## Resolved Items
-- **TaskTemplate repository home (RESOLVED 2026-06-21):** single canonical `ITaskTemplateRepository` (GetAll/Insert/Delete) delivered by P4 Task 1, consumed by P6 SettingsViewModel; template methods NOT on ITaskRepository. Architecture spec §3 + P4 + P6 patched (commit d91e8f6).
-- **Minor — `IAppConfig.DbPath` member name:** confirm during P1 (IAppConfig defined in P1 Task 3) — canonical name `DbPath`.
-
-## Plan Set (Step 6)
-| Phase | Plan file | Tasks / Waves | REQ coverage |
-|---|---|---|---|
-| P1 Data+Schema | `2026-06-21-P1-data-schema.md` | 6 / 4 | DATA-01..07, XC-01, XC-08, XC-09 ✓ |
-| P2 Services | `2026-06-21-P2-services.md` | 7 / 3 | XC-02..07, XC-10, SI-01..04 ✓ |
-| P3 Timesheet UI | `2026-06-21-P3-timesheet-ui.md` | 5 / 3 | TS-01..07, SI-05, SI-06 ✓ |
-| P4 Requests+Users UI | `2026-06-21-P4-requests-users-ui.md` | 5 / 4 | REQ-01..04, USR-01..03 ✓ |
-| P5 Reports | `2026-06-21-P5-reports.md` | 4 / 4 | RPT-01..04 ✓ |
-| P6 Settings+Export | `2026-06-21-P6-settings-export.md` | 3 / 2 | SET-01..04, EXP-01..04 ✓ |
-
-All plans: goal-backward `must_haves`, checkbox TDD tasks with full code, per-task `<model>` (base; quality profile shift applied at dispatch), zero intra-wave file overlap. XAML tasks are manual-verify (no headless WPF tests); all testable logic lives in unit-tested ViewModels/services.
-
-## Key Decisions Made
-- Project = WPF Desktop Timesheet Tool (.NET 8 / WPF MVVM / SQLite + Dapper / ClosedXML). Folder `AgentArchitectureManagement` is container; app = `TimesheetApp`.
-- User identity via Windows username (`Users.windows_username`), fallback `SelectUserDialog` once.
-- `TimeLogs` = single FK `task_id`; DefaultTasks unified into `Tasks` under hidden `DEFAULT` request.
-- Concurrency: single-writer / last-write-wins on shared SQLite (OneDrive); conflict at file level = accepted risk.
-- Mode B chosen by user (override of suggested Mode A).
-- Research resolved: journal_mode=DELETE (not WAL), CommunityToolkit.Mvvm, MS.Data.Sqlite 8.0.x, MS.DI. 8 policy/scope decisions logged in spec appendix.
-- Spec (STEP 5): 45 REQs (43 + XC-09, XC-10; advisory edit-lock deferred). 0 traceability gaps.
-- Plan (STEP 6): 6 phase plans (30 tasks total) written + each orchestrator-reviewed to APPROVE. Execution mode TBD by user.
-
-## Artifacts
-- Design spec: `docs/superpowers/specs/2026-06-21-timesheet-tool-design.md`
-- Architecture spec: `docs/superpowers/specs/2026-06-21-timesheet-tool-architecture.md`
-- REQUIREMENTS: `.planning/REQUIREMENTS.md` (45 REQ, P1–P6)
-- Plans: `docs/superpowers/plans/` (P1–P6)
-- Config: `.planning/config.json`
-- Research: `.planning/research/` (STACK, FEATURE, ARCHITECTURE, PITFALL, RESEARCH-SYNTHESIS)
+## Working style notes (this user)
+- Iterative UAT: build a focused fix → **run the app** → user tests → next. They want to "kiểm từng bước".
+- Mirror the user's chat language (Vietnamese ↔ English).
+- When a feature "doesn't work", get **DB/runtime evidence first** (systematic-debugging) — several issues were "built but not wired into the UI" or UX traps, not logic bugs.
+- All recent commits on `main` (~30+ during build + ~10 during UAT). Latest: `4896a58`.
