@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
@@ -21,17 +22,20 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ISettingsRepository _settings;
     private readonly ITaskTemplateRepository _templates;   // canonical template store (reconciliation 2026-06-21)
     private readonly IDefaultTaskSyncService _sync;
+    private readonly IMessenger _messenger;
 
     public SettingsViewModel(
         IAppConfig config,
         ISettingsRepository settings,
         ITaskTemplateRepository templates,
-        IDefaultTaskSyncService sync)
+        IDefaultTaskSyncService sync,
+        IMessenger? messenger = null)
     {
         _config = config;
         _settings = settings;
         _templates = templates;
         _sync = sync;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
     }
 
     [ObservableProperty] private string _dbPath = "";
@@ -75,6 +79,7 @@ public partial class SettingsViewModel : ObservableObject
         NewTemplateName = "";
         NewTemplateTaskName = "";
         await ReloadTemplatesAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Templates)); // live-sync: Requests template list
     }
 
     [RelayCommand]
@@ -83,11 +88,16 @@ public partial class SettingsViewModel : ObservableObject
         if (SelectedTemplate is null) return;
         await _templates.DeleteAsync(SelectedTemplate.Id);
         await ReloadTemplatesAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Templates));
     }
 
     // SET-04: reconcile DefaultTasks -> DEFAULT request's Tasks (rename = soft-delete + insert).
     [RelayCommand]
-    private Task SaveDefaultTasksAsync() => _sync.SyncAsync();
+    private async Task SaveDefaultTasksAsync()
+    {
+        await _sync.SyncAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.DefaultTasks)); // live-sync: Timesheet rows
+    }
 
     private async Task ReloadTemplatesAsync()
     {

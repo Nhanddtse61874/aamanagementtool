@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
@@ -17,24 +18,34 @@ public sealed partial class ReportsViewModel : ObservableObject
     private readonly ISettingsRepository _settings;
     private readonly IClock _clock;
     private readonly IReportAggregator _aggregator;
+    private readonly IMessenger _messenger;
 
     public ReportsViewModel(
         ITimeLogRepository timeLogs,
         ITimeLogService timeLogService,
         ISettingsRepository settings,
         IClock clock,
-        IReportAggregator aggregator)
+        IReportAggregator aggregator,
+        IMessenger? messenger = null)
     {
         _timeLogs = timeLogs;
         _timeLogService = timeLogService;
         _settings = settings;
         _clock = clock;
         _aggregator = aggregator;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
 
         // default selection = the week / month containing "today"
         var today = _clock.Today;
         SelectedWeekMonday = MondayOf(today);
         SelectedMonth = new DateOnly(today.Year, today.Month, 1);
+
+        // Live cross-tab sync: refresh the "chưa log" banner when logs or users change elsewhere.
+        _messenger.Register<ReportsViewModel, DataChangedMessage>(this, static (r, m) =>
+        {
+            if (m.Kind is DataKind.Logs or DataKind.Users)
+                _ = r.LoadBannerAsync();
+        });
     }
 
     [ObservableProperty] private int _selectedUserId;

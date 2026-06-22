@@ -35,6 +35,9 @@ public partial class App : Application
         sc.AddSingleton<IAppConfig, JsonAppConfig>();
         sc.AddSingleton<IClock, SystemClock>();
         sc.AddSingleton<IConnectionFactory, SqliteConnectionFactory>();
+        // Cross-tab live sync bus: producers Send(DataChangedMessage), consumer VMs reload.
+        sc.AddSingleton<CommunityToolkit.Mvvm.Messaging.IMessenger>(
+            CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default);
         // XC-09 observability seam: bulk-write services route lingering-journal warnings here
         // (System.Windows-free; default trace sink, never swallowed).
         sc.AddSingleton<IJournalWarningSink, TraceJournalWarningSink>();

@@ -3,21 +3,26 @@ namespace TimesheetApp.ViewModels;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
+using TimesheetApp.Services;
 
 public sealed partial class RequestsViewModel : ObservableObject
 {
     private readonly IRequestRepository _requests;
     private readonly ITaskRepository _tasks;
     private readonly ITaskTemplateRepository _templates;
+    private readonly IMessenger _messenger;
 
     public RequestsViewModel(
-        IRequestRepository requests, ITaskRepository tasks, ITaskTemplateRepository templates)
+        IRequestRepository requests, ITaskRepository tasks, ITaskTemplateRepository templates,
+        IMessenger? messenger = null)
     {
         _requests = requests;
         _tasks = tasks;
         _templates = templates;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
     }
 
     public ObservableCollection<Request> Requests { get; } = new();
@@ -69,6 +74,7 @@ public sealed partial class RequestsViewModel : ObservableObject
 
         Editor = null;
         await RefreshAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Tasks)); // live-sync: Timesheet reloads rows
     }
 
     [RelayCommand]
@@ -90,6 +96,7 @@ public sealed partial class RequestsViewModel : ObservableObject
 
         Editor = null;
         await RefreshAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Tasks)); // live-sync: Timesheet reloads rows
     }
 
     [RelayCommand]

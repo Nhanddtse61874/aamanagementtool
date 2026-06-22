@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Services;
 
 namespace TimesheetApp.ViewModels;
@@ -14,17 +15,28 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private readonly ITimeLogService _timeLogs;
     private readonly IClock _clock;
     private readonly Func<int> _currentUserId;
+    private readonly IMessenger _messenger;
     private bool _suppressTotals;
 
     public TimesheetViewModel(
-        ITimeLogService timeLogs, ISmartInputService smartInput, IClock clock, Func<int> currentUserId)
+        ITimeLogService timeLogs, ISmartInputService smartInput, IClock clock, Func<int> currentUserId,
+        IMessenger? messenger = null)
     {
         _timeLogs = timeLogs;
         _clock = clock;
         _currentUserId = currentUserId;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
 
         SmartInput = new SmartInputPanelVm(smartInput, timeLogs, currentUserId);
         SmartInput.Applied += async () => await ReloadAsync();
+
+        // Live cross-tab sync: reload the grid when tasks/templates/default-tasks change elsewhere
+        // (e.g. a task created in the Requests tab). static lambda + recipient arg keeps the weak ref.
+        _messenger.Register<TimesheetViewModel, DataChangedMessage>(this, static (r, m) =>
+        {
+            if (m.Kind is DataKind.Tasks or DataKind.Templates or DataKind.DefaultTasks or DataKind.Requests)
+                _ = r.ReloadAsync();
+        });
 
         CurrentWeek = MondayOf(_clock.Today);
     }
@@ -134,6 +146,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
             foreach (DayColumn col in Enum.GetValues<DayColumn>())
                 await SaveCellAsync(row, col);
         await ReloadAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Logs)); // live-sync: Reports refresh
     }
 
     private bool CanSave() => !AnyDayOverEight();

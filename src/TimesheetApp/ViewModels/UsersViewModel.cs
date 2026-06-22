@@ -3,14 +3,21 @@ namespace TimesheetApp.ViewModels;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
+using TimesheetApp.Services;
 
 public sealed partial class UsersViewModel : ObservableObject
 {
     private readonly IUserRepository _users;
+    private readonly IMessenger _messenger;
 
-    public UsersViewModel(IUserRepository users) => _users = users;
+    public UsersViewModel(IUserRepository users, IMessenger? messenger = null)
+    {
+        _users = users;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
+    }
 
     public ObservableCollection<User> Users { get; } = new();
 
@@ -32,6 +39,7 @@ public sealed partial class UsersViewModel : ObservableObject
         await _users.InsertAsync(new User(0, name, null, true)); // active (USR-02)
         NewUserName = string.Empty;
         await LoadAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Users)); // live-sync: Reports refresh
     }
 
     [RelayCommand]
@@ -39,5 +47,6 @@ public sealed partial class UsersViewModel : ObservableObject
     {
         await _users.SetActiveAsync(userId, false);  // soft-delete, TimeLogs preserved (USR-03)
         await LoadAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Users)); // live-sync: Reports refresh
     }
 }
