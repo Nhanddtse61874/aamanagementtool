@@ -48,6 +48,21 @@ invented columns Role/Email/Status/Last-used; kept derivable Tasks-count/avatar/
 - **181 tests still green, build clean.** Verified by screenshotting all 5 destinations (app launches as "Worklog").
 - Old-UI reference shots preserved in `E:\Learning\AAM\Design Old\01_tab_*.png` (current design = the new one).
 
+## Ticket lifecycle v2 — DONE (2026-06-23, schema v2)
+Requests gained **start_date / end_date / period_month ("yyyy-MM") / status** + a **RequestAudit**
+change-history table (migration v2, gated on user_version). Status set = Continue / Implement /
+Investigate / IT / Estimate (`RequestStatus.All`).
+- **Phase A** (`b5a6e05`): Request entity + repo CRUD for the new cols; `UpdateAsync` diffs the four
+  audited fields and writes RequestAudit rows with the current user (`GetAuditAsync` reads history).
+  Requests editor got Tháng(period)/Status/Start/End inputs + a "Lịch sử thay đổi" list; grid shows
+  Month/Status columns. New tickets default to the current month.
+- **Phase B** (`08618eb`): Entry **user filter** ("Cả team" read-only aggregate via
+  `TimeLogService.GetWeekGroupedAllUsersAsync` + per-user editable), **month filter** (only tickets of
+  the picked month; null/DEFAULT always shown), and per-group **"Move ▶"** (bumps period_month to next
+  month, audited). `TimesheetViewModel` gained optional `IUserRepository/IRequestRepository/ICurrentUserService`.
+- 182 tests (added a RequestRepository audit round-trip integration test); migration verified on the real DB.
+- Repo is on GitHub: **Nhanddtse61874/aamanagementtool** (private). Local perms in `.claude/settings.local.json` (gitignored).
+
 ## Remaining UX backlog (user feedback — NOT yet done)
 - **Auto-save cells** (remove the Save-button friction; persist on cell commit + surface validation/revert).
 - **Week DatePicker** to jump to any week (currently Prev/Next only).
