@@ -121,8 +121,12 @@ public sealed partial class MainViewModel : ObservableObject
             case 1: await SafeLoad(() => Requests.LoadAsync()); break;
             case 2: await SafeLoad(() => Users.LoadAsync()); break;
             case 3:
+                // Default Reports view = whole team, current month (+ week for the stat cards/weekly grid).
+                // LoadUsers resets SelectedTarget to "Cả team"; the month/week default to "today" (VM ctor).
                 await SafeLoad(() => Reports.LoadUsersAsync());
                 await SafeLoad(() => Reports.LoadBannerAsync());
+                await SafeLoad(() => Reports.LoadMonthlyCommand.ExecuteAsync(null));
+                await SafeLoad(() => Reports.LoadWeeklyCommand.ExecuteAsync(null));
                 break;
             case 4: await SafeLoad(() => Settings.LoadAsync()); break;
         }

@@ -47,6 +47,11 @@ public readonly record struct CurrentUserResult(CurrentUserOutcome Outcome, User
 // RPT-01: one row per weekday in the selected week.
 public sealed record WeeklyDayTotal(DateOnly Date, decimal TotalHours);
 
+// RPT-01 detail: one row per (date, request, task) in the selected week — shows which ticket/task
+// the hours went to, not just the day total.
+public sealed record WeeklyDetailRow(
+    DateOnly Date, string RequestCode, string Project, string TaskName, decimal TotalHours);
+
 // RPT-02: one row per (request, task) in the selected month.
 public sealed record MonthlyRequestTaskTotal(
     string RequestCode, string Project, string TaskName, decimal TotalHours);

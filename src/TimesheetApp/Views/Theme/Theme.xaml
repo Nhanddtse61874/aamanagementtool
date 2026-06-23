@@ -445,4 +445,18 @@
     <Setter Property="Margin" Value="0"/>
   </Style>
 
+  <!-- Compact toolbar buttons (Timesheet Entry week-nav bar) — smaller than the default action button -->
+  <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Setter Property="Padding" Value="11,5"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Margin" Value="0,0,6,0"/>
+    <Setter Property="MinWidth" Value="64"/>
+  </Style>
+
+  <Style x:Key="ToolbarGhostButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+    <Setter Property="Padding" Value="11,5"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Margin" Value="0,0,6,0"/>
+  </Style>
+
 </ResourceDictionary>

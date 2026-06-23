@@ -87,13 +87,15 @@
 
       <!-- Left column: RPT-01 weekly grid + RPT-02 monthly grid -->
       <DockPanel Grid.Column="0" Margin="0,0,8,0">
-        <TextBlock DockPanel.Dock="Top" Text="Weekly (by day)" FontWeight="Bold"/>
-        <!-- RPT-01: one row per weekday with summed hours -->
-        <DataGrid DockPanel.Dock="Top" Height="160" ItemsSource="{Binding WeeklyRows}"
+        <TextBlock DockPanel.Dock="Top" Text="Weekly (by day · ticket · task)" FontWeight="Bold"/>
+        <!-- RPT-01: one row per (date, ticket, task) with summed hours -->
+        <DataGrid DockPanel.Dock="Top" Height="200" ItemsSource="{Binding WeeklyDetailRows}"
                   AutoGenerateColumns="False" IsReadOnly="True">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=ddd dd/MM}"/>
-            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}"/>
+            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=ddd dd/MM}" Width="Auto"/>
+            <DataGridTextColumn Header="Ticket" Binding="{Binding RequestCode}" Width="*"/>
+            <DataGridTextColumn Header="Task" Binding="{Binding TaskName}" Width="*"/>
+            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}" Width="Auto"/>
           </DataGrid.Columns>
         </DataGrid>
         <TextBlock DockPanel.Dock="Top" Text="Monthly (by request / task)" FontWeight="Bold" Margin="0,8,0,0"/>

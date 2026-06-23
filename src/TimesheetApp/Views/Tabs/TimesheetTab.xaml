@@ -26,23 +26,22 @@
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,8,8,4">
       <Button Content="&#9664; Prev"
               Command="{Binding PreviousWeekCommand}"
-              Width="80"/>
+              Style="{StaticResource ToolbarGhostButton}"/>
       <TextBlock Text="{Binding CurrentWeek, StringFormat='Week of {0:dd/MM/yyyy}'}"
-                 VerticalAlignment="Center" Margin="12,0" FontWeight="Bold"/>
+                 VerticalAlignment="Center" Margin="8,0" FontWeight="Bold"/>
       <Button Content="Next &#9654;"
               Command="{Binding NextWeekCommand}"
-              Width="80"/>
+              Style="{StaticResource ToolbarGhostButton}"/>
       <Button Content="Save"
               Command="{Binding SaveCommand}"
-              Width="80" Margin="24,0,0,0"/>
+              Style="{StaticResource ToolbarButton}" Margin="16,0,6,0"/>
       <Button Content="&#9889; Smart fill"
               Click="OnSmartFill"
-              Style="{StaticResource GhostButton}"
-              Width="110" Margin="8,0,0,0"
+              Style="{StaticResource ToolbarGhostButton}"
               ToolTip="Điền giờ tự động cho 1 task trong khoảng ngày (chia đều / full 8h)"/>
 
       <!-- Week total chip -->
-      <Border Background="{StaticResource HeaderBg}" CornerRadius="7" Padding="12,4" Margin="24,0,0,0">
+      <Border Background="{StaticResource HeaderBg}" CornerRadius="7" Padding="12,4" Margin="16,0,0,0">
         <StackPanel>
           <TextBlock Text="WEEK TOTAL" FontSize="10" FontWeight="Bold"
                      Foreground="{StaticResource TableHeaderText}" HorizontalAlignment="Right"/>
@@ -196,8 +195,8 @@
                            ToolTip="Tên task mới cho request này"/>
                   <Button Content="&#10133; Add task"
                           Command="{Binding AddTaskCommand}"
-                          Margin="8,0,0,0"
-                          Padding="10,2"/>
+                          Style="{StaticResource ToolbarGhostButton}"
+                          Margin="8,0,0,0"/>
                 </StackPanel>
               </StackPanel>
             </Expander>

@@ -70,6 +70,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     [ObservableProperty] private DateOnly _selectedMonth; // first of month
 
     public ObservableCollection<WeeklyDayTotal> WeeklyRows { get; } = new();
+    public ObservableCollection<WeeklyDetailRow> WeeklyDetailRows { get; } = new();
     public ObservableCollection<MonthlyRequestTaskTotal> MonthlyRows { get; } = new();
     public ObservableCollection<ProjectNode> ProjectTree { get; } = new();
     public ObservableCollection<MissingLogWarning> MissingBanner { get; } = new();
@@ -128,6 +129,8 @@ public sealed partial class ReportsViewModel : ObservableObject
         var rows = await GetRowsForTargetAsync(monday, friday);
         WeeklyRows.Clear();
         foreach (var r in _aggregator.WeeklyDayTotals(rows)) WeeklyRows.Add(r);
+        WeeklyDetailRows.Clear();
+        foreach (var r in _aggregator.WeeklyDetailRows(rows)) WeeklyDetailRows.Add(r);
         RecomputeWeeklyStats();
     }
 
