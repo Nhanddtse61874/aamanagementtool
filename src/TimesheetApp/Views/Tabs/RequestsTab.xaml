@@ -23,8 +23,10 @@
                   IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Code" Binding="{Binding RequestCode}" Width="1.6*"/>
-                <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="1.4*"/>
-                <DataGridTextColumn Header="Tasks" Binding="{Binding TaskCount}" Width="80"/>
+                <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="1.2*"/>
+                <DataGridTextColumn Header="Month" Binding="{Binding PeriodMonth}" Width="80"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="110"/>
+                <DataGridTextColumn Header="Tasks" Binding="{Binding TaskCount}" Width="70"/>
                 <DataGridTemplateColumn Header="" Width="90">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
@@ -58,6 +60,40 @@
                         <TextBlock Text="Project:"/>
                         <TextBox Text="{Binding Project, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,2,0,6"/>
+
+                        <!-- v2: ticket month + status -->
+                        <Grid Margin="0,2,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Tháng (period):"/>
+                                <DatePicker SelectedDate="{Binding PeriodMonthDate, Converter={StaticResource DateOnly}}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Status:"/>
+                                <ComboBox ItemsSource="{Binding Statuses}" SelectedItem="{Binding Status}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- v2: ticket start / end date -->
+                        <Grid Margin="0,2,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Start date:"/>
+                                <DatePicker SelectedDate="{Binding StartDate, Converter={StaticResource DateOnly}}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="End date:"/>
+                                <DatePicker SelectedDate="{Binding EndDate, Converter={StaticResource DateOnly}}"/>
+                            </StackPanel>
+                        </Grid>
 
                         <!-- REQ-02: template picker (only meaningful in create mode) -->
                         <DockPanel Margin="0,4,0,4">
@@ -124,6 +160,44 @@
                                     Command="{Binding SaveCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                         </DockPanel>
+
+                        <!-- v2: change history (start/end/month/status) — only shown when present -->
+                        <StackPanel Margin="0,14,0,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AuditEntries.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="Lịch sử thay đổi" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <ItemsControl ItemsSource="{Binding AuditEntries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
+                                                Padding="0,4">
+                                            <StackPanel>
+                                                <TextBlock FontSize="12">
+                                                    <Run Text="{Binding Field, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                    <Run Text=": "/>
+                                                    <Run Text="{Binding OldValue, Mode=OneWay, TargetNullValue='—'}"/>
+                                                    <Run Text=" → "/>
+                                                    <Run Text="{Binding NewValue, Mode=OneWay, TargetNullValue='—'}"/>
+                                                </TextBlock>
+                                                <TextBlock FontSize="11" Foreground="{StaticResource TextSecondary}">
+                                                    <Run Text="{Binding ChangedByName, Mode=OneWay, TargetNullValue='(?)'}"/>
+                                                    <Run Text=" · "/>
+                                                    <Run Text="{Binding ChangedAt, Mode=OneWay, StringFormat='dd/MM/yyyy HH:mm'}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

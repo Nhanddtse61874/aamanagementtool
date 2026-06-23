@@ -10,6 +10,9 @@ public interface IRequestRepository
     Task<Request?> GetByIdAsync(int id);
     Task<Request?> GetByCodeAsync(string requestCode);             // find hidden 'DEFAULT' (DATA-03)
     Task<int> InsertAsync(Request request);                        // REQ-02
-    Task UpdateAsync(Request request);                             // edit name/project (REQ-03)
+    // Edit name/project + v2 start/end/month/status. changedBy is recorded in RequestAudit when the
+    // four audited fields change (optional so existing callers/tests keep compiling).
+    Task UpdateAsync(Request request, int? changedByUserId = null, string? changedByName = null);
+    Task<IReadOnlyList<RequestAuditEntry>> GetAuditAsync(int requestId);   // v2 change history
     // No SetActiveAsync — Requests are NOT soft-deletable in v1 (REQ-04, decision 4).
 }

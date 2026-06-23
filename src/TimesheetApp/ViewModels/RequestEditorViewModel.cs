@@ -23,6 +23,19 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty] private string _project = string.Empty;
     [ObservableProperty] private string? _selectedTemplateName;
 
+    // v2 ticket fields. PeriodMonthDate is a first-of-month DateOnly?; PeriodMonth projects it to "yyyy-MM".
+    [ObservableProperty] private DateOnly? _startDate;
+    [ObservableProperty] private DateOnly? _endDate;
+    [ObservableProperty] private DateOnly? _periodMonthDate;
+    [ObservableProperty] private string? _status;
+
+    public string? PeriodMonth => PeriodMonthDate?.ToString("yyyy-MM");
+
+    public IReadOnlyList<string> Statuses { get; } = RequestStatus.All;
+
+    // v2 change history for this request (read-only; populated in ForEdit).
+    public ObservableCollection<RequestAuditEntry> AuditEntries { get; } = new();
+
     public ObservableCollection<TaskTemplate> Templates { get; }
     public IReadOnlyList<string> TemplateNames { get; }
     public ObservableCollection<EditableTaskRowVm> Tasks { get; } = new();
@@ -39,10 +52,17 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     }
 
     public static RequestEditorViewModel ForCreate(IReadOnlyList<TaskTemplate> templates) =>
-        new(templates) { IsEditMode = false, EditingRequestId = 0 };
+        // New tickets default to the current month ("mỗi ticket phải được add vào một tháng cố định").
+        new(templates)
+        {
+            IsEditMode = false,
+            EditingRequestId = 0,
+            PeriodMonthDate = FirstOfThisMonth(),
+        };
 
     public static RequestEditorViewModel ForEdit(
-        Request request, IReadOnlyList<TaskItem> existingTasks, IReadOnlyList<TaskTemplate> templates)
+        Request request, IReadOnlyList<TaskItem> existingTasks, IReadOnlyList<TaskTemplate> templates,
+        IReadOnlyList<RequestAuditEntry>? audit = null)
     {
         var vm = new RequestEditorViewModel(templates)
         {
@@ -50,11 +70,28 @@ public sealed partial class RequestEditorViewModel : ObservableObject
             EditingRequestId = request.Id,
             RequestCode = request.RequestCode,
             Project = request.Project,
+            StartDate = request.StartDate,
+            EndDate = request.EndDate,
+            PeriodMonthDate = ParsePeriodMonth(request.PeriodMonth),
+            Status = request.Status,
         };
         foreach (var t in existingTasks.OrderBy(t => t.OrderIndex))
             vm.Tasks.Add(EditableTaskRowVm.Existing(t.Id, t.TaskName, t.OrderIndex));
+        if (audit is not null)
+            foreach (var a in audit) vm.AuditEntries.Add(a);
         return vm;
     }
+
+    private static DateOnly FirstOfThisMonth()
+    {
+        var t = DateTime.Today;
+        return new DateOnly(t.Year, t.Month, 1);
+    }
+
+    private static DateOnly? ParsePeriodMonth(string? yyyymm) =>
+        DateOnly.TryParseExact(yyyymm + "-01", "yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var d) ? d : null;
 
     private int NextOrderIndex() => Tasks.Count == 0 ? 0 : Tasks.Max(t => t.OrderIndex) + 1;
 

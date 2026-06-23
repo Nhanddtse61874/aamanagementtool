@@ -110,7 +110,8 @@ public sealed class RequestsViewModelTests
         await vm.SaveEditAsync();
 
         _requests.Verify(r => r.UpdateAsync(
-            It.Is<Request>(x => x.Id == 5 && x.Project == "New")), Times.Once);
+            It.Is<Request>(x => x.Id == 5 && x.Project == "New"),
+            It.IsAny<int?>(), It.IsAny<string?>()), Times.Once);
         _tasks.Verify(t => t.InsertAsync(
             It.Is<TaskItem>(x => x.RequestId == 5 && x.TaskName == "Added")), Times.Once);
         // existing task NOT re-inserted

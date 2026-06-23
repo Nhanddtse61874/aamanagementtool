@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 1;
+    private const long SchemaVersion = 2;
 
     private readonly IConnectionFactory _factory;
 
@@ -89,6 +89,18 @@ CREATE TABLE IF NOT EXISTS DefaultTasks (
 CREATE TABLE IF NOT EXISTS Settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS RequestAudit (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id          INTEGER NOT NULL,
+    field               TEXT    NOT NULL,
+    old_value           TEXT,
+    new_value           TEXT,
+    changed_by_user_id  INTEGER,
+    changed_by_name     TEXT,
+    changed_at          TEXT    NOT NULL,
+    FOREIGN KEY (request_id) REFERENCES Requests(id)
 );";
         conn.Execute(ddl, transaction: tx);
     }
@@ -102,6 +114,14 @@ CREATE TABLE IF NOT EXISTS Settings (
         {
             // v1 -> baseline schema already created above; nothing extra to alter.
             static (_, _) => { },
+            // v2 -> Requests gains start_date / end_date / period_month / status (RequestAudit table
+            // is created idempotently in CreateTables). ADD COLUMN is not idempotent, so this step is
+            // gated on user_version and runs exactly once.
+            static (c, t) => c.Execute(
+                @"ALTER TABLE Requests ADD COLUMN start_date   TEXT;
+                  ALTER TABLE Requests ADD COLUMN end_date     TEXT;
+                  ALTER TABLE Requests ADD COLUMN period_month TEXT;
+                  ALTER TABLE Requests ADD COLUMN status       TEXT;", transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);

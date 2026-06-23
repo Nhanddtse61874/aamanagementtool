@@ -14,20 +14,22 @@ public sealed partial class RequestsViewModel : ObservableObject
     private readonly ITaskRepository _tasks;
     private readonly ITaskTemplateRepository _templates;
     private readonly IMessenger _messenger;
+    private readonly ICurrentUserService? _currentUser;
 
     public RequestsViewModel(
         IRequestRepository requests, ITaskRepository tasks, ITaskTemplateRepository templates,
-        IMessenger? messenger = null)
+        IMessenger? messenger = null, ICurrentUserService? currentUser = null)
     {
         _requests = requests;
         _tasks = tasks;
         _templates = templates;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
+        _currentUser = currentUser;
     }
 
-    // List row = the Request plus its active-task count (REQ-01 list shows "Tasks" column).
-    // Kept as a lightweight projection so the grid can show the count without a per-row query in XAML.
-    public sealed record RequestListItem(int Id, string RequestCode, string Project, int TaskCount);
+    // List row = the Request plus its active-task count + v2 period/status (shown as grid columns).
+    public sealed record RequestListItem(
+        int Id, string RequestCode, string Project, int TaskCount, string? PeriodMonth, string? Status);
 
     public ObservableCollection<RequestListItem> Requests { get; } = new();
 
@@ -49,7 +51,8 @@ public sealed partial class RequestsViewModel : ObservableObject
         foreach (var r in rows)
         {
             var tasks = await _tasks.GetActiveByRequestAsync(r.Id);
-            Requests.Add(new RequestListItem(r.Id, r.RequestCode, r.Project, tasks?.Count ?? 0));
+            Requests.Add(new RequestListItem(
+                r.Id, r.RequestCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Status));
         }
     }
 
@@ -67,7 +70,8 @@ public sealed partial class RequestsViewModel : ObservableObject
         if (request is null) return;
         var existing = await _tasks.GetActiveByRequestAsync(requestId);
         var templates = await _templates.GetAllAsync();
-        Editor = RequestEditorViewModel.ForEdit(request, existing, templates);
+        var audit = await _requests.GetAuditAsync(requestId);
+        Editor = RequestEditorViewModel.ForEdit(request, existing, templates, audit);
     }
 
     [RelayCommand]
@@ -75,7 +79,8 @@ public sealed partial class RequestsViewModel : ObservableObject
     {
         if (Editor is null) return;
         var newId = await _requests.InsertAsync(
-            new Request(0, Editor.RequestCode.Trim(), Editor.Project.Trim(), DateTimeOffset.UtcNow));
+            new Request(0, Editor.RequestCode.Trim(), Editor.Project.Trim(), DateTimeOffset.UtcNow,
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status));
 
         foreach (var row in Editor.ActiveTasks)
             await _tasks.InsertAsync(new TaskItem(0, newId, row.TaskName.Trim(), row.OrderIndex, true));
@@ -92,7 +97,9 @@ public sealed partial class RequestsViewModel : ObservableObject
         var id = Editor.EditingRequestId;
 
         await _requests.UpdateAsync(
-            new Request(id, Editor.RequestCode.Trim(), Editor.Project.Trim(), DateTimeOffset.UtcNow));
+            new Request(id, Editor.RequestCode.Trim(), Editor.Project.Trim(), DateTimeOffset.UtcNow,
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status),
+            _currentUser?.Current?.Id, _currentUser?.Current?.Name);
 
         // Soft-delete existing tasks flagged removed (REQ-04 — task only, never the request).
         foreach (var removed in Editor.Tasks.Where(t => t.IsRemoved && t.ExistingTaskId > 0))
