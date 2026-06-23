@@ -19,6 +19,13 @@ public static class RequestStatus
         new[] { "Continue", "Implement", "Investigate", "IT", "Estimate" };
 }
 
+// Allowed projects (v2) — a fixed enum-like set chosen from a dropdown.
+public static class RequestProjects
+{
+    public static readonly IReadOnlyList<string> All =
+        new[] { "ARCS", "PlusArcs", "ARMS", "Other" };
+}
+
 // One audit-history row for a Request field change (v2): who changed what, old -> new, when.
 public sealed record RequestAuditEntry(
     int Id, int RequestId, string Field, string? OldValue, string? NewValue,

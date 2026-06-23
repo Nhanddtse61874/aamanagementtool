@@ -58,21 +58,29 @@
                                  Margin="0,2,0,6"/>
 
                         <TextBlock Text="Project:"/>
-                        <TextBox Text="{Binding Project, UpdateSourceTrigger=PropertyChanged}"
-                                 Margin="0,2,0,6"/>
+                        <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding Project}"
+                                  Margin="0,2,0,6"/>
 
-                        <!-- v2: ticket month + status -->
+                        <!-- v2: ticket month (required: month + year) + status -->
                         <Grid Margin="0,2,0,6">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="12"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="Tháng (period):"/>
-                                <DatePicker SelectedDate="{Binding PeriodMonthDate, Converter={StaticResource DateOnly}}"/>
+                                <TextBlock Text="Tháng *:"/>
+                                <ComboBox Width="64" ItemsSource="{Binding Months}"
+                                          SelectedItem="{Binding PeriodMonthNumber}"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
+                                <TextBlock Text="Năm *:"/>
+                                <ComboBox Width="80" ItemsSource="{Binding Years}"
+                                          SelectedItem="{Binding PeriodYear}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
                                 <TextBlock Text="Status:"/>
                                 <ComboBox ItemsSource="{Binding Statuses}" SelectedItem="{Binding Status}"/>
                             </StackPanel>

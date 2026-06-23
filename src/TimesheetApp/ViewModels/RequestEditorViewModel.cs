@@ -23,15 +23,21 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty] private string _project = string.Empty;
     [ObservableProperty] private string? _selectedTemplateName;
 
-    // v2 ticket fields. PeriodMonthDate is a first-of-month DateOnly?; PeriodMonth projects it to "yyyy-MM".
+    // v2 ticket fields. Period is a REQUIRED month: month-number (1-12) + year combos -> "yyyy-MM".
     [ObservableProperty] private DateOnly? _startDate;
     [ObservableProperty] private DateOnly? _endDate;
-    [ObservableProperty] private DateOnly? _periodMonthDate;
+    [ObservableProperty] private int _periodMonthNumber = DateTime.Today.Month;
+    [ObservableProperty] private int _periodYear = DateTime.Today.Year;
     [ObservableProperty] private string? _status;
 
-    public string? PeriodMonth => PeriodMonthDate?.ToString("yyyy-MM");
+    // Always set (month is required) — projected to the persisted "yyyy-MM".
+    public string PeriodMonth => $"{PeriodYear:D4}-{PeriodMonthNumber:D2}";
 
     public IReadOnlyList<string> Statuses { get; } = RequestStatus.All;
+    public IReadOnlyList<string> Projects { get; } = RequestProjects.All;
+    public IReadOnlyList<int> Months { get; } = Enumerable.Range(1, 12).ToList();
+    public IReadOnlyList<int> Years { get; } =
+        Enumerable.Range(DateTime.Today.Year - 2, 6).ToList(); // current-2 .. current+3
 
     // v2 change history for this request (read-only; populated in ForEdit).
     public ObservableCollection<RequestAuditEntry> AuditEntries { get; } = new();
@@ -52,18 +58,14 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     }
 
     public static RequestEditorViewModel ForCreate(IReadOnlyList<TaskTemplate> templates) =>
-        // New tickets default to the current month ("mỗi ticket phải được add vào một tháng cố định").
-        new(templates)
-        {
-            IsEditMode = false,
-            EditingRequestId = 0,
-            PeriodMonthDate = FirstOfThisMonth(),
-        };
+        // New tickets default to the current month (month/year fields default to today).
+        new(templates) { IsEditMode = false, EditingRequestId = 0 };
 
     public static RequestEditorViewModel ForEdit(
         Request request, IReadOnlyList<TaskItem> existingTasks, IReadOnlyList<TaskTemplate> templates,
         IReadOnlyList<RequestAuditEntry>? audit = null)
     {
+        var (month, year) = ParsePeriodMonth(request.PeriodMonth);
         var vm = new RequestEditorViewModel(templates)
         {
             IsEditMode = true,
@@ -72,7 +74,8 @@ public sealed partial class RequestEditorViewModel : ObservableObject
             Project = request.Project,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
-            PeriodMonthDate = ParsePeriodMonth(request.PeriodMonth),
+            PeriodMonthNumber = month,
+            PeriodYear = year,
             Status = request.Status,
         };
         foreach (var t in existingTasks.OrderBy(t => t.OrderIndex))
@@ -82,16 +85,15 @@ public sealed partial class RequestEditorViewModel : ObservableObject
         return vm;
     }
 
-    private static DateOnly FirstOfThisMonth()
+    // "yyyy-MM" -> (month, year); falls back to the current month when missing/unparseable.
+    private static (int Month, int Year) ParsePeriodMonth(string? yyyymm)
     {
-        var t = DateTime.Today;
-        return new DateOnly(t.Year, t.Month, 1);
+        if (DateOnly.TryParseExact(yyyymm + "-01", "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var d))
+            return (d.Month, d.Year);
+        return (DateTime.Today.Month, DateTime.Today.Year);
     }
-
-    private static DateOnly? ParsePeriodMonth(string? yyyymm) =>
-        DateOnly.TryParseExact(yyyymm + "-01", "yyyy-MM-dd",
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out var d) ? d : null;
 
     private int NextOrderIndex() => Tasks.Count == 0 ? 0 : Tasks.Max(t => t.OrderIndex) + 1;
 
