@@ -16,6 +16,17 @@
       </Style.Triggers>
     </Style>
 
+    <!-- Day cells are centred so the value sits in the middle of each star column — this keeps the
+         columns visually aligned with the (also-centred) header strip + footer at ANY window size,
+         independent of cell padding or the scrollbar gutter. -->
+    <Style x:Key="DayCell" TargetType="TextBlock">
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="DayEdit" TargetType="TextBox">
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+
     <!-- Shared day-cell binding template columns are declared per-DataGrid below; the per-group
          DataGrids all use the same Mon..Fri bindings (LostFocus + ValidatesOnNotifyDataErrors). -->
   </UserControl.Resources>
@@ -68,70 +79,72 @@
       </Border>
     </StackPanel>
 
-    <!-- Per-column footer totals strip across ALL groups (TS-05, TS-06) -->
-    <Grid DockPanel.Dock="Bottom" Margin="8,4,8,8">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="2*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-      </Grid.ColumnDefinitions>
+    <!-- Per-column footer totals strip across ALL groups (TS-05, TS-06).
+         Right margin = scrollbar gutter (~17) + 8 so the columns line up with the scrollable data. -->
+    <Border DockPanel.Dock="Bottom" Margin="8,2,25,8" Background="{StaticResource TableHeaderBg}"
+            BorderBrush="{StaticResource BorderStrong}" BorderThickness="1">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="2*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="Day totals" FontWeight="Bold" VerticalAlignment="Center" Margin="10,6"/>
+        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+          <TextBlock Text="{Binding MonTotal, StringFormat=N1}" Tag="{Binding MonTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
+        </Border>
+        <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+          <TextBlock Text="{Binding TueTotal, StringFormat=N1}" Tag="{Binding TueTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
+        </Border>
+        <Border Grid.Column="3" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+          <TextBlock Text="{Binding WedTotal, StringFormat=N1}" Tag="{Binding WedTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
+        </Border>
+        <Border Grid.Column="4" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+          <TextBlock Text="{Binding ThuTotal, StringFormat=N1}" Tag="{Binding ThuTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
+        </Border>
+        <Border Grid.Column="5" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+          <TextBlock Text="{Binding FriTotal, StringFormat=N1}" Tag="{Binding FriTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
+        </Border>
+        <Border Grid.Column="6" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"/>
+      </Grid>
+    </Border>
 
-      <TextBlock Grid.Column="0" Text="Day totals" FontWeight="Bold" VerticalAlignment="Center"/>
+    <!-- Column-header strip so the per-group DataGrids (headers hidden) stay aligned (Excel-like cells). -->
+    <Border DockPanel.Dock="Top" Margin="8,4,25,0" Background="{StaticResource TableHeaderBg}"
+            BorderBrush="{StaticResource BorderStrong}" BorderThickness="1,1,1,0">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="2*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="Task" FontWeight="Bold" Margin="10,7"/>
+        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+          <TextBlock Text="{Binding MonHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
+        <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+          <TextBlock Text="{Binding TueHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
+        <Border Grid.Column="3" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+          <TextBlock Text="{Binding WedHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
+        <Border Grid.Column="4" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+          <TextBlock Text="{Binding ThuHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
+        <Border Grid.Column="5" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+          <TextBlock Text="{Binding FriHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
+        <Border Grid.Column="6" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+          <TextBlock Text="Total" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
+      </Grid>
+    </Border>
 
-      <TextBlock Grid.Column="1"
-                 Text="{Binding MonTotal, StringFormat=N1}"
-                 Tag="{Binding MonTotal, Converter={StaticResource OverEightTag}}"
-                 Style="{StaticResource TotalTextBlock}"/>
-
-      <TextBlock Grid.Column="2"
-                 Text="{Binding TueTotal, StringFormat=N1}"
-                 Tag="{Binding TueTotal, Converter={StaticResource OverEightTag}}"
-                 Style="{StaticResource TotalTextBlock}"/>
-
-      <TextBlock Grid.Column="3"
-                 Text="{Binding WedTotal, StringFormat=N1}"
-                 Tag="{Binding WedTotal, Converter={StaticResource OverEightTag}}"
-                 Style="{StaticResource TotalTextBlock}"/>
-
-      <TextBlock Grid.Column="4"
-                 Text="{Binding ThuTotal, StringFormat=N1}"
-                 Tag="{Binding ThuTotal, Converter={StaticResource OverEightTag}}"
-                 Style="{StaticResource TotalTextBlock}"/>
-
-      <TextBlock Grid.Column="5"
-                 Text="{Binding FriTotal, StringFormat=N1}"
-                 Tag="{Binding FriTotal, Converter={StaticResource OverEightTag}}"
-                 Style="{StaticResource TotalTextBlock}"/>
-
-      <TextBlock Grid.Column="6"/>
-    </Grid>
-
-    <!-- Column-header strip so the per-group DataGrids (headers hidden) stay aligned -->
-    <Grid DockPanel.Dock="Top" Margin="8,4,8,2">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="2*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="*"/>
-      </Grid.ColumnDefinitions>
-      <TextBlock Grid.Column="0" Text="Task" FontWeight="Bold"/>
-      <TextBlock Grid.Column="1" Text="{Binding MonHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
-      <TextBlock Grid.Column="2" Text="{Binding TueHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
-      <TextBlock Grid.Column="3" Text="{Binding WedHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
-      <TextBlock Grid.Column="4" Text="{Binding ThuHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
-      <TextBlock Grid.Column="5" Text="{Binding FriHeader}" FontWeight="Bold" HorizontalAlignment="Center"/>
-      <TextBlock Grid.Column="6" Text="Total" FontWeight="Bold" HorizontalAlignment="Center"/>
-    </Grid>
-
-    <!-- Grouped-by-request body: one collapsible Expander per request (incl. empty ones) -->
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="8,0">
+    <!-- Grouped-by-request body. Scrollbar is ALWAYS reserved (Visible) so the data columns line up
+         with the header strip + footer (which reserve a matching 25px right gutter) at any size. -->
+    <ScrollViewer VerticalScrollBarVisibility="Visible" Margin="8,0">
       <ItemsControl ItemsSource="{Binding Groups}">
         <ItemsControl.ItemTemplate>
           <DataTemplate>
@@ -165,14 +178,19 @@
                 </StackPanel>
               </Expander.Header>
 
-              <StackPanel Margin="16,2,0,8">
-                <!-- Editable task rows for this request (headers hidden; the strip above labels them) -->
+              <StackPanel Margin="0,0,0,8">
+                <!-- Editable task rows (headers hidden; the strip above labels them). GridLinesVisibility=All
+                     + a visible vertical gridline brush make the day columns read as Excel-like cells. -->
                 <DataGrid ItemsSource="{Binding Tasks}"
                           AutoGenerateColumns="False"
                           CanUserAddRows="False"
                           CanUserDeleteRows="False"
                           HeadersVisibility="None"
                           SelectionUnit="Cell"
+                          BorderThickness="1,0,1,1"
+                          BorderBrush="{StaticResource Border}"
+                          GridLinesVisibility="All"
+                          VerticalGridLinesBrush="{StaticResource Border}"
                           IsReadOnly="{Binding DataContext.IsReadOnly,
                                        RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                   <DataGrid.Columns>
@@ -182,6 +200,7 @@
                                         Width="2*"/>
 
                     <DataGridTextColumn Width="*"
+                        ElementStyle="{StaticResource DayCell}" EditingElementStyle="{StaticResource DayEdit}"
                         Binding="{Binding Mon,
                                   UpdateSourceTrigger=LostFocus,
                                   TargetNullValue='',
@@ -189,6 +208,7 @@
                                   NotifyOnValidationError=True}"/>
 
                     <DataGridTextColumn Width="*"
+                        ElementStyle="{StaticResource DayCell}" EditingElementStyle="{StaticResource DayEdit}"
                         Binding="{Binding Tue,
                                   UpdateSourceTrigger=LostFocus,
                                   TargetNullValue='',
@@ -196,6 +216,7 @@
                                   NotifyOnValidationError=True}"/>
 
                     <DataGridTextColumn Width="*"
+                        ElementStyle="{StaticResource DayCell}" EditingElementStyle="{StaticResource DayEdit}"
                         Binding="{Binding Wed,
                                   UpdateSourceTrigger=LostFocus,
                                   TargetNullValue='',
@@ -203,6 +224,7 @@
                                   NotifyOnValidationError=True}"/>
 
                     <DataGridTextColumn Width="*"
+                        ElementStyle="{StaticResource DayCell}" EditingElementStyle="{StaticResource DayEdit}"
                         Binding="{Binding Thu,
                                   UpdateSourceTrigger=LostFocus,
                                   TargetNullValue='',
@@ -210,6 +232,7 @@
                                   NotifyOnValidationError=True}"/>
 
                     <DataGridTextColumn Width="*"
+                        ElementStyle="{StaticResource DayCell}" EditingElementStyle="{StaticResource DayEdit}"
                         Binding="{Binding Fri,
                                   UpdateSourceTrigger=LostFocus,
                                   TargetNullValue='',
@@ -219,6 +242,7 @@
                     <DataGridTextColumn Header="Total"
                                         Binding="{Binding RowTotal, StringFormat=N1}"
                                         IsReadOnly="True"
+                                        ElementStyle="{StaticResource DayCell}"
                                         Width="*"/>
                   </DataGrid.Columns>
                 </DataGrid>
@@ -227,13 +251,13 @@
                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
                             IsEnabled="{Binding DataContext.CanEdit,
                                         RelativeSource={RelativeSource AncestorType=ItemsControl}}">
-                  <TextBox Width="220"
+                  <TextBox Width="200" Padding="8,3"
                            Text="{Binding NewTaskName, UpdateSourceTrigger=PropertyChanged}"
                            VerticalContentAlignment="Center"
                            ToolTip="New task name for this request"/>
                   <Button Content="&#10133; Add task"
                           Command="{Binding AddTaskCommand}"
-                          Style="{StaticResource ToolbarGhostButton}"
+                          Style="{StaticResource MiniGhostButton}"
                           Margin="8,0,0,0"/>
                 </StackPanel>
               </StackPanel>
