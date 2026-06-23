@@ -15,20 +15,65 @@
             <TextBox Text="{Binding NewUserName, UpdateSourceTrigger=PropertyChanged}"/>
         </DockPanel>
 
-        <!-- USR-01: user list with Active/Inactive status indicator -->
+        <!-- USR-01: user list with avatar + Active/Inactive badge -->
         <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" AutoGenerateColumns="False"
                   IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
-                <DataGridTextColumn Header="Status"
-                                    Binding="{Binding IsActive,
-                                              Converter={StaticResource ActiveStatusConverter}}"
-                                    Width="Auto"/>
-                <DataGridTemplateColumn Header="">
+                <DataGridTemplateColumn Header="Name" Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Background="{StaticResource Accent}" CornerRadius="12"
+                                        Width="24" Height="24" Margin="0,0,9,0">
+                                    <TextBlock Text="{Binding Name, Converter={StaticResource Initial}}"
+                                               Foreground="White" FontWeight="Bold" FontSize="11"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Header="Status" Width="130">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border CornerRadius="11" Padding="9,2" HorizontalAlignment="Left">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="{StaticResource BadgeGreenBg}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                <Setter Property="Background" Value="{StaticResource BadgeGrayBg}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock FontSize="12" FontWeight="SemiBold"
+                                           Text="{Binding IsActive, Converter={StaticResource ActiveStatusConverter}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                    <Setter Property="Foreground" Value="{StaticResource BadgeGrayFg}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Header="" Width="130">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <!-- USR-03: deactivate — disabled for already-inactive users -->
-                            <Button Content="Deactivate"
+                            <Button Content="Deactivate" Style="{StaticResource MiniGhostButton}"
+                                    HorizontalAlignment="Right" Margin="0,0,6,0"
                                     IsEnabled="{Binding IsActive}"
                                     Command="{Binding DataContext.DeactivateCommand,
                                               RelativeSource={RelativeSource AncestorType=DataGrid}}"

@@ -1,6 +1,6 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-22
+**Last updated:** 2026-06-23
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
@@ -28,6 +28,25 @@ App project: `src/TimesheetApp`. Tests: `src/TimesheetApp.Tests`. Branch: `main`
 8. **Template editor dialog** (`TemplateEditorViewModel`): name once + multi-task list, labeled; Edit/Delete; `ITaskTemplateRepository.DeleteByTemplateNameAsync`. All Settings inputs labeled.
 9. **Reports**: user-NAME dropdown + **"Cả team (tất cả)"** option (`ReportTarget`; team uses `GetExportRowsAsync`, single user uses `GetReportRowsAsync`).
 10. **Auto-apply template on dropdown selection** (picking a template now adds its tasks immediately; guard prevents duplicate). Root cause: user selected template but never clicked the separate Apply button → request saved empty (DB-verified).
+
+## Visual redesign — DONE (2026-06-23, "Worklog" design)
+User sent an HTML/React mockup (`E:\Learning\AAM\Design Old\Designfromclaude\`). Applied a full
+**sidebar shell** redesign (decisions: brand→"Worklog" display-only, DB path unchanged; dropped
+invented columns Role/Email/Status/Last-used; kept derivable Tasks-count/avatar/badge/stat-cards):
+- **Shell** (`MainWindow.xaml` rewrite): left sidebar (Worklog logo, WORKSPACE/ADMIN sections,
+  user chip w/ avatar+green dot), feature header per view. Nav = RadioButtons bound to
+  `MainViewModel.ActiveView` via `StringMatchConverter` (two-way) + `StringMatchToVisibilityConverter`
+  for content swap. `OnActiveViewChanged` reuses `ActivateTabAsync(0/2/4)`.
+- **Requests + Reports are now SUB-TABS of Timesheet** (Entry/Requests/Reports TabControl in MainWindow,
+  `OnSubTabChanged` maps sub-tab idx→ActivateTabAsync 0/1/3). Users + Settings are sidebar ADMIN items.
+- **Planned placeholders**: Daily Report + Task List shown as disabled nav items w/ "SOON" pill.
+- Per-tab polish: Timesheet **Week-total chip** (`TimesheetViewModel.WeekTotal`) + **group-total chip**
+  (`RequestGroupVm.GroupTotal/RefreshTotal`); Requests **Tasks-count column** (`RequestsViewModel`
+  now uses `RequestListItem` record w/ TaskCount); Users **avatar (`InitialConverter`) + Active/Inactive
+  badge**; Reports **4 stat cards** (`WeekTotalText/AvgPerDayText/DaysLoggedText` computed in LoadWeekly).
+- New theme styles in `Theme.xaml` (NavItem, SidebarSection, SoonPill, StatCard, MiniGhostButton, badge brushes).
+- **181 tests still green, build clean.** Verified by screenshotting all 5 destinations (app launches as "Worklog").
+- Old-UI reference shots preserved in `E:\Learning\AAM\Design Old\01_tab_*.png` (current design = the new one).
 
 ## Remaining UX backlog (user feedback — NOT yet done)
 - **Auto-save cells** (remove the Save-button friction; persist on cell commit + surface validation/revert).

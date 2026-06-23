@@ -11,6 +11,9 @@
       <conv:NullToCollapsedConverter x:Key="NullToCollapsedConverter"/>
       <conv:BoolToVisibilityConverter x:Key="BoolToVisibleConverter"/>
       <conv:ActiveStatusConverter x:Key="ActiveStatusConverter"/>
+      <conv:StringMatchConverter x:Key="StringMatch"/>
+      <conv:StringMatchToVisibilityConverter x:Key="StringMatchToVisibility"/>
+      <conv:InitialConverter x:Key="Initial"/>
     </ResourceDictionary>
   </Application.Resources>
 </Application>

@@ -22,13 +22,15 @@
         <DataGrid Grid.Row="1" ItemsSource="{Binding Requests}" AutoGenerateColumns="False"
                   IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Code" Binding="{Binding RequestCode}" Width="Auto"/>
-                <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="*"/>
-                <DataGridTemplateColumn Header="">
+                <DataGridTextColumn Header="Code" Binding="{Binding RequestCode}" Width="1.6*"/>
+                <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="1.4*"/>
+                <DataGridTextColumn Header="Tasks" Binding="{Binding TaskCount}" Width="80"/>
+                <DataGridTemplateColumn Header="" Width="90">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <!-- REQ-03: edit only — no Request delete affordance (REQ-04) -->
-                            <Button Content="Edit"
+                            <Button Content="Edit" Style="{StaticResource MiniGhostButton}"
+                                    HorizontalAlignment="Right" Margin="0,0,6,0"
                                     Command="{Binding DataContext.BeginEditCommand,
                                               RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                     CommandParameter="{Binding Id}"/>

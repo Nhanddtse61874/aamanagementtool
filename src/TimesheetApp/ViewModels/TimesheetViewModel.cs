@@ -59,6 +59,9 @@ public sealed partial class TimesheetViewModel : ObservableObject
     [ObservableProperty] private decimal _thuTotal;
     [ObservableProperty] private decimal _friTotal;
 
+    /// Grand total across the visible week — shown in the "Week total" header chip.
+    public decimal WeekTotal => MonTotal + TueTotal + WedTotal + ThuTotal + FriTotal;
+
     public string MonHeader => Header(0);
     public string TueHeader => Header(1);
     public string WedHeader => Header(2);
@@ -153,6 +156,8 @@ public sealed partial class TimesheetViewModel : ObservableObject
         WedTotal = rows.Sum(r => r.Wed ?? 0);
         ThuTotal = rows.Sum(r => r.Thu ?? 0);
         FriTotal = rows.Sum(r => r.Fri ?? 0);
+        OnPropertyChanged(nameof(WeekTotal));
+        foreach (var g in Groups) g.RefreshTotal(); // live per-request header totals
         SaveCommand.NotifyCanExecuteChanged();
     }
 

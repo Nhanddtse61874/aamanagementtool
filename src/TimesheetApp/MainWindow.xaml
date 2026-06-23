@@ -2,77 +2,170 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:tabs="clr-namespace:TimesheetApp.Views.Tabs"
-        Title="Timesheet Tool"
-        Width="1100" Height="720"
+        Title="Worklog"
+        Width="1180" Height="760" MinWidth="980" MinHeight="620"
         Background="{StaticResource WindowBg}"
         WindowStartupLocation="CenterScreen">
+
   <Grid>
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/>
-    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="218"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
 
-    <!-- Header bar: app title (left) + current-user chip (right, XC-07) -->
-    <Border Grid.Row="0" Background="{StaticResource Surface}"
-            BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="20,12">
-      <Grid>
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-          <Border Background="{StaticResource Accent}" CornerRadius="7" Width="30" Height="30"
-                  Margin="0,0,10,0">
-            <TextBlock Text="T" Foreground="White" FontWeight="Bold" FontSize="16"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <TextBlock Text="Timesheet Tool" FontSize="18" FontWeight="SemiBold"
-                     VerticalAlignment="Center"/>
-        </StackPanel>
+    <!-- ============================ SIDEBAR ============================ -->
+    <Border Grid.Column="0" Background="{StaticResource SidebarBg}"
+            BorderBrush="{StaticResource SidebarBorder}" BorderThickness="0,0,1,0">
+      <DockPanel>
 
-        <Border HorizontalAlignment="Right" VerticalAlignment="Center"
-                Background="{StaticResource AccentSoft}" CornerRadius="14" Padding="12,5">
-          <TextBlock VerticalAlignment="Center" Foreground="{StaticResource Accent}" FontWeight="SemiBold">
-            <Run Text="&#128100; "/>
-            <Run Text="{Binding CurrentUserName, Mode=OneWay, TargetNullValue='(chưa chọn)', FallbackValue='(chưa chọn)'}"/>
-          </TextBlock>
+        <!-- Brand / logo -->
+        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource SidebarBorder}"
+                BorderThickness="0,0,0,1" Padding="16,15">
+          <StackPanel Orientation="Horizontal">
+            <Border Background="{StaticResource Accent}" CornerRadius="8" Width="34" Height="34"
+                    Margin="0,0,10,0">
+              <TextBlock Text="W" Foreground="White" FontWeight="Bold" FontSize="16"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Text="Worklog" FontSize="14" FontWeight="Bold"/>
+              <TextBlock Text="Desktop · WPF" FontSize="11" Foreground="{StaticResource SectionLabel}"/>
+            </StackPanel>
+          </StackPanel>
         </Border>
+
+        <!-- Current-user chip (bottom, XC-07) -->
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource SidebarBorder}"
+                BorderThickness="0,1,0,0" Padding="12">
+          <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource SidebarBorder}"
+                  BorderThickness="1" CornerRadius="7" Padding="9,7">
+            <StackPanel Orientation="Horizontal">
+              <Border Background="{StaticResource Accent}" CornerRadius="13" Width="26" Height="26"
+                      Margin="0,0,9,0">
+                <TextBlock Text="{Binding CurrentUserInitial}" Foreground="White" FontWeight="Bold"
+                           FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="{Binding CurrentUserName, TargetNullValue='(chưa chọn)', FallbackValue='(chưa chọn)'}"
+                           FontSize="12" FontWeight="SemiBold"/>
+                <TextBlock Text="Đang hoạt động" FontSize="11" Foreground="{StaticResource SectionLabel}"/>
+              </StackPanel>
+              <Ellipse Width="7" Height="7" Fill="#22C55E" VerticalAlignment="Center"
+                       Margin="10,0,0,0"/>
+            </StackPanel>
+          </Border>
+        </Border>
+
+        <!-- Navigation -->
+        <StackPanel Margin="12,12,12,0">
+          <TextBlock Style="{StaticResource SidebarSection}" Text="WORKSPACE"/>
+
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#128197;" Content="Timesheet"
+                       IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
+                                   ConverterParameter=timesheet, Mode=TwoWay}"/>
+
+          <!-- Planned (SOON) — disabled, pill on the right -->
+          <Grid>
+            <RadioButton Style="{StaticResource NavItem}" Tag="&#128221;" Content="Daily Report"
+                         IsEnabled="False"/>
+            <Border Style="{StaticResource SoonPill}" HorizontalAlignment="Right" Margin="0,0,8,0"
+                    IsHitTestVisible="False">
+              <TextBlock Text="SOON" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AmberFg}"/>
+            </Border>
+          </Grid>
+          <Grid>
+            <RadioButton Style="{StaticResource NavItem}" Tag="&#9989;" Content="Task List"
+                         IsEnabled="False"/>
+            <Border Style="{StaticResource SoonPill}" HorizontalAlignment="Right" Margin="0,0,8,0"
+                    IsHitTestVisible="False">
+              <TextBlock Text="SOON" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AmberFg}"/>
+            </Border>
+          </Grid>
+
+          <TextBlock Style="{StaticResource SidebarSection}" Text="ADMIN"/>
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#128101;" Content="Users"
+                       IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
+                                   ConverterParameter=users, Mode=TwoWay}"/>
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#9881;" Content="Settings"
+                       IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
+                                   ConverterParameter=settings, Mode=TwoWay}"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- ============================ MAIN ============================ -->
+    <Grid Grid.Column="1">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+
+      <!-- XC-08 conflict-copy banner -->
+      <Border Grid.Row="0" Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1"
+              CornerRadius="8" Padding="12,8" Margin="22,14,22,0">
+        <Border.Style>
+          <Style TargetType="Border">
+            <Setter Property="Visibility" Value="Visible"/>
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding ConflictWarning}" Value="">
+                <Setter Property="Visibility" Value="Collapsed"/>
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
+        <TextBlock Text="{Binding ConflictWarning, Mode=OneWay}" TextWrapping="Wrap" Foreground="#92400E"/>
+      </Border>
+
+      <!-- Content host: one panel per ActiveView, only the matching one visible -->
+      <Grid Grid.Row="1">
+
+        <!-- ===== TIMESHEET (Entry / Requests / Reports sub-tabs) ===== -->
+        <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
+                                ConverterParameter=timesheet}">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,0">
+            <TextBlock Text="&#128197;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Style="{StaticResource FeatureTitle}" Text="Timesheet"/>
+            <TextBlock Text="Log hours per request &amp; task" Margin="10,0,0,0"
+                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TabControl x:Name="SubTabs" Margin="22,8,22,0" SelectionChanged="OnSubTabChanged">
+            <TabItem Header="Entry">
+              <tabs:TimesheetTab DataContext="{Binding Timesheet}"/>
+            </TabItem>
+            <TabItem Header="Requests">
+              <tabs:RequestsTab DataContext="{Binding Requests}"/>
+            </TabItem>
+            <TabItem Header="Reports">
+              <tabs:ReportsTab DataContext="{Binding Reports}"/>
+            </TabItem>
+          </TabControl>
+        </DockPanel>
+
+        <!-- ===== USERS ===== -->
+        <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
+                                ConverterParameter=users}">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,8">
+            <TextBlock Text="&#128101;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Style="{StaticResource FeatureTitle}" Text="Users"/>
+            <TextBlock Text="Manage app accounts" Margin="10,0,0,0"
+                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+          </StackPanel>
+          <tabs:UsersTab DataContext="{Binding Users}" Margin="10,0,10,0"/>
+        </DockPanel>
+
+        <!-- ===== SETTINGS ===== -->
+        <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
+                                ConverterParameter=settings}">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,8">
+            <TextBlock Text="&#9881;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Style="{StaticResource FeatureTitle}" Text="Settings"/>
+            <TextBlock Text="Database &amp; preferences" Margin="10,0,0,0"
+                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+          </StackPanel>
+          <tabs:SettingsTab DataContext="{Binding Settings}"/>
+        </DockPanel>
+
       </Grid>
-    </Border>
-
-    <!-- XC-08: conflict-copy startup banner, collapsed when the warning string is empty -->
-    <Border Grid.Row="1"
-            Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1" CornerRadius="8"
-            Padding="12,8" Margin="20,12,20,0">
-      <Border.Style>
-        <Style TargetType="Border">
-          <Setter Property="Visibility" Value="Visible"/>
-          <Style.Triggers>
-            <DataTrigger Binding="{Binding ConflictWarning}" Value="">
-              <Setter Property="Visibility" Value="Collapsed"/>
-            </DataTrigger>
-          </Style.Triggers>
-        </Style>
-      </Border.Style>
-      <TextBlock Text="{Binding ConflictWarning, Mode=OneWay}"
-                 TextWrapping="Wrap" Foreground="#92400E"/>
-    </Border>
-
-    <!-- Tab strip -->
-    <TabControl Grid.Row="3" Margin="20,12,20,0" SelectionChanged="OnTabChanged">
-      <TabItem Header="Timesheet">
-        <tabs:TimesheetTab DataContext="{Binding Timesheet}"/>
-      </TabItem>
-      <TabItem Header="Requests">
-        <tabs:RequestsTab DataContext="{Binding Requests}"/>
-      </TabItem>
-      <TabItem Header="Users">
-        <tabs:UsersTab DataContext="{Binding Users}"/>
-      </TabItem>
-      <TabItem Header="Reports">
-        <tabs:ReportsTab DataContext="{Binding Reports}"/>
-      </TabItem>
-      <TabItem Header="Settings">
-        <tabs:SettingsTab DataContext="{Binding Settings}"/>
-      </TabItem>
-    </TabControl>
+    </Grid>
   </Grid>
 </Window>

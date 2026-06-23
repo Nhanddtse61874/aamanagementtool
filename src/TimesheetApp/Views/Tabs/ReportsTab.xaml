@@ -41,6 +41,44 @@
       <Button Content="Refresh banner" Command="{Binding LoadBannerCommand}" Margin="12,0,0,0"/>
     </StackPanel>
 
+    <!-- Summary stat cards (computed from the loaded weekly rows) -->
+    <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Style="{StaticResource StatCard}" Margin="0,0,5,0">
+        <StackPanel>
+          <TextBlock Style="{StaticResource StatLabel}" Text="TỔNG TUẦN"/>
+          <TextBlock Style="{StaticResource StatValue}" Text="{Binding WeekTotalText}"
+                     Foreground="{StaticResource Accent}"/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="1" Style="{StaticResource StatCard}" Margin="5,0">
+        <StackPanel>
+          <TextBlock Style="{StaticResource StatLabel}" Text="TB / NGÀY"/>
+          <TextBlock Style="{StaticResource StatValue}" Text="{Binding AvgPerDayText}"/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="2" Style="{StaticResource StatCard}" Margin="5,0">
+        <StackPanel>
+          <TextBlock Style="{StaticResource StatLabel}" Text="NGÀY CÓ LOG"/>
+          <TextBlock Style="{StaticResource StatValue}" Text="{Binding DaysLoggedText}"/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="3" Margin="5,0,0,0" Background="{StaticResource AmberBg}"
+              BorderBrush="{StaticResource AmberBorder}" BorderThickness="1" CornerRadius="8" Padding="14,11">
+        <StackPanel>
+          <TextBlock Style="{StaticResource StatLabel}" Text="&#9888; CHƯA LOG" Foreground="{StaticResource AmberFg}"/>
+          <TextBlock Text="{Binding BannerText, TargetNullValue='Không có', FallbackValue='Không có'}"
+                     FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource AmberFg}"
+                     TextTrimming="CharacterEllipsis" Margin="0,6,0,0"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
     <Grid>
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>

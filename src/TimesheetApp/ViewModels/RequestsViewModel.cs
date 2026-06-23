@@ -25,7 +25,11 @@ public sealed partial class RequestsViewModel : ObservableObject
         _messenger = messenger ?? WeakReferenceMessenger.Default;
     }
 
-    public ObservableCollection<Request> Requests { get; } = new();
+    // List row = the Request plus its active-task count (REQ-01 list shows "Tasks" column).
+    // Kept as a lightweight projection so the grid can show the count without a per-row query in XAML.
+    public sealed record RequestListItem(int Id, string RequestCode, string Project, int TaskCount);
+
+    public ObservableCollection<RequestListItem> Requests { get; } = new();
 
     [ObservableProperty] private string? _searchTerm;
     [ObservableProperty] private RequestEditorViewModel? _editor;
@@ -42,7 +46,11 @@ public sealed partial class RequestsViewModel : ObservableObject
         var term = string.IsNullOrWhiteSpace(SearchTerm) ? null : SearchTerm.Trim();
         var rows = await _requests.SearchAsync(term);
         Requests.Clear();
-        foreach (var r in rows) Requests.Add(r);
+        foreach (var r in rows)
+        {
+            var tasks = await _tasks.GetActiveByRequestAsync(r.Id);
+            Requests.Add(new RequestListItem(r.Id, r.RequestCode, r.Project, tasks?.Count ?? 0));
+        }
     }
 
     [RelayCommand]

@@ -332,4 +332,117 @@
     <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
 
+  <!-- ============================================================
+       Worklog redesign — sidebar shell, badges, stat cards.
+       ============================================================ -->
+
+  <!-- Extra palette for the new shell -->
+  <SolidColorBrush x:Key="SidebarBg" Color="#F8FAFC"/>
+  <SolidColorBrush x:Key="SidebarBorder" Color="#E3E8EE"/>
+  <SolidColorBrush x:Key="NavText" Color="#475569"/>
+  <SolidColorBrush x:Key="NavHover" Color="#EEF2F8"/>
+  <SolidColorBrush x:Key="SectionLabel" Color="#94A0AE"/>
+  <SolidColorBrush x:Key="TableHeaderBg" Color="#F4F6F9"/>
+  <SolidColorBrush x:Key="TableHeaderText" Color="#5B6675"/>
+  <SolidColorBrush x:Key="GroupHeaderBg" Color="#EEF2F7"/>
+  <SolidColorBrush x:Key="StatCardBg" Color="#FBFCFE"/>
+  <SolidColorBrush x:Key="BadgeGreenBg" Color="#DCFCE7"/>
+  <SolidColorBrush x:Key="BadgeGreenFg" Color="#15803D"/>
+  <SolidColorBrush x:Key="BadgeGrayBg" Color="#EEF1F5"/>
+  <SolidColorBrush x:Key="BadgeGrayFg" Color="#64748B"/>
+  <SolidColorBrush x:Key="AmberBg" Color="#FFF7ED"/>
+  <SolidColorBrush x:Key="AmberBorder" Color="#FDE9C8"/>
+  <SolidColorBrush x:Key="AmberFg" Color="#B45309"/>
+
+  <!-- Sidebar section label (WORKSPACE / ADMIN) -->
+  <Style x:Key="SidebarSection" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource SectionLabel}"/>
+    <Setter Property="FontSize" Value="10"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="Margin" Value="10,14,0,6"/>
+  </Style>
+
+  <!-- Sidebar nav item: a RadioButton in group "nav" styled as a full-width pill.
+       Set Tag = the leading icon glyph; Content = the label. Active = IsChecked (accent fill). -->
+  <Style x:Key="NavItem" TargetType="RadioButton">
+    <Setter Property="GroupName" Value="nav"/>
+    <Setter Property="Foreground" Value="{StaticResource NavText}"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Margin" Value="0,1"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Border x:Name="bd" Background="Transparent" CornerRadius="7" Padding="10,8">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock x:Name="ic" Text="{TemplateBinding Tag}" FontSize="15" Width="22"
+                         TextAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+              <ContentPresenter VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource NavHover}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource Accent}"/>
+              <Setter Property="Foreground" Value="White"/>
+              <Setter TargetName="ic" Property="Foreground" Value="White"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{StaticResource SectionLabel}"/>
+              <Setter TargetName="ic" Property="Foreground" Value="{StaticResource SectionLabel}"/>
+              <Setter Property="Cursor" Value="Arrow"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- "SOON" pill shown next to planned nav items -->
+  <Style x:Key="SoonPill" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource AmberBg}"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Padding" Value="6,2"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- Summary stat card (Reports) -->
+  <Style x:Key="StatCard" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource StatCardBg}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource SidebarBorder}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="14,11"/>
+  </Style>
+
+  <Style x:Key="StatLabel" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource TableHeaderText}"/>
+    <Setter Property="FontSize" Value="10"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+  </Style>
+
+  <Style x:Key="StatValue" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    <Setter Property="FontSize" Value="22"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="Margin" Value="0,3,0,0"/>
+  </Style>
+
+  <!-- Feature header (icon + title + desc) -->
+  <Style x:Key="FeatureTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="17"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- Small secondary "ghost" action for in-grid buttons (Edit / Browse) -->
+  <Style x:Key="MiniGhostButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+    <Setter Property="Padding" Value="12,4"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Margin" Value="0"/>
+  </Style>
+
 </ResourceDictionary>

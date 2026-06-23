@@ -76,6 +76,21 @@ public sealed partial class ReportsViewModel : ObservableObject
 
     [ObservableProperty] private string _bannerText = string.Empty;
 
+    // Weekly summary stat cards (computed from WeeklyRows after LoadWeekly).
+    [ObservableProperty] private string _weekTotalText = "0.0h";
+    [ObservableProperty] private string _avgPerDayText = "0.0h";
+    [ObservableProperty] private string _daysLoggedText = "0 / 5";
+
+    private void RecomputeWeeklyStats()
+    {
+        var total = WeeklyRows.Sum(r => r.TotalHours);
+        var logged = WeeklyRows.Count(r => r.TotalHours > 0);
+        var span = WeeklyRows.Count == 0 ? 5 : WeeklyRows.Count;
+        WeekTotalText = $"{total:N1}h";
+        AvgPerDayText = $"{(logged == 0 ? 0m : total / logged):N1}h";
+        DaysLoggedText = $"{logged} / {span}";
+    }
+
     internal static DateOnly MondayOf(DateOnly date) =>
         date.AddDays(-(((int)date.DayOfWeek + 6) % 7)); // Monday-start, culture-independent (spec §7.2)
 
@@ -113,6 +128,7 @@ public sealed partial class ReportsViewModel : ObservableObject
         var rows = await GetRowsForTargetAsync(monday, friday);
         WeeklyRows.Clear();
         foreach (var r in _aggregator.WeeklyDayTotals(rows)) WeeklyRows.Add(r);
+        RecomputeWeeklyStats();
     }
 
     [RelayCommand]

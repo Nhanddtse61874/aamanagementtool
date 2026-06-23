@@ -35,6 +35,12 @@ public sealed partial class RequestGroupVm : ObservableObject
 
     public ObservableCollection<TimesheetRowVm> Tasks { get; } = new();
 
+    /// Sum of this request's task-row totals — shown on the group header chip.
+    public decimal GroupTotal => Tasks.Sum(t => t.RowTotal);
+
+    /// Owner VM calls this after recomputing totals so the header chip refreshes live.
+    public void RefreshTotal() => OnPropertyChanged(nameof(GroupTotal));
+
     [ObservableProperty] private bool _isExpanded = true;
     [ObservableProperty] private string _newTaskName = "";
 

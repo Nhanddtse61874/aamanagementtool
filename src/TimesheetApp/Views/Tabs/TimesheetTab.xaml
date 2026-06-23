@@ -40,6 +40,16 @@
               Style="{StaticResource GhostButton}"
               Width="110" Margin="8,0,0,0"
               ToolTip="Điền giờ tự động cho 1 task trong khoảng ngày (chia đều / full 8h)"/>
+
+      <!-- Week total chip -->
+      <Border Background="{StaticResource HeaderBg}" CornerRadius="7" Padding="12,4" Margin="24,0,0,0">
+        <StackPanel>
+          <TextBlock Text="WEEK TOTAL" FontSize="10" FontWeight="Bold"
+                     Foreground="{StaticResource TableHeaderText}" HorizontalAlignment="Right"/>
+          <TextBlock Text="{Binding WeekTotal, StringFormat='{}{0:N1}h'}" FontSize="16" FontWeight="Bold"
+                     Foreground="{StaticResource Accent}" HorizontalAlignment="Right"/>
+        </StackPanel>
+      </Border>
     </StackPanel>
 
     <!-- Per-column footer totals strip across ALL groups (TS-05, TS-06) -->
@@ -111,7 +121,15 @@
           <DataTemplate>
             <Expander IsExpanded="{Binding IsExpanded}" Margin="0,2">
               <Expander.Header>
-                <TextBlock Text="{Binding Header}" FontWeight="Bold"/>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="{Binding Header}" FontWeight="Bold"/>
+                  <Border Background="{StaticResource HeaderBg}" CornerRadius="9" Padding="8,1"
+                          Margin="12,0,0,0">
+                    <TextBlock Text="{Binding GroupTotal, StringFormat='{}{0:N1}h'}"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondary}"/>
+                  </Border>
+                </StackPanel>
               </Expander.Header>
 
               <StackPanel Margin="16,2,0,8">

@@ -71,6 +71,24 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private string _currentUserName = string.Empty;
 
+    // First letter of the current user's name (uppercased) for the sidebar avatar chip.
+    public string CurrentUserInitial =>
+        string.IsNullOrWhiteSpace(CurrentUserName) ? "?" : CurrentUserName.Trim()[..1].ToUpperInvariant();
+
+    partial void OnCurrentUserNameChanged(string value) => OnPropertyChanged(nameof(CurrentUserInitial));
+
+    // Active sidebar destination: timesheet | daily | tasks | users | settings. Drives both the
+    // nav highlight (RadioButton IsChecked via StringMatchConverter) and content visibility.
+    [ObservableProperty] private string _activeView = "timesheet";
+
+    // Switching destinations reloads the relevant tab so it shows fresh data. Reuses the existing
+    // index-based ActivateTabAsync (0 Timesheet, 2 Users, 4 Settings); daily/tasks are static.
+    partial void OnActiveViewChanged(string value)
+    {
+        var index = value switch { "timesheet" => 0, "users" => 2, "settings" => 4, _ => -1 };
+        if (index >= 0) _ = ActivateTabAsync(index);
+    }
+
     // XC-08: non-empty when OneDrive conflict-copy siblings of the DB exist; the View shows a banner.
     [ObservableProperty] private string _conflictWarning = string.Empty;
 
