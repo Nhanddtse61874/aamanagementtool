@@ -6,7 +6,7 @@
   <DockPanel Margin="12" LastChildFill="True">
     <StackPanel DockPanel.Dock="Top">
       <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-        <RadioButton Content="Chia đều" IsChecked="True" GroupName="Mode" Margin="0,0,12,0"
+        <RadioButton Content="Split evenly" IsChecked="True" GroupName="Mode" Margin="0,0,12,0"
                      Command="{Binding SetDistributeEvenCommand}"/>
         <RadioButton Content="Full 8h" GroupName="Mode"
                      Command="{Binding SetFull8hCommand}"/>
@@ -18,7 +18,7 @@
       <TextBox Text="{Binding From, UpdateSourceTrigger=PropertyChanged}"/>
       <TextBlock Text="To (yyyy-MM-dd)"/>
       <TextBox Text="{Binding To, UpdateSourceTrigger=PropertyChanged}"/>
-      <TextBlock Text="Total hours (Chia đều only)"/>
+      <TextBlock Text="Total hours (Split evenly only)"/>
       <TextBox Text="{Binding TotalHours, UpdateSourceTrigger=PropertyChanged}"/>
 
       <Button Content="Preview" Command="{Binding BuildPreviewCommand}" Margin="0,8" Width="120" HorizontalAlignment="Left"/>

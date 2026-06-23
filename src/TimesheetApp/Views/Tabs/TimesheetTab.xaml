@@ -39,7 +39,7 @@
               Click="OnSmartFill"
               Style="{StaticResource ToolbarGhostButton}"
               IsEnabled="{Binding CanEdit}"
-              ToolTip="Điền giờ tự động cho 1 task trong khoảng ngày (chia đều / full 8h)"/>
+              ToolTip="Auto-fill hours for one task over a date range (split evenly / full 8h)"/>
 
       <!-- Week total chip -->
       <Border Background="{StaticResource HeaderBg}" CornerRadius="7" Padding="12,4" Margin="16,0,0,0">
@@ -54,16 +54,16 @@
 
     <!-- v2: Entry user filter (Cả team / other user) + month filter -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,2,8,4">
-      <TextBlock Text="Người dùng:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <TextBlock Text="User:" VerticalAlignment="Center" Margin="0,0,6,0"/>
       <ComboBox Width="200" ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}"
                 DisplayMemberPath="Display"/>
-      <TextBlock Text="Tháng:" VerticalAlignment="Center" Margin="16,0,6,0"/>
+      <TextBlock Text="Month:" VerticalAlignment="Center" Margin="16,0,6,0"/>
       <DatePicker SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnly}}"
-                  ToolTip="Chỉ hiển thị ticket thuộc tháng đã chọn (chọn ngày bất kỳ trong tháng)"/>
+                  ToolTip="Show only tickets in the selected month (pick any day in the month)"/>
       <Border Background="{StaticResource AmberBg}" CornerRadius="7" Padding="10,3" Margin="16,0,0,0"
               VerticalAlignment="Center"
               Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVisibleConverter}}">
-        <TextBlock Text="Chế độ chỉ xem (cả team)" FontSize="12" FontWeight="SemiBold"
+        <TextBlock Text="Read-only (whole team)" FontSize="12" FontWeight="SemiBold"
                    Foreground="{StaticResource AmberFg}"/>
       </Border>
     </StackPanel>
@@ -161,7 +161,7 @@
                           IsEnabled="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                           Command="{Binding DataContext.MoveMonthCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                           CommandParameter="{Binding RequestId}"
-                          ToolTip="Chuyển ticket sang tháng kế tiếp"/>
+                          ToolTip="Move ticket to the next month"/>
                 </StackPanel>
               </Expander.Header>
 
@@ -230,7 +230,7 @@
                   <TextBox Width="220"
                            Text="{Binding NewTaskName, UpdateSourceTrigger=PropertyChanged}"
                            VerticalContentAlignment="Center"
-                           ToolTip="Tên task mới cho request này"/>
+                           ToolTip="New task name for this request"/>
                   <Button Content="&#10133; Add task"
                           Command="{Binding AddTaskCommand}"
                           Style="{StaticResource ToolbarGhostButton}"

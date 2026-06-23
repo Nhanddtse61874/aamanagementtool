@@ -61,7 +61,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     // UserId == 0 means the whole team (all users combined).
     public sealed record ReportTarget(int UserId, string Display);
 
-    private static readonly ReportTarget TeamTarget = new(0, "Cả team (tất cả)");
+    private static readonly ReportTarget TeamTarget = new(0, "Whole team (all)");
 
     public ObservableCollection<ReportTarget> Targets { get; } = new();
 
@@ -155,7 +155,7 @@ public sealed partial class ReportsViewModel : ObservableObject
         foreach (var u in missing) MissingBanner.Add(new MissingLogWarning(u.Name));
         BannerText = MissingBanner.Count == 0
             ? string.Empty
-            : string.Join("; ", MissingBanner.Select(w => $"{w.UserName} chưa log trong {n} ngày"));
+            : string.Join("; ", MissingBanner.Select(w => $"{w.UserName} has not logged in {n} days"));
     }
 
     private async Task<int> GetConfiguredNAsync()

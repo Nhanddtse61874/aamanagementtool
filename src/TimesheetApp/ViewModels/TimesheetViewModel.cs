@@ -103,7 +103,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
         var meId = _currentUserId();
 
         Targets.Clear();
-        Targets.Add(new EntryTarget(0, "Cả team (chỉ xem)", IsTeam: true));
+        Targets.Add(new EntryTarget(0, "Whole team (read-only)", IsTeam: true));
         foreach (var u in active) Targets.Add(new EntryTarget(u.Id, u.Name, IsTeam: false));
 
         SelectedTarget ??= Targets.FirstOrDefault(t => !t.IsTeam && t.UserId == meId)

@@ -30,6 +30,9 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty] private int _periodYear = DateTime.Today.Year;
     [ObservableProperty] private string? _status;
 
+    // Validation message shown in the editor (e.g. "must have at least one task" on create).
+    [ObservableProperty] private string? _errorMessage;
+
     // Always set (month is required) — projected to the persisted "yyyy-MM".
     public string PeriodMonth => $"{PeriodYear:D4}-{PeriodMonthNumber:D2}";
 

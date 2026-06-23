@@ -75,6 +75,23 @@ public sealed class RequestsViewModelTests
         Assert.Null(vm.Editor); // editor closed after save
     }
 
+    [Fact] // A new request with no tasks is rejected: editor stays open with an error, nothing inserted.
+    public async Task SaveNewAsync_requires_at_least_one_task()
+    {
+        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(Array.Empty<Request>());
+        var vm = CreateVm();
+        await vm.BeginCreateAsync();
+        vm.Editor!.RequestCode = "RQ-EMPTY";
+        vm.Editor.Project = "ARCS";
+        // no tasks added
+
+        await vm.SaveNewAsync();
+
+        _requests.Verify(r => r.InsertAsync(It.IsAny<Request>()), Times.Never);
+        Assert.NotNull(vm.Editor);                       // editor stays open
+        Assert.False(string.IsNullOrEmpty(vm.Editor!.ErrorMessage));
+    }
+
     [Fact] // REQ-02: applying a template before save inserts the template's tasks
     public async Task SaveNewAsync_with_template_inserts_template_tasks()
     {

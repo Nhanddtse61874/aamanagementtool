@@ -7,9 +7,9 @@
 
                 <!-- SET-01: DB path + Browse -->
                 <TextBlock Text="Database file" FontWeight="Bold"/>
-                <TextBlock Text="Đường dẫn tới file cơ sở dữ liệu SQLite (.db) dùng để lưu dữ liệu."
+                <TextBlock Text="Path to the SQLite database file (.db) used to store data."
                            Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
-                <TextBlock Text="Đường dẫn DB:" Margin="0,2,0,0"/>
+                <TextBlock Text="Database path:" Margin="0,2,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,12">
                     <TextBox Width="420" Text="{Binding DbPath, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Browse..." Margin="8,0,0,0" Click="OnBrowse"/>
@@ -17,10 +17,10 @@
                 </StackPanel>
 
                 <!-- SET-02: N-days warning (default 3) -->
-                <TextBlock Text="&quot;Chưa log&quot; warning window" FontWeight="Bold"/>
-                <TextBlock Text="Số ngày làm việc gần đây sẽ bị cảnh báo nếu chưa có log giờ."
+                <TextBlock Text="&quot;Not logged&quot; warning window" FontWeight="Bold"/>
+                <TextBlock Text="Warn if no hours are logged within this many recent working days."
                            Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
-                <TextBlock Text="Số ngày làm việc:" Margin="0,2,0,0"/>
+                <TextBlock Text="Working days:" Margin="0,2,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,12">
                     <TextBox Width="60" Text="{Binding WarningDays, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveWarningDaysCommand}"/>
@@ -28,8 +28,8 @@
 
                 <!-- SET-03: Task templates — grouped list + New template button.
                      Each template = the set of task rows sharing one name; edited via the overlay. -->
-                <TextBlock Text="Mẫu task (Templates)" FontWeight="Bold"/>
-                <TextBlock Text="Mỗi mẫu gồm một tên và nhiều task. Dùng mẫu để tạo nhanh danh sách task cho Request."
+                <TextBlock Text="Task templates" FontWeight="Bold"/>
+                <TextBlock Text="Each template has a name and several tasks. Use a template to quickly create a request's task list."
                            Foreground="Gray" FontSize="11" Margin="0,0,0,4"/>
                 <Button Content="➕ New template" HorizontalAlignment="Left"
                         Command="{Binding BeginCreateTemplateCommand}" Padding="10,4" Margin="0,0,0,4"/>
@@ -58,7 +58,7 @@
 
                 <!-- SET-04: DefaultTasks sync -->
                 <TextBlock Text="Default tasks" FontWeight="Bold"/>
-                <TextBlock Text="Đồng bộ danh sách default task vào Request mặc định."
+                <TextBlock Text="Sync the default-task list into the default request."
                            Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
                 <Button Content="Sync default tasks" HorizontalAlignment="Left"
                         Margin="0,4,0,0" Command="{Binding SaveDefaultTasksCommand}"/>
@@ -74,15 +74,15 @@
                     MaxHeight="600">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel DataContext="{Binding TemplateEditor}">
-                        <TextBlock Text="Mẫu task (Template)" FontWeight="Bold" FontSize="16" Margin="0,0,0,8"/>
+                        <TextBlock Text="Task template" FontWeight="Bold" FontSize="16" Margin="0,0,0,8"/>
 
-                        <TextBlock Text="Tên template:"/>
+                        <TextBlock Text="Template name:"/>
                         <TextBox Text="{Binding TemplateName, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,2,0,8"/>
 
                         <!-- Editable task-name list with reorder + remove. Remove/Up/Down on the editor
                              VM are plain methods, so they are wrapped as commands on the code-behind. -->
-                        <TextBlock Text="Các task trong mẫu:" FontWeight="SemiBold" Margin="0,4,0,2"/>
+                        <TextBlock Text="Tasks in this template:" FontWeight="SemiBold" Margin="0,4,0,2"/>
                         <ItemsControl ItemsSource="{Binding Tasks}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -107,7 +107,7 @@
 
                         <!-- Add task input row -->
                         <DockPanel Margin="0,8,0,0">
-                            <Button Content="➕ Thêm task" DockPanel.Dock="Right"
+                            <Button Content="➕ Add task" DockPanel.Dock="Right"
                                     Padding="8,4" Margin="4,0,0,0"
                                     Command="{Binding AddTaskFromBoxCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>

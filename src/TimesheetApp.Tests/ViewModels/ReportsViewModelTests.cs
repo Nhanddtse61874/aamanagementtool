@@ -98,7 +98,7 @@ public class ReportsViewModelTests
 
         var w = Assert.Single(vm.MissingBanner);
         Assert.Equal("Bob", w.UserName);
-        Assert.Equal("Bob chưa log trong 5 ngày", vm.BannerText); // shows configured N=5
+        Assert.Equal("Bob has not logged in 5 days", vm.BannerText); // shows configured N=5
         svc.Verify(s => s.GetUsersMissingLogsAsync(5), Times.Once);
     }
 
@@ -113,7 +113,7 @@ public class ReportsViewModelTests
 
         await vm.LoadBannerAsync();
 
-        Assert.Equal("Bob chưa log trong 3 ngày", vm.BannerText);
+        Assert.Equal("Bob has not logged in 3 days", vm.BannerText);
         svc.Verify(s => s.GetUsersMissingLogsAsync(3), Times.Once);
     }
 
@@ -142,7 +142,7 @@ public class ReportsViewModelTests
 
         Assert.Equal(3, vm.Targets.Count);
         Assert.Equal(0, vm.Targets[0].UserId); // leading team option
-        Assert.Equal(new[] { "Cả team (tất cả)", "Cara", "Dan" }, vm.Targets.Select(t => t.Display).ToArray());
+        Assert.Equal(new[] { "Whole team (all)", "Cara", "Dan" }, vm.Targets.Select(t => t.Display).ToArray());
         Assert.Equal(new[] { 0, 3, 5 }, vm.Targets.Select(t => t.UserId).ToArray());
         Assert.Equal(0, vm.SelectedTarget!.UserId); // defaults to team
     }
@@ -152,7 +152,7 @@ public class ReportsViewModelTests
     public async Task LoadWeekly_team_uses_export_rows_for_all_users()
     {
         var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18));
-        vm.SelectedTarget = new ReportsViewModel.ReportTarget(0, "Cả team (tất cả)");
+        vm.SelectedTarget = new ReportsViewModel.ReportTarget(0, "Whole team (all)");
         vm.SelectedWeekMonday = new DateOnly(2026, 6, 15);
         repo.Setup(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), null))
             .ReturnsAsync(new[] { Row("P", "R1", 1, "T", "2026-06-15", 4m) });
@@ -168,7 +168,7 @@ public class ReportsViewModelTests
     public async Task LoadMonthly_team_uses_export_rows_for_all_users()
     {
         var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18));
-        vm.SelectedTarget = new ReportsViewModel.ReportTarget(0, "Cả team (tất cả)");
+        vm.SelectedTarget = new ReportsViewModel.ReportTarget(0, "Whole team (all)");
         vm.SelectedMonth = new DateOnly(2026, 6, 1);
         repo.Setup(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), null))
             .ReturnsAsync(new[] { Row("ProjX", "REQ-001", 10, "Build", "2026-06-16", 4m) });

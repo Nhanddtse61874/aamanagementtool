@@ -155,7 +155,7 @@ public sealed partial class MainViewModel : ObservableObject
         var copies = SqliteMaintenance.FindConflictCopies(_config.DbPath);
         ConflictWarning = copies.Count == 0
             ? string.Empty
-            : "Phát hiện bản sao xung đột (OneDrive) của cơ sở dữ liệu: "
+            : "Detected OneDrive conflict copies of the database: "
               + string.Join(", ", copies.Select(Path.GetFileName));
     }
 

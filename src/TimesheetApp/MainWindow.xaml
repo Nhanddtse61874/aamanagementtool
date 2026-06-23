@@ -46,9 +46,9 @@
                            FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
               <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="{Binding CurrentUserName, TargetNullValue='(chưa chọn)', FallbackValue='(chưa chọn)'}"
+                <TextBlock Text="{Binding CurrentUserName, TargetNullValue='(none selected)', FallbackValue='(none selected)'}"
                            FontSize="12" FontWeight="SemiBold"/>
-                <TextBlock Text="Đang hoạt động" FontSize="11" Foreground="{StaticResource SectionLabel}"/>
+                <TextBlock Text="Active" FontSize="11" Foreground="{StaticResource SectionLabel}"/>
               </StackPanel>
               <Ellipse Width="7" Height="7" Fill="#22C55E" VerticalAlignment="Center"
                        Margin="10,0,0,0"/>

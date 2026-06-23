@@ -71,12 +71,12 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="Tháng *:"/>
+                                <TextBlock Text="Month *:"/>
                                 <ComboBox Width="64" ItemsSource="{Binding Months}"
                                           SelectedItem="{Binding PeriodMonthNumber}"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="Năm *:"/>
+                                <TextBlock Text="Year *:"/>
                                 <ComboBox Width="80" ItemsSource="{Binding Years}"
                                           SelectedItem="{Binding PeriodYear}"/>
                             </StackPanel>
@@ -157,6 +157,11 @@
                             <TextBox x:Name="NewTaskBox"/>
                         </DockPanel>
 
+                        <!-- Validation message (e.g. must have at least one task) -->
+                        <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Danger}"
+                                   FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,10,0,0"
+                                   Visibility="{Binding ErrorMessage, Converter={StaticResource NullToCollapsedConverter}}"/>
+
                         <!-- Save / Cancel -->
                         <DockPanel Margin="0,12,0,0">
                             <Button Content="Cancel" DockPanel.Dock="Right"
@@ -181,7 +186,7 @@
                                     </Style.Triggers>
                                 </Style>
                             </StackPanel.Style>
-                            <TextBlock Text="Lịch sử thay đổi" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <TextBlock Text="Change history" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <ItemsControl ItemsSource="{Binding AuditEntries}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>

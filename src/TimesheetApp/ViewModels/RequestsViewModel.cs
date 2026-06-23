@@ -78,8 +78,17 @@ public sealed partial class RequestsViewModel : ObservableObject
     public async Task SaveNewAsync()
     {
         if (Editor is null) return;
+
+        // A new request must have at least one task (kept editor open with a message otherwise).
+        if (Editor.ActiveTasks.Count == 0)
+        {
+            Editor.ErrorMessage = "A request must have at least one task.";
+            return;
+        }
+        Editor.ErrorMessage = null;
+
         var newId = await _requests.InsertAsync(
-            new Request(0, Editor.RequestCode.Trim(), Editor.Project.Trim(), DateTimeOffset.UtcNow,
+            new Request(0, Editor.RequestCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
                 Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status));
 
         foreach (var row in Editor.ActiveTasks)
@@ -97,7 +106,7 @@ public sealed partial class RequestsViewModel : ObservableObject
         var id = Editor.EditingRequestId;
 
         await _requests.UpdateAsync(
-            new Request(id, Editor.RequestCode.Trim(), Editor.Project.Trim(), DateTimeOffset.UtcNow,
+            new Request(id, Editor.RequestCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
                 Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status),
             _currentUser?.Current?.Id, _currentUser?.Current?.Name);
 

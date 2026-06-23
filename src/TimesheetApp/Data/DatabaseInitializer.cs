@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 2;
+    private const long SchemaVersion = 3;
 
     private readonly IConnectionFactory _factory;
 
@@ -122,6 +122,22 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
                   ALTER TABLE Requests ADD COLUMN end_date     TEXT;
                   ALTER TABLE Requests ADD COLUMN period_month TEXT;
                   ALTER TABLE Requests ADD COLUMN status       TEXT;", transaction: t),
+            // v3 -> normalize legacy free-text project values onto the fixed enum
+            // (ARCS / PlusArcs / ARMS / Other). The hidden DEFAULT request keeps its 'DEFAULT' project.
+            // Each step only touches rows not yet on the enum, so order is safe (PlusArcs before ARCS).
+            static (c, t) => c.Execute(
+                @"UPDATE Requests SET project='PlusArcs'
+                    WHERE request_code<>'DEFAULT' AND project NOT IN ('ARCS','PlusArcs','ARMS','Other')
+                      AND lower(project) LIKE '%plus%';
+                  UPDATE Requests SET project='ARMS'
+                    WHERE request_code<>'DEFAULT' AND project NOT IN ('ARCS','PlusArcs','ARMS','Other')
+                      AND lower(project) LIKE '%arms%';
+                  UPDATE Requests SET project='ARCS'
+                    WHERE request_code<>'DEFAULT' AND project NOT IN ('ARCS','PlusArcs','ARMS','Other')
+                      AND lower(project) LIKE '%arc%';
+                  UPDATE Requests SET project='Other'
+                    WHERE request_code<>'DEFAULT' AND project NOT IN ('ARCS','PlusArcs','ARMS','Other');",
+                transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);

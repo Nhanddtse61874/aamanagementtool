@@ -43,6 +43,7 @@ public sealed class CrossTabSyncTests
         requests.Editor = RequestEditorViewModel.ForCreate(System.Array.Empty<TaskTemplate>());
         requests.Editor.RequestCode = "R1";
         requests.Editor.Project = "P";
+        requests.Editor.AddTask("New Task"); // a new request now requires at least one task
 
         await requests.SaveNewCommand.ExecuteAsync(null);
 
