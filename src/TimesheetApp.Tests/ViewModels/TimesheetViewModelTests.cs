@@ -51,6 +51,32 @@ public class TimesheetViewModelTests
         return (vm, tl, si);
     }
 
+    [Fact] // v2: "Move ▶" bumps the ticket's period_month to the NEXT month, audited as the current user.
+    public async Task MoveMonth_advances_ticket_to_next_month_and_audits_current_user()
+    {
+        var tl = new Mock<ITimeLogService>();
+        tl.Setup(t => t.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
+          .ReturnsAsync(System.Array.Empty<WeekRequestGroup>());
+        var clock = new Mock<IClock>();
+        clock.SetupGet(c => c.Today).Returns(Wed); // selected month defaults to 2026-06
+
+        var requests = new Mock<IRequestRepository>();
+        requests.Setup(r => r.GetByIdAsync(5))
+                .ReturnsAsync(new Request(5, "REQ-5", "P", DateTimeOffset.UtcNow, PeriodMonth: "2026-06"));
+
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.SetupGet(c => c.Current).Returns(new User(7, "Nhan", null, true));
+
+        var vm = new TimesheetViewModel(
+            tl.Object, Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), clock.Object,
+            () => 1, new WeakReferenceMessenger(), Mock.Of<IUserRepository>(), requests.Object, currentUser.Object);
+
+        await vm.MoveMonthCommand.ExecuteAsync(5);
+
+        requests.Verify(r => r.UpdateAsync(
+            It.Is<Request>(x => x.Id == 5 && x.PeriodMonth == "2026-07"), 7, "Nhan"), Times.Once);
+    }
+
     [Fact]
     public async Task Load_SetsCurrentWeekToMondayOfToday()
     {
