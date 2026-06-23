@@ -18,20 +18,34 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private readonly IClock _clock;
     private readonly Func<int> _currentUserId;
     private readonly IMessenger _messenger;
+    private readonly IUserRepository? _users;        // v2: Entry user filter (Cả team / other user)
+    private readonly IRequestRepository? _requests;  // v2: move-ticket-to-month
+    private readonly ICurrentUserService? _currentUser; // v2: audit changed-by for move-month
     private bool _suppressTotals;
 
     public TimesheetViewModel(
         ITimeLogService timeLogs, ITaskRepository tasks, ISmartInputService smartInput, IClock clock,
-        Func<int> currentUserId, IMessenger? messenger = null)
+        Func<int> currentUserId, IMessenger? messenger = null,
+        IUserRepository? users = null, IRequestRepository? requests = null,
+        ICurrentUserService? currentUser = null)
     {
         _timeLogs = timeLogs;
         _tasks = tasks;
         _clock = clock;
         _currentUserId = currentUserId;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
+        _users = users;
+        _requests = requests;
+        _currentUser = currentUser;
 
-        SmartInput = new SmartInputPanelVm(smartInput, timeLogs, currentUserId);
+        // Smart-input targets whichever user the Entry filter is viewing (defaults to the login user).
+        SmartInput = new SmartInputPanelVm(smartInput, timeLogs, () => EffectiveUserId);
         SmartInput.Applied += async () => await ReloadAsync();
+
+        // Assign the backing field directly so the change handler (which reloads) does NOT fire
+        // during construction — the first load is driven by LoadCommand.
+        var today = _clock.Today;
+        _selectedMonth = new DateOnly(today.Year, today.Month, 1);
 
         // Live cross-tab sync: reload the grid when tasks/templates/default-tasks change elsewhere
         // (e.g. a task created in the Requests tab). static lambda + recipient arg keeps the weak ref.
@@ -47,6 +61,54 @@ public sealed partial class TimesheetViewModel : ObservableObject
     public SmartInputPanelVm SmartInput { get; }
 
     [ObservableProperty] private DateOnly _currentWeek;
+
+    // ---- v2: Entry user filter + month filter ----
+    // IsTeam=true => read-only aggregate across all users; else a specific user (editable).
+    public sealed record EntryTarget(int UserId, string Display, bool IsTeam);
+
+    public ObservableCollection<EntryTarget> Targets { get; } = new();
+
+    [ObservableProperty] private EntryTarget? _selectedTarget;
+    [ObservableProperty] private DateOnly _selectedMonth; // first-of-month; filters which tickets show
+
+    // The user whose hours are loaded/edited (login user unless another is picked; 0 for team view).
+    private int EffectiveUserId =>
+        SelectedTarget is { IsTeam: false } t ? t.UserId : (SelectedTarget is null ? _currentUserId() : 0);
+
+    public bool IsTeamView => SelectedTarget is { IsTeam: true };
+    public bool IsReadOnly => IsTeamView;               // team aggregate cannot be edited
+    public bool CanEdit => !IsReadOnly;
+
+    partial void OnSelectedTargetChanged(EntryTarget? value)
+    {
+        OnPropertyChanged(nameof(IsTeamView));
+        OnPropertyChanged(nameof(IsReadOnly));
+        OnPropertyChanged(nameof(CanEdit));
+        _ = ReloadAsync();
+    }
+
+    partial void OnSelectedMonthChanged(DateOnly value)
+    {
+        OnPropertyChanged(nameof(SelectedMonthText));
+        _ = ReloadAsync();
+    }
+
+    public string SelectedMonthText => SelectedMonth.ToString("MM/yyyy");
+
+    // Build the Entry target list: "Cả team" + each active user. Default = the login user.
+    private async Task LoadTargetsAsync()
+    {
+        if (_users is null) return;
+        var active = await _users.GetActiveAsync();
+        var meId = _currentUserId();
+
+        Targets.Clear();
+        Targets.Add(new EntryTarget(0, "Cả team (chỉ xem)", IsTeam: true));
+        foreach (var u in active) Targets.Add(new EntryTarget(u.Id, u.Name, IsTeam: false));
+
+        SelectedTarget ??= Targets.FirstOrDefault(t => !t.IsTeam && t.UserId == meId)
+                           ?? Targets.FirstOrDefault(t => !t.IsTeam);
+    }
 
     public ObservableCollection<RequestGroupVm> Groups { get; } = new();
 
@@ -79,7 +141,11 @@ public sealed partial class TimesheetViewModel : ObservableObject
     public static DateOnly MondayOf(DateOnly date) => date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
 
     [RelayCommand]
-    private Task LoadAsync() => ReloadAsync();
+    private async Task LoadAsync()
+    {
+        await LoadTargetsAsync();
+        await ReloadAsync();
+    }
 
     [RelayCommand]
     private async Task NextWeekAsync()
@@ -97,7 +163,17 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
     private async Task ReloadAsync()
     {
-        var grouped = await _timeLogs.GetWeekGroupedAsync(_currentUserId(), CurrentWeek);
+        // Team view = read-only aggregate across all users; otherwise the selected/login user's week.
+        var grouped = IsTeamView
+            ? await _timeLogs.GetWeekGroupedAllUsersAsync(CurrentWeek)
+            : await _timeLogs.GetWeekGroupedAsync(EffectiveUserId, CurrentWeek);
+
+        // Month filter: only show tickets assigned to the selected month; tickets with no month
+        // (DEFAULT + not-yet-assigned legacy tickets) stay visible regardless.
+        var monthKey = SelectedMonth.ToString("yyyy-MM");
+        grouped = grouped
+            .Where(g => string.IsNullOrEmpty(g.PeriodMonth) || g.PeriodMonth == monthKey)
+            .ToList();
 
         _suppressTotals = true;
 
@@ -109,7 +185,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
         foreach (var grp in grouped)
         {
             var groupVm = new RequestGroupVm(
-                grp.RequestId, grp.RequestCode, grp.Project, _tasks, OnTaskAddedAsync);
+                grp.RequestId, grp.RequestCode, grp.Project, _tasks, OnTaskAddedAsync, grp.PeriodMonth, grp.Status);
             if (expandedById.TryGetValue(grp.RequestId, out var wasExpanded))
                 groupVm.IsExpanded = wasExpanded;
 
@@ -182,11 +258,12 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _messenger.Send(new DataChangedMessage(DataKind.Logs)); // live-sync: Reports refresh
     }
 
-    private bool CanSave() => !AnyDayOverEight();
+    private bool CanSave() => !AnyDayOverEight() && !IsTeamView; // team aggregate is read-only
 
-    /// Persist one cell: value -> upsert on natural key (TS-07); empty -> delete (TS-03).
+    /// Persist one cell for the effective user: value -> upsert on natural key (TS-07); empty -> delete.
     public async Task SaveCellAsync(TimesheetRowVm row, DayColumn col)
     {
+        if (IsTeamView) return;
         var date = CurrentWeek.AddDays((int)col);
         var value = col switch
         {
@@ -196,9 +273,33 @@ public sealed partial class TimesheetViewModel : ObservableObject
             DayColumn.Thu => row.Thu,
             _ => row.Fri
         };
-        if (value is { } v) await _timeLogs.SaveCellAsync(_currentUserId(), row.TaskId, date, v);
-        else await _timeLogs.ClearCellAsync(_currentUserId(), row.TaskId, date);
+        if (value is { } v) await _timeLogs.SaveCellAsync(EffectiveUserId, row.TaskId, date, v);
+        else await _timeLogs.ClearCellAsync(EffectiveUserId, row.TaskId, date);
     }
+
+    /// Move a ticket to the NEXT month (its period_month bumps by one). Audited as the current user,
+    /// then the grid reloads so the ticket leaves the current month's view (TS / v2).
+    [RelayCommand]
+    private async Task MoveMonthAsync(int requestId)
+    {
+        if (_requests is null) return;
+        var req = await _requests.GetByIdAsync(requestId);
+        if (req is null) return;
+
+        // Base month = the ticket's current period (or the filter month if unassigned), then +1.
+        var baseMonth = ParseMonth(req.PeriodMonth) ?? SelectedMonth;
+        var next = baseMonth.AddMonths(1).ToString("yyyy-MM");
+
+        await _requests.UpdateAsync(req with { PeriodMonth = next },
+            _currentUser?.Current?.Id, _currentUser?.Current?.Name);
+        await ReloadAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Requests));
+    }
+
+    private static DateOnly? ParseMonth(string? yyyymm) =>
+        DateOnly.TryParseExact(yyyymm + "-01", "yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var d) ? d : null;
 
     // Test-only hook to exercise the Applied -> reload wiring without WPF dispatcher.
     internal void RaiseSmartInputAppliedForTest() => _ = ReloadAsync();

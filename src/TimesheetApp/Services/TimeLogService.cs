@@ -117,32 +117,50 @@ public sealed class TimeLogService : ITimeLogService
         var monday = MondayOf(mondayOfWeek);
         var friday = monday.AddDays(4);
 
+        var logs = await _logs.GetByUserAndRangeAsync(userId, monday, friday);
+        var byTask = logs.ToLookup(l => l.TaskId);
+        return await BuildGroupsAsync(monday, (taskId, d) =>
+            byTask[taskId].Where(l => l.WorkDate == d).Select(l => (decimal?)l.Hours).FirstOrDefault());
+    }
+
+    public async Task<IReadOnlyList<WeekRequestGroup>> GetWeekGroupedAllUsersAsync(DateOnly mondayOfWeek)
+    {
+        var monday = MondayOf(mondayOfWeek);
+        var friday = monday.AddDays(4);
+
+        // Team view: sum hours across ALL users per (task, day). Export rows already join every user.
+        var rows = await _logs.GetExportRowsAsync(monday, friday, null);
+        var summed = rows
+            .GroupBy(r => (r.TaskId, r.WorkDate))
+            .ToDictionary(g => g.Key, g => g.Sum(r => r.Hours));
+        return await BuildGroupsAsync(monday, (taskId, d) =>
+            summed.TryGetValue((taskId, d), out var h) ? h : (decimal?)null);
+    }
+
+    // Shared group shaping: one group per request (incl. DEFAULT + empty), tasks ordered, with the
+    // per-(task,day) hours supplied by the caller (single user vs team aggregate).
+    private async Task<IReadOnlyList<WeekRequestGroup>> BuildGroupsAsync(
+        DateOnly monday, Func<int, DateOnly, decimal?> hoursFor)
+    {
         var requests = await _requests.SearchAsync(null);   // ALL requests, incl. DEFAULT + empty ones
         var tasks = await _tasks.GetActiveForTimesheetAsync();
-        var logs = await _logs.GetByUserAndRangeAsync(userId, monday, friday);
-
-        var byTask = logs.ToLookup(l => l.TaskId);
         var tasksByRequest = tasks.ToLookup(t => t.RequestId);
 
         // Order by request_code so DEFAULT-vs-others is stable across reloads.
-        var groups = requests
+        return requests
             .OrderBy(r => r.RequestCode, StringComparer.Ordinal)
             .Select(r =>
             {
                 var rows = tasksByRequest[r.Id]
                     .OrderBy(t => t.OrderIndex)
-                    .Select(t =>
-                    {
-                        decimal? On(DateOnly d) => byTask[t.Id].Where(l => l.WorkDate == d).Select(l => (decimal?)l.Hours).FirstOrDefault();
-                        return new WeekRow(t.Id, r.RequestCode, t.TaskName, t.OrderIndex,
-                            On(monday), On(monday.AddDays(1)), On(monday.AddDays(2)), On(monday.AddDays(3)), On(monday.AddDays(4)));
-                    })
+                    .Select(t => new WeekRow(t.Id, r.RequestCode, t.TaskName, t.OrderIndex,
+                        hoursFor(t.Id, monday), hoursFor(t.Id, monday.AddDays(1)),
+                        hoursFor(t.Id, monday.AddDays(2)), hoursFor(t.Id, monday.AddDays(3)),
+                        hoursFor(t.Id, monday.AddDays(4))))
                     .ToList();
-                return new WeekRequestGroup(r.Id, r.RequestCode, r.Project, rows);
+                return new WeekRequestGroup(r.Id, r.RequestCode, r.Project, rows, r.PeriodMonth, r.Status);
             })
             .ToList();
-
-        return groups;
     }
 
     public async Task<IReadOnlyList<User>> GetUsersMissingLogsAsync(int workdayWindowN)

@@ -18,6 +18,8 @@ public interface ITimeLogService
     // Same week data grouped by Request — one group per request (incl. DEFAULT + empty ones), so the
     // Timesheet tab can render collapsible groups and add a task to an empty request inline. (TS-01/02/05)
     Task<IReadOnlyList<WeekRequestGroup>> GetWeekGroupedAsync(int userId, DateOnly mondayOfWeek);
+    // Same shape but hours summed across ALL users — the Entry "Cả team" read-only view (v2).
+    Task<IReadOnlyList<WeekRequestGroup>> GetWeekGroupedAllUsersAsync(DateOnly mondayOfWeek);
     // Ok only when every day in the proposed cell set stays ≤ 8h after merge — used by preview (SI-05).
     Task<SaveResult> ValidateDayTotalsAsync(int userId, IReadOnlyList<CellAssignment> cells, int taskId);
     // Commit a validated smart-input set atomically; backs up before the bulk upsert (XC-10, SI-05).

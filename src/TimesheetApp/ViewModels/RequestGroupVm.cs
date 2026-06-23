@@ -16,18 +16,26 @@ public sealed partial class RequestGroupVm : ObservableObject
 
     public RequestGroupVm(
         int requestId, string requestCode, string project,
-        ITaskRepository tasks, Func<Task> onTaskAdded)
+        ITaskRepository tasks, Func<Task> onTaskAdded,
+        string? periodMonth = null, string? status = null)
     {
         RequestId = requestId;
         RequestCode = requestCode;
         Project = project;
         _tasks = tasks;
         _onTaskAdded = onTaskAdded;
+        PeriodMonth = periodMonth;
+        Status = status;
     }
 
     public int RequestId { get; }
     public string RequestCode { get; }
     public string Project { get; }
+    public string? PeriodMonth { get; }   // "yyyy-MM" the ticket belongs to (v2)
+    public string? Status { get; }         // ticket status (v2)
+
+    // True for real tickets (not the hidden DEFAULT) — only these can be moved to another month.
+    public bool CanMoveMonth => !string.Equals(RequestCode, "DEFAULT", StringComparison.Ordinal);
 
     /// Header label shown on the Expander, e.g. "REQ-8739 — Arcs 5.0".
     public string Header =>
