@@ -42,10 +42,12 @@ public sealed partial class TimesheetViewModel : ObservableObject
         SmartInput = new SmartInputPanelVm(smartInput, timeLogs, () => EffectiveUserId);
         SmartInput.Applied += async () => await ReloadAsync();
 
-        // Assign the backing field directly so the change handler (which reloads) does NOT fire
+        // Assign the backing fields directly so the change handlers (which reload) do NOT fire
         // during construction — the first load is driven by LoadCommand.
         var today = _clock.Today;
         _selectedMonth = new DateOnly(today.Year, today.Month, 1);
+        _filterMonthNumber = today.Month;
+        _filterYear = today.Year;
 
         // Live cross-tab sync: reload the grid when tasks/templates/default-tasks change elsewhere
         // (e.g. a task created in the Requests tab). static lambda + recipient arg keeps the weak ref.
@@ -70,6 +72,15 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
     [ObservableProperty] private EntryTarget? _selectedTarget;
     [ObservableProperty] private DateOnly _selectedMonth; // first-of-month; filters which tickets show
+
+    // Month filter is picked as month + year combos (not a full date picker).
+    [ObservableProperty] private int _filterMonthNumber;
+    [ObservableProperty] private int _filterYear;
+    public IReadOnlyList<int> Months { get; } = Enumerable.Range(1, 12).ToList();
+    public IReadOnlyList<int> Years { get; } = Enumerable.Range(DateTime.Today.Year - 2, 6).ToList();
+
+    partial void OnFilterMonthNumberChanged(int value) => SelectedMonth = new DateOnly(FilterYear, value, 1);
+    partial void OnFilterYearChanged(int value) => SelectedMonth = new DateOnly(value, FilterMonthNumber, 1);
 
     // The user whose hours are loaded/edited (login user unless another is picked; 0 for team view).
     private int EffectiveUserId =>

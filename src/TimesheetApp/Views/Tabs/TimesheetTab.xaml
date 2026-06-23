@@ -33,35 +33,44 @@
 
   <DockPanel LastChildFill="True">
 
-    <!-- Week navigation bar (TS-01) -->
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,8,8,4">
-      <Button Content="&#9664; Prev"
-              Command="{Binding PreviousWeekCommand}"
-              Style="{StaticResource ToolbarGhostButton}"/>
-      <TextBlock Text="{Binding CurrentWeek, StringFormat='Week of {0:dd/MM/yyyy}'}"
-                 VerticalAlignment="Center" Margin="8,0" FontWeight="Bold"/>
-      <Button Content="Next &#9654;"
-              Command="{Binding NextWeekCommand}"
-              Style="{StaticResource ToolbarGhostButton}"/>
-      <Button Content="Save"
-              Command="{Binding SaveCommand}"
-              Style="{StaticResource ToolbarButton}" Margin="16,0,6,0"/>
-      <Button Content="&#9889; Smart fill"
-              Click="OnSmartFill"
-              Style="{StaticResource ToolbarGhostButton}"
-              IsEnabled="{Binding CanEdit}"
-              ToolTip="Auto-fill hours for one task over a date range (split evenly / full 8h)"/>
+    <!-- Week navigation toolbar (TS-01) — compact; week total anchored to the right edge. -->
+    <DockPanel DockPanel.Dock="Top" Margin="8,8,8,6">
 
-      <!-- Week total chip -->
-      <Border Background="{StaticResource HeaderBg}" CornerRadius="7" Padding="12,4" Margin="16,0,0,0">
-        <StackPanel>
-          <TextBlock Text="WEEK TOTAL" FontSize="10" FontWeight="Bold"
-                     Foreground="{StaticResource TableHeaderText}" HorizontalAlignment="Right"/>
-          <TextBlock Text="{Binding WeekTotal, StringFormat='{}{0:N1}h'}" FontSize="16" FontWeight="Bold"
-                     Foreground="{StaticResource Accent}" HorizontalAlignment="Right"/>
+      <!-- Week total chip (right) -->
+      <Border DockPanel.Dock="Right" Background="{StaticResource HeaderBg}" CornerRadius="7"
+              Padding="12,3" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="Week total" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
+                     Foreground="{StaticResource TableHeaderText}" Margin="0,0,8,0"/>
+          <TextBlock Text="{Binding WeekTotal, StringFormat='{}{0:N1}h'}" FontSize="15" FontWeight="Bold"
+                     Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
         </StackPanel>
       </Border>
-    </StackPanel>
+
+      <!-- Left group: segmented week nav + Save + Smart fill -->
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <!-- Segmented prev / week / next -->
+        <Border BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="6"
+                Background="{StaticResource Surface}">
+          <StackPanel Orientation="Horizontal">
+            <Button Content="&#9664;" Command="{Binding PreviousWeekCommand}"
+                    Style="{StaticResource GhostButton}" BorderThickness="0" Padding="10,4"
+                    Margin="0" ToolTip="Previous week"/>
+            <TextBlock Text="{Binding CurrentWeek, StringFormat='Week of {0:dd/MM/yyyy}'}"
+                       VerticalAlignment="Center" Margin="6,0" FontWeight="SemiBold" FontSize="13"/>
+            <Button Content="&#9654;" Command="{Binding NextWeekCommand}"
+                    Style="{StaticResource GhostButton}" BorderThickness="0" Padding="10,4"
+                    Margin="0" ToolTip="Next week"/>
+          </StackPanel>
+        </Border>
+
+        <Button Content="Save" Command="{Binding SaveCommand}"
+                Style="{StaticResource ToolbarButton}" Margin="12,0,6,0"/>
+        <Button Content="&#9889; Smart fill" Click="OnSmartFill"
+                Style="{StaticResource ToolbarGhostButton}" IsEnabled="{Binding CanEdit}"
+                ToolTip="Auto-fill hours for one task over a date range (split evenly / full 8h)"/>
+      </StackPanel>
+    </DockPanel>
 
     <!-- v2: Entry user filter (Cả team / other user) + month filter -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,2,8,4">
@@ -69,8 +78,9 @@
       <ComboBox Width="200" ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}"
                 DisplayMemberPath="Display"/>
       <TextBlock Text="Month:" VerticalAlignment="Center" Margin="16,0,6,0"/>
-      <DatePicker SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnly}}"
-                  ToolTip="Show only tickets in the selected month (pick any day in the month)"/>
+      <ComboBox Width="56" ItemsSource="{Binding Months}" SelectedItem="{Binding FilterMonthNumber}"
+                Margin="0,0,6,0" ToolTip="Show only tickets in the selected month"/>
+      <ComboBox Width="80" ItemsSource="{Binding Years}" SelectedItem="{Binding FilterYear}"/>
       <Border Background="{StaticResource AmberBg}" CornerRadius="7" Padding="10,3" Margin="16,0,0,0"
               VerticalAlignment="Center"
               Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVisibleConverter}}">
