@@ -69,6 +69,11 @@
         <Button Content="&#9889; Smart fill" Click="OnSmartFill"
                 Style="{StaticResource ToolbarGhostButton}" IsEnabled="{Binding CanEdit}"
                 ToolTip="Auto-fill hours for one task over a date range (split evenly / full 8h)"/>
+        <Button Command="{Binding ToggleCollapseAllCommand}"
+                Style="{StaticResource ToolbarGhostButton}"
+                ToolTip="Collapse / expand all request groups">
+          <TextBlock><Run Text="&#9776; "/><Run Text="{Binding CollapseToggleText, Mode=OneWay}"/></TextBlock>
+        </Button>
       </StackPanel>
     </DockPanel>
 

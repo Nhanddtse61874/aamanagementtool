@@ -159,6 +159,19 @@ public sealed partial class TimesheetViewModel : ObservableObject
         await ReloadAsync();
     }
 
+    // Quick collapse/expand of ALL request groups at once (Entry header button).
+    [ObservableProperty] private bool _allCollapsed;
+
+    public string CollapseToggleText => AllCollapsed ? "Expand all" : "Collapse all";
+    partial void OnAllCollapsedChanged(bool value) => OnPropertyChanged(nameof(CollapseToggleText));
+
+    [RelayCommand]
+    private void ToggleCollapseAll()
+    {
+        AllCollapsed = !AllCollapsed;
+        foreach (var g in Groups) g.IsExpanded = !AllCollapsed;
+    }
+
     [RelayCommand]
     private async Task NextWeekAsync()
     {
@@ -221,6 +234,9 @@ public sealed partial class TimesheetViewModel : ObservableObject
             Groups.Add(groupVm);
         }
         _suppressTotals = false;
+
+        // Keep groups collapsed across reloads while "Collapse all" is active.
+        if (AllCollapsed) foreach (var g in Groups) g.IsExpanded = false;
 
         OnPropertyChanged(nameof(MonHeader));
         OnPropertyChanged(nameof(TueHeader));
