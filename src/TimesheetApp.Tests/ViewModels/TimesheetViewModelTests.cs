@@ -104,6 +104,30 @@ public class TimesheetViewModelTests
         tl.Verify(t => t.GetWeekGroupedAsync(1, Mon.AddDays(7)), Times.Once);
     }
 
+    [Fact] // Jump-to-week: picking any date snaps CurrentWeek to that date's Monday and reloads.
+    public async Task JumpDate_SnapsToMondayOfPickedDate_AndReloads()
+    {
+        var (vm, tl, _) = Make();
+        await vm.LoadCommand.ExecuteAsync(null);
+        tl.Invocations.Clear();
+
+        vm.JumpDate = new DateTime(2026, 7, 1); // Wed -> Monday 2026-06-29
+
+        Assert.Equal(new DateOnly(2026, 6, 29), vm.CurrentWeek);
+        tl.Verify(t => t.GetWeekGroupedAsync(1, new DateOnly(2026, 6, 29)), Times.Once);
+    }
+
+    [Fact] // Navigating Prev/Next keeps the jump DatePicker in sync with the visible week.
+    public async Task Navigation_KeepsJumpDateInSyncWithCurrentWeek()
+    {
+        var (vm, _, _) = Make();
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        await vm.NextWeekCommand.ExecuteAsync(null);
+
+        Assert.Equal(vm.CurrentWeek, DateOnly.FromDateTime(vm.JumpDate!.Value));
+    }
+
     [Fact]
     public async Task Prev_ShiftsWeekBackSevenDays()
     {

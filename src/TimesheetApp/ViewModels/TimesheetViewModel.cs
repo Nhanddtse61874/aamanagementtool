@@ -71,6 +71,21 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
     [ObservableProperty] private DateOnly _currentWeek;
 
+    // Jump-to-week: a DatePicker bound here lets the user snap the grid to ANY week (not just Prev/Next).
+    // Picking a date jumps to that date's Monday; navigating Prev/Next keeps the picker in sync.
+    [ObservableProperty] private DateTime? _jumpDate;
+
+    partial void OnCurrentWeekChanged(DateOnly value) => JumpDate = value.ToDateTime(TimeOnly.MinValue);
+
+    partial void OnJumpDateChanged(DateTime? value)
+    {
+        if (value is null) return;
+        var monday = MondayOf(DateOnly.FromDateTime(value.Value));
+        if (monday == CurrentWeek) return; // already on that week (also breaks the sync feedback loop)
+        CurrentWeek = monday;
+        _ = ReloadAsync();
+    }
+
     // ---- v2: Entry user filter + month filter ----
     // IsTeam=true => read-only aggregate across all users; else a specific user (editable).
     public sealed record EntryTarget(int UserId, string Display, bool IsTeam);
