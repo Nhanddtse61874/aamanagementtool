@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Data.Repositories;
+using TimesheetApp.Models;
 using TimesheetApp.Services;
 
 namespace TimesheetApp.ViewModels;
@@ -246,10 +247,42 @@ public sealed partial class TimesheetViewModel : ObservableObject
         RecomputeTotals();
     }
 
-    private void OnRowDayChanged()
+    private void OnRowDayChanged(TimesheetRowVm row, DayColumn col)
     {
         if (_suppressTotals) return;
         RecomputeTotals();
+        _lastAutoSave = AutoSaveCellAsync(row, col); // persist just this cell (no Save button)
+    }
+
+    // ---- Auto-save (replaces the Save button) ----
+    // Status text shown where the Save button used to be: "Saving…" / "✓ Saved" / a warning.
+    [ObservableProperty] private string _saveStatus = "";
+    [ObservableProperty] private bool _saveStatusIsError;
+
+    private Task? _lastAutoSave;
+    // Test hook: await the most recent auto-save so assertions don't race the fire-from-setter task.
+    internal Task LastAutoSave => _lastAutoSave ?? Task.CompletedTask;
+
+    private void SetStatus(string text, bool isError)
+    {
+        SaveStatus = text;
+        SaveStatusIsError = isError;
+    }
+
+    /// Persist a single cell as soon as it commits. A red (invalid) cell is left on screen but never
+    /// written; the service also rejects a cell that would push the day over 8h (revert on reload).
+    private async Task AutoSaveCellAsync(TimesheetRowVm row, DayColumn col)
+    {
+        if (IsTeamView) return;                      // team aggregate is read-only
+        if (row.HasErrorFor(col))
+        {
+            SetStatus("Not saved — fix the highlighted cell", isError: true);
+            return;
+        }
+
+        SetStatus("Saving…", isError: false);
+        var result = await SaveCellAsync(row, col);
+        SetStatus(result.Ok ? "✓ Saved" : $"⚠ {result.Error}", isError: !result.Ok);
     }
 
     private void RecomputeTotals()
@@ -289,9 +322,10 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private bool CanSave() => !AnyDayOverEight() && !IsTeamView; // team aggregate is read-only
 
     /// Persist one cell for the effective user: value -> upsert on natural key (TS-07); empty -> delete.
-    public async Task SaveCellAsync(TimesheetRowVm row, DayColumn col)
+    /// Returns the service's SaveResult (Ok=false when the day would exceed 8h); clears are always Ok.
+    public async Task<SaveResult> SaveCellAsync(TimesheetRowVm row, DayColumn col)
     {
-        if (IsTeamView) return;
+        if (IsTeamView) return new SaveResult(true, null);
         var date = CurrentWeek.AddDays((int)col);
         var value = col switch
         {
@@ -301,8 +335,9 @@ public sealed partial class TimesheetViewModel : ObservableObject
             DayColumn.Thu => row.Thu,
             _ => row.Fri
         };
-        if (value is { } v) await _timeLogs.SaveCellAsync(EffectiveUserId, row.TaskId, date, v);
-        else await _timeLogs.ClearCellAsync(EffectiveUserId, row.TaskId, date);
+        if (value is { } v) return await _timeLogs.SaveCellAsync(EffectiveUserId, row.TaskId, date, v);
+        await _timeLogs.ClearCellAsync(EffectiveUserId, row.TaskId, date);
+        return new SaveResult(true, null);
     }
 
     /// Move a ticket to the NEXT month (its period_month bumps by one). Audited as the current user,

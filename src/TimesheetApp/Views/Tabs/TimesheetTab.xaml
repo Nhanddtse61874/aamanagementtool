@@ -64,8 +64,21 @@
           </StackPanel>
         </Border>
 
-        <Button Content="Save" Command="{Binding SaveCommand}"
-                Style="{StaticResource ToolbarButton}" Margin="12,0,6,0"/>
+        <!-- Auto-save status (replaces the old Save button): cells persist on commit. -->
+        <TextBlock Text="{Binding SaveStatus}" VerticalAlignment="Center" Margin="12,0,8,0"
+                   FontSize="12" FontWeight="SemiBold" MinWidth="64"
+                   Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibleConverter}}">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Setter Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveStatusIsError}" Value="True">
+                  <Setter Property="Foreground" Value="Red"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+        </TextBlock>
         <Button Content="&#9889; Smart fill" Click="OnSmartFill"
                 Style="{StaticResource ToolbarGhostButton}" IsEnabled="{Binding CanEdit}"
                 ToolTip="Auto-fill hours for one task over a date range (split evenly / full 8h)"/>

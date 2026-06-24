@@ -171,35 +171,48 @@ public class TimesheetViewModelTests
         Assert.True(vm.SaveCommand.CanExecute(null));
     }
 
-    [Fact]
-    public async Task SaveCell_WithValue_UpsertsOnNaturalKey()
+    [Fact] // Editing a cell auto-saves it (no Save button): value -> upsert on the natural key.
+    public async Task EditingCell_AutoSaves_UpsertsOnNaturalKey()
     {
         var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null));
         var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
-        var row = AllTasks(vm)[0];
-        await vm.SaveCellAsync(row, DayColumn.Mon);
-        // value still null -> nothing yet
-        row.Mon = 4m;
-        await vm.SaveCellAsync(row, DayColumn.Mon);
+        AllTasks(vm)[0].Mon = 4m;   // commit -> auto-save fires from the setter
+        await vm.LastAutoSave;
 
         tl.Verify(t => t.SaveCellAsync(1, 7, Mon, 4m), Times.Once);
+        Assert.Equal("✓ Saved", vm.SaveStatus);
+        Assert.False(vm.SaveStatusIsError);
     }
 
-    [Fact]
-    public async Task SaveCell_WithEmptyValue_DeletesLog()
+    [Fact] // Clearing a cell auto-deletes its log (empty = 0h), never upserts.
+    public async Task ClearingCell_AutoDeletesLog()
     {
         var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, null, null, null));
         var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
-        var row = AllTasks(vm)[0];
-        row.Mon = null;             // cleared
-        await vm.SaveCellAsync(row, DayColumn.Mon);
+        AllTasks(vm)[0].Mon = null; // cleared
+        await vm.LastAutoSave;
 
         tl.Verify(t => t.ClearCellAsync(1, 7, Mon), Times.Once);
         tl.Verify(t => t.SaveCellAsync(1, 7, Mon, It.IsAny<decimal>()), Times.Never);
+    }
+
+    [Fact] // A red (invalid) cell is left on screen but NEVER written to storage; status flags it.
+    public async Task EditingInvalidCell_DoesNotPersist_AndFlagsStatus()
+    {
+        var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null));
+        var (vm, tl, _) = Make(groups);
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        AllTasks(vm)[0].Mon = 9m;   // > 8h single cell -> per-cell validation error
+        await vm.LastAutoSave;
+
+        tl.Verify(t => t.SaveCellAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateOnly>(),
+            It.IsAny<decimal>()), Times.Never);
+        Assert.True(vm.SaveStatusIsError);
     }
 
     [Fact]

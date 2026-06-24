@@ -35,9 +35,11 @@ public class TimesheetRowVmTests
     {
         var row = NewRow();
         var fired = 0;
-        row.DayChanged += () => fired++;
+        DayColumn? changed = null;
+        row.DayChanged += (_, col) => { fired++; changed = col; };
         row.Tue = 5m;
         Assert.Equal(1, fired);
+        Assert.Equal(DayColumn.Tue, changed);
     }
 
     [Fact]
