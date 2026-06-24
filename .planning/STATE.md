@@ -1,15 +1,18 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-23
+**Last updated:** 2026-06-24
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
 WPF Desktop Timesheet Tool (.NET 8 / WPF MVVM / SQLite+Dapper / ClosedXML / CommunityToolkit.Mvvm).
-App project: `src/TimesheetApp`. Tests: `src/TimesheetApp.Tests`. Branch: `main`.
+Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `src/TimesheetApp`.
+Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
 
 ## Current status
-- **181 tests green**, `dotnet build` clean, app launches and is usable.
-- Full M1 (P1–P6 + shell + QA) was built autonomously (Mode B), then a long **UAT-driven UI rework** (this session). All planning artifacts in `.planning/` + `docs/superpowers/`.
+- **185 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`f27d895`** (all work pushed).
+- Schema is at **user_version 3** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization).
+- UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
+- Built autonomously, then many rounds of **UAT-driven UI rework**. Planning artifacts in `.planning/` + `docs/superpowers/`.
 
 ## Commands
 - Build: `dotnet build src/TimesheetApp.sln`
@@ -63,21 +66,47 @@ Investigate / IT / Estimate (`RequestStatus.All`).
 - 182 tests (added a RequestRepository audit round-trip integration test); migration verified on the real DB.
 - Repo is on GitHub: **Nhanddtse61874/aamanagementtool** (private). Local perms in `.claude/settings.local.json` (gitignored).
 
-## Remaining UX backlog (user feedback — NOT yet done)
-- **Auto-save cells** (remove the Save-button friction; persist on cell commit + surface validation/revert).
-- **Week DatePicker** to jump to any week (currently Prev/Next only).
-- **Smart Input usability**: replace raw "Task Id" + text dates with a **task dropdown + DatePickers**.
-- **First-run zero-config**: auto-use Windows username (currently prefilled inline create).
-- **Visual redesign**: user said *"tôi sẽ thiết kế và gửi cho bạn"* — apply their design to `Views/Theme/Theme.xaml` + tabs when received.
-- XC-09 warning → surface to a UI banner (currently Trace). XC-10 `.bak` files **accumulate unbounded** in the DB folder (many already) — add a keep-last-N prune.
+## UI polish + feature rework — DONE (2026-06-24, commits up to `f27d895`)
+After the Worklog redesign + ticket lifecycle, a long UAT polish pass (newest last):
+- **Reports**: Weekly grid now breaks down by **date · ticket · task · hours** (`WeeklyDetailRow` +
+  `ReportAggregator.WeeklyDetailRows`). Entering Reports **auto-loads** the default view (whole team,
+  current month + week) via `ActivateTabAsync(3)` so stat cards / grids / drill-down show immediately.
+- **Request editor**: month is **required** via **Month + Year combos** (not a DatePicker);
+  **Project is a fixed enum dropdown** = ARCS / PlusArcs / ARMS / Other (`RequestProjects.All`).
+  Creating a request **requires ≥1 task** (editor stays open with a red message otherwise).
+- **Migration v3**: normalizes legacy free-text `Request.project` onto the enum (DEFAULT kept).
+- **English UI**: all user-facing strings translated (labels, tooltips, dialogs, banners, dropdowns).
+- **Entry day grid = Excel-like**: bordered/centred day cells (GridLinesVisibility=All), header strip +
+  footer reserve the scrollbar gutter (always-visible) and the indent was removed, so columns line up at
+  ANY window size. Compact, balanced toolbar: segmented prev/week/next + Save + Smart fill + **Collapse all
+  ⇄ Expand all** toggle (`TimesheetViewModel.ToggleCollapseAllCommand`), Week-total chip anchored right.
+  Entry **month filter** is also Month+Year combos (`FilterMonthNumber/FilterYear`).
+- **Smart fill REDESIGNED** (`SmartInputPanelVm` rewritten, new dialog): enter **request code → Find →
+  tasks as checkboxes → check tasks → From/To DatePickers + total hours (or Full 8h) → Preview → Confirm**.
+  Total (Split evenly) + the 8h/day cap are distributed across **all checked tasks × working days**.
+  New `ITimeLogService.ValidateSmartFillAsync/ApplySmartFillAsync` validate the combined per-day totals
+  and apply atomically (`SmartFillTask` record). Date range defaults to the on-screen week.
+- **Buttons**: smaller default (Padding 16,8→10,4); secondary actions → ghost, destructive → danger,
+  Settings input-row buttons height-matched to inputs (32px).
 
-## Current DB data (for context)
-- User: `Nhan` (windows_username=`Admin`).
-- Requests: DEFAULT, SHOKAI_QA_REQ-8739, SHOKAI_QA_REQ-44444 (tasks "d","sdfs"), SHOKAI_QA_REQ-1234.
-- Template: **"Default Task"** = Design / Investigate / Implement / Automation Test / IT.
+## Remaining UX backlog (NOT yet done)
+- **Auto-save cells** (remove the Save-button friction; persist on cell commit + surface validation/revert).
+- **Week DatePicker / month-jump** to jump to any week (currently Prev/Next only).
+- **First-run zero-config**: auto-use Windows username (currently prefilled inline create).
+- XC-09 warning → surface to a UI banner (currently Trace). XC-10 `.bak` files **accumulate unbounded**
+  in the DB folder — add a keep-last-N prune.
+- Possible polish: remember collapse/expand state across app restarts; per-tab button review if any feel large.
+
+## Decisions locked (don't re-litigate)
+- Brand "Worklog" is **display-only**; DB path stays `timesheet.db`.
+- Requests/Reports are **sub-tabs of Timesheet**; Users/Settings under sidebar ADMIN; Daily Report/Task List are SOON placeholders.
+- Entry "Cả team / Whole team (read-only)" view is **read-only aggregate**; a specific user is editable.
+- "Move ▶" = advance ticket to the **next** month (audited). Arbitrary month change is via the Requests editor.
+- Smart fill total = **grand total split across checked tasks × days** (not per task).
+- Projects are the fixed enum; legacy values were normalized by migration v3.
 
 ## Working style notes (this user)
-- Iterative UAT: build a focused fix → **run the app** → user tests → next. They want to "kiểm từng bước".
-- Mirror the user's chat language (Vietnamese ↔ English).
-- When a feature "doesn't work", get **DB/runtime evidence first** (systematic-debugging) — several issues were "built but not wired into the UI" or UX traps, not logic bugs.
-- All recent commits on `main` (~30+ during build + ~10 during UAT). Latest: `4896a58`.
+- Iterative UAT: build a focused fix → **run the app** → user tests → next ("kiểm từng bước"). Verify with screenshots.
+- Mirror the user's chat language (Vietnamese ↔ English). Commit + push each accepted change to `main`.
+- When a feature "doesn't work", get **DB/runtime evidence first** — several issues were UX traps / not-wired, not logic bugs.
+- Note: `MainViewModelTests.ActivateTab_reloads_timesheet_rows` is occasionally **flaky** (process-wide default WeakReferenceMessenger cross-talk) — re-run if it fails once; not a regression.
