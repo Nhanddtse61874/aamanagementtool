@@ -1,6 +1,6 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-24
+**Last updated:** 2026-06-24 (auto-save cells)
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
@@ -9,7 +9,7 @@ Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `
 Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
 
 ## Current status
-- **185 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`f27d895`** (all work pushed).
+- **186 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`4a700e3`** (all work pushed).
 - Schema is at **user_version 3** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization).
 - UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
 - Built autonomously, then many rounds of **UAT-driven UI rework**. Planning artifacts in `.planning/` + `docs/superpowers/`.
@@ -89,8 +89,16 @@ After the Worklog redesign + ticket lifecycle, a long UAT polish pass (newest la
 - **Buttons**: smaller default (Padding 16,8→10,4); secondary actions → ghost, destructive → danger,
   Settings input-row buttons height-matched to inputs (32px).
 
+## Auto-save cells — DONE (2026-06-24, commit `4a700e3`)
+Entry cells persist on commit (LostFocus); the **Save button is gone**, replaced by a status indicator
+(`SaveStatus`/`SaveStatusIsError`: "Saving…" / green "✓ Saved" / red warning). `TimesheetRowVm.DayChanged`
+now carries `(row, DayColumn)` so `OnRowDayChanged` auto-saves ONLY the changed cell via `AutoSaveCellAsync`.
+A red cell (`TimesheetRowVm.HasErrorFor(col)`) is never written; the service still rejects a day >8h
+(status warns, value reverts on reload). Team (read-only) view skips auto-save. `SaveCellAsync` now returns
+`SaveResult`. Note: `SaveCommand`/`CanSave`/`AnyDayOverEight` are KEPT (internal bulk-save, no button) so
+`Save_DisabledWhenAnyColumnExceedsEight` still guards the >8h invariant. 3 new VM auto-save tests.
+
 ## Remaining UX backlog (NOT yet done)
-- **Auto-save cells** (remove the Save-button friction; persist on cell commit + surface validation/revert).
 - **Week DatePicker / month-jump** to jump to any week (currently Prev/Next only).
 - **First-run zero-config**: auto-use Windows username (currently prefilled inline create).
 - XC-09 warning → surface to a UI banner (currently Trace). XC-10 `.bak` files **accumulate unbounded**
