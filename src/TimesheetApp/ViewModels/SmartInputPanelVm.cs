@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
 
@@ -9,29 +10,53 @@ namespace TimesheetApp.ViewModels;
 
 public enum SmartInputMode { DistributeEven, FillFull8h }
 
-/// Smart Input panel (SI-06): two modes + preview. Apply overwrites cells atomically,
-/// gated on a post-merge 8h validation done during preview (SI-05).
+/// One selectable task in the smart-fill task list (checkbox).
+public sealed partial class SmartTaskItem : ObservableObject
+{
+    public int TaskId { get; init; }
+    public string TaskName { get; init; } = "";
+    [ObservableProperty] private bool _isChecked;
+}
+
+/// One preview row: which task / day / hours the fill will write.
+public sealed record SmartPreviewRow(string TaskName, DateOnly Date, decimal Hours);
+
+/// Smart-fill panel (SI redesign): enter a request code -> load its tasks as checkboxes -> check the
+/// ones to fill -> pick From/To + total hours -> preview -> apply. Total hours (Split evenly) and the
+/// 8h/day cap are spread across ALL checked tasks; apply is atomic (SI-05).
 public sealed partial class SmartInputPanelVm : ObservableObject
 {
-    private readonly ISmartInputService _smartInput;
+    private const int DayCapTenths = 80; // 8.0h
+
     private readonly ITimeLogService _timeLogs;
+    private readonly IRequestRepository? _requests;
+    private readonly ITaskRepository _tasks;
     private readonly Func<int> _currentUserId;
 
-    public SmartInputPanelVm(ISmartInputService smartInput, ITimeLogService timeLogs, Func<int> currentUserId)
+    private List<SmartFillTask> _planned = new();
+
+    public SmartInputPanelVm(
+        ITimeLogService timeLogs, IRequestRepository? requests, ITaskRepository tasks, Func<int> currentUserId)
     {
-        _smartInput = smartInput;
         _timeLogs = timeLogs;
+        _requests = requests;
+        _tasks = tasks;
         _currentUserId = currentUserId;
     }
 
+    [ObservableProperty] private string _requestCode = string.Empty;
+    [ObservableProperty] private string? _loadError;
+
+    /// Tasks of the found request, shown as checkboxes.
+    public ObservableCollection<SmartTaskItem> Tasks { get; } = new();
+
     [ObservableProperty] private SmartInputMode _mode = SmartInputMode.DistributeEven;
-    [ObservableProperty] private int _taskId;
     [ObservableProperty] private DateOnly _from;
     [ObservableProperty] private DateOnly _to;
     [ObservableProperty] private decimal _totalHours;
     [ObservableProperty] private string? _previewError;
 
-    public ObservableCollection<CellAssignment> PreviewCells { get; } = new();
+    public ObservableCollection<SmartPreviewRow> PreviewCells { get; } = new();
 
     /// True only after a preview that produced cells AND passed the 8h day-total validation.
     [ObservableProperty]
@@ -41,31 +66,52 @@ public sealed partial class SmartInputPanelVm : ObservableObject
     /// Raised after a successful atomic apply; owner VM reloads the week grid.
     public event Action? Applied;
 
+    /// Find the request by code and load its active tasks as checkboxes.
+    [RelayCommand]
+    private async Task FindRequestAsync()
+    {
+        Tasks.Clear();
+        PreviewCells.Clear();
+        LoadError = null;
+        PreviewError = null;
+        CanApply = false;
+
+        var code = RequestCode?.Trim();
+        if (string.IsNullOrEmpty(code)) { LoadError = "Enter a request code."; return; }
+        if (_requests is null) { LoadError = "Request lookup is unavailable."; return; }
+
+        var req = await _requests.GetByCodeAsync(code);
+        if (req is null) { LoadError = $"Request '{code}' not found."; return; }
+
+        var tasks = await _tasks.GetActiveByRequestAsync(req.Id);
+        foreach (var t in tasks.OrderBy(t => t.OrderIndex))
+            Tasks.Add(new SmartTaskItem { TaskId = t.Id, TaskName = t.TaskName });
+        if (Tasks.Count == 0) LoadError = "This request has no tasks.";
+    }
+
     [RelayCommand]
     private async Task BuildPreviewAsync()
     {
         CanApply = false;
         PreviewCells.Clear();
         PreviewError = null;
+        _planned = new();
 
-        var math = Mode == SmartInputMode.DistributeEven
-            ? _smartInput.DistributeEven(From, To, TotalHours)
-            : _smartInput.FillFull8h(From, To);
+        var selected = Tasks.Where(t => t.IsChecked).ToList();
+        if (selected.Count == 0) { PreviewError = "Select at least one task."; return; }
 
-        if (!math.Ok)
+        var (plan, error) = BuildPlan(selected);
+        if (error is not null) { PreviewError = error; return; }
+        _planned = plan;
+
+        foreach (var t in _planned)
         {
-            PreviewError = math.Error;          // SI-03 no-op message
-            return;
+            var name = selected.First(s => s.TaskId == t.TaskId).TaskName;
+            foreach (var c in t.Cells) PreviewCells.Add(new SmartPreviewRow(name, c.Date, c.Hours));
         }
 
-        var validation = await _timeLogs.ValidateDayTotalsAsync(_currentUserId(), math.Cells, TaskId);
-        foreach (var c in math.Cells) PreviewCells.Add(c);
-
-        if (!validation.Ok)
-        {
-            PreviewError = validation.Error;    // SI-05 post-merge >8h block
-            return;
-        }
+        var validation = await _timeLogs.ValidateSmartFillAsync(_currentUserId(), _planned);
+        if (!validation.Ok) { PreviewError = validation.Error; return; }
         CanApply = true;
     }
 
@@ -75,18 +121,70 @@ public sealed partial class SmartInputPanelVm : ObservableObject
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {
-        // Guard the path even when ExecuteAsync is invoked directly (bypasses CanExecute):
-        // never write without a validated preview (SI-05).
-        if (!CanApply) return;
+        if (!CanApply) return; // never write without a validated preview (SI-05)
 
-        var result = await _timeLogs.ApplySmartInputAsync(_currentUserId(), TaskId, PreviewCells.ToList());
-        if (!result.Ok)
-        {
-            PreviewError = result.Error;
-            return;
-        }
+        var result = await _timeLogs.ApplySmartFillAsync(_currentUserId(), _planned);
+        if (!result.Ok) { PreviewError = result.Error; return; }
+
         CanApply = false;
         PreviewCells.Clear();
         Applied?.Invoke();
+    }
+
+    // Distribute either the total hours (Split evenly) or 8h/day (Full 8h) across the checked tasks ×
+    // working days, in integer tenths to avoid float drift. Returns one SmartFillTask per task.
+    private (List<SmartFillTask> Plan, string? Error) BuildPlan(List<SmartTaskItem> selected)
+    {
+        var days = WorkingDays(From, To);
+        if (days.Count == 0) return (new(), "No working days in the selected range.");
+        var n = selected.Count;
+
+        // Per-task total tenths (Split evenly) — the grand total split across the checked tasks.
+        int[]? perTaskTenths = null;
+        if (Mode == SmartInputMode.DistributeEven)
+        {
+            if (TotalHours <= 0m) return (new(), "Total hours must be greater than 0.");
+            if (TotalHours != Math.Round(TotalHours, 1, MidpointRounding.AwayFromZero))
+                return (new(), "Total hours may have at most 1 decimal place.");
+            var totalTenths = (int)Math.Round(TotalHours * 10m, MidpointRounding.AwayFromZero);
+            var b = totalTenths / n;
+            var r = totalTenths % n;
+            perTaskTenths = Enumerable.Range(0, n).Select(i => b + (i < r ? 1 : 0)).ToArray();
+        }
+
+        var plan = new List<SmartFillTask>();
+        for (var i = 0; i < n; i++)
+        {
+            var cells = new List<CellAssignment>();
+            if (Mode == SmartInputMode.DistributeEven)
+            {
+                var tt = perTaskTenths![i];
+                var db = tt / days.Count;
+                var dr = tt % days.Count;
+                for (var j = 0; j < days.Count; j++)
+                {
+                    var tenths = db + (j == days.Count - 1 ? dr : 0); // remainder on the last working day
+                    if (tenths > 0) cells.Add(new CellAssignment(days[j], tenths / 10m));
+                }
+            }
+            else // Full 8h: each working day fills to 8h, split equally across the checked tasks
+            {
+                var perDay = DayCapTenths / n + (i < DayCapTenths % n ? 1 : 0);
+                if (perDay > 0)
+                    foreach (var d in days) cells.Add(new CellAssignment(d, perDay / 10m));
+            }
+            if (cells.Count > 0) plan.Add(new SmartFillTask(selected[i].TaskId, cells));
+        }
+
+        return plan.Count == 0 ? (new(), "Nothing to distribute.") : (plan, null);
+    }
+
+    private static List<DateOnly> WorkingDays(DateOnly from, DateOnly to)
+    {
+        var days = new List<DateOnly>();
+        for (var d = from; d <= to; d = d.AddDays(1))
+            if (d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))
+                days.Add(d);
+        return days;
     }
 }

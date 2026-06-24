@@ -89,6 +89,58 @@ public sealed class TimeLogService : ITimeLogService
         return Ok();
     }
 
+    // --- Multi-task smart-fill (SI redesign) -----------------------------------------------------
+
+    public async Task<SaveResult> ValidateSmartFillAsync(int userId, IReadOnlyList<SmartFillTask> tasks)
+    {
+        var flat = tasks
+            .SelectMany(t => t.Cells.Where(c => c.Hours > 0m).Select(c => (t.TaskId, c.Date, Hours: Round1(c.Hours))))
+            .ToList();
+        if (flat.Count == 0) return Err("Select at least one task and enter hours to fill.");
+
+        foreach (var date in flat.Select(x => x.Date).Distinct())
+            if (IsWeekend(date)) return Err($"{date:yyyy-MM-dd} is a weekend.");
+
+        var checkedIds = tasks.Select(t => t.TaskId).ToHashSet();
+        var from = flat.Min(x => x.Date);
+        var to = flat.Max(x => x.Date);
+        var stored = await _logs.GetByUserAndRangeAsync(userId, from, to);
+
+        // For each day: hours already stored on OTHER tasks (the checked tasks get overwritten) plus
+        // the sum of all checked tasks' proposed hours must stay within the 8h cap (XC-03).
+        foreach (var dayGroup in flat.GroupBy(x => x.Date))
+        {
+            var otherStored = stored
+                .Where(l => l.WorkDate == dayGroup.Key && !checkedIds.Contains(l.TaskId))
+                .Sum(l => l.Hours);
+            var proposed = dayGroup.Sum(x => x.Hours);
+            if (otherStored + proposed > DayCap)
+                return Err($"{dayGroup.Key:yyyy-MM-dd}: {otherStored + proposed}h exceeds {DayCap}h.");
+        }
+        return Ok();
+    }
+
+    public async Task<SaveResult> ApplySmartFillAsync(int userId, IReadOnlyList<SmartFillTask> tasks)
+    {
+        var validation = await ValidateSmartFillAsync(userId, tasks);
+        if (!validation.Ok) return validation;
+
+        await _backup.BackupAsync(); // XC-10: backup BEFORE the bulk write
+
+        var logs = tasks
+            .SelectMany(t => t.Cells.Where(c => c.Hours > 0m)
+                .Select(c => new TimeLog(0, userId, t.TaskId, c.Date, Round1(c.Hours), _clock.UtcNow)))
+            .ToList();
+        await _logs.UpsertBatchAsync(logs);
+
+        if (!SqliteMaintenance.IsJournalGone(_config.DbPath))
+            _journalWarnings.Warn(
+                $"A SQLite rollback journal persists next to '{_config.DbPath}' after a smart-fill apply. " +
+                "The last bulk write may have been interrupted; verify the database integrity.");
+
+        return Ok();
+    }
+
     public async Task<WeekGrid> GetWeekAsync(int userId, DateOnly mondayOfWeek)
     {
         var monday = MondayOf(mondayOfWeek);

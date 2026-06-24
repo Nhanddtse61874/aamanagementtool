@@ -38,8 +38,9 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _requests = requests;
         _currentUser = currentUser;
 
-        // Smart-input targets whichever user the Entry filter is viewing (defaults to the login user).
-        SmartInput = new SmartInputPanelVm(smartInput, timeLogs, () => EffectiveUserId);
+        // Smart-fill targets whichever user the Entry filter is viewing (defaults to the login user).
+        // It looks up a request by code + lists its tasks, so it needs the request/task repositories.
+        SmartInput = new SmartInputPanelVm(timeLogs, requests, tasks, () => EffectiveUserId);
         SmartInput.Applied += async () => await ReloadAsync();
 
         // Assign the backing fields directly so the change handlers (which reload) do NOT fire

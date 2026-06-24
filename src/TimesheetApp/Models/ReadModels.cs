@@ -19,6 +19,10 @@ public readonly record struct CellAssignment(DateOnly Date, decimal Hours);
 public readonly record struct SmartInputResult(
     bool Ok, IReadOnlyList<CellAssignment> Cells, string? Error);
 
+// Smart-fill plan for one task: the cells to write. A whole smart-fill is a list of these
+// (one per checked task) validated + applied together against the shared 8h/day cap.
+public sealed record SmartFillTask(int TaskId, IReadOnlyList<CellAssignment> Cells);
+
 // Shaped week for the Timesheet grid (one row per active task, 5 day slots). Shapes VERBATIM
 // from architecture spec §2. (TS-01/02/05)
 public sealed record WeekGrid(DateOnly Monday, IReadOnlyList<WeekRow> Rows);

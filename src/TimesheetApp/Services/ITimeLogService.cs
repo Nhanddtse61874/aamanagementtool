@@ -24,6 +24,10 @@ public interface ITimeLogService
     Task<SaveResult> ValidateDayTotalsAsync(int userId, IReadOnlyList<CellAssignment> cells, int taskId);
     // Commit a validated smart-input set atomically; backs up before the bulk upsert (XC-10, SI-05).
     Task<SaveResult> ApplySmartInputAsync(int userId, int taskId, IReadOnlyList<CellAssignment> cells);
+    // Multi-task smart-fill (SI redesign): validate the COMBINED per-day totals (other stored tasks +
+    // every checked task's proposed cells) against the 8h cap, then apply all atomically with a backup.
+    Task<SaveResult> ValidateSmartFillAsync(int userId, IReadOnlyList<SmartFillTask> tasks);
+    Task<SaveResult> ApplySmartFillAsync(int userId, IReadOnlyList<SmartFillTask> tasks);
     // Active users with zero logs in LastNWorkingDays(today, N) — today included (RPT-04).
     Task<IReadOnlyList<User>> GetUsersMissingLogsAsync(int workdayWindowN);
 }

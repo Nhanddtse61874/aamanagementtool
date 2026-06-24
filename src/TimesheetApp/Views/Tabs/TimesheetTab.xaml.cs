@@ -14,6 +14,11 @@ public partial class TimesheetTab : UserControl
     private void OnSmartFill(object sender, RoutedEventArgs e)
     {
         if (DataContext is not TimesheetViewModel vm) return;
+
+        // Default the date range to the week currently shown so the user usually only checks tasks.
+        vm.SmartInput.From = vm.CurrentWeek;
+        vm.SmartInput.To = vm.CurrentWeek.AddDays(4);
+
         var dialog = new SmartInputPreviewDialog
         {
             DataContext = vm.SmartInput,
