@@ -9,7 +9,7 @@ namespace TimesheetApp.Data.Repositories;
 // v2: start_date / end_date / period_month / status columns + RequestAudit change history.
 public sealed class RequestRepository : IRequestRepository
 {
-    private const string Cols = "id, request_code, project, created_at, start_date, end_date, period_month, status";
+    private const string Cols = "id, request_code, project, created_at, start_date, end_date, period_month, status, assignee_user_id";
 
     private readonly IConnectionFactory _factory;
 
@@ -55,8 +55,8 @@ public sealed class RequestRepository : IRequestRepository
     {
         using var c = _factory.Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Requests(request_code, project, created_at, start_date, end_date, period_month, status)
-              VALUES(@RequestCode, @Project, @CreatedAt, @StartDate, @EndDate, @PeriodMonth, @Status);
+            @"INSERT INTO Requests(request_code, project, created_at, start_date, end_date, period_month, status, assignee_user_id)
+              VALUES(@RequestCode, @Project, @CreatedAt, @StartDate, @EndDate, @PeriodMonth, @Status, @AssigneeUserId);
               SELECT last_insert_rowid();",
             new
             {
@@ -67,6 +67,7 @@ public sealed class RequestRepository : IRequestRepository
                 EndDate = Day(request.EndDate),
                 request.PeriodMonth,
                 request.Status,
+                request.AssigneeUserId,
             });
     }
 
@@ -80,7 +81,8 @@ public sealed class RequestRepository : IRequestRepository
 
         await c.ExecuteAsync(
             @"UPDATE Requests SET request_code = @RequestCode, project = @Project,
-                start_date = @StartDate, end_date = @EndDate, period_month = @PeriodMonth, status = @Status
+                start_date = @StartDate, end_date = @EndDate, period_month = @PeriodMonth, status = @Status,
+                assignee_user_id = @AssigneeUserId
               WHERE id = @Id;",
             new
             {
@@ -90,30 +92,38 @@ public sealed class RequestRepository : IRequestRepository
                 EndDate = Day(request.EndDate),
                 request.PeriodMonth,
                 request.Status,
+                request.AssigneeUserId,
                 request.Id,
             });
 
         if (before is null) return;
 
-        // Audit the four v2 fields; one history row per actually-changed field.
-        var changes = new (string Field, string? Old, string? New)[]
-        {
-            ("start_date", before.start_date, Day(request.StartDate)),
-            ("end_date", before.end_date, Day(request.EndDate)),
-            ("period_month", before.period_month, request.PeriodMonth),
-            ("status", before.status, request.Status),
-        };
-
         var now = Iso(DateTimeOffset.UtcNow);
-        foreach (var (field, oldV, newV) in changes)
+
+        async Task LogAsync(string field, string? oldV, string? newV)
         {
-            if (string.Equals(oldV ?? "", newV ?? "", StringComparison.Ordinal)) continue;
+            if (string.Equals(oldV ?? "", newV ?? "", StringComparison.Ordinal)) return;
             await c.ExecuteAsync(
                 @"INSERT INTO RequestAudit(request_id, field, old_value, new_value,
                     changed_by_user_id, changed_by_name, changed_at)
                   VALUES(@rid, @field, @old, @new, @uid, @uname, @at);",
                 new { rid = request.Id, field, old = oldV, @new = newV,
                       uid = changedByUserId, uname = changedByName, at = now });
+        }
+
+        // Audit the four v2 fields; one history row per actually-changed field.
+        await LogAsync("start_date", before.start_date, Day(request.StartDate));
+        await LogAsync("end_date", before.end_date, Day(request.EndDate));
+        await LogAsync("period_month", before.period_month, request.PeriodMonth);
+        await LogAsync("status", before.status, request.Status);
+
+        // v4: audit the assignee by NAME (readable history), gated on the user-id actually changing.
+        if (before.assignee_user_id != request.AssigneeUserId)
+        {
+            string? NameOf(int? uid) => uid is null ? null
+                : c.QuerySingleOrDefault<string?>("SELECT name FROM Users WHERE id = @id;", new { id = uid });
+            await LogAsync("assignee",
+                NameOf(before.assignee_user_id is { } b ? (int)b : null), NameOf(request.AssigneeUserId));
         }
     }
 
@@ -141,7 +151,8 @@ public sealed class RequestRepository : IRequestRepository
         (int)r.id, r.request_code, r.project,
         DateTimeOffset.Parse(r.created_at, CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
-        ParseDay(r.start_date), ParseDay(r.end_date), r.period_month, r.status);
+        ParseDay(r.start_date), ParseDay(r.end_date), r.period_month, r.status,
+        r.assignee_user_id is { } a ? (int)a : null);
 
     private static DateOnly? ParseDay(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null
@@ -158,6 +169,7 @@ public sealed class RequestRepository : IRequestRepository
         public string? end_date { get; set; }
         public string? period_month { get; set; }
         public string? status { get; set; }
+        public long? assignee_user_id { get; set; }
     }
 
     private sealed class AuditRaw

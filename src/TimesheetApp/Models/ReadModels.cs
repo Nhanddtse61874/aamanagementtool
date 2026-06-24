@@ -34,7 +34,8 @@ public sealed record WeekRow(
 // becomes one collapsible group; Tasks may be empty so an empty request still renders + is loggable.
 public sealed record WeekRequestGroup(
     int RequestId, string RequestCode, string Project, IReadOnlyList<WeekRow> Tasks,
-    string? PeriodMonth = null, string? Status = null);   // v2: month a ticket belongs to + its status
+    string? PeriodMonth = null, string? Status = null,    // v2: month a ticket belongs to + its status
+    string? AssigneeName = null);                          // v4: who the ticket is assigned to
 
 // Save / validation result. Ok=false => no write, with a user-facing message. Shape VERBATIM
 // from architecture spec §2. (XC-02/03/04/05)

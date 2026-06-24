@@ -15,21 +15,25 @@ public sealed partial class RequestsViewModel : ObservableObject
     private readonly ITaskTemplateRepository _templates;
     private readonly IMessenger _messenger;
     private readonly ICurrentUserService? _currentUser;
+    private readonly IUserRepository? _users;   // v4: assignee pick list + name resolution
 
     public RequestsViewModel(
         IRequestRepository requests, ITaskRepository tasks, ITaskTemplateRepository templates,
-        IMessenger? messenger = null, ICurrentUserService? currentUser = null)
+        IMessenger? messenger = null, ICurrentUserService? currentUser = null,
+        IUserRepository? users = null)
     {
         _requests = requests;
         _tasks = tasks;
         _templates = templates;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _currentUser = currentUser;
+        _users = users;
     }
 
-    // List row = the Request plus its active-task count + v2 period/status (shown as grid columns).
+    // List row = the Request plus its active-task count + v2 period/status + v4 assignee (grid columns).
     public sealed record RequestListItem(
-        int Id, string RequestCode, string Project, int TaskCount, string? PeriodMonth, string? Status);
+        int Id, string RequestCode, string Project, int TaskCount, string? PeriodMonth, string? Status,
+        string? AssigneeName);
 
     public ObservableCollection<RequestListItem> Requests { get; } = new();
 
@@ -47,12 +51,19 @@ public sealed partial class RequestsViewModel : ObservableObject
     {
         var term = string.IsNullOrWhiteSpace(SearchTerm) ? null : SearchTerm.Trim();
         var rows = await _requests.SearchAsync(term);
+
+        // v4: id -> name map (GetAll so a deactivated assignee still resolves) for the Assignee column.
+        var names = _users is null
+            ? new Dictionary<int, string>()
+            : (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Name);
+
         Requests.Clear();
         foreach (var r in rows)
         {
             var tasks = await _tasks.GetActiveByRequestAsync(r.Id);
+            var assignee = r.AssigneeUserId is { } uid && names.TryGetValue(uid, out var n) ? n : null;
             Requests.Add(new RequestListItem(
-                r.Id, r.RequestCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Status));
+                r.Id, r.RequestCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Status, assignee));
         }
     }
 
@@ -60,7 +71,8 @@ public sealed partial class RequestsViewModel : ObservableObject
     public async Task BeginCreateAsync()
     {
         var templates = await _templates.GetAllAsync();
-        Editor = RequestEditorViewModel.ForCreate(templates);
+        var users = _users is null ? null : await _users.GetActiveAsync();
+        Editor = RequestEditorViewModel.ForCreate(templates, users);
     }
 
     [RelayCommand]
@@ -71,7 +83,8 @@ public sealed partial class RequestsViewModel : ObservableObject
         var existing = await _tasks.GetActiveByRequestAsync(requestId);
         var templates = await _templates.GetAllAsync();
         var audit = await _requests.GetAuditAsync(requestId);
-        Editor = RequestEditorViewModel.ForEdit(request, existing, templates, audit);
+        var users = _users is null ? null : await _users.GetActiveAsync();
+        Editor = RequestEditorViewModel.ForEdit(request, existing, templates, audit, users);
     }
 
     [RelayCommand]
@@ -89,7 +102,7 @@ public sealed partial class RequestsViewModel : ObservableObject
 
         var newId = await _requests.InsertAsync(
             new Request(0, Editor.RequestCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
-                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status));
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status, Editor.AssigneeUserId));
 
         foreach (var row in Editor.ActiveTasks)
             await _tasks.InsertAsync(new TaskItem(0, newId, row.TaskName.Trim(), row.OrderIndex, true));
@@ -107,7 +120,7 @@ public sealed partial class RequestsViewModel : ObservableObject
 
         await _requests.UpdateAsync(
             new Request(id, Editor.RequestCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
-                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status),
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status, Editor.AssigneeUserId),
             _currentUser?.Current?.Id, _currentUser?.Current?.Name);
 
         // Soft-delete existing tasks flagged removed (REQ-04 — task only, never the request).

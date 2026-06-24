@@ -17,7 +17,7 @@ public sealed partial class RequestGroupVm : ObservableObject
     public RequestGroupVm(
         int requestId, string requestCode, string project,
         ITaskRepository tasks, Func<Task> onTaskAdded,
-        string? periodMonth = null, string? status = null)
+        string? periodMonth = null, string? status = null, string? assigneeName = null)
     {
         RequestId = requestId;
         RequestCode = requestCode;
@@ -26,6 +26,7 @@ public sealed partial class RequestGroupVm : ObservableObject
         _onTaskAdded = onTaskAdded;
         PeriodMonth = periodMonth;
         Status = status;
+        AssigneeName = assigneeName;
     }
 
     public int RequestId { get; }
@@ -33,6 +34,7 @@ public sealed partial class RequestGroupVm : ObservableObject
     public string Project { get; }
     public string? PeriodMonth { get; }   // "yyyy-MM" the ticket belongs to (v2)
     public string? Status { get; }         // ticket status (v2)
+    public string? AssigneeName { get; }   // v4: who the ticket is assigned to (null = unassigned)
 
     // True for real tickets (not the hidden DEFAULT) — only these can be moved to another month.
     public bool CanMoveMonth => !string.Equals(RequestCode, "DEFAULT", StringComparison.Ordinal);

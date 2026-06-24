@@ -10,7 +10,8 @@ public sealed record User(int Id, string Name, string? WindowsUsername, bool IsA
 public sealed record Request(
     int Id, string RequestCode, string Project, DateTimeOffset CreatedAt,
     DateOnly? StartDate = null, DateOnly? EndDate = null,
-    string? PeriodMonth = null, string? Status = null);
+    string? PeriodMonth = null, string? Status = null,
+    int? AssigneeUserId = null);   // v4: the user responsible for this ticket (null = unassigned)
 
 // Allowed ticket statuses (v2). Order is the display order.
 public static class RequestStatus

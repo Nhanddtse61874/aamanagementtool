@@ -25,6 +25,30 @@ public sealed class RequestEditorViewModelTests
         Assert.Equal(new[] { "API", "Web" }, vm.TemplateNames); // distinct, ordered
     }
 
+    [Fact] // v4: create mode defaults to Unassigned (null id); the pick list is "(unassigned)" + users.
+    public void Create_mode_defaults_to_unassigned()
+    {
+        var vm = RequestEditorViewModel.ForCreate(WebTemplate(), new[] { new User(5, "Cara", null, true) });
+
+        Assert.Same(RequestEditorViewModel.Unassigned, vm.SelectedAssignee);
+        Assert.Null(vm.AssigneeUserId);
+        Assert.Equal(2, vm.Users.Count); // Unassigned + Cara
+    }
+
+    [Fact] // v4: edit mode preselects the saved assignee; reselecting Unassigned maps back to null.
+    public void Edit_mode_preselects_assignee_and_unassigned_maps_to_null()
+    {
+        var users = new[] { new User(5, "Cara", null, true) };
+        var req = new Request(3, "REQ-X", "ARCS", DateTimeOffset.UtcNow, AssigneeUserId: 5);
+
+        var vm = RequestEditorViewModel.ForEdit(req, System.Array.Empty<TaskItem>(), WebTemplate(), null, users);
+        Assert.Equal(5, vm.AssigneeUserId);
+        Assert.Equal("Cara", vm.SelectedAssignee.Name);
+
+        vm.SelectedAssignee = RequestEditorViewModel.Unassigned;
+        Assert.Null(vm.AssigneeUserId);
+    }
+
     [Fact] // UX fix: selecting a template auto-applies its tasks (no separate Apply click needed)
     public void SelectingTemplate_autoApplies_withoutExplicitApplyCall()
     {

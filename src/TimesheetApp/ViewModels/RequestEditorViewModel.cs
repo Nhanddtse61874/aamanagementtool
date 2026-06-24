@@ -9,11 +9,18 @@ public sealed partial class RequestEditorViewModel : ObservableObject
 {
     private readonly IReadOnlyList<TaskTemplate> _templates;
 
-    private RequestEditorViewModel(IReadOnlyList<TaskTemplate> templates)
+    // v4: sentinel for "no assignee" (id 0) so the ComboBox can clear an assignment.
+    public static readonly User Unassigned = new(0, "— Unassigned —", null, true);
+
+    private RequestEditorViewModel(IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users)
     {
         _templates = templates;
         Templates = new ObservableCollection<TaskTemplate>(templates);
         TemplateNames = templates.Select(t => t.TemplateName).Distinct().OrderBy(n => n).ToList();
+
+        // Assignee pick list = "(unassigned)" + the active users; default selection is unassigned.
+        Users = new[] { Unassigned }.Concat(users ?? Array.Empty<User>()).ToList();
+        _selectedAssignee = Unassigned;
     }
 
     public bool IsEditMode { get; private init; }
@@ -29,6 +36,11 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty] private int _periodMonthNumber = DateTime.Today.Month;
     [ObservableProperty] private int _periodYear = DateTime.Today.Year;
     [ObservableProperty] private string? _status;
+
+    // v4: assignee (the user responsible). Bound to a ComboBox of Users; Unassigned (id 0) => null.
+    [ObservableProperty] private User _selectedAssignee = Unassigned;
+    public IReadOnlyList<User> Users { get; }
+    public int? AssigneeUserId => SelectedAssignee is { Id: > 0 } u ? u.Id : null;
 
     // Validation message shown in the editor (e.g. "must have at least one task" on create).
     [ObservableProperty] private string? _errorMessage;
@@ -60,16 +72,17 @@ public sealed partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    public static RequestEditorViewModel ForCreate(IReadOnlyList<TaskTemplate> templates) =>
+    public static RequestEditorViewModel ForCreate(
+        IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users = null) =>
         // New tickets default to the current month (month/year fields default to today).
-        new(templates) { IsEditMode = false, EditingRequestId = 0 };
+        new(templates, users) { IsEditMode = false, EditingRequestId = 0 };
 
     public static RequestEditorViewModel ForEdit(
         Request request, IReadOnlyList<TaskItem> existingTasks, IReadOnlyList<TaskTemplate> templates,
-        IReadOnlyList<RequestAuditEntry>? audit = null)
+        IReadOnlyList<RequestAuditEntry>? audit = null, IReadOnlyList<User>? users = null)
     {
         var (month, year) = ParsePeriodMonth(request.PeriodMonth);
-        var vm = new RequestEditorViewModel(templates)
+        var vm = new RequestEditorViewModel(templates, users)
         {
             IsEditMode = true,
             EditingRequestId = request.Id,
@@ -81,6 +94,8 @@ public sealed partial class RequestEditorViewModel : ObservableObject
             PeriodYear = year,
             Status = request.Status,
         };
+        // Preselect the saved assignee (falls back to Unassigned if not in the list / null).
+        vm.SelectedAssignee = vm.Users.FirstOrDefault(u => u.Id == request.AssigneeUserId) ?? Unassigned;
         foreach (var t in existingTasks.OrderBy(t => t.OrderIndex))
             vm.Tasks.Add(EditableTaskRowVm.Existing(t.Id, t.TaskName, t.OrderIndex));
         if (audit is not null)

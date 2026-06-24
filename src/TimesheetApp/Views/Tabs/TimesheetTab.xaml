@@ -199,6 +199,14 @@
                   </Border>
                   <TextBlock Text="{Binding PeriodMonth}" FontSize="12" Margin="8,0,0,0"
                              VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
+                  <!-- v4: assignee badge (only when the ticket has one) -->
+                  <Border Background="{StaticResource HeaderBg}" CornerRadius="9" Padding="8,1"
+                          Margin="8,0,0,0" VerticalAlignment="Center"
+                          Visibility="{Binding AssigneeName, Converter={StaticResource NullToCollapsedConverter}}">
+                    <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}">
+                      <Run Text="&#128100; "/><Run Text="{Binding AssigneeName, Mode=OneWay}"/>
+                    </TextBlock>
+                  </Border>
                   <!-- v2: move this ticket to the next month (audited) -->
                   <Button Content="Move &#9654;" FontSize="12" Padding="8,2" Margin="10,0,0,0"
                           Style="{StaticResource MiniGhostButton}"

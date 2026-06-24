@@ -241,7 +241,8 @@ public sealed partial class TimesheetViewModel : ObservableObject
         foreach (var grp in grouped)
         {
             var groupVm = new RequestGroupVm(
-                grp.RequestId, grp.RequestCode, grp.Project, _tasks, OnTaskAddedAsync, grp.PeriodMonth, grp.Status);
+                grp.RequestId, grp.RequestCode, grp.Project, _tasks, OnTaskAddedAsync,
+                grp.PeriodMonth, grp.Status, grp.AssigneeName);
             if (expandedById.TryGetValue(grp.RequestId, out var wasExpanded))
                 groupVm.IsExpanded = wasExpanded;
 

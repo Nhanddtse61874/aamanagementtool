@@ -198,6 +198,10 @@ public sealed class TimeLogService : ITimeLogService
         var tasks = await _tasks.GetActiveForTimesheetAsync();
         var tasksByRequest = tasks.ToLookup(t => t.RequestId);
 
+        // v4: resolve assignee ids -> names (GetAll so a deactivated assignee still renders).
+        var allUsers = await _users.GetAllAsync() ?? Array.Empty<User>();
+        var userNames = allUsers.ToDictionary(u => u.Id, u => u.Name);
+
         // Order by request_code so DEFAULT-vs-others is stable across reloads.
         return requests
             .OrderBy(r => r.RequestCode, StringComparer.Ordinal)
@@ -210,7 +214,8 @@ public sealed class TimeLogService : ITimeLogService
                         hoursFor(t.Id, monday.AddDays(2)), hoursFor(t.Id, monday.AddDays(3)),
                         hoursFor(t.Id, monday.AddDays(4))))
                     .ToList();
-                return new WeekRequestGroup(r.Id, r.RequestCode, r.Project, rows, r.PeriodMonth, r.Status);
+                var assignee = r.AssigneeUserId is { } uid && userNames.TryGetValue(uid, out var n) ? n : null;
+                return new WeekRequestGroup(r.Id, r.RequestCode, r.Project, rows, r.PeriodMonth, r.Status, assignee);
             })
             .ToList();
     }

@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 3;
+    private const long SchemaVersion = 4;
 
     private readonly IConnectionFactory _factory;
 
@@ -138,6 +138,10 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
                   UPDATE Requests SET project='Other'
                     WHERE request_code<>'DEFAULT' AND project NOT IN ('ARCS','PlusArcs','ARMS','Other');",
                 transaction: t),
+            // v4 -> Requests gains assignee_user_id (the user responsible for the ticket). Nullable
+            // (a request may be unassigned); not an FK constraint so deactivating a user never blocks.
+            static (c, t) => c.Execute(
+                "ALTER TABLE Requests ADD COLUMN assignee_user_id INTEGER;", transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);
