@@ -215,6 +215,39 @@ public class TimesheetViewModelTests
         Assert.True(vm.SaveStatusIsError);
     }
 
+    [Fact] // The Entry "Collapse all" toggle is persisted and restored in a later session.
+    public async Task CollapseAll_Preference_IsPersisted_AndRestored()
+    {
+        var tl = new Mock<ITimeLogService>();
+        tl.Setup(t => t.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
+          .ReturnsAsync(System.Array.Empty<WeekRequestGroup>());
+        var clock = new Mock<IClock>();
+        clock.SetupGet(c => c.Today).Returns(Wed);
+
+        var store = new Dictionary<string, string>();
+        var settings = new Mock<ISettingsRepository>();
+        settings.Setup(s => s.SetAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns((string k, string v) => { store[k] = v; return Task.CompletedTask; });
+        settings.Setup(s => s.GetAsync(It.IsAny<string>()))
+                .ReturnsAsync((string k) => store.TryGetValue(k, out var v) ? v : null);
+
+        TimesheetViewModel NewVm() => new(
+            tl.Object, Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), clock.Object,
+            () => 1, new WeakReferenceMessenger(), null, null, null, settings.Object);
+
+        // Session 1: default expanded; toggling collapse-all on persists the preference.
+        var vm1 = NewVm();
+        await vm1.LoadCommand.ExecuteAsync(null);
+        Assert.False(vm1.AllCollapsed);
+        vm1.ToggleCollapseAllCommand.Execute(null);
+        Assert.True(vm1.AllCollapsed);
+
+        // Session 2: a fresh VM restores "collapsed" from settings on load.
+        var vm2 = NewVm();
+        await vm2.LoadCommand.ExecuteAsync(null);
+        Assert.True(vm2.AllCollapsed);
+    }
+
     [Fact]
     public async Task SmartInputApplied_ReloadsWeek()
     {

@@ -22,13 +22,17 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private readonly IUserRepository? _users;        // v2: Entry user filter (Cả team / other user)
     private readonly IRequestRepository? _requests;  // v2: move-ticket-to-month
     private readonly ICurrentUserService? _currentUser; // v2: audit changed-by for move-month
+    private readonly ISettingsRepository? _settings; // persists the collapse-all preference across restarts
     private bool _suppressTotals;
+
+    // Settings key for the Entry "Collapse all" toggle (remembered between app sessions).
+    private const string CollapseAllKey = "entry.collapseAll";
 
     public TimesheetViewModel(
         ITimeLogService timeLogs, ITaskRepository tasks, ISmartInputService smartInput, IClock clock,
         Func<int> currentUserId, IMessenger? messenger = null,
         IUserRepository? users = null, IRequestRepository? requests = null,
-        ICurrentUserService? currentUser = null)
+        ICurrentUserService? currentUser = null, ISettingsRepository? settings = null)
     {
         _timeLogs = timeLogs;
         _tasks = tasks;
@@ -38,6 +42,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _users = users;
         _requests = requests;
         _currentUser = currentUser;
+        _settings = settings;
 
         // Smart-fill targets whichever user the Entry filter is viewing (defaults to the login user).
         // It looks up a request by code + lists its tasks, so it needs the request/task repositories.
@@ -156,8 +161,17 @@ public sealed partial class TimesheetViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync()
     {
+        await LoadCollapsePreferenceAsync();
         await LoadTargetsAsync();
         await ReloadAsync();
+    }
+
+    // Restore the saved "Collapse all" preference before the first reload applies it to the groups.
+    private async Task LoadCollapsePreferenceAsync()
+    {
+        if (_settings is null) return;
+        var saved = await _settings.GetAsync(CollapseAllKey);
+        if (saved is not null) AllCollapsed = saved == "true";
     }
 
     // Quick collapse/expand of ALL request groups at once (Entry header button).
@@ -171,6 +185,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
     {
         AllCollapsed = !AllCollapsed;
         foreach (var g in Groups) g.IsExpanded = !AllCollapsed;
+        _ = _settings?.SetAsync(CollapseAllKey, AllCollapsed ? "true" : "false"); // remember across restarts
     }
 
     [RelayCommand]

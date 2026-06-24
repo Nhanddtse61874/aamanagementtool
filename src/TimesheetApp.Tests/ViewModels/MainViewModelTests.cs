@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using Moq;
 using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
@@ -152,7 +153,11 @@ public sealed class MainViewModelTests
         };
         svc.Setup(s => s.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>())).ReturnsAsync(groups);
 
-        var timesheet = new TimesheetViewModel(svc.Object, Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 1);
+        // Isolated messenger: the process-wide default would let OTHER test classes' broadcasts trigger
+        // spurious reloads here, double-counting the groups (the historical flakiness in this test).
+        var timesheet = new TimesheetViewModel(
+            svc.Object, Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(),
+            () => 1, new WeakReferenceMessenger());
         var vm = new MainViewModel(
             timesheet,
             new RequestsViewModel(Mock.Of<IRequestRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>()),
