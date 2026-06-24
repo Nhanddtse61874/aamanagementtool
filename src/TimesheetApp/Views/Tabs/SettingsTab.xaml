@@ -11,10 +11,10 @@
                            Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
                 <TextBlock Text="Database path:" Margin="0,2,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,12">
-                    <TextBox Width="420" Text="{Binding DbPath, UpdateSourceTrigger=PropertyChanged}"/>
-                    <Button Content="Browse..." Margin="8,0,0,0" Click="OnBrowse"
+                    <TextBox Width="420" Height="32" Text="{Binding DbPath, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Browse..." Height="32" Margin="8,0,0,0" Click="OnBrowse"
                             Style="{StaticResource GhostButton}"/>
-                    <Button Content="Apply" Margin="8,0,0,0" Command="{Binding ApplyDbPathCommand}"/>
+                    <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyDbPathCommand}"/>
                 </StackPanel>
 
                 <!-- SET-02: N-days warning (default 3) -->
@@ -23,8 +23,8 @@
                            Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
                 <TextBlock Text="Working days:" Margin="0,2,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,12">
-                    <TextBox Width="60" Text="{Binding WarningDays, UpdateSourceTrigger=PropertyChanged}"/>
-                    <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveWarningDaysCommand}"/>
+                    <TextBox Width="60" Height="32" Text="{Binding WarningDays, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Save" Height="32" Margin="8,0,0,0" Command="{Binding SaveWarningDaysCommand}"/>
                 </StackPanel>
 
                 <!-- SET-03: Task templates — grouped list + New template button.
