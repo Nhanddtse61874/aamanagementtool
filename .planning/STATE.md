@@ -1,6 +1,6 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-24 (auto-save cells)
+**Last updated:** 2026-06-24 (auto-save + backlog batch: prune/banner, zero-config, persist collapse, jump-to-week)
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
@@ -9,7 +9,7 @@ Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `
 Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
 
 ## Current status
-- **186 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`4a700e3`** (all work pushed).
+- **191 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`086efae`** (all work pushed).
 - Schema is at **user_version 3** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization).
 - UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
 - Built autonomously, then many rounds of **UAT-driven UI rework**. Planning artifacts in `.planning/` + `docs/superpowers/`.
@@ -98,12 +98,26 @@ A red cell (`TimesheetRowVm.HasErrorFor(col)`) is never written; the service sti
 `SaveResult`. Note: `SaveCommand`/`CanSave`/`AnyDayOverEight` are KEPT (internal bulk-save, no button) so
 `Save_DisabledWhenAnyColumnExceedsEight` still guards the >8h invariant. 3 new VM auto-save tests.
 
+## Backlog batch — DONE (2026-06-24, commits `5b441de`..`086efae`)
+Autonomous pass over the remaining UX backlog (newest last):
+- **XC-10 .bak prune + XC-09 banner** (`5b441de`): `DbBackupHelper` deletes stale `{db}.{stamp}.bak`
+  siblings after each backup, keeping only the newest `KeepBackups` (10) — best-effort, never fails a
+  backup. `UiJournalWarningSink` wraps the trace sink (still traced) + raises an event; `App` marshals
+  it onto the UI thread → `MainViewModel.JournalWarning` shown as a dismissible **red banner** next to
+  the XC-08 conflict banner. Sink + VM stay System.Windows-free.
+- **Zero-config first run** (`62c6e8d`): a fresh DB (zero users) **auto-creates** a user from the
+  Windows account + maps it — no dialog. When users exist but the account is unmapped, SelectUserDialog
+  still shows and now **prefills** the create-name box with `Environment.UserName`.
+- **Persist Collapse-all** (`bcc9d40`): the Entry collapse/expand-all toggle is saved to settings
+  (`entry.collapseAll`) and restored on load. `TimesheetViewModel` gained optional `ISettingsRepository`.
+  Also **fixed the long-standing flaky** `ActivateTab_reloads_timesheet_rows` (isolated messenger).
+- **Jump-to-week** (`086efae`): a `DatePicker` (`TimesheetViewModel.JumpDate`) on the Entry toolbar
+  snaps the grid to any date's Monday + reloads; Prev/Next keep it in sync (`OnCurrentWeekChanged`).
+- **191 tests green** (full suite stable across repeated runs); app launches clean.
+
 ## Remaining UX backlog (NOT yet done)
-- **Week DatePicker / month-jump** to jump to any week (currently Prev/Next only).
-- **First-run zero-config**: auto-use Windows username (currently prefilled inline create).
-- XC-09 warning → surface to a UI banner (currently Trace). XC-10 `.bak` files **accumulate unbounded**
-  in the DB folder — add a keep-last-N prune.
-- Possible polish: remember collapse/expand state across app restarts; per-tab button review if any feel large.
+- Per-tab button/spacing review if any still feel large; remember per-GROUP expand state across restarts
+  (only the global collapse-all flag is persisted today).
 
 ## Decisions locked (don't re-litigate)
 - Brand "Worklog" is **display-only**; DB path stays `timesheet.db`.
@@ -117,4 +131,5 @@ A red cell (`TimesheetRowVm.HasErrorFor(col)`) is never written; the service sti
 - Iterative UAT: build a focused fix → **run the app** → user tests → next ("kiểm từng bước"). Verify with screenshots.
 - Mirror the user's chat language (Vietnamese ↔ English). Commit + push each accepted change to `main`.
 - When a feature "doesn't work", get **DB/runtime evidence first** — several issues were UX traps / not-wired, not logic bugs.
-- Note: `MainViewModelTests.ActivateTab_reloads_timesheet_rows` is occasionally **flaky** (process-wide default WeakReferenceMessenger cross-talk) — re-run if it fails once; not a regression.
+- Note: `MainViewModelTests.ActivateTab_reloads_timesheet_rows` was historically **flaky** (process-wide
+  default WeakReferenceMessenger cross-talk) — **fixed in `bcc9d40`** by giving its VM an isolated messenger.
