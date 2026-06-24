@@ -16,11 +16,13 @@ public partial class SelectUserDialog : Window
 {
     private readonly IUserRepository _users;
 
-    public SelectUserDialog(IReadOnlyList<User> activeUsers, IUserRepository users)
+    public SelectUserDialog(IReadOnlyList<User> activeUsers, IUserRepository users, string? prefillName = null)
     {
         InitializeComponent();
         UsersList.ItemsSource = activeUsers;
         _users = users;
+        // Prefill the create-name box with the Windows account so a new joiner can just click OK.
+        if (!string.IsNullOrWhiteSpace(prefillName)) NewUserNameBox.Text = prefillName.Trim();
         DataContext = this;
     }
 

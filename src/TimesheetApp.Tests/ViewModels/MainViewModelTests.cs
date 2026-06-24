@@ -84,6 +84,23 @@ public sealed class MainViewModelTests
         Assert.Equal("Cara", vm.CurrentUserName);
     }
 
+    [Fact] // Zero-config first run: a fresh (empty) DB auto-creates a user from the Windows name, no dialog.
+    public async Task NeedsSelection_emptyDb_autoCreatesUserFromWindowsName_withoutPrompting()
+    {
+        _currentUser.Setup(s => s.ResolveAsync())
+            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.NeedsSelection, null));
+        _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(System.Array.Empty<User>());
+        _users.Setup(u => u.InsertAsync(It.IsAny<User>())).ReturnsAsync(9);
+        _currentUser.SetupGet(s => s.Current).Returns(U(9, "sam"));
+        var vm = CreateVm(windowsUserName: () => "sam");
+
+        await vm.InitializeAsync(NeverCalled); // selector must NOT be invoked on a fresh DB
+
+        _users.Verify(u => u.InsertAsync(It.Is<User>(x => x.Name == "sam" && x.IsActive)), Times.Once);
+        _currentUser.Verify(s => s.SetWindowsUsernameAsync(9, "sam"), Times.Once);
+        Assert.Equal("sam", vm.CurrentUserName);
+    }
+
     [Fact] // XC-07: cancelling the dialog leaves no current user and persists nothing
     public async Task NeedsSelection_cancel_persists_nothing()
     {

@@ -149,8 +149,21 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        // NeedsSelection: present active users to the View, persist the chosen mapping (XC-07).
         var active = await _users.GetActiveAsync();
+
+        // Zero-config first run: a fresh DB has no users at all. Don't prompt — auto-create a user
+        // named after the Windows account and map it, so the app opens straight to a usable timesheet.
+        if (active.Count == 0)
+        {
+            var winName = _windowsUserName();
+            var displayName = string.IsNullOrWhiteSpace(winName) ? "Me" : winName.Trim();
+            var newId = await _users.InsertAsync(new User(0, displayName, null, true));
+            await _currentUser.SetWindowsUsernameAsync(newId, winName);
+            CurrentUserName = _currentUser.Current?.Name ?? displayName;
+            return;
+        }
+
+        // NeedsSelection with existing users: present them to the View, persist the chosen mapping (XC-07).
         var chosen = selectUser(active);
         if (chosen is null) return; // cancelled — Current stays null, child VMs see id 0
 

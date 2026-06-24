@@ -118,8 +118,10 @@ public partial class App : Application
     // when the user cancels.
     private static User? ShowSelectUserDialog(IReadOnlyList<User> activeUsers)
     {
-        // Pass the user repository so the dialog can create a user inline on a fresh (empty) DB.
-        var dialog = new SelectUserDialog(activeUsers, Services.GetRequiredService<IUserRepository>());
+        // Pass the user repository so the dialog can create a user inline, and prefill the new-name
+        // box with the Windows account so an unmapped joiner can just click OK.
+        var dialog = new SelectUserDialog(
+            activeUsers, Services.GetRequiredService<IUserRepository>(), Environment.UserName);
         return dialog.ShowDialog() == true ? dialog.SelectedUser : null;
     }
 }
