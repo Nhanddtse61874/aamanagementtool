@@ -40,6 +40,25 @@ public class DbBackupHelperTests : IDisposable
         Assert.EndsWith(".bak", backupPath!);
     }
 
+    [Fact] // XC-10: the DB folder must not grow unbounded — only the newest N .bak files are kept.
+    public async Task BackupAsync_prunes_old_backups_keeping_only_the_newest_N()
+    {
+        File.WriteAllText(_dbPath, "DATA");
+        var baseTime = new DateTimeOffset(2026, 6, 21, 0, 0, 0, TimeSpan.Zero);
+        var total = DbBackupHelper.KeepBackups + 5;
+        for (var i = 0; i < total; i++)
+            await Make(baseTime.AddSeconds(i)).BackupAsync(); // strictly increasing timestamps
+
+        var remaining = Directory.GetFiles(_dir, "timesheet.db.*.bak");
+        Assert.Equal(DbBackupHelper.KeepBackups, remaining.Length);
+
+        // Newest stamp kept, oldest pruned.
+        var newest = baseTime.AddSeconds(total - 1).ToString("yyyyMMddHHmmssfff");
+        var oldest = baseTime.ToString("yyyyMMddHHmmssfff");
+        Assert.Contains(remaining, f => Path.GetFileName(f).Contains(newest));
+        Assert.DoesNotContain(remaining, f => Path.GetFileName(f).Contains(oldest));
+    }
+
     [Fact]
     public async Task BackupAsync_returns_null_when_db_missing()
     {

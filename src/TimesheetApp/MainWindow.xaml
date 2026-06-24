@@ -100,21 +100,46 @@
         <RowDefinition Height="*"/>
       </Grid.RowDefinitions>
 
-      <!-- XC-08 conflict-copy banner -->
-      <Border Grid.Row="0" Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1"
-              CornerRadius="8" Padding="12,8" Margin="22,14,22,0">
-        <Border.Style>
-          <Style TargetType="Border">
-            <Setter Property="Visibility" Value="Visible"/>
-            <Style.Triggers>
-              <DataTrigger Binding="{Binding ConflictWarning}" Value="">
-                <Setter Property="Visibility" Value="Collapsed"/>
-              </DataTrigger>
-            </Style.Triggers>
-          </Style>
-        </Border.Style>
-        <TextBlock Text="{Binding ConflictWarning, Mode=OneWay}" TextWrapping="Wrap" Foreground="#92400E"/>
-      </Border>
+      <!-- Startup / integrity banners -->
+      <StackPanel Grid.Row="0">
+
+        <!-- XC-08 conflict-copy banner -->
+        <Border Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1"
+                CornerRadius="8" Padding="12,8" Margin="22,14,22,0">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="Visibility" Value="Visible"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding ConflictWarning}" Value="">
+                  <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+          <TextBlock Text="{Binding ConflictWarning, Mode=OneWay}" TextWrapping="Wrap" Foreground="#92400E"/>
+        </Border>
+
+        <!-- XC-09 lingering-journal (data-integrity) banner with a dismiss button -->
+        <Border Background="#FEE2E2" BorderBrush="#FECACA" BorderThickness="1"
+                CornerRadius="8" Padding="12,8" Margin="22,14,22,0">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="Visibility" Value="Visible"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding JournalWarning}" Value="">
+                  <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Dismiss" Command="{Binding DismissJournalWarningCommand}"
+                    Style="{StaticResource MiniGhostButton}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+            <TextBlock Text="{Binding JournalWarning, Mode=OneWay}" TextWrapping="Wrap"
+                       Foreground="#991B1B" VerticalAlignment="Center"/>
+          </DockPanel>
+        </Border>
+      </StackPanel>
 
       <!-- Content host: one panel per ActiveView, only the matching one visible -->
       <Grid Grid.Row="1">

@@ -92,6 +92,14 @@ public sealed partial class MainViewModel : ObservableObject
     // XC-08: non-empty when OneDrive conflict-copy siblings of the DB exist; the View shows a banner.
     [ObservableProperty] private string _conflictWarning = string.Empty;
 
+    // XC-09: non-empty when a bulk write left a lingering rollback journal (data may be at risk).
+    // App wires the UiJournalWarningSink event to this (marshalled onto the UI thread); a dismiss
+    // button clears it. The warning is still traced regardless (never swallowed).
+    [ObservableProperty] private string _journalWarning = string.Empty;
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void DismissJournalWarning() => JournalWarning = string.Empty;
+
     /// <summary>
     /// Startup orchestration (spec §6, runs AFTER <see cref="IDatabaseInitializer.InitializeAsync"/>):
     /// resolve the current user (prompting via <paramref name="selectUser"/> on NeedsSelection),

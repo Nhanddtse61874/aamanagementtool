@@ -39,8 +39,12 @@ public partial class App : Application
         sc.AddSingleton<CommunityToolkit.Mvvm.Messaging.IMessenger>(
             CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default);
         // XC-09 observability seam: bulk-write services route lingering-journal warnings here
-        // (System.Windows-free; default trace sink, never swallowed).
-        sc.AddSingleton<IJournalWarningSink, TraceJournalWarningSink>();
+        // (System.Windows-free; never swallowed). UiJournalWarningSink wraps the trace sink so the
+        // warning is BOTH traced and surfaced to the shell banner (event wired below after the VM exists).
+        sc.AddSingleton<TraceJournalWarningSink>();
+        sc.AddSingleton<UiJournalWarningSink>(sp =>
+            new UiJournalWarningSink(sp.GetRequiredService<TraceJournalWarningSink>()));
+        sc.AddSingleton<IJournalWarningSink>(sp => sp.GetRequiredService<UiJournalWarningSink>());
 
         // Repositories (singletons — stateless; connection opened per method).
         sc.AddSingleton<IUserRepository, UserRepository>();
@@ -96,6 +100,12 @@ public partial class App : Application
         // layer via the injected selector — the VM stays WPF-free (spec §5/§6, XC-07).
         var mainVm = Services.GetRequiredService<MainViewModel>();
         await mainVm.InitializeAsync(ShowSelectUserDialog);
+
+        // XC-09: surface lingering-journal warnings on the shell banner. Marshalled onto the UI thread
+        // here (the sink stays System.Windows-free). The singleton sink outlives the VM, so this is safe.
+        var journalSink = Services.GetRequiredService<UiJournalWarningSink>();
+        journalSink.WarningRaised += (_, _) =>
+            Dispatcher.Invoke(() => mainVm.JournalWarning = journalSink.LatestWarning);
 
         MainWindow = new MainWindow { DataContext = mainVm };
         MainWindow.Show();
