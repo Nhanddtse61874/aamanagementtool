@@ -12,7 +12,8 @@
                 <TextBlock Text="Database path:" Margin="0,2,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,12">
                     <TextBox Width="420" Text="{Binding DbPath, UpdateSourceTrigger=PropertyChanged}"/>
-                    <Button Content="Browse..." Margin="8,0,0,0" Click="OnBrowse"/>
+                    <Button Content="Browse..." Margin="8,0,0,0" Click="OnBrowse"
+                            Style="{StaticResource GhostButton}"/>
                     <Button Content="Apply" Margin="8,0,0,0" Command="{Binding ApplyDbPathCommand}"/>
                 </StackPanel>
 
@@ -32,17 +33,19 @@
                 <TextBlock Text="Each template has a name and several tasks. Use a template to quickly create a request's task list."
                            Foreground="Gray" FontSize="11" Margin="0,0,0,4"/>
                 <Button Content="➕ New template" HorizontalAlignment="Left"
-                        Command="{Binding BeginCreateTemplateCommand}" Padding="10,4" Margin="0,0,0,4"/>
+                        Command="{Binding BeginCreateTemplateCommand}" Margin="0,0,0,4"/>
                 <ItemsControl ItemsSource="{Binding TemplateGroups}" Margin="0,0,0,12">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border BorderBrush="#DDD" BorderThickness="1" Margin="0,2" Padding="8,4">
                                 <DockPanel>
                                     <Button Content="Delete" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                            Style="{StaticResource DangerButton}"
                                             Command="{Binding DataContext.DeleteTemplateCommand,
                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding Name}"/>
                                     <Button Content="Edit" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                            Style="{StaticResource MiniGhostButton}"
                                             Command="{Binding DataContext.BeginEditTemplateCommand,
                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding Name}"/>
@@ -61,6 +64,7 @@
                 <TextBlock Text="Sync the default-task list into the default request."
                            Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
                 <Button Content="Sync default tasks" HorizontalAlignment="Left"
+                        Style="{StaticResource GhostButton}"
                         Margin="0,4,0,0" Command="{Binding SaveDefaultTasksCommand}"/>
             </StackPanel>
         </ScrollViewer>
@@ -88,14 +92,17 @@
                                 <DataTemplate>
                                     <DockPanel Margin="0,2">
                                         <Button Content="Remove" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                                Style="{StaticResource DangerButton}"
                                                 Command="{Binding RemoveTaskCommand,
                                                     RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"/>
                                         <Button Content="Down" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                                Style="{StaticResource MiniGhostButton}"
                                                 Command="{Binding MoveDownCommand,
                                                     RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"/>
                                         <Button Content="Up" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                                Style="{StaticResource MiniGhostButton}"
                                                 Command="{Binding MoveUpCommand,
                                                     RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"/>
@@ -107,8 +114,7 @@
 
                         <!-- Add task input row -->
                         <DockPanel Margin="0,8,0,0">
-                            <Button Content="➕ Add task" DockPanel.Dock="Right"
-                                    Padding="8,4" Margin="4,0,0,0"
+                            <Button Content="➕ Add task" DockPanel.Dock="Right" Margin="4,0,0,0"
                                     Command="{Binding AddTaskFromBoxCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                             <TextBox x:Name="NewTaskBox"/>
@@ -116,11 +122,11 @@
 
                         <!-- Save / Cancel -->
                         <DockPanel Margin="0,12,0,0">
-                            <Button Content="Cancel" DockPanel.Dock="Right"
-                                    Padding="8,4" Margin="4,0,0,0"
+                            <Button Content="Cancel" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                    Style="{StaticResource GhostButton}"
                                     Command="{Binding DataContext.CancelTemplateCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                            <Button Content="Save" Padding="16,4" HorizontalAlignment="Left"
+                            <Button Content="Save" HorizontalAlignment="Left"
                                     Command="{Binding DataContext.SaveTemplateCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                         </DockPanel>

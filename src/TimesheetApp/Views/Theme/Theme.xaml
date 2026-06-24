@@ -74,7 +74,7 @@
     <Setter Property="FontFamily" Value="Segoe UI"/>
     <Setter Property="FontSize" Value="13"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
-    <Setter Property="Padding" Value="12,5"/>
+    <Setter Property="Padding" Value="10,4"/>
     <Setter Property="Margin" Value="0,0,8,0"/>
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="SnapsToDevicePixels" Value="True"/>
