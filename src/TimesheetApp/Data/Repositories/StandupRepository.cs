@@ -50,6 +50,14 @@ public sealed class StandupRepository : IStandupRepository
         return rows.Select(MapEntry).ToList();
     }
 
+    public async Task<StandupEntry?> GetEntryAsync(int entryId)
+    {
+        using var c = _factory.Create();
+        var row = await c.QuerySingleOrDefaultAsync<EntryRaw>(
+            $"SELECT {EntryCols} FROM StandupEntries WHERE id = @id;", new { id = entryId });
+        return row is null ? null : MapEntry(row);
+    }
+
     public async Task<int> InsertEntryAsync(StandupEntry e)
     {
         using var c = _factory.Create();

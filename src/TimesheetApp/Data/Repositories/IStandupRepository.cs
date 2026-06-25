@@ -14,6 +14,9 @@ public interface IStandupRepository
     // Entries across a date range, ordered by date (weekly archive, DR-09).
     Task<IReadOnlyList<StandupEntry>> GetEntriesForRangeAsync(DateOnly from, DateOnly to);
 
+    // One entry by id (used to gate edits by owner + work_date), or null.
+    Task<StandupEntry?> GetEntryAsync(int entryId);
+
     Task<int> InsertEntryAsync(StandupEntry entry);   // returns new id
     Task UpdateEntryAsync(StandupEntry entry);
     Task DeleteEntryAsync(int entryId);               // cascades StandupIssues
