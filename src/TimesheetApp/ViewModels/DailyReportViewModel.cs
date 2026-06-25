@@ -247,6 +247,7 @@ public sealed partial class StandupDraftVm : ObservableObject
     public IReadOnlyList<string> StatusOptions => StandupStatus.All;
 
     [ObservableProperty] private Request? _selectedRequest;
+    [ObservableProperty] private TaskItem? _selectedTask;
     [ObservableProperty] private string _requestCode = string.Empty;
     [ObservableProperty] private string _taskText = string.Empty;
     [ObservableProperty] private string _description = string.Empty;
@@ -256,11 +257,20 @@ public sealed partial class StandupDraftVm : ObservableObject
     // Null when typed ad-hoc (no existing request selected) — keeps request_id null (DR-03).
     public int? RequestId => SelectedRequest?.Id;
 
+    // Picking an existing request fills the code box + loads its tasks (the boxes hold the saved values,
+    // so ad-hoc typing still works with the themed non-editable combos).
     partial void OnSelectedRequestChanged(Request? value)
     {
         if (value is null) return;
         RequestCode = value.RequestCode;
+        SelectedTask = null;
         _ = _parent.LoadTasksForDraftAsync(this, value.Id);
+    }
+
+    // Picking a task fills the task text box.
+    partial void OnSelectedTaskChanged(TaskItem? value)
+    {
+        if (value is not null) TaskText = value.TaskName;
     }
 
     [RelayCommand]
@@ -269,6 +279,7 @@ public sealed partial class StandupDraftVm : ObservableObject
     public void Reset()
     {
         SelectedRequest = null;
+        SelectedTask = null;
         RequestCode = string.Empty;
         TaskText = string.Empty;
         Description = string.Empty;
