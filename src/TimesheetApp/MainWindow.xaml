@@ -7,6 +7,12 @@
         Background="{StaticResource WindowBg}"
         WindowStartupLocation="CenterScreen">
 
+  <!-- Floating app card on the gray page background (matches the design's framed layout). -->
+  <Border Margin="18" CornerRadius="8" Background="{StaticResource Surface}"
+          BorderBrush="{StaticResource BorderStrong}" BorderThickness="1">
+    <Border.Effect>
+      <DropShadowEffect Color="#0F172A" Opacity="0.12" BlurRadius="30" ShadowDepth="6" Direction="270"/>
+    </Border.Effect>
   <Grid>
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="218"/>
@@ -15,7 +21,8 @@
 
     <!-- ============================ SIDEBAR ============================ -->
     <Border Grid.Column="0" Background="{StaticResource SidebarBg}"
-            BorderBrush="{StaticResource SidebarBorder}" BorderThickness="0,0,1,0">
+            BorderBrush="{StaticResource SidebarBorder}" BorderThickness="0,0,1,0"
+            CornerRadius="8,0,0,8">
       <DockPanel>
 
         <!-- Brand / logo -->
@@ -193,4 +200,5 @@
       </Grid>
     </Grid>
   </Grid>
+  </Border>
 </Window>

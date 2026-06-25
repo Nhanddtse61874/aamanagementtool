@@ -12,9 +12,24 @@
             <DockPanel Margin="0,0,0,6">
                 <Button Content="&#10133; New request" Command="{Binding BeginCreateCommand}"
                         DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
-                <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                <TextBox Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="Filter by request code or project (live)"/>
+                <!-- Placeholder lives INSIDE the box (design) instead of an external "Search:" label. -->
+                <Grid>
+                    <TextBox x:Name="SearchBox" Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Filter by request code or project (live)"/>
+                    <TextBlock Text="Search code or project…" Foreground="{StaticResource Disabled}"
+                               Margin="10,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
             </DockPanel>
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>

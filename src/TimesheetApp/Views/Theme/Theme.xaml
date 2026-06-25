@@ -15,13 +15,15 @@
   <SolidColorBrush x:Key="AccentHover" Color="#115E59"/>
   <SolidColorBrush x:Key="AccentPressed" Color="#134E4A"/>
   <SolidColorBrush x:Key="AccentSoft" Color="#F0FDFA"/>
-  <SolidColorBrush x:Key="WindowBg" Color="#F8FAFC"/>
+  <!-- Tokens match the design file: gray page #E6EAEF behind a white card; lighter borders. -->
+  <SolidColorBrush x:Key="WindowBg" Color="#E6EAEF"/>
   <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="Border" Color="#E2E8F0"/>
-  <SolidColorBrush x:Key="BorderStrong" Color="#CBD5E1"/>
-  <SolidColorBrush x:Key="TextPrimary" Color="#0F172A"/>
+  <SolidColorBrush x:Key="Border" Color="#E3E8EE"/>
+  <SolidColorBrush x:Key="BorderStrong" Color="#D4DAE2"/>
+  <SolidColorBrush x:Key="TextPrimary" Color="#1F2937"/>
   <SolidColorBrush x:Key="TextSecondary" Color="#64748B"/>
   <SolidColorBrush x:Key="HeaderBg" Color="#F1F5F9"/>
+  <SolidColorBrush x:Key="GhostText" Color="#334155"/>
   <SolidColorBrush x:Key="Danger" Color="#DC2626"/>
   <SolidColorBrush x:Key="DangerSoft" Color="#FEE2E2"/>
   <SolidColorBrush x:Key="Disabled" Color="#94A3B8"/>
@@ -32,7 +34,7 @@
   <Style TargetType="TextBlock">
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="VerticalAlignment" Value="Center"/>
     <Setter Property="TextWrapping" Value="Wrap"/>
   </Style>
@@ -102,9 +104,9 @@
     </Setter>
   </Style>
 
-  <!-- Secondary / ghost button (white, accent text) -->
+  <!-- Secondary / ghost button (white, dark-gray text per the design's ghostBtn) -->
   <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+    <Setter Property="Foreground" Value="{StaticResource GhostText}"/>
     <Setter Property="Background" Value="{StaticResource Surface}"/>
     <Setter Property="Template">
       <Setter.Value>
@@ -151,7 +153,7 @@
   <Style TargetType="TextBox">
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="Padding" Value="8,6"/>
     <Setter Property="Margin" Value="0,0,0,0"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}"/>
@@ -180,7 +182,7 @@
   <!-- ===================== ComboBox (templated to match the TextBox; respects DisplayMemberPath) ===================== -->
   <Style TargetType="ComboBoxItem">
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="Padding" Value="8,6"/>
     <Setter Property="Template">
@@ -205,7 +207,7 @@
   <Style TargetType="ComboBox">
     <Setter Property="SnapsToDevicePixels" Value="True"/>
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="Background" Value="{StaticResource Surface}"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}"/>
@@ -269,7 +271,7 @@
   <Style TargetType="{x:Type prim:DatePickerTextBox}">
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
     <Setter Property="Template">
       <Setter.Value>
@@ -292,7 +294,7 @@
 
   <Style TargetType="DatePicker">
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="Background" Value="{StaticResource Surface}"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}"/>
@@ -363,7 +365,7 @@
     <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Border}"/>
     <Setter Property="RowHeight" Value="36"/>
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="RowHeaderWidth" Value="0"/>
     <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
@@ -402,7 +404,7 @@
 
   <Style TargetType="TabItem">
     <Setter Property="FontFamily" Value="Segoe UI"/>
-    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontSize" Value="13"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
     <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
     <Setter Property="Template">
