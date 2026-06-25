@@ -8,7 +8,8 @@ public enum DataKind
     Users,        // a user was added/soft-deleted
     Logs,         // time logs changed (affects Reports)
     Templates,    // task templates changed
-    DefaultTasks  // default tasks synced into the DEFAULT request (affects Timesheet rows)
+    DefaultTasks, // default tasks synced into the DEFAULT request (affects Timesheet rows)
+    Standup       // daily-report standup entries/issues changed (affects the Daily Report board)
 }
 
 /// <summary>
