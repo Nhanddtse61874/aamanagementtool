@@ -176,15 +176,94 @@
     </Setter>
   </Style>
 
-  <!-- ===================== ComboBox / DatePicker (light property polish) ===================== -->
-  <Style TargetType="ComboBox">
+  <!-- ===================== ComboBox (templated to match the TextBox; respects DisplayMemberPath) ===================== -->
+  <Style TargetType="ComboBoxItem">
     <Setter Property="FontFamily" Value="Segoe UI"/>
     <Setter Property="FontSize" Value="14"/>
-    <Setter Property="Padding" Value="8,5"/>
-    <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}"/>
-    <Setter Property="Background" Value="{StaticResource Surface}"/>
-    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    <Setter Property="Padding" Value="8,6"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ComboBoxItem">
+          <Border x:Name="bd" Background="Transparent" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+            <ContentPresenter VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
+
+  <Style TargetType="ComboBox">
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+    <Setter Property="FontFamily" Value="Segoe UI"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    <Setter Property="Background" Value="{StaticResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}"/>
+    <Setter Property="Height" Value="32"/>
+    <Setter Property="Padding" Value="8,0"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ComboBox">
+          <Grid>
+            <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+              <ToggleButton.Template>
+                <ControlTemplate TargetType="ToggleButton">
+                  <Border x:Name="bd" CornerRadius="6" Background="{StaticResource Surface}"
+                          BorderBrush="{StaticResource BorderStrong}" BorderThickness="1">
+                    <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
+                          Fill="{StaticResource TextSecondary}" Data="M 0 0 L 8 0 L 4 4 Z"/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </ToggleButton.Template>
+            </ToggleButton>
+
+            <!-- Selected-value display: all four bindings so DisplayMemberPath / ItemTemplate both work. -->
+            <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
+                              Content="{TemplateBinding SelectionBoxItem}"
+                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                              Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
+                              HorizontalAlignment="Left"/>
+
+            <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False" Placement="Bottom"
+                   IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Slide">
+              <Border CornerRadius="6" Background="{StaticResource Surface}" Margin="0,2,0,0"
+                      BorderBrush="{StaticResource BorderStrong}" BorderThickness="1"
+                      MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                      MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                <Border.Effect>
+                  <DropShadowEffect Color="#0F172A" Opacity="0.18" BlurRadius="12" ShadowDepth="2"/>
+                </Border.Effect>
+                <ScrollViewer><ItemsPresenter/></ScrollViewer>
+              </Border>
+            </Popup>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.6"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- ===================== DatePicker (light property polish) ===================== -->
 
   <Style TargetType="DatePicker">
     <Setter Property="FontFamily" Value="Segoe UI"/>
