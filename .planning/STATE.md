@@ -1,6 +1,26 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-24 (auto-save + backlog batch: prune/banner, zero-config, persist collapse, jump-to-week)
+**Last updated:** 2026-06-26 (Daily Report / Standup feature — P7 / M2, on a feature branch awaiting UAT)
+
+## Daily Report (Standup) — BUILT, awaiting UAT (2026-06-26, branch `feature/daily-report-2026-06-25`)
+New feature replacing the "Daily Report" SOON nav placeholder. **Schema v5** adds `StandupEntries`
+(per user · work_date · section yesterday/today · nullable request_id for **ad-hoc** codes · task ·
+description · nullable deadline · status) + `StandupIssues` (multiple per entry; solution nullable =
+pending; status open/pending/resolved; cascade-delete). Each member self-fills their own standup;
+**edit-lock = today + yesterday only** (older locked, no backfill); **issues are collaborative** (anyone,
+any day). **Team board** shows one card per active user for the day. **Weekly markdown archive**
+(`Documents/TimesheetApp/StandupArchives/{yyyyMMdd}_daily.md`, one file per week, stamp = week Monday)
+is auto-backfilled for any completed week on every app startup. Status set = Todo/In-process/Done/Pending.
+- Layers: `Models/StandupModels.cs`; `Data/DatabaseInitializer.cs` (v4→v5); `Data/Repositories/StandupRepository.cs`;
+  `Services/StandupService.cs` (edit-lock+owner gate, validation, picker) + `Services/StandupArchiveService.cs`;
+  `ViewModels/DailyReportViewModel.cs` (+ row/issue/draft sub-VMs); `Views/Tabs/DailyInputTab.xaml` +
+  `DailyBoardTab.xaml`; nav in `MainWindow.xaml` + `MainViewModel` child; DI + `DataKind.Standup` in `App.xaml.cs`.
+- **225 tests green** (+32: 7 repo, 17 service/archive, 8 VM); app launches clean. REQ-IDs **DR-01..10**.
+- Decisions (don't re-litigate): no auto-carry yesterday; no reverse-link of ad-hoc codes; deadline/status
+  manual at task-row level; team size dynamic (not fixed at 4); per-day persistence + weekly md archive.
+- Follow-ups (backlog): inline edit of an existing entry's fields (today = delete+re-add); per-row reorder.
+
+## (M1) Last updated: 2026-06-24 (auto-save + backlog batch: prune/banner, zero-config, persist collapse, jump-to-week)
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
