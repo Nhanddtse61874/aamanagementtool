@@ -116,9 +116,9 @@ public sealed partial class DailyReportViewModel : ObservableObject
         if (await _service.DeleteEntryAsync(entryId)) await ReloadAndBroadcastAsync();
     }
 
-    internal async Task AddIssueAsync(int entryId, string issueText)
+    internal async Task AddIssueAsync(int entryId, string issueText, string? solutionText, string status)
     {
-        await _service.AddIssueAsync(entryId, issueText, null, "open");
+        await _service.AddIssueAsync(entryId, issueText, solutionText, status);
         await ReloadAndBroadcastAsync();
     }
 
@@ -184,17 +184,8 @@ public sealed partial class StandupEntryRowVm : ObservableObject
     public string DeadlineText => Model.Deadline?.ToString("yyyy-MM-dd") ?? "";
     public string Status => Model.Status;
 
-    [ObservableProperty] private string _newIssueText = string.Empty;
-
-    [RelayCommand]
-    private async Task AddIssueAsync()
-    {
-        if (string.IsNullOrWhiteSpace(NewIssueText)) return;
-        var text = NewIssueText.Trim();
-        NewIssueText = string.Empty;
-        await _parent.AddIssueAsync(Model.Id, text);
-    }
-
+    // Adding an issue is done via a popup dialog (opened from the tab); the dialog calls
+    // DailyReportViewModel.AddIssueAsync directly. Existing issues stay inline-editable below.
     [RelayCommand]
     private Task DeleteAsync() => _parent.DeleteEntryAsync(Model.Id);
 }

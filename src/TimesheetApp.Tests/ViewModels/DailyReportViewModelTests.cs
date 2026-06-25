@@ -116,19 +116,14 @@ public class DailyReportViewModelTests
     }
 
     [Fact]
-    public async Task Add_issue_on_row_calls_service_with_text()
+    public async Task Add_issue_calls_service_with_fields()
     {
-        var mine = new UserStandup(1, "Alice",
-            Array.Empty<StandupEntryView>(), new[] { View(11, StandupSection.Today) });
-        var (vm, svc, _) = Build(Today, mine: mine);
-        svc.Setup(s => s.AddIssueAsync(11, "blocked on vendor", null, "open")).ReturnsAsync(1);
+        var (vm, svc, _) = Build(Today);
+        svc.Setup(s => s.AddIssueAsync(11, "blocked on vendor", "call vendor", "pending")).ReturnsAsync(1);
 
-        await vm.LoadAsync();
-        var row = Assert.Single(vm.MyToday);
-        row.NewIssueText = "blocked on vendor";
-        await row.AddIssueCommand.ExecuteAsync(null);
+        await vm.AddIssueAsync(11, "blocked on vendor", "call vendor", "pending");
 
-        svc.Verify(s => s.AddIssueAsync(11, "blocked on vendor", null, "open"), Times.Once);
+        svc.Verify(s => s.AddIssueAsync(11, "blocked on vendor", "call vendor", "pending"), Times.Once);
     }
 
     [Fact]
