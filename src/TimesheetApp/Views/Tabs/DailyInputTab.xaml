@@ -33,7 +33,9 @@
           </DockPanel>
 
           <!-- issues (amber; collaborative — editable anytime) -->
-          <ItemsControl ItemsSource="{Binding Issues}" Margin="0,10,0,0">
+          <Border Background="{StaticResource Border}" Height="1" Margin="0,12,0,8"/>
+          <TextBlock Text="ISSUES" Style="{StaticResource StatLabel}"/>
+          <ItemsControl ItemsSource="{Binding Issues}" Margin="0,6,0,0">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <Border Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}"
@@ -64,17 +66,17 @@
           </ItemsControl>
 
           <!-- add-issue + delete-entry row -->
-          <Grid Margin="0,2,0,0">
+          <Grid Margin="0,6,0,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBox Grid.Column="0" Text="{Binding NewIssueText, UpdateSourceTrigger=PropertyChanged}"
-                     ToolTip="Describe an issue, then click + Issue"/>
-            <Button Grid.Column="1" Content="+ Issue" Style="{StaticResource MiniGhostButton}"
+                     ToolTip="Type the issue here, then click + Issue"/>
+            <Button Grid.Column="1" Content="&#10133; Issue" Style="{StaticResource MiniGhostButton}"
                     Command="{Binding AddIssueCommand}" Margin="6,0,0,0"/>
-            <Button Grid.Column="2" Content="Delete" Style="{StaticResource MiniGhostButton}"
+            <Button Grid.Column="2" Content="Delete entry" Style="{StaticResource MiniGhostButton}"
                     Command="{Binding DeleteCommand}" Margin="6,0,0,0"
                     Visibility="{Binding Editable, Converter={StaticResource BoolToVisibleConverter}}"/>
           </Grid>
