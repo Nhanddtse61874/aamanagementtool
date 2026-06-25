@@ -166,7 +166,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private string Header(int offset)
     {
         var d = CurrentWeek.AddDays(offset);
-        var dow = d.DayOfWeek.ToString()[..3]; // Mon/Tue/...
+        var dow = d.DayOfWeek.ToString()[..3].ToUpperInvariant(); // MON/TUE/... (matches the design)
         return $"{dow} {d:dd/MM}";
     }
 

@@ -90,8 +90,8 @@ public class TimesheetViewModelTests
     {
         var (vm, _, _) = Make();
         await vm.LoadCommand.ExecuteAsync(null);
-        Assert.Equal("Mon 15/06", vm.MonHeader);
-        Assert.Equal("Fri 19/06", vm.FriHeader);
+        Assert.Equal("MON 15/06", vm.MonHeader);
+        Assert.Equal("FRI 19/06", vm.FriHeader);
     }
 
     [Fact]
