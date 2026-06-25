@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 4;
+    private const long SchemaVersion = 5;
 
     private readonly IConnectionFactory _factory;
 
@@ -101,7 +101,41 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
     changed_by_name     TEXT,
     changed_at          TEXT    NOT NULL,
     FOREIGN KEY (request_id) REFERENCES Requests(id)
-);";
+);
+
+-- P7 Daily Report (schema v5). Standup rows are per (user, day, section); request_id is
+-- nullable (ad-hoc codes typed in a meeting have no Requests row). Issues cascade-delete.
+CREATE TABLE IF NOT EXISTS StandupEntries (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    work_date    TEXT    NOT NULL,
+    section      TEXT    NOT NULL,
+    request_id   INTEGER,
+    request_code TEXT    NOT NULL,
+    task_text    TEXT    NOT NULL,
+    description  TEXT    NOT NULL DEFAULT '',
+    deadline     TEXT,
+    status       TEXT    NOT NULL,
+    order_index  INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT    NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES Users(id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_standup_user_date ON StandupEntries(user_id, work_date);
+CREATE INDEX IF NOT EXISTS ix_standup_date      ON StandupEntries(work_date);
+
+CREATE TABLE IF NOT EXISTS StandupIssues (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id      INTEGER NOT NULL,
+    issue_text    TEXT    NOT NULL,
+    solution_text TEXT,
+    status        TEXT    NOT NULL DEFAULT 'open',
+    order_index   INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT    NOT NULL,
+    FOREIGN KEY (entry_id) REFERENCES StandupEntries(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS ix_standup_issue_entry ON StandupIssues(entry_id);";
         conn.Execute(ddl, transaction: tx);
     }
 
@@ -142,6 +176,10 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
             // (a request may be unassigned); not an FK constraint so deactivating a user never blocks.
             static (c, t) => c.Execute(
                 "ALTER TABLE Requests ADD COLUMN assignee_user_id INTEGER;", transaction: t),
+            // v5 -> Daily Report (StandupEntries + StandupIssues + indexes). The tables are created
+            // idempotently in CreateTables (CREATE TABLE IF NOT EXISTS), so this step only needs to
+            // exist to gate the user_version bump to 5 — no extra ALTER required.
+            static (_, _) => { },
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);
