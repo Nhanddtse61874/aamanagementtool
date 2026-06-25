@@ -28,9 +28,10 @@
     <Style x:Key="GridDayBox" TargetType="TextBox">
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
-      <Setter Property="Padding" Value="0,7"/>
+      <Setter Property="Padding" Value="0,5"/>
     </Style>
 
     <!-- Request "section" row: a full-width clickable band that collapses/expands its tasks. -->
@@ -242,7 +243,7 @@
 
                   <!-- Left: caret + code · project + status/month/assignee badges + Move.
                        Spans the day columns so badges/Move have room (only the total sits in col 6). -->
-                  <StackPanel Grid.Column="0" Grid.ColumnSpan="6" Orientation="Horizontal" Margin="10,7">
+                  <StackPanel Grid.Column="0" Grid.ColumnSpan="6" Orientation="Horizontal" Margin="10,6">
                     <TextBlock Style="{StaticResource SectionCaret}"/>
                     <TextBlock Text="{Binding RequestCode}" FontWeight="Bold" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding Project, StringFormat=' · {0}'}" VerticalAlignment="Center"
@@ -267,8 +268,8 @@
 
                   <!-- Right: group total aligned under the TOTAL column -->
                   <TextBlock Grid.Column="6" Text="{Binding GroupTotal, StringFormat='{}{0:N1}h'}"
-                             FontWeight="Bold" Foreground="{StaticResource TextSecondary}"
-                             HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,7,12,7"/>
+                             FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextSecondary}"
+                             HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,6,12,6"/>
                 </Grid>
               </ToggleButton>
 
@@ -287,7 +288,7 @@
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0" Text="{Binding TaskName}" VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis" Margin="30,7,8,7"/>
+                                   FontSize="13" TextTrimming="CharacterEllipsis" Margin="28,5,8,5"/>
 
                         <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
                           <TextBox Style="{StaticResource GridDayBox}"
@@ -315,7 +316,7 @@
                                    Text="{Binding Fri, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
                         <Border Grid.Column="6" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
-                          <TextBlock Text="{Binding RowTotal, StringFormat=N1}" FontWeight="SemiBold"
+                          <TextBlock Text="{Binding RowTotal, StringFormat=N1}" FontWeight="SemiBold" FontSize="13"
                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                       </Grid>
@@ -329,7 +330,7 @@
               <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
                       Background="{StaticResource Surface}"
                       Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibleConverter}}">
-                <DockPanel Margin="30,6,12,6">
+                <DockPanel Margin="28,4,12,4">
                   <Button DockPanel.Dock="Right" Content="Move to next month &#9654;"
                           Style="{StaticResource MiniGhostButton}" VerticalAlignment="Center"
                           Visibility="{Binding CanMoveMonth, Converter={StaticResource BoolToVisibleConverter}}"
