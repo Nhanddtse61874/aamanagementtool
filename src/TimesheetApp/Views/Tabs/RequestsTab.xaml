@@ -47,12 +47,24 @@
         <DataGrid Grid.Row="1" ItemsSource="{Binding Requests}" AutoGenerateColumns="False"
                   IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Code" Binding="{Binding RequestCode}" Width="1.6*"/>
-                <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="1.2*"/>
-                <DataGridTextColumn Header="Month" Binding="{Binding PeriodMonth}" Width="80"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
-                <DataGridTextColumn Header="Assignee" Binding="{Binding AssigneeName}" Width="1.2*"/>
-                <DataGridTextColumn Header="Tasks" Binding="{Binding TaskCount}" Width="64"/>
+                <DataGridTextColumn Header="CODE" Binding="{Binding RequestCode}" Width="1.6*"/>
+                <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="1.2*"/>
+                <DataGridTextColumn Header="MONTH" Binding="{Binding PeriodMonth}" Width="80"/>
+                <!-- Status as a teal pill (matches the design's status badge) -->
+                <DataGridTemplateColumn Header="STATUS" Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Visibility="{Binding Status, Converter={StaticResource NullToCollapsedConverter}}">
+                                <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent}"/>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="ASSIGNEE" Binding="{Binding AssigneeName}" Width="1.2*"/>
+                <DataGridTextColumn Header="TASKS" Binding="{Binding TaskCount}" Width="64"/>
                 <DataGridTemplateColumn Header="" Width="90">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>

@@ -372,11 +372,11 @@
   </Style>
 
   <Style TargetType="DataGridColumnHeader">
-    <Setter Property="Background" Value="{StaticResource HeaderBg}"/>
-    <Setter Property="Foreground" Value="#475569"/>
-    <Setter Property="FontWeight" Value="SemiBold"/>
-    <Setter Property="FontSize" Value="13"/>
-    <Setter Property="Padding" Value="12,8"/>
+    <Setter Property="Background" Value="#F4F6F9"/>
+    <Setter Property="Foreground" Value="#5B6675"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="Padding" Value="14,9"/>
     <Setter Property="HorizontalContentAlignment" Value="Left"/>
     <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
     <Setter Property="BorderThickness" Value="0,0,0,1"/>
