@@ -337,13 +337,10 @@
                           Command="{Binding DataContext.MoveMonthCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                           CommandParameter="{Binding RequestId}"
                           ToolTip="Advance this ticket to the next month (audited)"/>
-                  <StackPanel Orientation="Horizontal"
-                              IsEnabled="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=UserControl}}">
-                    <TextBox Width="240" Padding="8,3" Text="{Binding NewTaskName, UpdateSourceTrigger=PropertyChanged}"
-                             VerticalContentAlignment="Center" ToolTip="New task name for this request"/>
-                    <Button Content="&#10133; Add task" Command="{Binding AddTaskCommand}"
-                            Style="{StaticResource MiniGhostButton}" Margin="8,0,0,0"/>
-                  </StackPanel>
+                  <!-- Add task opens a dedicated input dialog (handled in code-behind per group). -->
+                  <Button Content="&#10133; Add task" Click="OnAddTask" HorizontalAlignment="Left"
+                          Style="{StaticResource MiniGhostButton}"
+                          IsEnabled="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                 </DockPanel>
               </Border>
             </StackPanel>

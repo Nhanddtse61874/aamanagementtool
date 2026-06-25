@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.Input;
 using TimesheetApp.ViewModels;
+using TimesheetApp.Views.Dialogs;
 
 public partial class SettingsTab : UserControl
 {
@@ -53,10 +54,12 @@ public partial class SettingsTab : UserControl
             vm.DbPath = dlg.FileName;
     }
 
+    // "Add task" opens a dedicated input dialog instead of an inline text box.
     private void AddTaskFromBox()
     {
         if (Vm?.TemplateEditor is null) return;
-        Vm.TemplateEditor.AddTask(NewTaskBox.Text);
-        NewTaskBox.Clear();
+        var dlg = new TaskInputDialog { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true && dlg.TaskName is { } name)
+            Vm.TemplateEditor.AddTask(name);
     }
 }

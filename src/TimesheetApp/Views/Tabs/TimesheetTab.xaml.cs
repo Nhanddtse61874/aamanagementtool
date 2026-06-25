@@ -26,4 +26,16 @@ public partial class TimesheetTab : UserControl
         };
         dialog.ShowDialog();
     }
+
+    // Per-group "Add task": open the dedicated input dialog, then add to that request group.
+    private async void OnAddTask(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: RequestGroupVm group }) return;
+        var dlg = new TaskInputDialog { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true && dlg.TaskName is { } name)
+        {
+            group.NewTaskName = name;
+            await group.AddTaskCommand.ExecuteAsync(null);
+        }
+    }
 }
