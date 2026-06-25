@@ -12,8 +12,22 @@
             <Button Content="&#10133; Add user"
                     Command="{Binding AddUserCommand}"
                     DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
-            <TextBox Text="{Binding NewUserName, UpdateSourceTrigger=PropertyChanged}"
-                     ToolTip="New user's display name"/>
+            <Grid>
+                <TextBox x:Name="NewUserBox" Text="{Binding NewUserName, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Text="New user name…" Foreground="{StaticResource Disabled}" Margin="10,0"
+                           VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text, ElementName=NewUserBox}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
         </DockPanel>
 
         <!-- USR-01: user list with avatar + Active/Inactive badge -->

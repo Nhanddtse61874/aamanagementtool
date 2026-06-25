@@ -41,7 +41,7 @@
                                     Margin="0,0,0,5" Padding="10,6">
                                 <DockPanel>
                                     <Button Content="Delete" DockPanel.Dock="Right" Margin="4,0,0,0"
-                                            Style="{StaticResource DangerButton}"
+                                            Style="{StaticResource DangerGhostButton}"
                                             Command="{Binding DataContext.DeleteTemplateCommand,
                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding Name}"/>
