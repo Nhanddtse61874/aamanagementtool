@@ -7,17 +7,26 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- REQ-01: search box + New Request button. Search is explicit (RefreshCommand button),
-             not auto-query — per VM comment: "setter does NOT auto-refresh". -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,8">
-            <Button Content="&#10133; New request" Command="{Binding BeginCreateCommand}"
-                    DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
-            <Button Content="Search" Command="{Binding RefreshCommand}"
-                    Style="{StaticResource GhostButton}"
-                    DockPanel.Dock="Right" Padding="14,5" Margin="6,0,0,0"/>
-            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <TextBox Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"/>
-        </DockPanel>
+        <!-- REQ-01: live search + structured filters (all in-memory) + New request. -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+            <DockPanel Margin="0,0,0,6">
+                <Button Content="&#10133; New request" Command="{Binding BeginCreateCommand}"
+                        DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
+                <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Filter by request code or project (live)"/>
+            </DockPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox Width="110" ItemsSource="{Binding ProjectOptions}" SelectedItem="{Binding FilterProject}"/>
+                <TextBlock Text="Status:" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                <ComboBox Width="120" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding FilterStatus}"/>
+                <TextBlock Text="Assignee:" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                <ComboBox Width="130" ItemsSource="{Binding AssigneeOptions}" SelectedItem="{Binding FilterAssignee}"/>
+                <TextBlock Text="Month:" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                <ComboBox Width="100" ItemsSource="{Binding MonthOptions}" SelectedItem="{Binding FilterMonth}"/>
+            </StackPanel>
+        </StackPanel>
 
         <!-- REQ-01: request list. NOTE: NO delete-request button anywhere (REQ-04). -->
         <DataGrid Grid.Row="1" ItemsSource="{Binding Requests}" AutoGenerateColumns="False"

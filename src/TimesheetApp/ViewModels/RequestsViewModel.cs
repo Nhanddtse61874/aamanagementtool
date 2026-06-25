@@ -35,36 +35,94 @@ public sealed partial class RequestsViewModel : ObservableObject
         int Id, string RequestCode, string Project, int TaskCount, string? PeriodMonth, string? Status,
         string? AssigneeName);
 
+    private const string AllOption = "All";
+
+    // The full loaded set; Requests is the filtered view shown in the grid.
+    private List<RequestListItem> _all = new();
     public ObservableCollection<RequestListItem> Requests { get; } = new();
 
     [ObservableProperty] private string? _searchTerm;
     [ObservableProperty] private RequestEditorViewModel? _editor;
 
-    // Note: SearchTerm setter does NOT auto-refresh. The view triggers RefreshAsync explicitly
-    // (RefreshCommand) so the query runs exactly once per search (REQ-01); auto-firing here would
-    // double-query when a caller also invokes RefreshAsync.
+    // Structured filters (live, in-memory). "All" = no filter. Option lists are rebuilt from the data.
+    [ObservableProperty] private string _filterProject = AllOption;
+    [ObservableProperty] private string _filterStatus = AllOption;
+    [ObservableProperty] private string _filterAssignee = AllOption;
+    [ObservableProperty] private string _filterMonth = AllOption;
+
+    public ObservableCollection<string> ProjectOptions { get; } = new() { AllOption };
+    public ObservableCollection<string> StatusOptions { get; } = new() { AllOption };
+    public ObservableCollection<string> AssigneeOptions { get; } = new() { AllOption };
+    public ObservableCollection<string> MonthOptions { get; } = new() { AllOption };
+
+    // All filters (incl. the search box) re-filter the loaded list live — no DB round-trip per keystroke.
+    partial void OnSearchTermChanged(string? value) => ApplyFilters();
+    partial void OnFilterProjectChanged(string value) => ApplyFilters();
+    partial void OnFilterStatusChanged(string value) => ApplyFilters();
+    partial void OnFilterAssigneeChanged(string value) => ApplyFilters();
+    partial void OnFilterMonthChanged(string value) => ApplyFilters();
 
     public async Task LoadAsync() => await RefreshAsync();
 
+    // Reloads the full set from the DB, rebuilds the filter option lists, then applies the live filters.
     [RelayCommand]
     public async Task RefreshAsync()
     {
-        var term = string.IsNullOrWhiteSpace(SearchTerm) ? null : SearchTerm.Trim();
-        var rows = await _requests.SearchAsync(term);
+        var rows = await _requests.SearchAsync(null);
 
-        // v4: id -> name map (GetAll so a deactivated assignee still resolves) for the Assignee column.
+        // v4: id -> name map (GetAll so a deactivated assignee still resolves) for the Assignee column/filter.
         var names = _users is null
             ? new Dictionary<int, string>()
             : (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Name);
 
-        Requests.Clear();
+        var items = new List<RequestListItem>();
         foreach (var r in rows)
         {
             var tasks = await _tasks.GetActiveByRequestAsync(r.Id);
             var assignee = r.AssigneeUserId is { } uid && names.TryGetValue(uid, out var n) ? n : null;
-            Requests.Add(new RequestListItem(
+            items.Add(new RequestListItem(
                 r.Id, r.RequestCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Status, assignee));
         }
+        _all = items;
+        RebuildFilterOptions();
+        ApplyFilters();
+    }
+
+    private void RebuildFilterOptions()
+    {
+        static void Fill(ObservableCollection<string> col, IEnumerable<string?> values)
+        {
+            col.Clear();
+            col.Add(AllOption);
+            foreach (var v in values.Where(v => !string.IsNullOrEmpty(v)).Distinct().OrderBy(v => v))
+                col.Add(v!);
+        }
+        Fill(ProjectOptions, _all.Select(i => i.Project));
+        Fill(StatusOptions, _all.Select(i => i.Status));
+        Fill(AssigneeOptions, _all.Select(i => i.AssigneeName));
+        Fill(MonthOptions, _all.Select(i => i.PeriodMonth));
+
+        // Drop any selection that no longer exists in the data (back to "All").
+        if (!ProjectOptions.Contains(FilterProject)) FilterProject = AllOption;
+        if (!StatusOptions.Contains(FilterStatus)) FilterStatus = AllOption;
+        if (!AssigneeOptions.Contains(FilterAssignee)) FilterAssignee = AllOption;
+        if (!MonthOptions.Contains(FilterMonth)) FilterMonth = AllOption;
+    }
+
+    private void ApplyFilters()
+    {
+        IEnumerable<RequestListItem> q = _all;
+        var term = SearchTerm?.Trim();
+        if (!string.IsNullOrEmpty(term))
+            q = q.Where(i => i.RequestCode.Contains(term, StringComparison.OrdinalIgnoreCase)
+                          || (i.Project ?? "").Contains(term, StringComparison.OrdinalIgnoreCase));
+        if (FilterProject != AllOption) q = q.Where(i => i.Project == FilterProject);
+        if (FilterStatus != AllOption) q = q.Where(i => i.Status == FilterStatus);
+        if (FilterAssignee != AllOption) q = q.Where(i => i.AssigneeName == FilterAssignee);
+        if (FilterMonth != AllOption) q = q.Where(i => i.PeriodMonth == FilterMonth);
+
+        Requests.Clear();
+        foreach (var i in q) Requests.Add(i);
     }
 
     [RelayCommand]
