@@ -94,6 +94,14 @@ public sealed partial class ReportsViewModel : ObservableObject
     partial void OnSelectedMonthChanged(DateOnly value) { if (_autoLoad) _ = LoadMonthlyAsync(); }
     partial void OnSelectedProjectChanged(string value) { if (_autoLoad) _ = RefreshReportsAsync(); }
 
+    // Drill-down tree expand/collapse-all toggle (bound to every TreeViewItem.IsExpanded).
+    [ObservableProperty] private bool _drillExpanded;
+    public string DrillToggleText => DrillExpanded ? "Collapse all" : "Expand all";
+    partial void OnDrillExpandedChanged(bool value) => OnPropertyChanged(nameof(DrillToggleText));
+
+    [RelayCommand]
+    private void ToggleDrillExpand() => DrillExpanded = !DrillExpanded;
+
     public ObservableCollection<WeeklyDayTotal> WeeklyRows { get; } = new();
     public ObservableCollection<WeeklyDetailRow> WeeklyDetailRows { get; } = new();
     public ObservableCollection<MonthlyRequestTaskTotal> MonthlyRows { get; } = new();

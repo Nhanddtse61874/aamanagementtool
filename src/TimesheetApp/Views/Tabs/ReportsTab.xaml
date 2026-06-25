@@ -123,8 +123,23 @@
 
       <!-- Right column: RPT-03 drill-down TreeView (Project -> Request -> Task -> Date) -->
       <DockPanel Grid.Column="1">
-        <TextBlock DockPanel.Dock="Top" Text="Drill-down (Project -> Request -> Task -> Date)" FontWeight="Bold"/>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+          <Button DockPanel.Dock="Right" Command="{Binding ToggleDrillExpandCommand}"
+                  Style="{StaticResource ToolbarGhostButton}" Content="{Binding DrillToggleText}"
+                  ToolTip="Expand / collapse the whole tree"/>
+          <TextBlock Text="Drill-down (Project -> Request -> Task -> Date)" FontWeight="Bold"
+                     VerticalAlignment="Center"/>
+        </DockPanel>
         <TreeView ItemsSource="{Binding ProjectTree}">
+          <TreeView.ItemContainerStyle>
+            <!-- Expand/collapse-all: every node follows the shared DrillExpanded flag (OneWay so a
+                 manual click on a single node still works between toggles). -->
+            <Style TargetType="TreeViewItem">
+              <Setter Property="IsExpanded"
+                      Value="{Binding DataContext.DrillExpanded, Mode=OneWay,
+                              RelativeSource={RelativeSource AncestorType=TreeView}}"/>
+            </Style>
+          </TreeView.ItemContainerStyle>
           <TreeView.Resources>
             <!-- Level 1: ProjectNode — children are Requests -->
             <HierarchicalDataTemplate DataType="{x:Type m:ProjectNode}" ItemsSource="{Binding Requests}">
