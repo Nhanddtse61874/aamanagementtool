@@ -6,38 +6,39 @@
             <StackPanel Margin="16">
 
                 <!-- SET-01: DB path + Browse -->
-                <TextBlock Text="Database file" FontWeight="Bold"/>
+                <TextBlock Text="Database file" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Path to the SQLite database file (.db) used to store data."
-                           Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
-                <TextBlock Text="Database path:" Margin="0,2,0,0"/>
-                <StackPanel Orientation="Horizontal" Margin="0,2,0,12">
+                           Style="{StaticResource FieldHint}"/>
+                <TextBlock Text="Database path" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                     <TextBox Width="420" Height="32" Text="{Binding DbPath, UpdateSourceTrigger=PropertyChanged}"/>
-                    <Button Content="Browse..." Height="32" Margin="8,0,0,0" Click="OnBrowse"
+                    <Button Content="Browse…" Height="32" Margin="8,0,0,0" Click="OnBrowse"
                             Style="{StaticResource GhostButton}"/>
                     <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyDbPathCommand}"/>
                 </StackPanel>
 
                 <!-- SET-02: N-days warning (default 3) -->
-                <TextBlock Text="&quot;Not logged&quot; warning window" FontWeight="Bold"/>
+                <TextBlock Text="&quot;Not logged&quot; warning window" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Warn if no hours are logged within this many recent working days."
-                           Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
-                <TextBlock Text="Working days:" Margin="0,2,0,0"/>
-                <StackPanel Orientation="Horizontal" Margin="0,2,0,12">
+                           Style="{StaticResource FieldHint}"/>
+                <TextBlock Text="Working days" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                     <TextBox Width="60" Height="32" Text="{Binding WarningDays, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Save" Height="32" Margin="8,0,0,0" Command="{Binding SaveWarningDaysCommand}"/>
                 </StackPanel>
 
                 <!-- SET-03: Task templates — grouped list + New template button.
                      Each template = the set of task rows sharing one name; edited via the overlay. -->
-                <TextBlock Text="Task templates" FontWeight="Bold"/>
+                <TextBlock Text="Task templates" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Each template has a name and several tasks. Use a template to quickly create a request's task list."
-                           Foreground="Gray" FontSize="11" Margin="0,0,0,4"/>
-                <Button Content="➕ New template" HorizontalAlignment="Left"
-                        Command="{Binding BeginCreateTemplateCommand}" Margin="0,0,0,4"/>
-                <ItemsControl ItemsSource="{Binding TemplateGroups}" Margin="0,0,0,12">
+                           Style="{StaticResource FieldHint}"/>
+                <Button Content="&#10133; New template" HorizontalAlignment="Left"
+                        Command="{Binding BeginCreateTemplateCommand}" Margin="0,0,0,6"/>
+                <ItemsControl ItemsSource="{Binding TemplateGroups}" Margin="0,0,0,16">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border BorderBrush="#DDD" BorderThickness="1" Margin="0,2" Padding="8,4">
+                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                                    Margin="0,0,0,5" Padding="10,6">
                                 <DockPanel>
                                     <Button Content="Delete" DockPanel.Dock="Right" Margin="4,0,0,0"
                                             Style="{StaticResource DangerButton}"
@@ -60,78 +61,96 @@
                 </ItemsControl>
 
                 <!-- SET-04: DefaultTasks sync -->
-                <TextBlock Text="Default tasks" FontWeight="Bold"/>
+                <TextBlock Text="Default tasks" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Sync the default-task list into the default request."
-                           Foreground="Gray" FontSize="11" Margin="0,0,0,2"/>
+                           Style="{StaticResource FieldHint}"/>
                 <Button Content="Sync default tasks" HorizontalAlignment="Left"
-                        Style="{StaticResource GhostButton}"
-                        Margin="0,4,0,0" Command="{Binding SaveDefaultTasksCommand}"/>
+                        Style="{StaticResource GhostButton}" Command="{Binding SaveDefaultTasksCommand}"/>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- SET-03: template editor overlay — shown when TemplateEditor != null (mirrors RequestsTab). -->
-        <Border Background="#80000000"
+        <!-- SET-03: template editor overlay — themed card mirroring the Requests editor. -->
+        <Border Background="#66000000"
                 Visibility="{Binding TemplateEditor,
                              Converter={StaticResource NullToCollapsedConverter}}">
-            <Border Background="White" Width="480" Padding="16"
-                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                    MaxHeight="600">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel DataContext="{Binding TemplateEditor}">
-                        <TextBlock Text="Task template" FontWeight="Bold" FontSize="16" Margin="0,0,0,8"/>
+            <Border Width="500" MaxHeight="600" Background="{StaticResource Surface}" CornerRadius="12"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect Color="#0F172A" Opacity="0.28" BlurRadius="28" ShadowDepth="4" Direction="270"/>
+                </Border.Effect>
+                <DockPanel DataContext="{Binding TemplateEditor}">
 
-                        <TextBlock Text="Template name:"/>
-                        <TextBox Text="{Binding TemplateName, UpdateSourceTrigger=PropertyChanged}"
-                                 Margin="0,2,0,8"/>
+                    <!-- Header -->
+                    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
+                            Padding="20,15" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="Task template" FontWeight="Bold" FontSize="17"
+                                   Foreground="{StaticResource TextPrimary}"/>
+                    </Border>
 
-                        <!-- Editable task-name list with reorder + remove. Remove/Up/Down on the editor
-                             VM are plain methods, so they are wrapped as commands on the code-behind. -->
-                        <TextBlock Text="Tasks in this template:" FontWeight="SemiBold" Margin="0,4,0,2"/>
-                        <ItemsControl ItemsSource="{Binding Tasks}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,2">
-                                        <Button Content="Remove" DockPanel.Dock="Right" Margin="4,0,0,0"
-                                                Style="{StaticResource DangerButton}"
-                                                Command="{Binding RemoveTaskCommand,
-                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}"/>
-                                        <Button Content="Down" DockPanel.Dock="Right" Margin="4,0,0,0"
-                                                Style="{StaticResource MiniGhostButton}"
-                                                Command="{Binding MoveDownCommand,
-                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}"/>
-                                        <Button Content="Up" DockPanel.Dock="Right" Margin="4,0,0,0"
-                                                Style="{StaticResource MiniGhostButton}"
-                                                Command="{Binding MoveUpCommand,
-                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}"/>
-                                        <TextBox Text="{Binding TaskName, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <!-- Add task input row -->
-                        <DockPanel Margin="0,8,0,0">
-                            <Button Content="➕ Add task" DockPanel.Dock="Right" Margin="4,0,0,0"
-                                    Command="{Binding AddTaskFromBoxCommand,
-                                        RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                            <TextBox x:Name="NewTaskBox"/>
-                        </DockPanel>
-
-                        <!-- Save / Cancel -->
-                        <DockPanel Margin="0,12,0,0">
-                            <Button Content="Cancel" DockPanel.Dock="Right" Margin="4,0,0,0"
-                                    Style="{StaticResource GhostButton}"
-                                    Command="{Binding DataContext.CancelTemplateCommand,
-                                        RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                            <Button Content="Save" HorizontalAlignment="Left"
+                    <!-- Footer -->
+                    <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
+                            Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                        <DockPanel>
+                            <Button Content="Save" DockPanel.Dock="Right" Padding="22,6"
                                     Command="{Binding DataContext.SaveTemplateCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                            <Button Content="Cancel" DockPanel.Dock="Right" Style="{StaticResource GhostButton}"
+                                    Padding="18,6" Margin="0,0,8,0"
+                                    Command="{Binding DataContext.CancelTemplateCommand,
+                                        RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                            <TextBlock/>
                         </DockPanel>
-                    </StackPanel>
-                </ScrollViewer>
+                    </Border>
+
+                    <!-- Body -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16">
+                        <StackPanel>
+                            <TextBlock Text="Template name" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding TemplateName, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,12"/>
+
+                            <TextBlock Text="Tasks in this template" Style="{StaticResource FieldLabel}"/>
+                            <ItemsControl ItemsSource="{Binding Tasks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                                BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="0,0,0,5">
+                                            <DockPanel>
+                                                <Button Content="&#10005;" DockPanel.Dock="Right"
+                                                        Style="{StaticResource TaskIconButton}"
+                                                        Foreground="{StaticResource Danger}" ToolTip="Remove task"
+                                                        Command="{Binding RemoveTaskCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="&#9660;" DockPanel.Dock="Right"
+                                                        Style="{StaticResource TaskIconButton}" ToolTip="Move down"
+                                                        Command="{Binding MoveDownCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="&#9650;" DockPanel.Dock="Right"
+                                                        Style="{StaticResource TaskIconButton}" ToolTip="Move up"
+                                                        Command="{Binding MoveUpCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <TextBox Text="{Binding TaskName, UpdateSourceTrigger=PropertyChanged}"
+                                                         BorderThickness="0" Background="Transparent"
+                                                         VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <DockPanel Margin="0,4,0,0">
+                                <Button Content="&#10133; Add task" DockPanel.Dock="Right"
+                                        Style="{StaticResource GhostButton}" Padding="12,5" Margin="6,0,0,0"
+                                        Command="{Binding AddTaskFromBoxCommand,
+                                            RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                                <TextBox x:Name="NewTaskBox"/>
+                            </DockPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
             </Border>
         </Border>
     </Grid>

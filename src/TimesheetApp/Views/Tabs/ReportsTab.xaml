@@ -12,8 +12,8 @@
   <DockPanel Margin="8">
 
     <!-- RPT-04 banner: visible only when BannerText is non-empty -->
-    <Border DockPanel.Dock="Top" Background="#FFF4CE" BorderBrush="#E0C200" BorderThickness="1"
-            Padding="8" Margin="0,0,0,8">
+    <Border DockPanel.Dock="Top" Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}"
+            BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,10">
       <Border.Style>
         <Style TargetType="Border">
           <Setter Property="Visibility" Value="Visible"/>
@@ -24,7 +24,7 @@
           </Style.Triggers>
         </Style>
       </Border.Style>
-      <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="#7A5C00"/>
+      <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="{StaticResource AmberFg}"/>
     </Border>
 
     <!-- Controls: report target (user name / whole team) + week picker + month picker -->
@@ -34,11 +34,12 @@
                 SelectedItem="{Binding SelectedTarget}" DisplayMemberPath="Display"/>
       <TextBlock Text="Week (Mon):" VerticalAlignment="Center" Margin="12,0,4,0"/>
       <DatePicker SelectedDate="{Binding SelectedWeekMonday, Converter={StaticResource DateOnlyConverter}}"/>
-      <Button Content="Weekly" Command="{Binding LoadWeeklyCommand}" Margin="4,0"/>
-      <TextBlock Text="Month:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+      <Button Content="Weekly" Command="{Binding LoadWeeklyCommand}" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"/>
+      <TextBlock Text="Month:" VerticalAlignment="Center" Margin="16,0,4,0"/>
       <DatePicker SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnlyConverter}}"/>
-      <Button Content="Monthly" Command="{Binding LoadMonthlyCommand}" Margin="4,0"/>
-      <Button Content="Refresh banner" Command="{Binding LoadBannerCommand}" Margin="12,0,0,0"/>
+      <Button Content="Monthly" Command="{Binding LoadMonthlyCommand}" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"/>
+      <Button Content="Refresh banner" Command="{Binding LoadBannerCommand}"
+              Style="{StaticResource ToolbarGhostButton}" Margin="16,0,0,0"/>
     </StackPanel>
 
     <!-- Summary stat cards (computed from the loaded weekly rows) -->

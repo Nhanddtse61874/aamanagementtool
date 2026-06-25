@@ -9,10 +9,11 @@
 
         <!-- USR-02: add user input row -->
         <DockPanel Grid.Row="0" Margin="0,0,0,8">
-            <Button Content="Add User"
+            <Button Content="&#10133; Add user"
                     Command="{Binding AddUserCommand}"
-                    DockPanel.Dock="Right" Padding="10,4" Margin="4,0,0,0"/>
-            <TextBox Text="{Binding NewUserName, UpdateSourceTrigger=PropertyChanged}"/>
+                    DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
+            <TextBox Text="{Binding NewUserName, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="New user's display name"/>
         </DockPanel>
 
         <!-- USR-01: user list with avatar + Active/Inactive badge -->
@@ -36,10 +37,11 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="Status" Width="130">
+                <DataGridTemplateColumn Header="Status" Width="120">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Border CornerRadius="11" Padding="9,2" HorizontalAlignment="Left">
+                            <Border CornerRadius="10" Padding="9,2" HorizontalAlignment="Left"
+                                    VerticalAlignment="Center">
                                 <Border.Style>
                                     <Style TargetType="Border">
                                         <Setter Property="Background" Value="{StaticResource BadgeGreenBg}"/>
