@@ -106,14 +106,18 @@
         <DatePicker SelectedDate="{Binding JumpDate, Mode=TwoWay}" Width="128" Margin="8,0,0,0"
                     VerticalAlignment="Center" ToolTip="Jump to the week containing a date"/>
 
-        <!-- Auto-save status (replaces the old Save button): cells persist on commit. -->
+        <!-- Auto-save status (replaces the old Save button): cells persist on commit. Only takes space
+             when it has something to show, so the toolbar layout is identical across User selections. -->
         <TextBlock Text="{Binding SaveStatus}" VerticalAlignment="Center" Margin="12,0,8,0"
-                   FontSize="12" FontWeight="SemiBold" MinWidth="64"
-                   Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibleConverter}}">
+                   FontSize="12" FontWeight="SemiBold">
           <TextBlock.Style>
             <Style TargetType="TextBlock">
               <Setter Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+              <Setter Property="Visibility" Value="Visible"/>
               <Style.Triggers>
+                <DataTrigger Binding="{Binding SaveStatus}" Value="">
+                  <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding SaveStatusIsError}" Value="True">
                   <Setter Property="Foreground" Value="Red"/>
                 </DataTrigger>
