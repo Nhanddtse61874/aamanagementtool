@@ -163,10 +163,11 @@
         </DockPanel>
 
         <!-- ===== DAILY REPORT (Input / Board sub-tabs) ===== -->
+        <!-- Visibility binds to MainViewModel.ActiveView; the inner header + tabs use the DailyReport VM.
+             (Setting DataContext on this DockPanel would break the ActiveView visibility binding.) -->
         <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
-                                ConverterParameter=dailyreport}"
-                   DataContext="{Binding DailyReport}">
-          <StackPanel DockPanel.Dock="Top" Margin="22,16,22,0">
+                                ConverterParameter=dailyreport}">
+          <StackPanel DockPanel.Dock="Top" Margin="22,16,22,0" DataContext="{Binding DailyReport}">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="&#128221;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
               <TextBlock Style="{StaticResource FeatureTitle}" Text="Daily Report"/>
@@ -185,7 +186,7 @@
                          Foreground="{StaticResource TextSecondary}" FontSize="12"/>
             </StackPanel>
           </StackPanel>
-          <TabControl Margin="22,8,22,0">
+          <TabControl Margin="22,8,22,0" DataContext="{Binding DailyReport}">
             <TabItem Header="Input">
               <tabs:DailyInputTab/>
             </TabItem>
