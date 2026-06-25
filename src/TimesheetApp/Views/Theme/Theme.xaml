@@ -4,17 +4,17 @@
                     xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework">
 
   <!-- ============================================================
-       Modern Light theme — accent #2563EB, airy density.
+       Modern Light theme — accent #0F766E (teal), airy density.
        Implicit styles (no x:Key) auto-apply across all windows/tabs.
        To re-color the app, change the brushes in this block only.
        ============================================================ -->
 
-  <!-- Palette -->
-  <Color x:Key="AccentColor">#2563EB</Color>
-  <SolidColorBrush x:Key="Accent" Color="#2563EB"/>
-  <SolidColorBrush x:Key="AccentHover" Color="#1D4ED8"/>
-  <SolidColorBrush x:Key="AccentPressed" Color="#1E40AF"/>
-  <SolidColorBrush x:Key="AccentSoft" Color="#EFF6FF"/>
+  <!-- Palette — accent matches the design's teal #0F766E (was #2563EB blue). -->
+  <Color x:Key="AccentColor">#0F766E</Color>
+  <SolidColorBrush x:Key="Accent" Color="#0F766E"/>
+  <SolidColorBrush x:Key="AccentHover" Color="#115E59"/>
+  <SolidColorBrush x:Key="AccentPressed" Color="#134E4A"/>
+  <SolidColorBrush x:Key="AccentSoft" Color="#F0FDFA"/>
   <SolidColorBrush x:Key="WindowBg" Color="#F8FAFC"/>
   <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="Border" Color="#E2E8F0"/>
