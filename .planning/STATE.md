@@ -9,8 +9,9 @@ Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `
 Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
 
 ## Current status
-- **191 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`086efae`** (all work pushed).
-- Schema is at **user_version 3** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization).
+- **193 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`587fc61`** (all work pushed).
+- Schema is at **user_version 4** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization;
+  v4 = `requests.assignee_user_id`).
 - UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
 - Built autonomously, then many rounds of **UAT-driven UI rework**. Planning artifacts in `.planning/` + `docs/superpowers/`.
 
@@ -97,6 +98,24 @@ A red cell (`TimesheetRowVm.HasErrorFor(col)`) is never written; the service sti
 (status warns, value reverts on reload). Team (read-only) view skips auto-save. `SaveCellAsync` now returns
 `SaveResult`. Note: `SaveCommand`/`CanSave`/`AnyDayOverEight` are KEPT (internal bulk-save, no button) so
 `Save_DisabledWhenAnyColumnExceedsEight` still guards the >8h invariant. 3 new VM auto-save tests.
+
+## Assignee + Entry redesign — DONE (2026-06-25, commits `f3f378d`, `587fc61`)
+- **Assignee per Request (migration v4)**: `requests.assignee_user_id` (nullable, not an FK). RequestRepo
+  persists+reads it and **audits changes by NAME** (gated on id change). Edit-request dialog got an
+  **Assignee dropdown** (`RequestEditorViewModel.Unassigned` sentinel id 0 → null; `Users`/`SelectedAssignee`/
+  `AssigneeUserId`). Requests list shows an **Assignee column**; Entry section headers show a 👤 badge
+  (`WeekRequestGroup.AssigneeName`, resolved in `TimeLogService.BuildGroupsAsync` via `_users.GetAllAsync`).
+  `RequestsViewModel`/`TimeLogService` guard null user lists (mocks return null). Tasks stay shared
+  (decision: no per-task owner) — assignee is ticket-level only.
+- **Edit-request dialog restyled** to the Worklog theme: rounded shadowed card, New/Edit title, hierarchical
+  buttons (Save primary, Cancel/Add ghost, ▲▼✕ icon), sticky footer w/ error. Dropped the redundant
+  "Apply Template" button (selecting a template auto-appends). `FieldLabel` style added.
+- **Entry grid redesigned to a single continuous table** (user mockup): each request = a full-width clickable
+  **section band** (caret + CODE · project + badges, group total right-aligned under TOTAL); task rows beneath
+  with editable Mon–Fri cells aligned to shared 7-col star grid (2*,*,*,*,*,*,*); **"Move to next month"
+  moved into the expanded add-task row** (right) so the header never clips. Header uppercased (TASK/MON../TOTAL),
+  `Header()` now uppercases the day-of-week; DAY TOTALS footer shows the week grand total; Prev/Next relabeled.
+  Replaces the old per-group Expander+DataGrid. Auto-save (LostFocus) unchanged on the new TextBox cells.
 
 ## Backlog batch — DONE (2026-06-24, commits `5b441de`..`086efae`)
 Autonomous pass over the remaining UX backlog (newest last):
