@@ -609,6 +609,30 @@
     <Setter Property="Margin" Value="0,0,6,0"/>
   </Style>
 
+  <!-- Small danger-outline action (e.g. Deactivate) — red text/border, soft-red hover. -->
+  <Style x:Key="DangerGhostButton" TargetType="Button" BasedOn="{StaticResource MiniGhostButton}">
+    <Setter Property="Foreground" Value="{StaticResource Danger}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="bd" Background="{StaticResource Surface}" BorderBrush="{StaticResource Danger}"
+                  BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource DangerSoft}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+              <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Border}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- Compact form field label (used by the editor dialogs). -->
   <Style x:Key="FieldLabel" TargetType="TextBlock">
     <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
