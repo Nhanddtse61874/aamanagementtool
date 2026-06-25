@@ -1,0 +1,74 @@
+<UserControl x:Class="TimesheetApp.Views.Tabs.DailyBoardTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- DataContext = DailyReportViewModel. Read-only team board for the selected day: one card per active
+       user (dynamic count), each showing Yesterday/Today entries + issues. -->
+  <UserControl.Resources>
+
+    <!-- One entry inside a section table (DataContext = StandupEntryView). -->
+    <DataTemplate x:Key="BoardEntryTemplate">
+      <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="0,6">
+        <StackPanel>
+          <DockPanel>
+            <Border DockPanel.Dock="Right" Background="{StaticResource BadgeGrayBg}" CornerRadius="9"
+                    Padding="8,2" VerticalAlignment="Top">
+              <TextBlock Text="{Binding Entry.Status}" FontSize="11" FontWeight="SemiBold"
+                         Foreground="{StaticResource BadgeGrayFg}"/>
+            </Border>
+            <StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Entry.RequestCode}" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+                <TextBlock Text="·" Margin="6,0"/>
+                <TextBlock Text="{Binding Entry.TaskText}" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding Entry.Deadline, StringFormat='(due {0:yyyy-MM-dd})'}" Margin="8,0,0,0"
+                           FontSize="11" Foreground="{StaticResource TextSecondary}"/>
+              </StackPanel>
+              <TextBlock Text="{Binding Entry.Description}" TextWrapping="Wrap" Margin="0,2,0,0"
+                         Foreground="{StaticResource TextSecondary}"/>
+            </StackPanel>
+          </DockPanel>
+          <ItemsControl ItemsSource="{Binding Issues}" Margin="10,4,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource AmberFg}" Margin="0,1">
+                  <Run Text="⚠ ["/><Run Text="{Binding Status, Mode=OneWay}"/><Run Text="] "/>
+                  <Run Text="{Binding IssueText, Mode=OneWay}"/>
+                  <Run Text="  →  "/>
+                  <Run Text="{Binding SolutionText, Mode=OneWay, TargetNullValue='(pending)'}"/>
+                </TextBlock>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- One user card (DataContext = UserStandup). -->
+    <DataTemplate x:Key="UserCardTemplate">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,12" Padding="14">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <Border Background="{StaticResource Accent}" CornerRadius="13" Width="26" Height="26" Margin="0,0,9,0">
+              <TextBlock Text="{Binding UserName, Converter={StaticResource Initial}}" Foreground="White"
+                         FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock Text="{Binding UserName}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+          </StackPanel>
+
+          <TextBlock Text="Yesterday" Style="{StaticResource FieldLabel}"/>
+          <ItemsControl ItemsSource="{Binding Yesterday}" ItemTemplate="{StaticResource BoardEntryTemplate}"
+                        Margin="0,2,0,2"/>
+
+          <TextBlock Text="Today" Style="{StaticResource FieldLabel}" Margin="0,8,0,0"/>
+          <ItemsControl ItemsSource="{Binding Today}" ItemTemplate="{StaticResource BoardEntryTemplate}"
+                        Margin="0,2,0,2"/>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="22,12,22,16">
+    <ItemsControl ItemsSource="{Binding Board}" ItemTemplate="{StaticResource UserCardTemplate}"/>
+  </ScrollViewer>
+</UserControl>

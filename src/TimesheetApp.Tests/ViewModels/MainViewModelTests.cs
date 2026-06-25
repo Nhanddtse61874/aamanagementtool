@@ -37,13 +37,15 @@ public sealed class MainViewModelTests
         var settings = new SettingsViewModel(
             Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(),
             Mock.Of<IDefaultTaskSyncService>());
+        var dailyReport = new DailyReportViewModel(
+            Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger());
 
         // Default conflict scan target: a path with no siblings so no spurious warning fires.
         _config.SetupGet(c => c.DbPath).Returns(
             dbPath ?? Path.Combine(Path.GetTempPath(), "mvm-test-" + Guid.NewGuid().ToString("N"), "timesheet.db"));
 
         return new MainViewModel(
-            timesheet, requests, usersVm, reports, settings,
+            timesheet, requests, usersVm, reports, settings, dailyReport,
             _currentUser.Object, _users.Object, _config.Object,
             windowsUserName ?? (() => "tester"));
     }
@@ -164,6 +166,7 @@ public sealed class MainViewModelTests
             new UsersViewModel(Mock.Of<IUserRepository>()),
             new ReportsViewModel(Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(), Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>()),
             new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>()),
+            new DailyReportViewModel(Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger()),
             _currentUser.Object, _users.Object, _config.Object, () => "tester");
 
         Assert.Empty(timesheet.Groups);

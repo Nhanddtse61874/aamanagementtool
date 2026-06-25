@@ -1,0 +1,127 @@
+<UserControl x:Class="TimesheetApp.Views.Tabs.DailyInputTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- DataContext = DailyReportViewModel. Two side-by-side sections (Yesterday / Today); each lists the
+       signed-in user's entries (delete + issues) and an add-row form shown only when the day is editable. -->
+  <UserControl.Resources>
+
+    <!-- One existing standup entry: read-only fields + collaborative issues + delete (if editable). -->
+    <DataTemplate x:Key="EntryTemplate">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,8" Padding="12">
+        <StackPanel>
+          <DockPanel>
+            <Border DockPanel.Dock="Right" Background="{StaticResource BadgeGrayBg}" CornerRadius="9"
+                    Padding="8,2" VerticalAlignment="Top">
+              <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
+                         Foreground="{StaticResource BadgeGrayFg}"/>
+            </Border>
+            <StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding RequestCode}" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+                <TextBlock Text="·" Margin="6,0"/>
+                <TextBlock Text="{Binding TaskText}" FontWeight="SemiBold"/>
+              </StackPanel>
+              <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,3,0,0"
+                         Foreground="{StaticResource TextSecondary}"/>
+              <TextBlock Text="{Binding DeadlineText, StringFormat='Deadline: {0}'}" FontSize="11"
+                         Margin="0,3,0,0" Foreground="{StaticResource TextSecondary}"
+                         Visibility="{Binding DeadlineText, Converter={StaticResource NullToCollapsedConverter}}"/>
+            </StackPanel>
+          </DockPanel>
+
+          <!-- Issues (collaborative — editable anytime) -->
+          <ItemsControl ItemsSource="{Binding Issues}" Margin="0,8,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}"
+                        BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,5">
+                  <StackPanel>
+                    <TextBlock Text="{Binding IssueText, StringFormat='⚠ {0}'}" TextWrapping="Wrap"
+                               FontWeight="SemiBold" Foreground="{StaticResource AmberFg}"/>
+                    <DockPanel Margin="0,5,0,0">
+                      <ComboBox DockPanel.Dock="Right" Width="100" Margin="6,0,0,0"
+                                ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding Status}"/>
+                      <Button DockPanel.Dock="Right" Content="Save" Style="{StaticResource MiniGhostButton}"
+                              Command="{Binding SaveCommand}" Margin="6,0,0,0"/>
+                      <Button DockPanel.Dock="Right" Content="✕" Style="{StaticResource MiniGhostButton}"
+                              Command="{Binding DeleteCommand}" Margin="6,0,0,0"/>
+                      <TextBox Text="{Binding SolutionText, UpdateSourceTrigger=PropertyChanged}"
+                               Tag="Solution (blank = pending)…"/>
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <DockPanel Margin="0,2,0,0">
+            <Button DockPanel.Dock="Right" Content="+ Issue" Style="{StaticResource MiniGhostButton}"
+                    Command="{Binding AddIssueCommand}" Margin="6,0,0,0"/>
+            <Button DockPanel.Dock="Right" Content="Delete" Style="{StaticResource MiniGhostButton}"
+                    Command="{Binding DeleteCommand}" Margin="6,0,0,0"
+                    Visibility="{Binding Editable, Converter={StaticResource BoolToVisibleConverter}}"/>
+            <TextBox Text="{Binding NewIssueText, UpdateSourceTrigger=PropertyChanged}" Tag="Add an issue…"/>
+          </DockPanel>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- The add-new-entry form for one section (bound to a StandupDraftVm). -->
+    <DataTemplate x:Key="DraftTemplate">
+      <Border Style="{StaticResource Card}" Padding="12" Background="{StaticResource StatCardBg}">
+        <StackPanel>
+          <TextBlock Text="Add entry" Style="{StaticResource FieldLabel}"/>
+          <ComboBox Margin="0,4,0,4" IsEditable="True" ItemsSource="{Binding Requests}"
+                    SelectedItem="{Binding SelectedRequest}" DisplayMemberPath="RequestCode"
+                    Text="{Binding RequestCode, UpdateSourceTrigger=PropertyChanged}"
+                    ToolTip="Pick an existing request or type a new code (ad-hoc)"/>
+          <ComboBox Margin="0,0,0,4" IsEditable="True" ItemsSource="{Binding Tasks}"
+                    DisplayMemberPath="TaskName"
+                    Text="{Binding TaskText, UpdateSourceTrigger=PropertyChanged}"
+                    ToolTip="Pick a task of the request or type one"/>
+          <TextBox Margin="0,0,0,4" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                   Tag="What did you do / are you doing…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40"/>
+          <DockPanel Margin="0,0,0,4">
+            <ComboBox DockPanel.Dock="Right" Width="110" Margin="6,0,0,0"
+                      ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding Status}"/>
+            <DatePicker SelectedDate="{Binding Deadline}" ToolTip="Deadline (optional)"/>
+          </DockPanel>
+          <Button Content="Add" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Left"
+                  Command="{Binding AddCommand}"/>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <Grid Margin="22,12,22,16">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="*"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- Yesterday -->
+    <DockPanel Grid.Column="0" Margin="0,0,8,0">
+      <TextBlock DockPanel.Dock="Top" Text="Yesterday" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <ItemsControl ItemsSource="{Binding MyYesterday}" ItemTemplate="{StaticResource EntryTemplate}"/>
+          <ContentControl Content="{Binding NewYesterday}" ContentTemplate="{StaticResource DraftTemplate}"
+                          Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+
+    <!-- Today -->
+    <DockPanel Grid.Column="1" Margin="8,0,0,0">
+      <TextBlock DockPanel.Dock="Top" Text="Today" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <ItemsControl ItemsSource="{Binding MyToday}" ItemTemplate="{StaticResource EntryTemplate}"/>
+          <ContentControl Content="{Binding NewToday}" ContentTemplate="{StaticResource DraftTemplate}"
+                          Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Grid>
+</UserControl>

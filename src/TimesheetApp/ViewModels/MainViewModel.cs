@@ -32,10 +32,11 @@ public sealed partial class MainViewModel : ObservableObject
         UsersViewModel usersVm,
         ReportsViewModel reports,
         SettingsViewModel settings,
+        DailyReportViewModel dailyReport,
         ICurrentUserService currentUser,
         IUserRepository users,
         IAppConfig config)
-        : this(timesheet, requests, usersVm, reports, settings, currentUser, users, config,
+        : this(timesheet, requests, usersVm, reports, settings, dailyReport, currentUser, users, config,
                () => Environment.UserName)
     {
     }
@@ -47,6 +48,7 @@ public sealed partial class MainViewModel : ObservableObject
         UsersViewModel usersVm,
         ReportsViewModel reports,
         SettingsViewModel settings,
+        DailyReportViewModel dailyReport,
         ICurrentUserService currentUser,
         IUserRepository users,
         IAppConfig config,
@@ -57,6 +59,7 @@ public sealed partial class MainViewModel : ObservableObject
         Users = usersVm;
         Reports = reports;
         Settings = settings;
+        DailyReport = dailyReport;
         _currentUser = currentUser;
         _users = users;
         _config = config;
@@ -68,6 +71,7 @@ public sealed partial class MainViewModel : ObservableObject
     public UsersViewModel Users { get; }
     public ReportsViewModel Reports { get; }
     public SettingsViewModel Settings { get; }
+    public DailyReportViewModel DailyReport { get; }
 
     [ObservableProperty] private string _currentUserName = string.Empty;
 
@@ -85,6 +89,7 @@ public sealed partial class MainViewModel : ObservableObject
     // index-based ActivateTabAsync (0 Timesheet, 2 Users, 4 Settings); daily/tasks are static.
     partial void OnActiveViewChanged(string value)
     {
+        if (value == "dailyreport") { _ = SafeLoad(() => DailyReport.LoadAsync()); return; }
         var index = value switch { "timesheet" => 0, "users" => 2, "settings" => 4, _ => -1 };
         if (index >= 0) _ = ActivateTabAsync(index);
     }
