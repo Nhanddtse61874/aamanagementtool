@@ -7,7 +7,7 @@
         Background="{StaticResource WindowBg}"
         WindowStartupLocation="CenterScreen">
 
-  <Grid>
+  <Grid Background="{StaticResource Surface}">
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="218"/>
       <ColumnDefinition Width="*"/>

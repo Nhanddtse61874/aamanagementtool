@@ -36,20 +36,39 @@ public sealed class RequestsViewModelTests
         Assert.Equal(2, vm.Requests.Count);
     }
 
-    [Fact] // REQ-01: setting SearchTerm re-queries via SearchAsync(term)
-    public async Task SearchTerm_filters_via_repository()
+    [Fact] // REQ-01: search filters the loaded list live (in-memory), by code or project
+    public async Task SearchTerm_filters_loaded_list_live()
     {
-        _requests.Setup(r => r.SearchAsync(null)).ReturnsAsync(Array.Empty<Request>());
-        _requests.Setup(r => r.SearchAsync("alp")).ReturnsAsync(new[] { R(1, "RQ-1", "Alpha") });
+        _requests.Setup(r => r.SearchAsync(null))
+            .ReturnsAsync(new[] { R(1, "RQ-1", "Alpha"), R(2, "RQ-2", "Beta") });
         var vm = CreateVm();
         await vm.LoadAsync();
+        Assert.Equal(2, vm.Requests.Count);
 
-        vm.SearchTerm = "alp";
-        await vm.RefreshAsync();
+        vm.SearchTerm = "alp"; // live — no second DB query
 
         Assert.Single(vm.Requests);
         Assert.Equal("RQ-1", vm.Requests[0].RequestCode);
-        _requests.Verify(r => r.SearchAsync("alp"), Times.Once);
+        _requests.Verify(r => r.SearchAsync(It.IsAny<string?>()), Times.Once); // loaded once
+    }
+
+    [Fact] // Structured filters (project/status/assignee/month) combine with the search, all in-memory.
+    public async Task Filters_combine_in_memory()
+    {
+        _requests.Setup(r => r.SearchAsync(null)).ReturnsAsync(new[]
+        {
+            new Request(1, "RQ-1", "ARCS", DateTimeOffset.UtcNow, Status: "Implement"),
+            new Request(2, "RQ-2", "ARMS", DateTimeOffset.UtcNow, Status: "Implement"),
+            new Request(3, "RQ-3", "ARCS", DateTimeOffset.UtcNow, Status: "Estimate"),
+        });
+        var vm = CreateVm();
+        await vm.LoadAsync();
+
+        vm.FilterProject = "ARCS";          // RQ-1, RQ-3
+        Assert.Equal(2, vm.Requests.Count);
+        vm.FilterStatus = "Implement";      // RQ-1 only
+        Assert.Single(vm.Requests);
+        Assert.Equal("RQ-1", vm.Requests[0].RequestCode);
     }
 
     [Fact] // REQ-02: SaveNewAsync inserts request then inserts each active task with order_index

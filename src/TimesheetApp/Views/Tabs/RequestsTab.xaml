@@ -7,28 +7,64 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- REQ-01: search box + New Request button. Search is explicit (RefreshCommand button),
-             not auto-query — per VM comment: "setter does NOT auto-refresh". -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,8">
-            <Button Content="&#10133; New request" Command="{Binding BeginCreateCommand}"
-                    DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
-            <Button Content="Search" Command="{Binding RefreshCommand}"
-                    Style="{StaticResource GhostButton}"
-                    DockPanel.Dock="Right" Padding="14,5" Margin="6,0,0,0"/>
-            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <TextBox Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"/>
-        </DockPanel>
+        <!-- REQ-01: live search + structured filters (all in-memory) + New request. -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+            <DockPanel Margin="0,0,0,6">
+                <Button Content="&#10133; New request" Command="{Binding BeginCreateCommand}"
+                        DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
+                <!-- Placeholder lives INSIDE the box (design) instead of an external "Search:" label. -->
+                <Grid>
+                    <TextBox x:Name="SearchBox" Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Filter by request code or project (live)"/>
+                    <TextBlock Text="Search code or project…" Foreground="{StaticResource Disabled}"
+                               Margin="10,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </DockPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox Width="110" ItemsSource="{Binding ProjectOptions}" SelectedItem="{Binding FilterProject}"/>
+                <TextBlock Text="Status:" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                <ComboBox Width="120" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding FilterStatus}"/>
+                <TextBlock Text="Assignee:" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                <ComboBox Width="130" ItemsSource="{Binding AssigneeOptions}" SelectedItem="{Binding FilterAssignee}"/>
+                <TextBlock Text="Month:" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                <ComboBox Width="100" ItemsSource="{Binding MonthOptions}" SelectedItem="{Binding FilterMonth}"/>
+            </StackPanel>
+        </StackPanel>
 
         <!-- REQ-01: request list. NOTE: NO delete-request button anywhere (REQ-04). -->
         <DataGrid Grid.Row="1" ItemsSource="{Binding Requests}" AutoGenerateColumns="False"
                   IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Code" Binding="{Binding RequestCode}" Width="1.6*"/>
-                <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="1.2*"/>
-                <DataGridTextColumn Header="Month" Binding="{Binding PeriodMonth}" Width="80"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
-                <DataGridTextColumn Header="Assignee" Binding="{Binding AssigneeName}" Width="1.2*"/>
-                <DataGridTextColumn Header="Tasks" Binding="{Binding TaskCount}" Width="64"/>
+                <DataGridTextColumn Header="CODE" Binding="{Binding RequestCode}" Width="1.6*"/>
+                <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="1.2*"/>
+                <DataGridTextColumn Header="MONTH" Binding="{Binding PeriodMonth}" Width="80"/>
+                <!-- Status as a teal pill (matches the design's status badge) -->
+                <DataGridTemplateColumn Header="STATUS" Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Visibility="{Binding Status, Converter={StaticResource NullToCollapsedConverter}}">
+                                <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent}"/>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="ASSIGNEE" Binding="{Binding AssigneeName}" Width="1.2*"/>
+                <DataGridTextColumn Header="TASKS" Binding="{Binding TaskCount}" Width="64"/>
                 <DataGridTemplateColumn Header="" Width="90">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
@@ -204,14 +240,11 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <!-- Add task input row -->
-                            <DockPanel Margin="0,4,0,0">
-                                <Button Content="&#10133; Add task" DockPanel.Dock="Right"
-                                        Style="{StaticResource GhostButton}" Padding="12,5" Margin="6,0,0,0"
-                                        Command="{Binding AddTaskFromBoxCommand,
-                                            RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                                <TextBox x:Name="NewTaskBox"/>
-                            </DockPanel>
+                            <!-- Add task: opens a dedicated input dialog (no inline text box). -->
+                            <Button Content="&#10133; Add task" HorizontalAlignment="Left" Margin="0,4,0,0"
+                                    Style="{StaticResource GhostButton}" Padding="14,6"
+                                    Command="{Binding AddTaskFromBoxCommand,
+                                        RelativeSource={RelativeSource AncestorType=UserControl}}"/>
 
                             <!-- v2: change history (start/end/month/status) — only shown when present -->
                             <StackPanel Margin="0,16,0,0">

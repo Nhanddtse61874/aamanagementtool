@@ -1,6 +1,6 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-26 (Daily Report / Standup feature — P7 / M2, on a feature branch awaiting UAT)
+**Last updated:** 2026-06-26 (Daily Report P7/M2 built — awaiting UAT — rebased onto latest main: teal accent #0F766E / 13px design-file alignment)
 
 ## Daily Report (Standup) — BUILT, awaiting UAT (2026-06-26, branch `feature/daily-report-2026-06-25`)
 New feature replacing the "Daily Report" SOON nav placeholder. **Schema v5** adds `StandupEntries`
@@ -20,7 +20,6 @@ is auto-backfilled for any completed week on every app startup. Status set = Tod
   manual at task-row level; team size dynamic (not fixed at 4); per-day persistence + weekly md archive.
 - Follow-ups (backlog): inline edit of an existing entry's fields (today = delete+re-add); per-row reorder.
 
-## (M1) Last updated: 2026-06-24 (auto-save + backlog batch: prune/banner, zero-config, persist collapse, jump-to-week)
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
@@ -29,11 +28,20 @@ Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `
 Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
 
 ## Current status
-- **193 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`587fc61`** (all work pushed).
+- **194 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`3ab7df4`** (all work pushed).
 - Schema is at **user_version 4** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization;
   v4 = `requests.assignee_user_id`).
 - UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
 - Built autonomously, then many rounds of **UAT-driven UI rework**. Planning artifacts in `.planning/` + `docs/superpowers/`.
+- **`CLAUDE.md` is now at the repo root** (copied from happypowerprocess plugin). Key rules the user enforces:
+  **Surgical Changes** (touch only what's needed, don't "improve" working code), **UAT / Never auto-advance**
+  (small change → build → user tests → next; don't batch huge sweeps). FOLLOW THESE — the user pushed back hard
+  when I over-reached and broke working things (e.g. a ComboBox restyle that broke DisplayMemberPath → reverted).
+- **THE DESIGN SOURCE OF TRUTH** = `E:\Learning\AAM\Design Old\Designfromclaude\Timesheet Tool.dc.html` (an HTML
+  mockup, 474 lines). READ IT before any UI change — do not eyeball screenshots. It defines the exact tokens:
+  accent `#0F766E` teal, page `#E6EAEF`, surface `#fff`, borders `#D4DAE2`/`#E3E8EE`/`#F0F2F6`, text `#1F2937`/`#64748B`,
+  table header `#F4F6F9`/`#5B6675`, font `'Segoe UI'` **13px**, ghostBtn gray text `#334155`, primaryBtn=accent,
+  miniGhost=accent text, miniDanger=red outline.
 
 ## Commands
 - Build: `dotnet build src/TimesheetApp.sln`
@@ -41,8 +49,46 @@ Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamana
 - Run: `dotnet run --project src/TimesheetApp` (or run the built exe in `bin/Debug/net8.0-windows/TimesheetApp.exe`)
 - DB lives at `%USERPROFILE%\Documents\TimesheetApp\timesheet.db` (path stored in `%APPDATA%\TimesheetApp\appsettings.json`).
 
-## UAT fixes completed THIS session (newest last)
-1. Interim **Modern Light theme** (`Views/Theme/Theme.xaml`, accent #2563EB) — to be superseded by the user's own visual design (they will send one).
+## Session 2026-06-25/26 — features + design-file alignment — DONE (commits `4a700e3`..`3ab7df4`)
+Big session. Features first, then a long UI pass to match the **design HTML file** (see source-of-truth above).
+**Features:**
+- **Auto-save cells** (`4a700e3`): Entry cells persist on LostFocus; Save button gone, replaced by a status
+  indicator (`TimesheetViewModel.SaveStatus`/`SaveStatusIsError`). `TimesheetRowVm.DayChanged` carries
+  `(row, DayColumn)`; red cell never written; team view read-only.
+- **Assignee per Request (migration v4)** (`f3f378d`): `requests.assignee_user_id`; repo persists + audits by
+  NAME; Edit-request dialog has an Assignee dropdown (`RequestEditorViewModel.Unassigned` sentinel id 0 → null);
+  Requests list **Assignee** column; Entry group header 👤 badge. Tasks stay shared (no per-task owner).
+- **Entry grid redesign** (`587fc61`): single continuous table — each request = a clickable section band
+  (caret + CODE · project + badges + group total in the TOTAL col); task rows with editable Mon–Fri cells
+  (plain `TextBox`es via `GridDayBox` style, auto-save on LostFocus); "Move to next month" lives in the
+  expanded add-task row; DAY TOTALS footer shows the week grand total. Replaced the old Expander+DataGrid.
+- **Excel export wired** (`d64b1af`): `ExportService` was built but unused — now a "⬇ Export to Excel" button on
+  Reports (SaveFileDialog in `ReportsTab.xaml.cs`; `ReportsViewModel.BuildExcelExportAsync`).
+- **Reports UX** (`d64b1af`): grids AUTO-LOAD on filter change (target/week/month/project); added a **Project**
+  filter; dropped Weekly/Monthly/Refresh-banner buttons. **Drill-down Expand/Collapse-all** toggle (`1258a54`).
+- **Requests filters** (`d64b1af`): live in-memory search + Project/Status/Assignee/Month dropdowns (options
+  built from the loaded data; single DB load, all filtering in `ApplyFilters`).
+- **Add-task dialog** (`b5e89af`,`e4f60a4`): a dedicated `Views/Dialogs/TaskInputDialog` replaces every inline
+  "type + Add" row (Request editor, Settings template editor, Entry per-group quick-add).
+**Design-file alignment (read the HTML file!):**
+- Themed **ComboBox** + **DatePicker** controls in `Theme.xaml` (rounded white + caret/calendar, match TextBox).
+  NOTE: the ComboBox `ContentSite` MUST bind SelectionBoxItem + ItemTemplate + TemplateSelector + StringFormat
+  or DisplayMemberPath combos render the raw object (that bug bit once → reverted → fixed).
+- **Accent → teal `#0F766E`** (`5e03682`); **palette tokens + 13px base font + ghost gray text** (`da43e89`).
+- **No floating-card frame** — the app fills the window white (the gray-margin card looked wrong on desktop;
+  user explicitly rejected it after I tried it) (`b237ad9`).
+- DataGrid headers `#F4F6F9`/`#5B6675` 11px bold; Requests uppercase headers + **Status teal pill**; search/add
+  boxes use an in-box **placeholder** overlay (no external "Search:" label). Settings Delete = red-outline.
+
+## Design alignment — still OPEN (user to decide; these differ because our features differ from the v1 mockup)
+- Design "+ New Request" is a *ghost* button + a separate *Search* primary; we use **live search** so New request
+  is the teal primary. Design has an Entry **Save** button; we use **auto-save** (Save removed). — keep ours or
+  match file?
+- Per-user **avatar colours** (file varies them; ours is teal for all). Rounded **bordered table containers**
+  (WPF DataGrid has no CornerRadius — needs a wrapping Border). Minor.
+
+## UAT fixes — early build (historical, newest last)
+1. Interim Modern Light theme (`Views/Theme/Theme.xaml`) — SINCE SUPERSEDED: accent is now teal #0F766E per the design file.
 2. First-run: **SelectUserDialog can create a user inline** + `ShutdownMode=OnExplicitShutdown` during startup (cancel no longer kills app).
 3. **DB parent-dir auto-create** on first run (was crashing with SQLite Error 14).
 4. QA gate fixes: **C1** startup `DefaultTaskSync.SyncAsync` runs at App.OnStartup; **I1** XC-09 journal check wired to bulk write paths.

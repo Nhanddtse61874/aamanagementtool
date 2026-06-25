@@ -27,20 +27,30 @@
       <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="{StaticResource AmberFg}"/>
     </Border>
 
-    <!-- Controls: report target (user name / whole team) + week picker + month picker -->
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-      <TextBlock Text="Report for:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-      <ComboBox Width="180" ItemsSource="{Binding Targets}"
-                SelectedItem="{Binding SelectedTarget}" DisplayMemberPath="Display"/>
-      <TextBlock Text="Week (Mon):" VerticalAlignment="Center" Margin="12,0,4,0"/>
-      <DatePicker SelectedDate="{Binding SelectedWeekMonday, Converter={StaticResource DateOnlyConverter}}"/>
-      <Button Content="Weekly" Command="{Binding LoadWeeklyCommand}" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"/>
-      <TextBlock Text="Month:" VerticalAlignment="Center" Margin="16,0,4,0"/>
-      <DatePicker SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnlyConverter}}"/>
-      <Button Content="Monthly" Command="{Binding LoadMonthlyCommand}" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"/>
-      <Button Content="Refresh banner" Command="{Binding LoadBannerCommand}"
-              Style="{StaticResource ToolbarGhostButton}" Margin="16,0,0,0"/>
-    </StackPanel>
+    <!-- Controls: report target + week + month + project filter (grids auto-load on any change) + Export.
+         A WrapPanel so the controls flow onto a second line on narrow windows instead of clipping. -->
+    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Report for:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <ComboBox Width="160" ItemsSource="{Binding Targets}"
+                  SelectedItem="{Binding SelectedTarget}" DisplayMemberPath="Display"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Week (Mon):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <DatePicker Width="118" SelectedDate="{Binding SelectedWeekMonday, Converter={StaticResource DateOnlyConverter}}"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Month:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <DatePicker Width="118" SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnlyConverter}}"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <ComboBox Width="100" ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"/>
+      </StackPanel>
+      <Button Content="&#11015; Export to Excel" Click="OnExportExcel"
+              Style="{StaticResource ToolbarButton}" Margin="0,0,0,6"
+              ToolTip="Export the selected month (and project) to an .xlsx file"/>
+    </WrapPanel>
 
     <!-- Summary stat cards (computed from the loaded weekly rows) -->
     <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
@@ -113,8 +123,23 @@
 
       <!-- Right column: RPT-03 drill-down TreeView (Project -> Request -> Task -> Date) -->
       <DockPanel Grid.Column="1">
-        <TextBlock DockPanel.Dock="Top" Text="Drill-down (Project -> Request -> Task -> Date)" FontWeight="Bold"/>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+          <Button DockPanel.Dock="Right" Command="{Binding ToggleDrillExpandCommand}"
+                  Style="{StaticResource ToolbarGhostButton}" Content="{Binding DrillToggleText}"
+                  ToolTip="Expand / collapse the whole tree"/>
+          <TextBlock Text="Drill-down (Project -> Request -> Task -> Date)" FontWeight="Bold"
+                     VerticalAlignment="Center"/>
+        </DockPanel>
         <TreeView ItemsSource="{Binding ProjectTree}">
+          <TreeView.ItemContainerStyle>
+            <!-- Expand/collapse-all: every node follows the shared DrillExpanded flag (OneWay so a
+                 manual click on a single node still works between toggles). -->
+            <Style TargetType="TreeViewItem">
+              <Setter Property="IsExpanded"
+                      Value="{Binding DataContext.DrillExpanded, Mode=OneWay,
+                              RelativeSource={RelativeSource AncestorType=TreeView}}"/>
+            </Style>
+          </TreeView.ItemContainerStyle>
           <TreeView.Resources>
             <!-- Level 1: ProjectNode — children are Requests -->
             <HierarchicalDataTemplate DataType="{x:Type m:ProjectNode}" ItemsSource="{Binding Requests}">

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.Input;
 using TimesheetApp.ViewModels;
+using TimesheetApp.Views.Dialogs;
 
 public partial class RequestsTab : UserControl
 {
@@ -51,10 +52,12 @@ public partial class RequestsTab : UserControl
             await Vm.SaveNewAsync();
     }
 
+    // "Add task" opens a dedicated input dialog instead of an inline text box.
     private void AddTaskFromBox()
     {
         if (Vm?.Editor is null) return;
-        Vm.Editor.AddTask(NewTaskBox.Text);
-        NewTaskBox.Clear();
+        var dlg = new TaskInputDialog { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true && dlg.TaskName is { } name)
+            Vm.Editor.AddTask(name);
     }
 }

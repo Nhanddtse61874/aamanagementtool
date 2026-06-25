@@ -20,6 +20,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     private readonly IClock _clock;
     private readonly IReportAggregator _aggregator;
     private readonly IMessenger _messenger;
+    private readonly IExportService? _export;   // EXP-01: wired to the Export to Excel button
 
     public ReportsViewModel(
         ITimeLogRepository timeLogs,
@@ -28,7 +29,8 @@ public sealed partial class ReportsViewModel : ObservableObject
         IUserRepository users,
         IClock clock,
         IReportAggregator aggregator,
-        IMessenger? messenger = null)
+        IMessenger? messenger = null,
+        IExportService? export = null)
     {
         _timeLogs = timeLogs;
         _timeLogService = timeLogService;
@@ -37,6 +39,7 @@ public sealed partial class ReportsViewModel : ObservableObject
         _clock = clock;
         _aggregator = aggregator;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
+        _export = export;
 
         // default selection = the week / month containing "today"
         var today = _clock.Today;
@@ -68,6 +71,36 @@ public sealed partial class ReportsViewModel : ObservableObject
     [ObservableProperty] private ReportTarget? _selectedTarget;
     [ObservableProperty] private DateOnly _selectedWeekMonday;
     [ObservableProperty] private DateOnly _selectedMonth; // first of month
+
+    // Project filter ("All" = no filter). Reused for the grids and the Excel export.
+    public IReadOnlyList<string> Projects { get; } =
+        new[] { "All" }.Concat(RequestProjects.All).ToList();
+    [ObservableProperty] private string _selectedProject = "All";
+    private string? ProjectFilter =>
+        string.IsNullOrEmpty(SelectedProject) || SelectedProject == "All" ? null : SelectedProject;
+
+    // Reports auto-load when a filter changes (no more Weekly/Monthly buttons). Suppressed until the
+    // first explicit load (ActivateTab) has run so the ctor/LoadUsers don't fire premature reloads.
+    private bool _autoLoad;
+
+    private async Task RefreshReportsAsync()
+    {
+        await LoadWeeklyAsync();
+        await LoadMonthlyAsync();
+    }
+
+    partial void OnSelectedTargetChanged(ReportTarget? value) { if (_autoLoad) _ = RefreshReportsAsync(); }
+    partial void OnSelectedWeekMondayChanged(DateOnly value) { if (_autoLoad) _ = LoadWeeklyAsync(); }
+    partial void OnSelectedMonthChanged(DateOnly value) { if (_autoLoad) _ = LoadMonthlyAsync(); }
+    partial void OnSelectedProjectChanged(string value) { if (_autoLoad) _ = RefreshReportsAsync(); }
+
+    // Drill-down tree expand/collapse-all toggle (bound to every TreeViewItem.IsExpanded).
+    [ObservableProperty] private bool _drillExpanded;
+    public string DrillToggleText => DrillExpanded ? "Collapse all" : "Expand all";
+    partial void OnDrillExpandedChanged(bool value) => OnPropertyChanged(nameof(DrillToggleText));
+
+    [RelayCommand]
+    private void ToggleDrillExpand() => DrillExpanded = !DrillExpanded;
 
     public ObservableCollection<WeeklyDayTotal> WeeklyRows { get; } = new();
     public ObservableCollection<WeeklyDetailRow> WeeklyDetailRows { get; } = new();
@@ -109,16 +142,38 @@ public sealed partial class ReportsViewModel : ObservableObject
         foreach (var u in active) Targets.Add(new ReportTarget(u.Id, u.Name));
 
         SelectedTarget = Targets.FirstOrDefault(t => t.UserId == previousId) ?? TeamTarget;
+        _autoLoad = true; // from now on, changing any filter reloads the grids automatically
     }
 
     // Report rows for the selected target over [from, to]: whole team uses the all-users export query,
     // a single user uses the per-user report query.
-    private Task<IReadOnlyList<TimeLogReportRow>> GetRowsForTargetAsync(DateOnly from, DateOnly to)
+    private async Task<IReadOnlyList<TimeLogReportRow>> GetRowsForTargetAsync(DateOnly from, DateOnly to)
     {
         var target = SelectedTarget;
-        return target is null || target.UserId == 0
-            ? _timeLogs.GetExportRowsAsync(from, to, null)
-            : _timeLogs.GetReportRowsAsync(target.UserId, from, to);
+        var rows = target is null || target.UserId == 0
+            ? await _timeLogs.GetExportRowsAsync(from, to, null)
+            : await _timeLogs.GetReportRowsAsync(target.UserId, from, to);
+        var project = ProjectFilter;
+        return project is null ? rows : rows.Where(r => r.Project == project).ToList();
+    }
+
+    /// EXP-01: build the .xlsx bytes for the current selection (month + target + project). The View
+    /// owns the SaveFileDialog and writes the bytes; returns null if no export service is wired.
+    public Task<byte[]>? BuildExcelExportAsync()
+    {
+        if (_export is null) return null;
+        var filter = new ExportFilter(
+            SelectedTarget is { UserId: > 0 } t ? t.UserId : (int?)null,
+            SelectedMonth.Year, SelectedMonth.Month, ProjectFilter);
+        return _export.ExportExcelAsync(filter);
+    }
+
+    /// Suggested file name for the export, e.g. "Worklog-2026-06-Nhan.xlsx".
+    public string SuggestedExportFileName()
+    {
+        var who = SelectedTarget is { UserId: > 0 } t ? t.Display : "team";
+        var safe = string.Concat(who.Split(System.IO.Path.GetInvalidFileNameChars()));
+        return $"Worklog-{SelectedMonth:yyyy-MM}-{safe}.xlsx";
     }
 
     [RelayCommand]
