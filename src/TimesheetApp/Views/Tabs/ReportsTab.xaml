@@ -27,23 +27,30 @@
       <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="{StaticResource AmberFg}"/>
     </Border>
 
-    <!-- Controls: report target + week + month + project filter (grids auto-load on any change) + Export -->
-    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-      <Button DockPanel.Dock="Right" Content="&#11015; Export to Excel" Click="OnExportExcel"
-              Style="{StaticResource ToolbarButton}" Margin="16,0,0,0" VerticalAlignment="Center"
-              ToolTip="Export the selected month (and project) to an .xlsx file"/>
-      <StackPanel Orientation="Horizontal">
+    <!-- Controls: report target + week + month + project filter (grids auto-load on any change) + Export.
+         A WrapPanel so the controls flow onto a second line on narrow windows instead of clipping. -->
+    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
         <TextBlock Text="Report for:" VerticalAlignment="Center" Margin="0,0,4,0"/>
         <ComboBox Width="160" ItemsSource="{Binding Targets}"
                   SelectedItem="{Binding SelectedTarget}" DisplayMemberPath="Display"/>
-        <TextBlock Text="Week (Mon):" VerticalAlignment="Center" Margin="12,0,4,0"/>
-        <DatePicker Width="120" SelectedDate="{Binding SelectedWeekMonday, Converter={StaticResource DateOnlyConverter}}"/>
-        <TextBlock Text="Month:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-        <DatePicker Width="120" SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnlyConverter}}"/>
-        <TextBlock Text="Project:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Week (Mon):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <DatePicker Width="118" SelectedDate="{Binding SelectedWeekMonday, Converter={StaticResource DateOnlyConverter}}"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Month:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <DatePicker Width="118" SelectedDate="{Binding SelectedMonth, Converter={StaticResource DateOnlyConverter}}"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>
         <ComboBox Width="100" ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"/>
       </StackPanel>
-    </DockPanel>
+      <Button Content="&#11015; Export to Excel" Click="OnExportExcel"
+              Style="{StaticResource ToolbarButton}" Margin="0,0,0,6"
+              ToolTip="Export the selected month (and project) to an .xlsx file"/>
+    </WrapPanel>
 
     <!-- Summary stat cards (computed from the loaded weekly rows) -->
     <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
