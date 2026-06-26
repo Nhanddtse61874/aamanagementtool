@@ -14,8 +14,6 @@ public partial class StandupEntryDialog : Window
         InitializeComponent();
         _draft = draft;
         DataContext = draft;
-        HeaderText.Text = draft.Section == Models.StandupSection.Yesterday
-            ? "Add — Yesterday" : "Add — Today";
     }
 
     private void OnAdd(object sender, RoutedEventArgs e)

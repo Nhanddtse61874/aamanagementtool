@@ -249,11 +249,12 @@ public sealed partial class StandupIssueRowVm : ObservableObject
 public sealed partial class StandupDraftVm : ObservableObject
 {
     private readonly DailyReportViewModel _parent;
-    public string Section { get; }
+    private readonly string _initialSection;
 
     public StandupDraftVm(string section, DailyReportViewModel parent)
     {
-        Section = section;
+        _initialSection = section;
+        _section = section;
         _parent = parent;
         _status = StandupStatus.All[0];
     }
@@ -262,6 +263,8 @@ public sealed partial class StandupDraftVm : ObservableObject
     public ObservableCollection<TaskItem> Tasks { get; } = new();
     public IReadOnlyList<string> StatusOptions => StandupStatus.All;
 
+    // Yesterday/Today, now picked inside the Add-entry dialog so a single button handles both sections.
+    [ObservableProperty] private string _section = string.Empty;
     [ObservableProperty] private Backlog? _selectedBacklog;
     [ObservableProperty] private TaskItem? _selectedTask;
     [ObservableProperty] private string _backlogCode = string.Empty;
@@ -294,6 +297,7 @@ public sealed partial class StandupDraftVm : ObservableObject
 
     public void Reset()
     {
+        Section = _initialSection;
         SelectedBacklog = null;
         SelectedTask = null;
         BacklogCode = string.Empty;

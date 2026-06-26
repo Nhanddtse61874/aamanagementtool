@@ -25,6 +25,14 @@
         </StackPanel>
       </Border>
       <StackPanel Margin="20,16">
+        <TextBlock Text="Section" Style="{StaticResource FieldLabel}"/>
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+          <RadioButton Content="Yesterday" GroupName="section" Margin="0,0,18,0" VerticalContentAlignment="Center"
+                       IsChecked="{Binding Section, Converter={StaticResource StringMatch}, ConverterParameter=yesterday}"/>
+          <RadioButton Content="Today" GroupName="section" VerticalContentAlignment="Center"
+                       IsChecked="{Binding Section, Converter={StaticResource StringMatch}, ConverterParameter=today}"/>
+        </StackPanel>
+
         <TextBlock Text="Backlog (pick existing, or type a new code)" Style="{StaticResource FieldLabel}"/>
         <Grid Margin="0,0,0,8">
           <Grid.ColumnDefinitions>

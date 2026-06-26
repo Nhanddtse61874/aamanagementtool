@@ -108,26 +108,26 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <!-- Single stacked column (mirrors the Team Board layout): Yesterday section, then Today section. -->
-  <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="22,4,22,16">
-    <StackPanel>
-      <!-- Yesterday -->
-      <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
-        <TextBlock Text="Yesterday" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
-      </Border>
-      <ItemsControl ItemsSource="{Binding MyYesterday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,0"/>
-      <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Left"
-              Margin="0,0,0,18" Tag="yesterday" Click="OnAddEntry"
-              Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
+  <!-- One pinned "Add entry" button (the section is chosen in the dialog); only the entries scroll. -->
+  <DockPanel Margin="22,4,22,16">
+    <Button DockPanel.Dock="Top" Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}"
+            HorizontalAlignment="Left" Margin="0,0,0,10" Click="OnAddEntry"
+            Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
 
-      <!-- Today -->
-      <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
-        <TextBlock Text="Today" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
-      </Border>
-      <ItemsControl ItemsSource="{Binding MyToday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,0"/>
-      <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Left"
-              Margin="0,0,0,4" Tag="today" Click="OnAddEntry"
-              Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
-    </StackPanel>
-  </ScrollViewer>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <!-- Yesterday -->
+        <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
+          <TextBlock Text="Yesterday" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
+        </Border>
+        <ItemsControl ItemsSource="{Binding MyYesterday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,16"/>
+
+        <!-- Today -->
+        <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
+          <TextBlock Text="Today" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
+        </Border>
+        <ItemsControl ItemsSource="{Binding MyToday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,0"/>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
 </UserControl>
