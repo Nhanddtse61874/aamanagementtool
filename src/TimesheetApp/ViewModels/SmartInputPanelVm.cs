@@ -66,7 +66,8 @@ public sealed partial class SmartInputPanelVm : ObservableObject
     /// Raised after a successful atomic apply; owner VM reloads the week grid.
     public event Action? Applied;
 
-    /// Find the backlog by code and load its active tasks as checkboxes.
+    /// Find backlogs whose code/project CONTAINS the term (partial match) and load their active tasks
+    /// as checkboxes. When more than one backlog matches, each task is prefixed with its backlog code.
     [RelayCommand]
     private async Task FindBacklogAsync()
     {
@@ -76,17 +77,28 @@ public sealed partial class SmartInputPanelVm : ObservableObject
         PreviewError = null;
         CanApply = false;
 
-        var code = BacklogCode?.Trim();
-        if (string.IsNullOrEmpty(code)) { LoadError = "Enter a backlog code."; return; }
+        var term = BacklogCode?.Trim();
+        if (string.IsNullOrEmpty(term)) { LoadError = "Type part of a backlog code to search."; return; }
         if (_backlogs is null) { LoadError = "Backlog lookup is unavailable."; return; }
 
-        var backlog = await _backlogs.GetByCodeAsync(code);
-        if (backlog is null) { LoadError = $"Backlog '{code}' not found."; return; }
+        // Contains search (LIKE %term%) on backlog_code OR project; hide the internal DEFAULT backlog.
+        var matches = (await _backlogs.SearchAsync(term))
+            .Where(b => !string.Equals(b.BacklogCode, "DEFAULT", StringComparison.Ordinal))
+            .ToList();
+        if (matches.Count == 0) { LoadError = $"No backlog matches '{term}'."; return; }
 
-        var tasks = await _tasks.GetActiveByBacklogAsync(backlog.Id);
-        foreach (var t in tasks.OrderBy(t => t.OrderIndex))
-            Tasks.Add(new SmartTaskItem { TaskId = t.Id, TaskName = t.TaskName });
-        if (Tasks.Count == 0) LoadError = "This backlog has no tasks.";
+        var prefixWithCode = matches.Count > 1;
+        foreach (var bl in matches)
+        {
+            var tasks = await _tasks.GetActiveByBacklogAsync(bl.Id);
+            foreach (var t in tasks.OrderBy(t => t.OrderIndex))
+                Tasks.Add(new SmartTaskItem
+                {
+                    TaskId = t.Id,
+                    TaskName = prefixWithCode ? $"{bl.BacklogCode} · {t.TaskName}" : t.TaskName,
+                });
+        }
+        if (Tasks.Count == 0) LoadError = "Matching backlog(s) have no tasks.";
     }
 
     [RelayCommand]
