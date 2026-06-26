@@ -140,21 +140,21 @@
       <!-- Content host: one panel per ActiveView, only the matching one visible -->
       <Grid Grid.Row="1">
 
-        <!-- ===== TIMESHEET (Entry / Requests / Reports sub-tabs) ===== -->
+        <!-- ===== TIMESHEET (Entry / Backlog / Reports sub-tabs) ===== -->
         <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
                                 ConverterParameter=timesheet}">
           <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,0">
             <TextBlock Text="&#128197;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Timesheet"/>
-            <TextBlock Text="Log hours per request &amp; task" Margin="10,0,0,0"
+            <TextBlock Text="Log hours per backlog &amp; task" Margin="10,0,0,0"
                        Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <TabControl x:Name="SubTabs" Margin="22,8,22,0" SelectionChanged="OnSubTabChanged">
             <TabItem Header="Entry">
               <tabs:TimesheetTab DataContext="{Binding Timesheet}"/>
             </TabItem>
-            <TabItem Header="Requests">
-              <tabs:RequestsTab DataContext="{Binding Requests}"/>
+            <TabItem Header="Backlog">
+              <tabs:BacklogsTab DataContext="{Binding Backlogs}"/>
             </TabItem>
             <TabItem Header="Reports">
               <tabs:ReportsTab DataContext="{Binding Reports}"/>

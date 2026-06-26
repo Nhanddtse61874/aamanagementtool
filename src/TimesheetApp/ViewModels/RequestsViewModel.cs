@@ -8,21 +8,21 @@ using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
 
-public sealed partial class RequestsViewModel : ObservableObject
+public sealed partial class BacklogsViewModel : ObservableObject
 {
-    private readonly IRequestRepository _requests;
+    private readonly IBacklogRepository _backlogs;
     private readonly ITaskRepository _tasks;
     private readonly ITaskTemplateRepository _templates;
     private readonly IMessenger _messenger;
     private readonly ICurrentUserService? _currentUser;
     private readonly IUserRepository? _users;   // v4: assignee pick list + name resolution
 
-    public RequestsViewModel(
-        IRequestRepository requests, ITaskRepository tasks, ITaskTemplateRepository templates,
+    public BacklogsViewModel(
+        IBacklogRepository backlogs, ITaskRepository tasks, ITaskTemplateRepository templates,
         IMessenger? messenger = null, ICurrentUserService? currentUser = null,
         IUserRepository? users = null)
     {
-        _requests = requests;
+        _backlogs = backlogs;
         _tasks = tasks;
         _templates = templates;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
@@ -30,35 +30,35 @@ public sealed partial class RequestsViewModel : ObservableObject
         _users = users;
     }
 
-    // List row = the Request plus its active-task count + v2 period/status + v4 assignee (grid columns).
-    public sealed record RequestListItem(
-        int Id, string RequestCode, string Project, int TaskCount, string? PeriodMonth, string? Status,
+    // List row = the Backlog plus its active-task count + v2 period/type + v4 assignee (grid columns).
+    public sealed record BacklogListItem(
+        int Id, string BacklogCode, string Project, int TaskCount, string? PeriodMonth, string? Type,
         string? AssigneeName);
 
     private const string AllOption = "All";
 
-    // The full loaded set; Requests is the filtered view shown in the grid.
-    private List<RequestListItem> _all = new();
-    public ObservableCollection<RequestListItem> Requests { get; } = new();
+    // The full loaded set; Backlogs is the filtered view shown in the grid.
+    private List<BacklogListItem> _all = new();
+    public ObservableCollection<BacklogListItem> Backlogs { get; } = new();
 
     [ObservableProperty] private string? _searchTerm;
-    [ObservableProperty] private RequestEditorViewModel? _editor;
+    [ObservableProperty] private BacklogEditorViewModel? _editor;
 
     // Structured filters (live, in-memory). "All" = no filter. Option lists are rebuilt from the data.
     [ObservableProperty] private string _filterProject = AllOption;
-    [ObservableProperty] private string _filterStatus = AllOption;
+    [ObservableProperty] private string _filterType = AllOption;
     [ObservableProperty] private string _filterAssignee = AllOption;
     [ObservableProperty] private string _filterMonth = AllOption;
 
     public ObservableCollection<string> ProjectOptions { get; } = new() { AllOption };
-    public ObservableCollection<string> StatusOptions { get; } = new() { AllOption };
+    public ObservableCollection<string> TypeOptions { get; } = new() { AllOption };
     public ObservableCollection<string> AssigneeOptions { get; } = new() { AllOption };
     public ObservableCollection<string> MonthOptions { get; } = new() { AllOption };
 
     // All filters (incl. the search box) re-filter the loaded list live — no DB round-trip per keystroke.
     partial void OnSearchTermChanged(string? value) => ApplyFilters();
     partial void OnFilterProjectChanged(string value) => ApplyFilters();
-    partial void OnFilterStatusChanged(string value) => ApplyFilters();
+    partial void OnFilterTypeChanged(string value) => ApplyFilters();
     partial void OnFilterAssigneeChanged(string value) => ApplyFilters();
     partial void OnFilterMonthChanged(string value) => ApplyFilters();
 
@@ -68,20 +68,20 @@ public sealed partial class RequestsViewModel : ObservableObject
     [RelayCommand]
     public async Task RefreshAsync()
     {
-        var rows = await _requests.SearchAsync(null);
+        var rows = await _backlogs.SearchAsync(null);
 
         // v4: id -> name map (GetAll so a deactivated assignee still resolves) for the Assignee column/filter.
         var names = _users is null
             ? new Dictionary<int, string>()
             : (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Name);
 
-        var items = new List<RequestListItem>();
+        var items = new List<BacklogListItem>();
         foreach (var r in rows)
         {
-            var tasks = await _tasks.GetActiveByRequestAsync(r.Id);
+            var tasks = await _tasks.GetActiveByBacklogAsync(r.Id);
             var assignee = r.AssigneeUserId is { } uid && names.TryGetValue(uid, out var n) ? n : null;
-            items.Add(new RequestListItem(
-                r.Id, r.RequestCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Status, assignee));
+            items.Add(new BacklogListItem(
+                r.Id, r.BacklogCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Type, assignee));
         }
         _all = items;
         RebuildFilterOptions();
@@ -98,31 +98,31 @@ public sealed partial class RequestsViewModel : ObservableObject
                 col.Add(v!);
         }
         Fill(ProjectOptions, _all.Select(i => i.Project));
-        Fill(StatusOptions, _all.Select(i => i.Status));
+        Fill(TypeOptions, _all.Select(i => i.Type));
         Fill(AssigneeOptions, _all.Select(i => i.AssigneeName));
         Fill(MonthOptions, _all.Select(i => i.PeriodMonth));
 
         // Drop any selection that no longer exists in the data (back to "All").
         if (!ProjectOptions.Contains(FilterProject)) FilterProject = AllOption;
-        if (!StatusOptions.Contains(FilterStatus)) FilterStatus = AllOption;
+        if (!TypeOptions.Contains(FilterType)) FilterType = AllOption;
         if (!AssigneeOptions.Contains(FilterAssignee)) FilterAssignee = AllOption;
         if (!MonthOptions.Contains(FilterMonth)) FilterMonth = AllOption;
     }
 
     private void ApplyFilters()
     {
-        IEnumerable<RequestListItem> q = _all;
+        IEnumerable<BacklogListItem> q = _all;
         var term = SearchTerm?.Trim();
         if (!string.IsNullOrEmpty(term))
-            q = q.Where(i => i.RequestCode.Contains(term, StringComparison.OrdinalIgnoreCase)
+            q = q.Where(i => i.BacklogCode.Contains(term, StringComparison.OrdinalIgnoreCase)
                           || (i.Project ?? "").Contains(term, StringComparison.OrdinalIgnoreCase));
         if (FilterProject != AllOption) q = q.Where(i => i.Project == FilterProject);
-        if (FilterStatus != AllOption) q = q.Where(i => i.Status == FilterStatus);
+        if (FilterType != AllOption) q = q.Where(i => i.Type == FilterType);
         if (FilterAssignee != AllOption) q = q.Where(i => i.AssigneeName == FilterAssignee);
         if (FilterMonth != AllOption) q = q.Where(i => i.PeriodMonth == FilterMonth);
 
-        Requests.Clear();
-        foreach (var i in q) Requests.Add(i);
+        Backlogs.Clear();
+        foreach (var i in q) Backlogs.Add(i);
     }
 
     [RelayCommand]
@@ -130,19 +130,19 @@ public sealed partial class RequestsViewModel : ObservableObject
     {
         var templates = await _templates.GetAllAsync();
         var users = _users is null ? null : await _users.GetActiveAsync();
-        Editor = RequestEditorViewModel.ForCreate(templates, users);
+        Editor = BacklogEditorViewModel.ForCreate(templates, users);
     }
 
     [RelayCommand]
-    public async Task BeginEditAsync(int requestId)
+    public async Task BeginEditAsync(int backlogId)
     {
-        var request = await _requests.GetByIdAsync(requestId);
-        if (request is null) return;
-        var existing = await _tasks.GetActiveByRequestAsync(requestId);
+        var backlog = await _backlogs.GetByIdAsync(backlogId);
+        if (backlog is null) return;
+        var existing = await _tasks.GetActiveByBacklogAsync(backlogId);
         var templates = await _templates.GetAllAsync();
-        var audit = await _requests.GetAuditAsync(requestId);
+        var audit = await _backlogs.GetAuditAsync(backlogId);
         var users = _users is null ? null : await _users.GetActiveAsync();
-        Editor = RequestEditorViewModel.ForEdit(request, existing, templates, audit, users);
+        Editor = BacklogEditorViewModel.ForEdit(backlog, existing, templates, audit, users);
     }
 
     [RelayCommand]
@@ -150,17 +150,17 @@ public sealed partial class RequestsViewModel : ObservableObject
     {
         if (Editor is null) return;
 
-        // A new request must have at least one task (kept editor open with a message otherwise).
+        // A new backlog must have at least one task (kept editor open with a message otherwise).
         if (Editor.ActiveTasks.Count == 0)
         {
-            Editor.ErrorMessage = "A request must have at least one task.";
+            Editor.ErrorMessage = "A backlog must have at least one task.";
             return;
         }
         Editor.ErrorMessage = null;
 
-        var newId = await _requests.InsertAsync(
-            new Request(0, Editor.RequestCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
-                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status, Editor.AssigneeUserId));
+        var newId = await _backlogs.InsertAsync(
+            new Backlog(0, Editor.BacklogCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId));
 
         foreach (var row in Editor.ActiveTasks)
             await _tasks.InsertAsync(new TaskItem(0, newId, row.TaskName.Trim(), row.OrderIndex, true));
@@ -174,14 +174,14 @@ public sealed partial class RequestsViewModel : ObservableObject
     public async Task SaveEditAsync()
     {
         if (Editor is null || !Editor.IsEditMode) return;
-        var id = Editor.EditingRequestId;
+        var id = Editor.EditingBacklogId;
 
-        await _requests.UpdateAsync(
-            new Request(id, Editor.RequestCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
-                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Status, Editor.AssigneeUserId),
+        await _backlogs.UpdateAsync(
+            new Backlog(id, Editor.BacklogCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId),
             _currentUser?.Current?.Id, _currentUser?.Current?.Name);
 
-        // Soft-delete existing tasks flagged removed (REQ-04 — task only, never the request).
+        // Soft-delete existing tasks flagged removed (REQ-04 — task only, never the backlog).
         foreach (var removed in Editor.Tasks.Where(t => t.IsRemoved && t.ExistingTaskId > 0))
             await _tasks.SetActiveAsync(removed.ExistingTaskId, false);
 

@@ -6,7 +6,7 @@ namespace TimesheetApp.Views.Converters;
 
 /// <summary>
 /// Returns Visible when the value is non-null, Collapsed when null.
-/// Used to show/hide the editor overlay when RequestsViewModel.Editor != null.
+/// Used to show/hide the editor overlay when BacklogsViewModel.Editor != null.
 /// </summary>
 public sealed class NullToCollapsedConverter : IValueConverter
 {

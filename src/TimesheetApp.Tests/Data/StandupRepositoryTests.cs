@@ -36,8 +36,8 @@ public class StandupRepositoryTests
         Assert.Equal(userId, e.UserId);
         Assert.Equal(Day, e.WorkDate);
         Assert.Equal(StandupSection.Yesterday, e.Section);
-        Assert.Null(e.RequestId);            // ad-hoc (DR-03)
-        Assert.Equal("ADHOC-1", e.RequestCode);
+        Assert.Null(e.BacklogId);            // ad-hoc (DR-03)
+        Assert.Equal("ADHOC-1", e.BacklogCode);
         Assert.Equal("spike", e.TaskText);
         Assert.Equal("looked into X", e.Description);
         Assert.Null(e.Deadline);             // nullable (DR-02)
@@ -45,7 +45,7 @@ public class StandupRepositoryTests
     }
 
     [Fact]
-    public async Task Deadline_and_request_id_persist_when_present()
+    public async Task Deadline_and_backlog_id_persist_when_present()
     {
         using var db = await TestDb.CreateAsync();
         var repo = new StandupRepository(db);
@@ -57,7 +57,7 @@ public class StandupRepositoryTests
             deadline: new DateOnly(2026, 7, 1)));
 
         var e = Assert.Single(await repo.GetEntriesAsync(userId, Day));
-        Assert.Equal(requestId, e.RequestId);
+        Assert.Equal(requestId, e.BacklogId);
         Assert.Equal(new DateOnly(2026, 7, 1), e.Deadline);
     }
 

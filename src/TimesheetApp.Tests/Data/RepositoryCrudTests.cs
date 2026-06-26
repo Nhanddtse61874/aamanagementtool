@@ -29,9 +29,9 @@ public class RepositoryCrudTests : IAsyncLifetime
     [Fact]
     public async Task Request_search_matches_code_or_project_and_null_returns_all()
     {
-        var repo = new RequestRepository(_db);
-        await repo.InsertAsync(new Request(0, "REQ-100", "Apollo", DateTimeOffset.UtcNow));
-        await repo.InsertAsync(new Request(0, "REQ-200", "Gemini", DateTimeOffset.UtcNow));
+        var repo = new BacklogRepository(_db);
+        await repo.InsertAsync(new Backlog(0, "REQ-100", "Apollo", DateTimeOffset.UtcNow));
+        await repo.InsertAsync(new Backlog(0, "REQ-200", "Gemini", DateTimeOffset.UtcNow));
 
         Assert.Single(await repo.SearchAsync("Apollo"));   // by project
         Assert.Single(await repo.SearchAsync("REQ-200"));  // by code
@@ -42,21 +42,21 @@ public class RepositoryCrudTests : IAsyncLifetime
     [Fact] // v2: start/end/month/status round-trip + change history records who changed what.
     public async Task Request_v2_fields_roundtrip_and_changes_are_audited()
     {
-        var repo = new RequestRepository(_db);
-        var id = await repo.InsertAsync(new Request(
+        var repo = new BacklogRepository(_db);
+        var id = await repo.InsertAsync(new Backlog(
             0, "REQ-V2", "Mercury", DateTimeOffset.UtcNow,
             StartDate: new DateOnly(2026, 6, 1), EndDate: new DateOnly(2026, 6, 30),
-            PeriodMonth: "2026-06", Status: "Estimate"));
+            PeriodMonth: "2026-06", Type: "Estimate"));
 
         var loaded = await repo.GetByIdAsync(id);
         Assert.Equal(new DateOnly(2026, 6, 1), loaded!.StartDate);
         Assert.Equal("2026-06", loaded.PeriodMonth);
-        Assert.Equal("Estimate", loaded.Status);
+        Assert.Equal("Estimate", loaded.Type);
 
         // Change status + start_date + period_month (end_date unchanged) as user 7 "Nhan".
         await repo.UpdateAsync(loaded with
         {
-            Status = "Implement",
+            Type = "Implement",
             StartDate = new DateOnly(2026, 6, 2),
             PeriodMonth = "2026-07",
         }, changedByUserId: 7, changedByName: "Nhan");
@@ -65,7 +65,7 @@ public class RepositoryCrudTests : IAsyncLifetime
         Assert.Equal(3, audit.Count); // status, start_date, period_month — NOT end_date
         Assert.All(audit, a => Assert.Equal("Nhan", a.ChangedByName));
         Assert.All(audit, a => Assert.Equal(7, a.ChangedByUserId));
-        Assert.Contains(audit, a => a.Field == "status" && a.OldValue == "Estimate" && a.NewValue == "Implement");
+        Assert.Contains(audit, a => a.Field == "type" && a.OldValue == "Estimate" && a.NewValue == "Implement");
         Assert.Contains(audit, a => a.Field == "period_month" && a.OldValue == "2026-06" && a.NewValue == "2026-07");
         Assert.DoesNotContain(audit, a => a.Field == "end_date");
     }
@@ -73,15 +73,15 @@ public class RepositoryCrudTests : IAsyncLifetime
     [Fact]
     public async Task Task_softdelete_hides_from_active_and_GetByName_finds_match()
     {
-        var requests = new RequestRepository(_db);
+        var requests = new BacklogRepository(_db);
         var tasks = new TaskRepository(_db);
-        var rid = await requests.InsertAsync(new Request(0, "REQ-300", "Zeus", DateTimeOffset.UtcNow));
+        var rid = await requests.InsertAsync(new Backlog(0, "REQ-300", "Zeus", DateTimeOffset.UtcNow));
         var tid = await tasks.InsertAsync(new TaskItem(0, rid, "Design", 0, true));
 
-        Assert.Equal(tid, (await tasks.GetByNameInRequestAsync(rid, "Design"))!.Id);
+        Assert.Equal(tid, (await tasks.GetByNameInBacklogAsync(rid, "Design"))!.Id);
 
         await tasks.SetActiveAsync(tid, false);
-        Assert.DoesNotContain(await tasks.GetActiveByRequestAsync(rid), t => t.Id == tid);
+        Assert.DoesNotContain(await tasks.GetActiveByBacklogAsync(rid), t => t.Id == tid);
     }
 
     [Fact]

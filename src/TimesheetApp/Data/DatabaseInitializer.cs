@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 5;
+    private const long SchemaVersion = 6;
 
     private readonly IConnectionFactory _factory;
 
@@ -27,7 +27,7 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 
         CreateTables(conn, tx);
         RunMigrations(conn, tx);
-        EnsureDefaultRequest(conn, tx);
+        EnsureDefaultBacklog(conn, tx);
         SeedDefaultTasksIfEmpty(conn, tx);
 
         tx.Commit();
@@ -42,13 +42,6 @@ CREATE TABLE IF NOT EXISTS Users (
     name            TEXT    NOT NULL,
     windows_username TEXT,
     is_active       INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS Requests (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_code TEXT    NOT NULL,
-    project      TEXT    NOT NULL,
-    created_at   TEXT    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Tasks (
@@ -91,18 +84,6 @@ CREATE TABLE IF NOT EXISTS Settings (
     value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS RequestAudit (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_id          INTEGER NOT NULL,
-    field               TEXT    NOT NULL,
-    old_value           TEXT,
-    new_value           TEXT,
-    changed_by_user_id  INTEGER,
-    changed_by_name     TEXT,
-    changed_at          TEXT    NOT NULL,
-    FOREIGN KEY (request_id) REFERENCES Requests(id)
-);
-
 -- P7 Daily Report (schema v5). Standup rows are per (user, day, section); request_id is
 -- nullable (ad-hoc codes typed in a meeting have no Requests row). Issues cascade-delete.
 CREATE TABLE IF NOT EXISTS StandupEntries (
@@ -137,6 +118,35 @@ CREATE TABLE IF NOT EXISTS StandupIssues (
 
 CREATE INDEX IF NOT EXISTS ix_standup_issue_entry ON StandupIssues(entry_id);";
         conn.Execute(ddl, transaction: tx);
+
+        // Requests + RequestAudit are RENAMED to Backlogs / BacklogAudit by the v6 migration. Re-creating
+        // them with IF NOT EXISTS is only correct for a pre-v6 DB (so the v6 ALTER ... RENAME has a table
+        // to rename); on a v6+ DB the rename already ran, so re-creating the legacy names would leave
+        // stray empty tables on every relaunch. Gate on user_version. (SQLite allows the forward FK
+        // reference from Tasks -> Requests created above, so ordering here is fine.)
+        var version = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);
+        if (version < 6)
+        {
+            conn.Execute(@"
+CREATE TABLE IF NOT EXISTS Requests (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_code TEXT    NOT NULL,
+    project      TEXT    NOT NULL,
+    created_at   TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS RequestAudit (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id          INTEGER NOT NULL,
+    field               TEXT    NOT NULL,
+    old_value           TEXT,
+    new_value           TEXT,
+    changed_by_user_id  INTEGER,
+    changed_by_name     TEXT,
+    changed_at          TEXT    NOT NULL,
+    FOREIGN KEY (request_id) REFERENCES Requests(id)
+);", transaction: tx);
+        }
     }
 
     private static void RunMigrations(IDbConnection conn, IDbTransaction tx)
@@ -180,6 +190,19 @@ CREATE INDEX IF NOT EXISTS ix_standup_issue_entry ON StandupIssues(entry_id);";
             // idempotently in CreateTables (CREATE TABLE IF NOT EXISTS), so this step only needs to
             // exist to gate the user_version bump to 5 — no extra ALTER required.
             static (_, _) => { },
+            // v6 -> Rename Request -> Backlog (tables + columns), rename request status -> type,
+            // add task status column. StandupEntries request_id/request_code also renamed.
+            static (c, t) => c.Execute(
+                @"ALTER TABLE Requests RENAME TO Backlogs;
+                  ALTER TABLE Backlogs RENAME COLUMN request_code TO backlog_code;
+                  ALTER TABLE Backlogs RENAME COLUMN status TO type;
+                  ALTER TABLE RequestAudit RENAME TO BacklogAudit;
+                  ALTER TABLE BacklogAudit RENAME COLUMN request_id TO backlog_id;
+                  ALTER TABLE Tasks RENAME COLUMN request_id TO backlog_id;
+                  ALTER TABLE Tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'Todo';
+                  ALTER TABLE StandupEntries RENAME COLUMN request_id TO backlog_id;
+                  ALTER TABLE StandupEntries RENAME COLUMN request_code TO backlog_code;",
+                transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);
@@ -195,13 +218,15 @@ CREATE INDEX IF NOT EXISTS ix_standup_issue_entry ON StandupIssues(entry_id);";
         }
     }
 
-    private static void EnsureDefaultRequest(IDbConnection conn, IDbTransaction tx)
+    private static void EnsureDefaultBacklog(IDbConnection conn, IDbTransaction tx)
     {
-        // DATA-03: exactly one hidden DEFAULT request, idempotent.
+        // DATA-03: exactly one hidden DEFAULT backlog, idempotent.
+        // Note: DDL creates table as 'Requests' (for v2-v4 compat); v6 migration renames to 'Backlogs'.
+        // This runs AFTER migrations, so the table is always 'Backlogs' here.
         conn.Execute(
-            @"INSERT INTO Requests(request_code, project, created_at)
+            @"INSERT INTO Backlogs(backlog_code, project, created_at)
               SELECT 'DEFAULT', 'DEFAULT', @now
-              WHERE NOT EXISTS (SELECT 1 FROM Requests WHERE request_code = 'DEFAULT');",
+              WHERE NOT EXISTS (SELECT 1 FROM Backlogs WHERE backlog_code = 'DEFAULT');",
             new { now = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") },
             transaction: tx);
     }

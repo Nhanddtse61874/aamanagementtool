@@ -30,10 +30,10 @@ public sealed partial class DailyReportViewModel : ObservableObject
         NewYesterday = new StandupDraftVm(StandupSection.Yesterday, this);
         NewToday = new StandupDraftVm(StandupSection.Today, this);
 
-        // Live refresh when standup/users/requests change anywhere.
+        // Live refresh when standup/users/backlogs change anywhere.
         _messenger.Register<DailyReportViewModel, DataChangedMessage>(this, static (vm, m) =>
         {
-            if (m.Kind is DataKind.Standup or DataKind.Users or DataKind.Requests)
+            if (m.Kind is DataKind.Standup or DataKind.Users or DataKind.Backlogs)
                 _ = vm.LoadAsync();
         });
     }
@@ -67,10 +67,10 @@ public sealed partial class DailyReportViewModel : ObservableObject
         Board.Clear();
         foreach (var u in board) Board.Add(u);
 
-        // Refresh the request picker for the add-row forms.
-        var requests = await _service.SearchRequestsAsync(null);
-        FillPicker(NewYesterday, requests);
-        FillPicker(NewToday, requests);
+        // Refresh the backlog picker for the add-row forms.
+        var backlogs = await _service.SearchBacklogsAsync(null);
+        FillPicker(NewYesterday, backlogs);
+        FillPicker(NewToday, backlogs);
     }
 
     [RelayCommand]
@@ -92,8 +92,8 @@ public sealed partial class DailyReportViewModel : ObservableObject
     {
         var d = new StandupEntryDraft(
             draft.Section,
-            draft.RequestId,
-            (draft.RequestCode ?? "").Trim(),
+            draft.BacklogId,
+            (draft.BacklogCode ?? "").Trim(),
             (draft.TaskText ?? "").Trim(),
             draft.Description ?? "",
             draft.Deadline is { } dt ? DateOnly.FromDateTime(dt) : null,
@@ -134,9 +134,9 @@ public sealed partial class DailyReportViewModel : ObservableObject
         await ReloadAndBroadcastAsync();
     }
 
-    internal async Task LoadTasksForDraftAsync(StandupDraftVm draft, int requestId)
+    internal async Task LoadTasksForDraftAsync(StandupDraftVm draft, int backlogId)
     {
-        var tasks = await _service.GetTasksForRequestAsync(requestId);
+        var tasks = await _service.GetTasksForBacklogAsync(backlogId);
         draft.Tasks.Clear();
         foreach (var t in tasks) draft.Tasks.Add(t);
     }
@@ -153,11 +153,11 @@ public sealed partial class DailyReportViewModel : ObservableObject
         foreach (var v in views) col.Add(new StandupEntryRowVm(v, this));
     }
 
-    private static void FillPicker(StandupDraftVm draft, IReadOnlyList<Request> requests)
+    private static void FillPicker(StandupDraftVm draft, IReadOnlyList<Backlog> backlogs)
     {
-        draft.Requests.Clear();
-        // Hide the hidden DEFAULT request from the standup picker.
-        foreach (var r in requests.Where(r => r.RequestCode != "DEFAULT")) draft.Requests.Add(r);
+        draft.Backlogs.Clear();
+        // Hide the hidden DEFAULT backlog from the standup picker.
+        foreach (var r in backlogs.Where(r => r.BacklogCode != "DEFAULT")) draft.Backlogs.Add(r);
     }
 }
 
@@ -178,7 +178,7 @@ public sealed partial class StandupEntryRowVm : ObservableObject
         foreach (var i in v.Issues) Issues.Add(new StandupIssueRowVm(i, parent));
     }
 
-    public string RequestCode => Model.RequestCode;
+    public string BacklogCode => Model.BacklogCode;
     public string TaskText => Model.TaskText;
     public string Description => Model.Description;
     public string DeadlineText => Model.Deadline?.ToString("yyyy-MM-dd") ?? "";
@@ -219,7 +219,7 @@ public sealed partial class StandupIssueRowVm : ObservableObject
     private Task DeleteAsync() => _parent.DeleteIssueAsync(Id);
 }
 
-// The add-new-row form for one section (Yesterday/Today). A request can be picked (its tasks become
+// The add-new-row form for one section (Yesterday/Today). A backlog can be picked (its tasks become
 // pickable, code prefilled) or typed ad-hoc; deadline/status are entered manually.
 public sealed partial class StandupDraftVm : ObservableObject
 {
@@ -233,27 +233,27 @@ public sealed partial class StandupDraftVm : ObservableObject
         _status = StandupStatus.All[0];
     }
 
-    public ObservableCollection<Request> Requests { get; } = new();
+    public ObservableCollection<Backlog> Backlogs { get; } = new();
     public ObservableCollection<TaskItem> Tasks { get; } = new();
     public IReadOnlyList<string> StatusOptions => StandupStatus.All;
 
-    [ObservableProperty] private Request? _selectedRequest;
+    [ObservableProperty] private Backlog? _selectedBacklog;
     [ObservableProperty] private TaskItem? _selectedTask;
-    [ObservableProperty] private string _requestCode = string.Empty;
+    [ObservableProperty] private string _backlogCode = string.Empty;
     [ObservableProperty] private string _taskText = string.Empty;
     [ObservableProperty] private string _description = string.Empty;
     [ObservableProperty] private DateTime? _deadline;
     [ObservableProperty] private string _status;
 
-    // Null when typed ad-hoc (no existing request selected) — keeps request_id null (DR-03).
-    public int? RequestId => SelectedRequest?.Id;
+    // Null when typed ad-hoc (no existing backlog selected) — keeps backlog_id null (DR-03).
+    public int? BacklogId => SelectedBacklog?.Id;
 
-    // Picking an existing request fills the code box + loads its tasks (the boxes hold the saved values,
+    // Picking an existing backlog fills the code box + loads its tasks (the boxes hold the saved values,
     // so ad-hoc typing still works with the themed non-editable combos).
-    partial void OnSelectedRequestChanged(Request? value)
+    partial void OnSelectedBacklogChanged(Backlog? value)
     {
         if (value is null) return;
-        RequestCode = value.RequestCode;
+        BacklogCode = value.BacklogCode;
         SelectedTask = null;
         _ = _parent.LoadTasksForDraftAsync(this, value.Id);
     }
@@ -269,9 +269,9 @@ public sealed partial class StandupDraftVm : ObservableObject
 
     public void Reset()
     {
-        SelectedRequest = null;
+        SelectedBacklog = null;
         SelectedTask = null;
-        RequestCode = string.Empty;
+        BacklogCode = string.Empty;
         TaskText = string.Empty;
         Description = string.Empty;
         Deadline = null;

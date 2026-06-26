@@ -14,10 +14,10 @@ public class SmartInputPanelVmTests
     private static readonly DateOnly To = new(2026, 6, 17);   // Wed (3 working days)
 
     private static (SmartInputPanelVm vm, Mock<ITimeLogService> tl,
-                    Mock<IRequestRepository> req, Mock<ITaskRepository> tasks) Make(int userId = 1)
+                    Mock<IBacklogRepository> req, Mock<ITaskRepository> tasks) Make(int userId = 1)
     {
         var tl = new Mock<ITimeLogService>();
-        var req = new Mock<IRequestRepository>();
+        var req = new Mock<IBacklogRepository>();
         var tasks = new Mock<ITaskRepository>();
         var vm = new SmartInputPanelVm(tl.Object, req.Object, tasks.Object, () => userId)
         {
@@ -30,14 +30,14 @@ public class SmartInputPanelVmTests
     }
 
     // Find request "REQ-1" -> two tasks (ids 7, 8).
-    private static async Task FindTwoTasks(SmartInputPanelVm vm, Mock<IRequestRepository> req, Mock<ITaskRepository> tasks)
+    private static async Task FindTwoTasks(SmartInputPanelVm vm, Mock<IBacklogRepository> req, Mock<ITaskRepository> tasks)
     {
         req.Setup(r => r.GetByCodeAsync("REQ-1"))
-           .ReturnsAsync(new Request(5, "REQ-1", "ARCS", DateTimeOffset.UtcNow));
-        tasks.Setup(t => t.GetActiveByRequestAsync(5))
+           .ReturnsAsync(new Backlog(5, "REQ-1", "ARCS", DateTimeOffset.UtcNow));
+        tasks.Setup(t => t.GetActiveByBacklogAsync(5))
              .ReturnsAsync(new[] { new TaskItem(7, 5, "Design", 0, true), new TaskItem(8, 5, "Impl", 1, true) });
-        vm.RequestCode = "REQ-1";
-        await vm.FindRequestCommand.ExecuteAsync(null);
+        vm.BacklogCode = "REQ-1";
+        await vm.FindBacklogCommand.ExecuteAsync(null);
     }
 
     [Fact]
@@ -55,10 +55,10 @@ public class SmartInputPanelVmTests
     public async Task FindRequest_unknown_code_surfaces_error_and_no_tasks()
     {
         var (vm, _, req, _) = Make();
-        req.Setup(r => r.GetByCodeAsync("NOPE")).ReturnsAsync((Request?)null);
-        vm.RequestCode = "NOPE";
+        req.Setup(r => r.GetByCodeAsync("NOPE")).ReturnsAsync((Backlog?)null);
+        vm.BacklogCode = "NOPE";
 
-        await vm.FindRequestCommand.ExecuteAsync(null);
+        await vm.FindBacklogCommand.ExecuteAsync(null);
 
         Assert.Empty(vm.Tasks);
         Assert.False(string.IsNullOrEmpty(vm.LoadError));

@@ -67,6 +67,9 @@ public sealed class StandupArchiveService : IStandupArchiveService
 
     private string ArchiveDir()
     {
+        if (!string.IsNullOrWhiteSpace(_config.ArchivePath))
+            return _config.ArchivePath;
+
         var dbDir = Path.GetDirectoryName(_config.DbPath);
         return Path.Combine(string.IsNullOrEmpty(dbDir) ? "." : dbDir, "StandupArchives");
     }
@@ -113,7 +116,7 @@ public sealed class StandupArchiveService : IStandupArchiveService
         foreach (var e in list)
         {
             var deadline = e.Deadline?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "";
-            sb.AppendLine($"| {Esc(e.RequestCode)} | {Esc(e.TaskText)} | {Esc(e.Description)} | {deadline} | {Esc(e.Status)} |");
+            sb.AppendLine($"| {Esc(e.BacklogCode)} | {Esc(e.TaskText)} | {Esc(e.Description)} | {deadline} | {Esc(e.Status)} |");
         }
         foreach (var e in list)
         {

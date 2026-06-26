@@ -5,7 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using TimesheetApp.Models;
 
 // Working-set for creating/editing a single template (the set of TaskTemplate rows sharing one
-// template_name). Mirrors RequestEditorViewModel: ForCreate/ForEdit factories, an ObservableCollection
+// template_name). Mirrors BacklogEditorViewModel: ForCreate/ForEdit factories, an ObservableCollection
 // of editable rows, and plain Add/Remove/MoveUp/MoveDown methods wrapped as commands in the view
 // code-behind. SET-03: one template name + an ordered editable list of task names.
 public sealed partial class TemplateEditorViewModel : ObservableObject

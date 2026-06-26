@@ -3,7 +3,7 @@ using TimesheetApp.Models;
 namespace TimesheetApp.Services;
 
 // Daily Report orchestration (DR-05..08). Groups entries by section, attaches issues, enforces the
-// edit-lock + owner rule on entry writes, and exposes the request/task picker. Issues are collaborative
+// edit-lock + owner rule on entry writes, and exposes the backlog/task picker. Issues are collaborative
 // (anyone, any day) so they are NOT gated.
 public interface IStandupService
 {
@@ -13,8 +13,8 @@ public interface IStandupService
     Task<IReadOnlyList<UserStandup>> GetTeamStandupAsync(DateOnly workDate);
 
     // Picker support (DR-07).
-    Task<IReadOnlyList<Request>> SearchRequestsAsync(string? term);
-    Task<IReadOnlyList<TaskItem>> GetTasksForRequestAsync(int requestId);
+    Task<IReadOnlyList<Backlog>> SearchBacklogsAsync(string? term);
+    Task<IReadOnlyList<TaskItem>> GetTasksForBacklogAsync(int backlogId);
 
     // Edit-lock: true only when workDate is today or yesterday (DR-06).
     bool CanEditDay(DateOnly workDate);

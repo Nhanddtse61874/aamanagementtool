@@ -18,7 +18,7 @@
             </Border>
             <StackPanel>
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding Entry.RequestCode}" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+                <TextBlock Text="{Binding Entry.BacklogCode}" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
                 <TextBlock Text="·" Margin="6,0" Foreground="{StaticResource TextSecondary}"/>
                 <TextBlock Text="{Binding Entry.TaskText}" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding Entry.Deadline, StringFormat='· due {0:yyyy-MM-dd}'}" Margin="8,0,0,0"

@@ -48,7 +48,7 @@ public partial class App : Application
 
         // Repositories (singletons — stateless; connection opened per method).
         sc.AddSingleton<IUserRepository, UserRepository>();
-        sc.AddSingleton<IRequestRepository, RequestRepository>();
+        sc.AddSingleton<IBacklogRepository, BacklogRepository>();
         sc.AddSingleton<ITaskRepository, TaskRepository>();
         sc.AddSingleton<ITimeLogRepository, TimeLogRepository>();
         sc.AddSingleton<ISettingsRepository, SettingsRepository>();
@@ -82,7 +82,7 @@ public partial class App : Application
         // ViewModels (transient).
         sc.AddTransient<MainViewModel>();
         sc.AddTransient<TimesheetViewModel>();
-        sc.AddTransient<RequestsViewModel>();
+        sc.AddTransient<BacklogsViewModel>();
         sc.AddTransient<UsersViewModel>();
         sc.AddTransient<ReportsViewModel>();
         sc.AddTransient<SettingsViewModel>();

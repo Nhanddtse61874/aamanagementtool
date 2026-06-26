@@ -9,7 +9,7 @@ namespace TimesheetApp.Tests.Data;
 // Shared temp-file SQLite fixture for repository integration tests (architecture spec §9).
 // Builds the schema with the REAL DatabaseInitializer, then exposes itself as an
 // IConnectionFactory pointed at that temp file. Reused by T4 (TimeLogRepository) and T5
-// (User/Task/Request/Settings) repo tests. Seed helpers use raw SQL via Create() so the
+// (User/Task/Backlog/Settings) repo tests. Seed helpers use raw SQL via Create() so the
 // fixture has no dependency on any repository implementation.
 public sealed class TestDb : IConnectionFactory, IDisposable
 {
@@ -62,7 +62,7 @@ public sealed class TestDb : IConnectionFactory, IDisposable
     {
         using var c = Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Requests(request_code, project, created_at)
+            @"INSERT INTO Backlogs(backlog_code, project, created_at)
               VALUES(@code, @project, @now);
               SELECT last_insert_rowid();",
             new { code, project, now = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") });
@@ -73,7 +73,7 @@ public sealed class TestDb : IConnectionFactory, IDisposable
     {
         using var c = Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Tasks(request_id, task_name, order_index, is_active)
+            @"INSERT INTO Tasks(backlog_id, task_name, order_index, is_active)
               VALUES(@requestId, @taskName, @order, @active);
               SELECT last_insert_rowid();",
             new { requestId, taskName, order = orderIndex, active = isActive ? 1 : 0 });

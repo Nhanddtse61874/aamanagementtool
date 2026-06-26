@@ -4,7 +4,7 @@ using TimesheetApp.ViewModels;
 namespace TimesheetApp.Views.Dialogs;
 
 // Modal form for adding a standup entry. DataContext is the section's StandupDraftVm (already carrying
-// the request/task picker state); on confirm it validates and returns true so the caller can persist.
+// the backlog/task picker state); on confirm it validates and returns true so the caller can persist.
 public partial class StandupEntryDialog : Window
 {
     private readonly StandupDraftVm _draft;
@@ -20,9 +20,9 @@ public partial class StandupEntryDialog : Window
 
     private void OnAdd(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_draft.RequestCode) || string.IsNullOrWhiteSpace(_draft.TaskText))
+        if (string.IsNullOrWhiteSpace(_draft.BacklogCode) || string.IsNullOrWhiteSpace(_draft.TaskText))
         {
-            ErrorText.Text = "Request code and task are both required.";
+            ErrorText.Text = "Backlog code and task are both required.";
             ErrorText.Visibility = Visibility.Visible;
             return;
         }

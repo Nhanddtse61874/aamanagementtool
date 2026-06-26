@@ -39,9 +39,10 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [ObservableProperty] private string _dbPath = "";
+    [ObservableProperty] private string _archivePath = "";
     [ObservableProperty] private int _warningDays = DefaultWarningDays;
 
-    // The template editor overlay; null = hidden (mirrors RequestsViewModel.Editor).
+    // The template editor overlay; null = hidden (mirrors BacklogsViewModel.Editor).
     [ObservableProperty] private TemplateEditorViewModel? _templateEditor;
 
     // All raw template rows (kept so BeginEditTemplate can hand the matching rows to ForEdit).
@@ -53,6 +54,7 @@ public partial class SettingsViewModel : ObservableObject
     public async Task LoadAsync()
     {
         DbPath = _config.DbPath;
+        ArchivePath = _config.ArchivePath;
 
         var raw = await _settings.GetAsync(WarningDaysKey);
         WarningDays = int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
@@ -67,6 +69,14 @@ public partial class SettingsViewModel : ObservableObject
     private Task ApplyDbPathAsync()
     {
         _config.SetDbPath(DbPath);   // IAppConfig persists path to %APPDATA% (P1 contract: get + SetDbPath)
+        return Task.CompletedTask;
+    }
+
+    // SET-05: daily report archive folder — app-local config.
+    [RelayCommand]
+    private Task ApplyArchivePathAsync()
+    {
+        _config.SetArchivePath(ArchivePath);
         return Task.CompletedTask;
     }
 
@@ -109,7 +119,7 @@ public partial class SettingsViewModel : ObservableObject
 
         TemplateEditor = null;
         await ReloadTemplatesAsync();
-        _messenger.Send(new DataChangedMessage(DataKind.Templates)); // live-sync: Requests template list
+        _messenger.Send(new DataChangedMessage(DataKind.Templates)); // live-sync: Backlog template list
     }
 
     [RelayCommand]
@@ -124,7 +134,7 @@ public partial class SettingsViewModel : ObservableObject
         _messenger.Send(new DataChangedMessage(DataKind.Templates));
     }
 
-    // SET-04: reconcile DefaultTasks -> DEFAULT request's Tasks (rename = soft-delete + insert).
+    // SET-04: reconcile DefaultTasks -> DEFAULT backlog's Tasks (rename = soft-delete + insert).
     [RelayCommand]
     private async Task SaveDefaultTasksAsync()
     {

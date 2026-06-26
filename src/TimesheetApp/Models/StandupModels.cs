@@ -8,7 +8,7 @@ namespace TimesheetApp.Models;
 // One standup row: a member's Yesterday/Today line for a request/task on a given day (DR-02).
 public sealed record StandupEntry(
     int Id, int UserId, DateOnly WorkDate, string Section,
-    int? RequestId, string RequestCode, string TaskText, string Description,
+    int? BacklogId, string BacklogCode, string TaskText, string Description,
     DateOnly? Deadline, string Status, int OrderIndex, DateTimeOffset CreatedAt);
 
 // Zero-or-more per entry (DR-04). SolutionText null/empty = pending discussion.
@@ -54,5 +54,5 @@ public sealed record StandupEntryView(
 
 // Input payload for add/update of an entry (DR-07). UserId + WorkDate are stamped by the service.
 public sealed record StandupEntryDraft(
-    string Section, int? RequestId, string RequestCode, string TaskText,
+    string Section, int? BacklogId, string BacklogCode, string TaskText,
     string Description, DateOnly? Deadline, string Status);

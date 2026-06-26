@@ -6,4 +6,7 @@ public interface IAppConfig
 {
     string DbPath { get; }
     void SetDbPath(string dbPath);
+
+    string ArchivePath { get; }
+    void SetArchivePath(string archivePath);
 }

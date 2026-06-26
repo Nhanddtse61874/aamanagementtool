@@ -27,7 +27,7 @@ public class DailyReportViewModelTests
             .ReturnsAsync(mine ?? new UserStandup(1, "Alice", Array.Empty<StandupEntryView>(), Array.Empty<StandupEntryView>()));
         svc.Setup(s => s.GetTeamStandupAsync(It.IsAny<DateOnly>()))
             .ReturnsAsync(Array.Empty<UserStandup>());
-        svc.Setup(s => s.SearchRequestsAsync(null)).ReturnsAsync(Array.Empty<Request>());
+        svc.Setup(s => s.SearchBacklogsAsync(null)).ReturnsAsync(Array.Empty<Backlog>());
         var arch = new Mock<IStandupArchiveService>();
         var vm = new DailyReportViewModel(svc.Object, arch.Object, new FakeClock { Today = today }, new WeakReferenceMessenger());
         return (vm, svc, arch);
@@ -77,14 +77,14 @@ public class DailyReportViewModelTests
         var (vm, svc, _) = Build(Today);
         svc.Setup(s => s.AddEntryAsync(Today, It.IsAny<StandupEntryDraft>())).ReturnsAsync(5);
 
-        vm.NewToday.RequestCode = "ADHOC-9";
+        vm.NewToday.BacklogCode = "ADHOC-9";
         vm.NewToday.TaskText = "spike";
         vm.NewToday.Status = "In-process";
         await vm.NewToday.AddCommand.ExecuteAsync(null);
 
         svc.Verify(s => s.AddEntryAsync(Today, It.Is<StandupEntryDraft>(d =>
-            d.Section == StandupSection.Today && d.RequestCode == "ADHOC-9" &&
-            d.TaskText == "spike" && d.Status == "In-process" && d.RequestId == null)), Times.Once);
+            d.Section == StandupSection.Today && d.BacklogCode == "ADHOC-9" &&
+            d.TaskText == "spike" && d.Status == "In-process" && d.BacklogId == null)), Times.Once);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class DailyReportViewModelTests
         var (vm, svc, _) = Build(Today);
         svc.Setup(s => s.AddEntryAsync(It.IsAny<DateOnly>(), It.IsAny<StandupEntryDraft>())).ReturnsAsync(0);
 
-        vm.NewToday.RequestCode = "X";
+        vm.NewToday.BacklogCode = "X";
         vm.NewToday.TaskText = "y";
         await vm.NewToday.AddCommand.ExecuteAsync(null);
 

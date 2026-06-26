@@ -7,32 +7,39 @@ public sealed record User(int Id, string Name, string? WindowsUsername, bool IsA
 
 // Extra fields (start/end/period month/status) added in schema v2. Optional with defaults so existing
 // constructors keep compiling; PeriodMonth is "yyyy-MM" (the fixed month a ticket belongs to).
-public sealed record Request(
-    int Id, string RequestCode, string Project, DateTimeOffset CreatedAt,
+public sealed record Backlog(
+    int Id, string BacklogCode, string Project, DateTimeOffset CreatedAt,
     DateOnly? StartDate = null, DateOnly? EndDate = null,
-    string? PeriodMonth = null, string? Status = null,
+    string? PeriodMonth = null, string? Type = null,
     int? AssigneeUserId = null);   // v4: the user responsible for this ticket (null = unassigned)
 
-// Allowed ticket statuses (v2). Order is the display order.
-public static class RequestStatus
+// Allowed ticket types (v2, formerly "status"). Order is the display order.
+public static class BacklogType
 {
     public static readonly IReadOnlyList<string> All =
         new[] { "Continue", "Implement", "Investigate", "IT", "Estimate" };
 }
 
 // Allowed projects (v2) — a fixed enum-like set chosen from a dropdown.
-public static class RequestProjects
+public static class BacklogProjects
 {
     public static readonly IReadOnlyList<string> All =
         new[] { "ARCS", "PlusArcs", "ARMS", "Other" };
 }
 
-// One audit-history row for a Request field change (v2): who changed what, old -> new, when.
-public sealed record RequestAuditEntry(
-    int Id, int RequestId, string Field, string? OldValue, string? NewValue,
+// One audit-history row for a Backlog field change (v2): who changed what, old -> new, when.
+public sealed record BacklogAuditEntry(
+    int Id, int BacklogId, string Field, string? OldValue, string? NewValue,
     int? ChangedByUserId, string? ChangedByName, DateTimeOffset ChangedAt);
 
-public sealed record TaskItem(int Id, int RequestId, string TaskName, int OrderIndex, bool IsActive);
+// Allowed task statuses. Backlog status is derived from its tasks at runtime.
+public static class TaskStatus
+{
+    public static readonly IReadOnlyList<string> All =
+        new[] { "Todo", "In-process", "Done", "Pending" };
+}
+
+public sealed record TaskItem(int Id, int BacklogId, string TaskName, int OrderIndex, bool IsActive, string Status = "Todo");
 
 public sealed record TimeLog(
     int Id, int UserId, int TaskId, DateOnly WorkDate, decimal Hours, DateTimeOffset CreatedAt);

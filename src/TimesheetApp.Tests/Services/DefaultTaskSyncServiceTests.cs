@@ -18,7 +18,7 @@ namespace TimesheetApp.Tests.Services;
 public class DefaultTaskSyncServiceTests : IAsyncLifetime
 {
     private TestDb _db = null!;
-    private RequestRepository _requests = null!;
+    private BacklogRepository _requests = null!;
     private TaskRepository _tasks = null!;
     private DefaultTaskRepository _defaults = null!;
     private DefaultTaskSyncService _svc = null!;
@@ -34,7 +34,7 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _db = await TestDb.CreateAsync();
-        _requests = new RequestRepository(_db);
+        _requests = new BacklogRepository(_db);
         _tasks = new TaskRepository(_db);
         _defaults = new DefaultTaskRepository(_db);
         var backup = new Mock<IDbBackupHelper>();
@@ -56,10 +56,10 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
     [Fact]
     public async Task EnsureDefaultRequest_is_idempotent()
     {
-        var id1 = await _svc.EnsureDefaultRequestIdAsync();
-        var id2 = await _svc.EnsureDefaultRequestIdAsync();
+        var id1 = await _svc.EnsureDefaultBacklogIdAsync();
+        var id2 = await _svc.EnsureDefaultBacklogIdAsync();
         Assert.Equal(id1, id2);
-        Assert.Equal("DEFAULT", (await _requests.GetByIdAsync(id1))!.RequestCode);
+        Assert.Equal("DEFAULT", (await _requests.GetByIdAsync(id1))!.BacklogCode);
     }
 
     // ---- SET-04: an active DefaultTask materializes as an active Task under DEFAULT ----
@@ -70,8 +70,8 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
 
         await _svc.SyncAsync();
 
-        var defReqId = await _svc.EnsureDefaultRequestIdAsync();
-        var match = await _tasks.GetByNameInRequestAsync(defReqId, "Project Kickoff");
+        var defReqId = await _svc.EnsureDefaultBacklogIdAsync();
+        var match = await _tasks.GetByNameInBacklogAsync(defReqId, "Project Kickoff");
         Assert.NotNull(match);
         Assert.True(match!.IsActive);
     }
@@ -82,8 +82,8 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
     {
         var dtId = await _defaults.InsertAsync(new DefaultTask(0, "Project Kickoff", 10, true));
         await _svc.SyncAsync();
-        var defReqId = await _svc.EnsureDefaultRequestIdAsync();
-        var task = (await _tasks.GetByNameInRequestAsync(defReqId, "Project Kickoff"))!;
+        var defReqId = await _svc.EnsureDefaultBacklogIdAsync();
+        var task = (await _tasks.GetByNameInBacklogAsync(defReqId, "Project Kickoff"))!;
 
         // Log time against it, then hide the DefaultTask and re-sync.
         var userId = await SeedUser();
@@ -93,7 +93,7 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
 
         await _svc.SyncAsync();
 
-        var after = (await _tasks.GetByNameInRequestAsync(defReqId, "Project Kickoff"))!;
+        var after = (await _tasks.GetByNameInBacklogAsync(defReqId, "Project Kickoff"))!;
         Assert.False(after.IsActive);                       // soft-deleted, not removed
         var logs = await new TimeLogRepository(_db).GetByUserAndRangeAsync(
             userId, new DateOnly(2026, 6, 16), new DateOnly(2026, 6, 16));
@@ -106,8 +106,8 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
     {
         var dtId = await _defaults.InsertAsync(new DefaultTask(0, "Old Name", 10, true));
         await _svc.SyncAsync();
-        var defReqId = await _svc.EnsureDefaultRequestIdAsync();
-        var oldTask = (await _tasks.GetByNameInRequestAsync(defReqId, "Old Name"))!;
+        var defReqId = await _svc.EnsureDefaultBacklogIdAsync();
+        var oldTask = (await _tasks.GetByNameInBacklogAsync(defReqId, "Old Name"))!;
 
         var userId = await SeedUser();
         await new TimeLogRepository(_db).UpsertAsync(
@@ -119,9 +119,9 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
 
         await _svc.SyncAsync();
 
-        var oldAfter = (await _tasks.GetByNameInRequestAsync(defReqId, "Old Name"))!;
+        var oldAfter = (await _tasks.GetByNameInBacklogAsync(defReqId, "Old Name"))!;
         Assert.False(oldAfter.IsActive);                    // old soft-deleted
-        var newTask = await _tasks.GetByNameInRequestAsync(defReqId, "New Name");
+        var newTask = await _tasks.GetByNameInBacklogAsync(defReqId, "New Name");
         Assert.NotNull(newTask);
         Assert.True(newTask!.IsActive);                     // new inserted active
         Assert.NotEqual(oldTask.Id, newTask.Id);            // distinct rows
@@ -139,11 +139,11 @@ public class DefaultTaskSyncServiceTests : IAsyncLifetime
         await _defaults.InsertAsync(new DefaultTask(0, "Project Kickoff", 10, true));
 
         await _svc.SyncAsync();
-        var defReqId = await _svc.EnsureDefaultRequestIdAsync();
-        var first = await _tasks.GetActiveByRequestAsync(defReqId);
+        var defReqId = await _svc.EnsureDefaultBacklogIdAsync();
+        var first = await _tasks.GetActiveByBacklogAsync(defReqId);
 
         await _svc.SyncAsync();
-        var second = await _tasks.GetActiveByRequestAsync(defReqId);
+        var second = await _tasks.GetActiveByBacklogAsync(defReqId);
 
         // Same set of active Tasks (by id + name) after a second sync — no duplicates, no churn.
         Assert.Equal(

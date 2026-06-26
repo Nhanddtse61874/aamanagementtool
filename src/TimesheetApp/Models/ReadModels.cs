@@ -8,7 +8,7 @@ namespace TimesheetApp.Models;
 // so soft-deleted task/user names still resolve. Shape VERBATIM from architecture spec §2.
 public sealed record TimeLogReportRow(
     int UserId, string UserName,
-    string RequestCode, string Project,
+    string BacklogCode, string Project,
     int TaskId, string TaskName,
     DateOnly WorkDate, decimal Hours);
 
@@ -27,15 +27,15 @@ public sealed record SmartFillTask(int TaskId, IReadOnlyList<CellAssignment> Cel
 // from architecture spec §2. (TS-01/02/05)
 public sealed record WeekGrid(DateOnly Monday, IReadOnlyList<WeekRow> Rows);
 public sealed record WeekRow(
-    int TaskId, string RequestCode, string TaskName, int OrderIndex,
+    int TaskId, string BacklogCode, string TaskName, int OrderIndex,
     decimal? Mon, decimal? Tue, decimal? Wed, decimal? Thu, decimal? Fri);  // null = empty = 0h
 
-// Grouped-by-request shape for the Timesheet tab: EVERY request (incl. DEFAULT and empty ones)
-// becomes one collapsible group; Tasks may be empty so an empty request still renders + is loggable.
-public sealed record WeekRequestGroup(
-    int RequestId, string RequestCode, string Project, IReadOnlyList<WeekRow> Tasks,
-    string? PeriodMonth = null, string? Status = null,    // v2: month a ticket belongs to + its status
-    string? AssigneeName = null);                          // v4: who the ticket is assigned to
+// Grouped-by-backlog shape for the Timesheet tab: EVERY backlog item (incl. DEFAULT and empty ones)
+// becomes one collapsible group; Tasks may be empty so an empty backlog still renders + is loggable.
+public sealed record WeekBacklogGroup(
+    int BacklogId, string BacklogCode, string Project, IReadOnlyList<WeekRow> Tasks,
+    string? PeriodMonth = null, string? Type = null,    // v2: month a ticket belongs to + its type
+    string? AssigneeName = null);                        // v4: who the ticket is assigned to
 
 // Save / validation result. Ok=false => no write, with a user-facing message. Shape VERBATIM
 // from architecture spec §2. (XC-02/03/04/05)
@@ -53,18 +53,18 @@ public readonly record struct CurrentUserResult(CurrentUserOutcome Outcome, User
 // RPT-01: one row per weekday in the selected week.
 public sealed record WeeklyDayTotal(DateOnly Date, decimal TotalHours);
 
-// RPT-01 detail: one row per (date, request, task) in the selected week — shows which ticket/task
+// RPT-01 detail: one row per (date, backlog, task) in the selected week — shows which ticket/task
 // the hours went to, not just the day total.
 public sealed record WeeklyDetailRow(
-    DateOnly Date, string RequestCode, string Project, string TaskName, decimal TotalHours);
+    DateOnly Date, string BacklogCode, string Project, string TaskName, decimal TotalHours);
 
-// RPT-02: one row per (request, task) in the selected month.
-public sealed record MonthlyRequestTaskTotal(
-    string RequestCode, string Project, string TaskName, decimal TotalHours);
+// RPT-02: one row per (backlog, task) in the selected month.
+public sealed record MonthlyBacklogTaskTotal(
+    string BacklogCode, string Project, string TaskName, decimal TotalHours);
 
-// RPT-03: 4-level drill-down tree (Project -> Request -> Task -> Date).
-public sealed record ProjectNode(string Project, decimal TotalHours, IReadOnlyList<RequestNode> Requests);
-public sealed record RequestNode(string RequestCode, string Project, decimal TotalHours, IReadOnlyList<TaskNode> Tasks);
+// RPT-03: 4-level drill-down tree (Project -> Backlog -> Task -> Date).
+public sealed record ProjectNode(string Project, decimal TotalHours, IReadOnlyList<BacklogNode> Backlogs);
+public sealed record BacklogNode(string BacklogCode, string Project, decimal TotalHours, IReadOnlyList<TaskNode> Tasks);
 public sealed record TaskNode(int TaskId, string TaskName, decimal TotalHours, IReadOnlyList<DateEntry> Dates);
 public sealed record DateEntry(DateOnly Date, decimal TotalHours);
 

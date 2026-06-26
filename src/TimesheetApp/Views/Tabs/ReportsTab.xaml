@@ -104,16 +104,16 @@
                   AutoGenerateColumns="False" IsReadOnly="True">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=ddd dd/MM}" Width="Auto"/>
-            <DataGridTextColumn Header="Ticket" Binding="{Binding RequestCode}" Width="*"/>
+            <DataGridTextColumn Header="Ticket" Binding="{Binding BacklogCode}" Width="*"/>
             <DataGridTextColumn Header="Task" Binding="{Binding TaskName}" Width="*"/>
             <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}" Width="Auto"/>
           </DataGrid.Columns>
         </DataGrid>
-        <TextBlock DockPanel.Dock="Top" Text="Monthly (by request / task)" FontWeight="Bold" Margin="0,8,0,0"/>
+        <TextBlock DockPanel.Dock="Top" Text="Monthly (by backlog / task)" FontWeight="Bold" Margin="0,8,0,0"/>
         <!-- RPT-02: one row per (RequestCode, Project, TaskName) with summed hours -->
         <DataGrid ItemsSource="{Binding MonthlyRows}" AutoGenerateColumns="False" IsReadOnly="True">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Request" Binding="{Binding RequestCode}"/>
+            <DataGridTextColumn Header="Backlog" Binding="{Binding BacklogCode}"/>
             <DataGridTextColumn Header="Project" Binding="{Binding Project}"/>
             <DataGridTextColumn Header="Task" Binding="{Binding TaskName}"/>
             <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}"/>
@@ -127,7 +127,7 @@
           <Button DockPanel.Dock="Right" Command="{Binding ToggleDrillExpandCommand}"
                   Style="{StaticResource ToolbarGhostButton}" Content="{Binding DrillToggleText}"
                   ToolTip="Expand / collapse the whole tree"/>
-          <TextBlock Text="Drill-down (Project -> Request -> Task -> Date)" FontWeight="Bold"
+          <TextBlock Text="Drill-down (Project -> Backlog -> Task -> Date)" FontWeight="Bold"
                      VerticalAlignment="Center"/>
         </DockPanel>
         <TreeView ItemsSource="{Binding ProjectTree}">
@@ -141,13 +141,13 @@
             </Style>
           </TreeView.ItemContainerStyle>
           <TreeView.Resources>
-            <!-- Level 1: ProjectNode — children are Requests -->
-            <HierarchicalDataTemplate DataType="{x:Type m:ProjectNode}" ItemsSource="{Binding Requests}">
+            <!-- Level 1: ProjectNode — children are Backlogs -->
+            <HierarchicalDataTemplate DataType="{x:Type m:ProjectNode}" ItemsSource="{Binding Backlogs}">
               <TextBlock Text="{Binding Project}" FontWeight="Bold"/>
             </HierarchicalDataTemplate>
-            <!-- Level 2: RequestNode — children are Tasks -->
-            <HierarchicalDataTemplate DataType="{x:Type m:RequestNode}" ItemsSource="{Binding Tasks}">
-              <TextBlock Text="{Binding RequestCode}"/>
+            <!-- Level 2: BacklogNode — children are Tasks -->
+            <HierarchicalDataTemplate DataType="{x:Type m:BacklogNode}" ItemsSource="{Binding Tasks}">
+              <TextBlock Text="{Binding BacklogCode}"/>
             </HierarchicalDataTemplate>
             <!-- Level 3: TaskNode — children are Dates -->
             <HierarchicalDataTemplate DataType="{x:Type m:TaskNode}" ItemsSource="{Binding Dates}">

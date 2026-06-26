@@ -12,30 +12,30 @@ public sealed class TaskRepository : ITaskRepository
 
     public TaskRepository(IConnectionFactory factory) => _factory = factory;
 
-    public async Task<IReadOnlyList<TaskItem>> GetActiveByRequestAsync(int requestId)
+    public async Task<IReadOnlyList<TaskItem>> GetActiveByBacklogAsync(int backlogId)
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<TaskRaw>(
-            @"SELECT id, request_id, task_name, order_index, is_active
+            @"SELECT id, backlog_id, task_name, order_index, is_active, status
               FROM Tasks
-              WHERE request_id = @r AND is_active = 1
+              WHERE backlog_id = @b AND is_active = 1
               ORDER BY order_index;",
-            new { r = requestId });
+            new { b = backlogId });
         return rows.Select(MapTask).ToList();
     }
 
     public async Task<IReadOnlyList<TaskItem>> GetActiveForTimesheetAsync()
     {
         using var c = _factory.Create();
-        // Active tasks across all requests (incl. the hidden DEFAULT request), ordered (TS-02).
-        // Requests have no is_active column (decision 4) so every request is selectable; the
-        // DEFAULT request's tasks are included because we only filter on the task's is_active.
+        // Active tasks across all backlogs (incl. the hidden DEFAULT), ordered (TS-02).
+        // Backlogs have no is_active column (decision 4) so every backlog is selectable; the
+        // DEFAULT backlog's tasks are included because we only filter on the task's is_active.
         var rows = await c.QueryAsync<TaskRaw>(
-            @"SELECT t.id, t.request_id, t.task_name, t.order_index, t.is_active
+            @"SELECT t.id, t.backlog_id, t.task_name, t.order_index, t.is_active, t.status
               FROM Tasks t
-              JOIN Requests r ON r.id = t.request_id
+              JOIN Backlogs b ON b.id = t.backlog_id
               WHERE t.is_active = 1
-              ORDER BY r.request_code, t.order_index;");
+              ORDER BY b.backlog_code, t.order_index;");
         return rows.Select(MapTask).ToList();
     }
 
@@ -43,18 +43,18 @@ public sealed class TaskRepository : ITaskRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<TaskRaw>(
-            "SELECT id, request_id, task_name, order_index, is_active FROM Tasks WHERE id = @id;",
+            "SELECT id, backlog_id, task_name, order_index, is_active, status FROM Tasks WHERE id = @id;",
             new { id });
         return row is null ? null : MapTask(row);
     }
 
-    public async Task<TaskItem?> GetByNameInRequestAsync(int requestId, string taskName)
+    public async Task<TaskItem?> GetByNameInBacklogAsync(int backlogId, string taskName)
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<TaskRaw>(
-            @"SELECT id, request_id, task_name, order_index, is_active
-              FROM Tasks WHERE request_id = @r AND task_name = @n;",
-            new { r = requestId, n = taskName });
+            @"SELECT id, backlog_id, task_name, order_index, is_active, status
+              FROM Tasks WHERE backlog_id = @b AND task_name = @n;",
+            new { b = backlogId, n = taskName });
         return row is null ? null : MapTask(row);
     }
 
@@ -62,18 +62,18 @@ public sealed class TaskRepository : ITaskRepository
     {
         using var c = _factory.Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Tasks(request_id, task_name, order_index, is_active)
-              VALUES(@RequestId, @TaskName, @OrderIndex, @IsActive);
+            @"INSERT INTO Tasks(backlog_id, task_name, order_index, is_active, status)
+              VALUES(@BacklogId, @TaskName, @OrderIndex, @IsActive, @Status);
               SELECT last_insert_rowid();",
-            new { task.RequestId, task.TaskName, task.OrderIndex, IsActive = task.IsActive ? 1 : 0 });
+            new { task.BacklogId, task.TaskName, task.OrderIndex, IsActive = task.IsActive ? 1 : 0, task.Status });
     }
 
     public async Task UpdateAsync(TaskItem task)
     {
         using var c = _factory.Create();
         await c.ExecuteAsync(
-            "UPDATE Tasks SET task_name = @TaskName, order_index = @OrderIndex WHERE id = @Id;",
-            new { task.TaskName, task.OrderIndex, task.Id });
+            "UPDATE Tasks SET task_name = @TaskName, order_index = @OrderIndex, status = @Status WHERE id = @Id;",
+            new { task.TaskName, task.OrderIndex, task.Status, task.Id });
     }
 
     public async Task SetActiveAsync(int taskId, bool isActive)
@@ -85,15 +85,16 @@ public sealed class TaskRepository : ITaskRepository
     }
 
     private static TaskItem MapTask(TaskRaw r) =>
-        new((int)r.id, (int)r.request_id, r.task_name, (int)r.order_index, r.is_active != 0);
+        new((int)r.id, (int)r.backlog_id, r.task_name, (int)r.order_index, r.is_active != 0, r.status ?? "Todo");
 
-    // SQLite-native shape (long/string) — narrowed at the boundary above (see Task 4 mapping note).
+    // SQLite-native shape (long/string) — narrowed at the boundary above.
     private sealed class TaskRaw
     {
         public long id { get; set; }
-        public long request_id { get; set; }
+        public long backlog_id { get; set; }
         public string task_name { get; set; } = "";
         public long order_index { get; set; }
         public long is_active { get; set; }
+        public string? status { get; set; }
     }
 }

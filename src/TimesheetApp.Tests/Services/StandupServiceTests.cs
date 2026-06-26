@@ -30,11 +30,11 @@ public class StandupServiceTests
     {
         public Mock<IStandupRepository> Repo = new();
         public Mock<IUserRepository> Users = new();
-        public Mock<IRequestRepository> Requests = new();
+        public Mock<IBacklogRepository> Backlogs = new();
         public Mock<ITaskRepository> Tasks = new();
         public FakeCurrentUser Current = new() { Current = new User(1, "Alice", "alice", true) };
         public StandupService Make(DateOnly today) =>
-            new(Repo.Object, Current, Users.Object, Requests.Object, Tasks.Object, new FakeClock { Today = today });
+            new(Repo.Object, Current, Users.Object, Backlogs.Object, Tasks.Object, new FakeClock { Today = today });
     }
 
     private static StandupEntryDraft Draft(
@@ -79,8 +79,8 @@ public class StandupServiceTests
 
         Assert.Equal(55, id);
         ctx.Repo.Verify(r => r.InsertEntryAsync(It.Is<StandupEntry>(e =>
-            e.UserId == 1 && e.WorkDate == Today && e.RequestCode == "ADHOC" &&
-            e.TaskText == "spike" && e.Status == "In-process" && e.RequestId == null)), Times.Once);
+            e.UserId == 1 && e.WorkDate == Today && e.BacklogCode == "ADHOC" &&
+            e.TaskText == "spike" && e.Status == "In-process" && e.BacklogId == null)), Times.Once);
     }
 
     [Fact]
@@ -91,17 +91,17 @@ public class StandupServiceTests
     }
 
     [Fact]
-    public async Task AddEntry_drops_request_id_when_request_missing()
+    public async Task AddEntry_drops_backlog_id_when_request_missing()
     {
         var ctx = new Ctx();
-        ctx.Requests.Setup(r => r.GetByIdAsync(99)).ReturnsAsync((Request?)null);
+        ctx.Backlogs.Setup(r => r.GetByIdAsync(99)).ReturnsAsync((Backlog?)null);
         ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today)).ReturnsAsync(Array.Empty<StandupEntry>());
         ctx.Repo.Setup(r => r.InsertEntryAsync(It.IsAny<StandupEntry>())).ReturnsAsync(1);
         var svc = ctx.Make(Today);
 
         await svc.AddEntryAsync(Today, Draft(requestId: 99));
 
-        ctx.Repo.Verify(r => r.InsertEntryAsync(It.Is<StandupEntry>(e => e.RequestId == null)), Times.Once);
+        ctx.Repo.Verify(r => r.InsertEntryAsync(It.Is<StandupEntry>(e => e.BacklogId == null)), Times.Once);
     }
 
     [Fact]

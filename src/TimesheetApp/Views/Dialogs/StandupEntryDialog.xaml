@@ -5,7 +5,7 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent">
-  <!-- DataContext = StandupDraftVm (Requests/Tasks/SelectedRequest/SelectedTask/RequestCode/...). -->
+  <!-- DataContext = StandupDraftVm (Backlogs/Tasks/SelectedBacklog/SelectedTask/BacklogCode/...). -->
   <Border Background="{StaticResource Surface}" CornerRadius="12" BorderBrush="{StaticResource Border}"
           BorderThickness="1" Margin="12">
     <Border.Effect>
@@ -25,27 +25,27 @@
         </StackPanel>
       </Border>
       <StackPanel Margin="20,16">
-        <TextBlock Text="Request (pick existing, or type a new code)" Style="{StaticResource FieldLabel}"/>
+        <TextBlock Text="Backlog (pick existing, or type a new code)" Style="{StaticResource FieldLabel}"/>
         <Grid Margin="0,0,0,8">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="150"/>
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
-          <ComboBox Grid.Column="0" ItemsSource="{Binding Requests}" DisplayMemberPath="RequestCode"
-                    SelectedItem="{Binding SelectedRequest}" ToolTip="Pick an existing request"/>
+          <ComboBox Grid.Column="0" ItemsSource="{Binding Backlogs}" DisplayMemberPath="BacklogCode"
+                    SelectedItem="{Binding SelectedBacklog}" ToolTip="Pick an existing backlog"/>
           <TextBox Grid.Column="1" Margin="6,0,0,0"
-                   Text="{Binding RequestCode, UpdateSourceTrigger=PropertyChanged}"
-                   ToolTip="Request code (type here for an ad-hoc request)"/>
+                   Text="{Binding BacklogCode, UpdateSourceTrigger=PropertyChanged}"
+                   ToolTip="Backlog code (type here for an ad-hoc backlog)"/>
         </Grid>
 
-        <TextBlock Text="Task (pick from request, or type)" Style="{StaticResource FieldLabel}"/>
+        <TextBlock Text="Task (pick from backlog, or type)" Style="{StaticResource FieldLabel}"/>
         <Grid Margin="0,0,0,8">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="150"/>
             <ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <ComboBox Grid.Column="0" ItemsSource="{Binding Tasks}" DisplayMemberPath="TaskName"
-                    SelectedItem="{Binding SelectedTask}" ToolTip="Pick a task of the request"/>
+                    SelectedItem="{Binding SelectedTask}" ToolTip="Pick a task of the backlog"/>
           <TextBox Grid.Column="1" Margin="6,0,0,0"
                    Text="{Binding TaskText, UpdateSourceTrigger=PropertyChanged}"
                    ToolTip="Task name (type here to add your own)"/>

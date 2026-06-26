@@ -19,7 +19,7 @@
             </Border>
             <StackPanel>
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding RequestCode}" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+                <TextBlock Text="{Binding BacklogCode}" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
                 <TextBlock Text="·" Margin="6,0" Foreground="{StaticResource TextSecondary}"/>
                 <TextBlock Text="{Binding TaskText}" FontWeight="SemiBold"/>
               </StackPanel>

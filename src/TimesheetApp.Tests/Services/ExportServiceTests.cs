@@ -21,7 +21,7 @@ public class ExportServiceTests
             DateOnly.Parse(date), hours);
 
     private static (ExportService svc, Mock<ITimeLogRepository> logs,
-                    Mock<IUserRepository> users, Mock<IRequestRepository> reqs)
+                    Mock<IUserRepository> users, Mock<IBacklogRepository> reqs)
         Build(IReadOnlyList<TimeLogReportRow> rows)
     {
         var logs = new Mock<ITimeLogRepository>();
@@ -29,7 +29,7 @@ public class ExportServiceTests
                 It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<string?>()))
             .ReturnsAsync(rows);
         var users = new Mock<IUserRepository>();
-        var reqs = new Mock<IRequestRepository>();
+        var reqs = new Mock<IBacklogRepository>();
         var svc = new ExportService(logs.Object, users.Object, reqs.Object);
         return (svc, logs, users, reqs);
     }
@@ -145,7 +145,7 @@ public class ExportServiceTests
         var ws = wb.Worksheet(1);
         // header row
         Assert.Equal("User", ws.Cell(1, 1).GetString());
-        Assert.Equal("Request", ws.Cell(1, 2).GetString());
+        Assert.Equal("Backlog", ws.Cell(1, 2).GetString());
         Assert.Equal("Project", ws.Cell(1, 3).GetString());
         Assert.Equal("Task", ws.Cell(1, 4).GetString());
         Assert.Equal("Date", ws.Cell(1, 5).GetString());

@@ -74,7 +74,7 @@ public sealed partial class ReportsViewModel : ObservableObject
 
     // Project filter ("All" = no filter). Reused for the grids and the Excel export.
     public IReadOnlyList<string> Projects { get; } =
-        new[] { "All" }.Concat(RequestProjects.All).ToList();
+        new[] { "All" }.Concat(BacklogProjects.All).ToList();
     [ObservableProperty] private string _selectedProject = "All";
     private string? ProjectFilter =>
         string.IsNullOrEmpty(SelectedProject) || SelectedProject == "All" ? null : SelectedProject;
@@ -104,7 +104,7 @@ public sealed partial class ReportsViewModel : ObservableObject
 
     public ObservableCollection<WeeklyDayTotal> WeeklyRows { get; } = new();
     public ObservableCollection<WeeklyDetailRow> WeeklyDetailRows { get; } = new();
-    public ObservableCollection<MonthlyRequestTaskTotal> MonthlyRows { get; } = new();
+    public ObservableCollection<MonthlyBacklogTaskTotal> MonthlyRows { get; } = new();
     public ObservableCollection<ProjectNode> ProjectTree { get; } = new();
     public ObservableCollection<MissingLogWarning> MissingBanner { get; } = new();
 
@@ -196,7 +196,7 @@ public sealed partial class ReportsViewModel : ObservableObject
         var last = first.AddMonths(1).AddDays(-1);
         var rows = await GetRowsForTargetAsync(first, last);
         MonthlyRows.Clear();
-        foreach (var r in _aggregator.MonthlyRequestTaskTotals(rows)) MonthlyRows.Add(r);
+        foreach (var r in _aggregator.MonthlyBacklogTaskTotals(rows)) MonthlyRows.Add(r);
         ProjectTree.Clear();
         foreach (var p in _aggregator.BuildProjectTree(rows)) ProjectTree.Add(p);
     }

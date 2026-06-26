@@ -28,7 +28,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public MainViewModel(
         TimesheetViewModel timesheet,
-        RequestsViewModel requests,
+        BacklogsViewModel backlogs,
         UsersViewModel usersVm,
         ReportsViewModel reports,
         SettingsViewModel settings,
@@ -36,7 +36,7 @@ public sealed partial class MainViewModel : ObservableObject
         ICurrentUserService currentUser,
         IUserRepository users,
         IAppConfig config)
-        : this(timesheet, requests, usersVm, reports, settings, dailyReport, currentUser, users, config,
+        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, currentUser, users, config,
                () => Environment.UserName)
     {
     }
@@ -44,7 +44,7 @@ public sealed partial class MainViewModel : ObservableObject
     // Test seam: inject the Windows-username provider so NeedsSelection persistence is deterministic.
     internal MainViewModel(
         TimesheetViewModel timesheet,
-        RequestsViewModel requests,
+        BacklogsViewModel backlogs,
         UsersViewModel usersVm,
         ReportsViewModel reports,
         SettingsViewModel settings,
@@ -55,7 +55,7 @@ public sealed partial class MainViewModel : ObservableObject
         Func<string> windowsUserName)
     {
         Timesheet = timesheet;
-        Requests = requests;
+        Backlogs = backlogs;
         Users = usersVm;
         Reports = reports;
         Settings = settings;
@@ -67,7 +67,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     public TimesheetViewModel Timesheet { get; }
-    public RequestsViewModel Requests { get; }
+    public BacklogsViewModel Backlogs { get; }
     public UsersViewModel Users { get; }
     public ReportsViewModel Reports { get; }
     public SettingsViewModel Settings { get; }
@@ -123,15 +123,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Reload the activated tab's data so changes made in another tab are reflected (e.g. a task
-    /// created in Requests appears in the Timesheet grid). Wired to the TabControl's SelectionChanged.
-    /// Index order matches MainWindow: 0 Timesheet, 1 Requests, 2 Users, 3 Reports, 4 Settings.
+    /// created in Backlogs appears in the Timesheet grid). Wired to the TabControl's SelectionChanged.
+    /// Index order matches MainWindow: 0 Timesheet, 1 Backlog, 2 Users, 3 Reports, 4 Settings.
     /// </summary>
     public async Task ActivateTabAsync(int index)
     {
         switch (index)
         {
             case 0: await SafeLoad(() => Timesheet.LoadCommand.ExecuteAsync(null)); break;
-            case 1: await SafeLoad(() => Requests.LoadAsync()); break;
+            case 1: await SafeLoad(() => Backlogs.LoadAsync()); break;
             case 2: await SafeLoad(() => Users.LoadAsync()); break;
             case 3:
                 // Default Reports view = whole team, current month (+ week for the stat cards/weekly grid).
@@ -190,7 +190,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task LoadTabsAsync()
     {
         await SafeLoad(() => Timesheet.LoadCommand.ExecuteAsync(null));
-        await SafeLoad(() => Requests.LoadAsync());
+        await SafeLoad(() => Backlogs.LoadAsync());
         await SafeLoad(() => Users.LoadAsync());
         await SafeLoad(() => Reports.LoadBannerAsync());
         await SafeLoad(() => Settings.LoadAsync());

@@ -13,12 +13,12 @@
     </StackPanel>
 
     <StackPanel DockPanel.Dock="Top">
-      <!-- 1) Request code -> Find -->
-      <TextBlock Text="Request code" FontWeight="SemiBold"/>
+      <!-- 1) Backlog code -> Find -->
+      <TextBlock Text="Backlog code" FontWeight="SemiBold"/>
       <DockPanel Margin="0,2,0,2">
-        <Button Content="Find" DockPanel.Dock="Right" Command="{Binding FindRequestCommand}"
+        <Button Content="Find" DockPanel.Dock="Right" Command="{Binding FindBacklogCommand}"
                 Style="{StaticResource MiniGhostButton}" Margin="6,0,0,0" Padding="14,5"/>
-        <TextBox Text="{Binding RequestCode, UpdateSourceTrigger=PropertyChanged}"
+        <TextBox Text="{Binding BacklogCode, UpdateSourceTrigger=PropertyChanged}"
                  VerticalContentAlignment="Center"/>
       </DockPanel>
       <TextBlock Text="{Binding LoadError}" Foreground="{StaticResource Danger}" TextWrapping="Wrap"

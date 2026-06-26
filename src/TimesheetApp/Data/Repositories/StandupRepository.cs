@@ -9,7 +9,7 @@ namespace TimesheetApp.Data.Repositories;
 public sealed class StandupRepository : IStandupRepository
 {
     private const string EntryCols =
-        "id, user_id, work_date, section, request_id, request_code, task_text, description, deadline, status, order_index, created_at";
+        "id, user_id, work_date, section, backlog_id, backlog_code, task_text, description, deadline, status, order_index, created_at";
     private const string IssueCols =
         "id, entry_id, issue_text, solution_text, status, order_index, created_at";
 
@@ -62,9 +62,9 @@ public sealed class StandupRepository : IStandupRepository
     {
         using var c = _factory.Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO StandupEntries(user_id, work_date, section, request_id, request_code,
+            @"INSERT INTO StandupEntries(user_id, work_date, section, backlog_id, backlog_code,
                   task_text, description, deadline, status, order_index, created_at)
-              VALUES(@UserId, @WorkDate, @Section, @RequestId, @RequestCode,
+              VALUES(@UserId, @WorkDate, @Section, @BacklogId, @BacklogCode,
                   @TaskText, @Description, @Deadline, @Status, @OrderIndex, @CreatedAt);
               SELECT last_insert_rowid();",
             new
@@ -72,8 +72,8 @@ public sealed class StandupRepository : IStandupRepository
                 e.UserId,
                 WorkDate = Day(e.WorkDate),
                 e.Section,
-                e.RequestId,
-                e.RequestCode,
+                e.BacklogId,
+                e.BacklogCode,
                 e.TaskText,
                 e.Description,
                 Deadline = DayN(e.Deadline),
@@ -88,15 +88,15 @@ public sealed class StandupRepository : IStandupRepository
         using var c = _factory.Create();
         await c.ExecuteAsync(
             @"UPDATE StandupEntries SET
-                  section = @Section, request_id = @RequestId, request_code = @RequestCode,
+                  section = @Section, backlog_id = @BacklogId, backlog_code = @BacklogCode,
                   task_text = @TaskText, description = @Description, deadline = @Deadline,
                   status = @Status, order_index = @OrderIndex
               WHERE id = @Id;",
             new
             {
                 e.Section,
-                e.RequestId,
-                e.RequestCode,
+                e.BacklogId,
+                e.BacklogCode,
                 e.TaskText,
                 e.Description,
                 Deadline = DayN(e.Deadline),
@@ -175,7 +175,7 @@ public sealed class StandupRepository : IStandupRepository
 
     private static StandupEntry MapEntry(EntryRaw r) => new(
         (int)r.id, (int)r.user_id, ParseDay(r.work_date), r.section,
-        r.request_id is { } rid ? (int)rid : null, r.request_code, r.task_text, r.description,
+        r.backlog_id is { } rid ? (int)rid : null, r.backlog_code, r.task_text, r.description,
         ParseDayN(r.deadline), r.status, (int)r.order_index, ParseIso(r.created_at));
 
     private static StandupIssue MapIssue(IssueRaw r) => new(
@@ -189,8 +189,8 @@ public sealed class StandupRepository : IStandupRepository
         public long user_id { get; set; }
         public string work_date { get; set; } = "";
         public string section { get; set; } = "";
-        public long? request_id { get; set; }
-        public string request_code { get; set; } = "";
+        public long? backlog_id { get; set; }
+        public string backlog_code { get; set; } = "";
         public string task_text { get; set; } = "";
         public string description { get; set; } = "";
         public string? deadline { get; set; }

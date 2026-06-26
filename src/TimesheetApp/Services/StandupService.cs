@@ -3,25 +3,25 @@ using TimesheetApp.Models;
 
 namespace TimesheetApp.Services;
 
-// Daily Report orchestration (DR-05..08). Pure orchestration over the repo + current-user + request/task
+// Daily Report orchestration (DR-05..08). Pure orchestration over the repo + current-user + backlog/task
 // repos; no SQL here. Edit-lock (today/yesterday) + owner gate entry writes; issues are collaborative.
 public sealed class StandupService : IStandupService
 {
     private readonly IStandupRepository _repo;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserRepository _users;
-    private readonly IRequestRepository _requests;
+    private readonly IBacklogRepository _backlogs;
     private readonly ITaskRepository _tasks;
     private readonly IClock _clock;
 
     public StandupService(
         IStandupRepository repo, ICurrentUserService currentUser, IUserRepository users,
-        IRequestRepository requests, ITaskRepository tasks, IClock clock)
+        IBacklogRepository backlogs, ITaskRepository tasks, IClock clock)
     {
         _repo = repo;
         _currentUser = currentUser;
         _users = users;
-        _requests = requests;
+        _backlogs = backlogs;
         _tasks = tasks;
         _clock = clock;
     }
@@ -61,10 +61,10 @@ public sealed class StandupService : IStandupService
         return result;
     }
 
-    public Task<IReadOnlyList<Request>> SearchRequestsAsync(string? term) => _requests.SearchAsync(term);
+    public Task<IReadOnlyList<Backlog>> SearchBacklogsAsync(string? term) => _backlogs.SearchAsync(term);
 
-    public Task<IReadOnlyList<TaskItem>> GetTasksForRequestAsync(int requestId) =>
-        _tasks.GetActiveByRequestAsync(requestId);
+    public Task<IReadOnlyList<TaskItem>> GetTasksForBacklogAsync(int backlogId) =>
+        _tasks.GetActiveByBacklogAsync(backlogId);
 
     public async Task<int> AddEntryAsync(DateOnly workDate, StandupEntryDraft draft)
     {
@@ -73,9 +73,9 @@ public sealed class StandupService : IStandupService
         var me = _currentUser.Current;
         if (me is null) return 0;
 
-        var requestId = await ResolveRequestIdAsync(draft.RequestId);
+        var backlogId = await ResolveBacklogIdAsync(draft.BacklogId);
         var entry = new StandupEntry(
-            0, me.Id, workDate, draft.Section, requestId, draft.RequestCode.Trim(),
+            0, me.Id, workDate, draft.Section, backlogId, draft.BacklogCode.Trim(),
             draft.TaskText.Trim(), draft.Description ?? "", draft.Deadline, draft.Status,
             await NextOrderAsync(me.Id, workDate, draft.Section), _clock.UtcNow);
         return await _repo.InsertEntryAsync(entry);
@@ -89,12 +89,12 @@ public sealed class StandupService : IStandupService
         if (existing.UserId != (_currentUser.Current?.Id ?? 0)) return false;   // owner only
         if (!CanEditDay(existing.WorkDate)) return false;                        // lock
 
-        var requestId = await ResolveRequestIdAsync(draft.RequestId);
+        var backlogId = await ResolveBacklogIdAsync(draft.BacklogId);
         var updated = existing with
         {
             Section = draft.Section,
-            RequestId = requestId,
-            RequestCode = draft.RequestCode.Trim(),
+            BacklogId = backlogId,
+            BacklogCode = draft.BacklogCode.Trim(),
             TaskText = draft.TaskText.Trim(),
             Description = draft.Description ?? "",
             Deadline = draft.Deadline,
@@ -137,16 +137,16 @@ public sealed class StandupService : IStandupService
     {
         if (!StandupSection.IsValid(d.Section)) throw new ArgumentException($"invalid section '{d.Section}'");
         if (!StandupStatus.All.Contains(d.Status)) throw new ArgumentException($"invalid status '{d.Status}'");
-        if (string.IsNullOrWhiteSpace(d.RequestCode)) throw new ArgumentException("request code required");
+        if (string.IsNullOrWhiteSpace(d.BacklogCode)) throw new ArgumentException("backlog code required");
         if (string.IsNullOrWhiteSpace(d.TaskText)) throw new ArgumentException("task text required");
     }
 
-    // An ad-hoc code carries no request id; a provided id is kept only if the request still exists (DR-03).
-    private async Task<int?> ResolveRequestIdAsync(int? requestId)
+    // An ad-hoc code carries no backlog id; a provided id is kept only if the backlog still exists (DR-03).
+    private async Task<int?> ResolveBacklogIdAsync(int? backlogId)
     {
-        if (requestId is not { } id) return null;
-        var req = await _requests.GetByIdAsync(id);
-        return req is null ? null : id;
+        if (backlogId is not { } id) return null;
+        var bl = await _backlogs.GetByIdAsync(id);
+        return bl is null ? null : id;
     }
 
     private async Task<int> NextOrderAsync(int userId, DateOnly workDate, string section)

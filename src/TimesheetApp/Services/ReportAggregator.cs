@@ -7,13 +7,13 @@ public interface IReportAggregator
     // RPT-01: one entry per DISTINCT WorkDate present in rows, ascending by date.
     IReadOnlyList<WeeklyDayTotal> WeeklyDayTotals(IReadOnlyList<TimeLogReportRow> rows);
 
-    // RPT-01 detail: one entry per (WorkDate, RequestCode, TaskName), ordered by date then request then task.
+    // RPT-01 detail: one entry per (WorkDate, BacklogCode, TaskName), ordered by date then backlog then task.
     IReadOnlyList<WeeklyDetailRow> WeeklyDetailRows(IReadOnlyList<TimeLogReportRow> rows);
 
-    // RPT-02: one entry per (RequestCode, Project, TaskName), ordered by RequestCode then TaskName.
-    IReadOnlyList<MonthlyRequestTaskTotal> MonthlyRequestTaskTotals(IReadOnlyList<TimeLogReportRow> rows);
+    // RPT-02: one entry per (BacklogCode, Project, TaskName), ordered by BacklogCode then TaskName.
+    IReadOnlyList<MonthlyBacklogTaskTotal> MonthlyBacklogTaskTotals(IReadOnlyList<TimeLogReportRow> rows);
 
-    // RPT-03: Project -> Request -> Task(by TaskId) -> Date drill-down with rolled-up totals.
+    // RPT-03: Project -> Backlog -> Task(by TaskId) -> Date drill-down with rolled-up totals.
     IReadOnlyList<ProjectNode> BuildProjectTree(IReadOnlyList<TimeLogReportRow> rows);
 }
 
@@ -26,20 +26,20 @@ public sealed class ReportAggregator : IReportAggregator
             .ToList();
 
     public IReadOnlyList<WeeklyDetailRow> WeeklyDetailRows(IReadOnlyList<TimeLogReportRow> rows) =>
-        rows.GroupBy(r => (r.WorkDate, r.RequestCode, r.Project, r.TaskName))
+        rows.GroupBy(r => (r.WorkDate, r.BacklogCode, r.Project, r.TaskName))
             .OrderBy(g => g.Key.WorkDate)
-            .ThenBy(g => g.Key.RequestCode, StringComparer.Ordinal)
+            .ThenBy(g => g.Key.BacklogCode, StringComparer.Ordinal)
             .ThenBy(g => g.Key.TaskName, StringComparer.Ordinal)
             .Select(g => new WeeklyDetailRow(
-                g.Key.WorkDate, g.Key.RequestCode, g.Key.Project, g.Key.TaskName, g.Sum(r => r.Hours)))
+                g.Key.WorkDate, g.Key.BacklogCode, g.Key.Project, g.Key.TaskName, g.Sum(r => r.Hours)))
             .ToList();
 
-    public IReadOnlyList<MonthlyRequestTaskTotal> MonthlyRequestTaskTotals(IReadOnlyList<TimeLogReportRow> rows) =>
-        rows.GroupBy(r => (r.RequestCode, r.Project, r.TaskName))
-            .OrderBy(g => g.Key.RequestCode, StringComparer.Ordinal)
+    public IReadOnlyList<MonthlyBacklogTaskTotal> MonthlyBacklogTaskTotals(IReadOnlyList<TimeLogReportRow> rows) =>
+        rows.GroupBy(r => (r.BacklogCode, r.Project, r.TaskName))
+            .OrderBy(g => g.Key.BacklogCode, StringComparer.Ordinal)
             .ThenBy(g => g.Key.TaskName, StringComparer.Ordinal)
-            .Select(g => new MonthlyRequestTaskTotal(
-                g.Key.RequestCode, g.Key.Project, g.Key.TaskName, g.Sum(r => r.Hours)))
+            .Select(g => new MonthlyBacklogTaskTotal(
+                g.Key.BacklogCode, g.Key.Project, g.Key.TaskName, g.Sum(r => r.Hours)))
             .ToList();
 
     public IReadOnlyList<ProjectNode> BuildProjectTree(IReadOnlyList<TimeLogReportRow> rows) =>
@@ -48,9 +48,9 @@ public sealed class ReportAggregator : IReportAggregator
             .Select(p => new ProjectNode(
                 p.Key,
                 p.Sum(r => r.Hours),
-                p.GroupBy(r => r.RequestCode)
+                p.GroupBy(r => r.BacklogCode)
                  .OrderBy(rq => rq.Key, StringComparer.Ordinal)
-                 .Select(rq => new RequestNode(
+                 .Select(rq => new BacklogNode(
                      rq.Key,
                      rq.First().Project,
                      rq.Sum(r => r.Hours),

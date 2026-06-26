@@ -13,12 +13,12 @@ public sealed class ExportService : IExportService
 
     private readonly ITimeLogRepository _logs;
     private readonly IUserRepository _users;
-    private readonly IRequestRepository _requests;
+    private readonly IBacklogRepository _requests;
 
     public ExportService(
         ITimeLogRepository logs,
         IUserRepository users,
-        IRequestRepository requests)
+        IBacklogRepository requests)
     {
         _logs = logs;
         _users = users;
@@ -36,7 +36,7 @@ public sealed class ExportService : IExportService
           .AppendLine().AppendLine();
 
         // user -> "group label" -> rows.
-        // Real request group label = "{code} — {project}".
+        // Real backlog group label = "{code} — {project}".
         // DEFAULT group label = "{code} — {task_name}" (EXP-03, decision 1).
         foreach (var userGroup in rows
                      .GroupBy(r => (r.UserId, r.UserName))
@@ -76,7 +76,7 @@ public sealed class ExportService : IExportService
         var ws = wb.Worksheets.Add("Timesheet");
 
         ws.Cell(1, 1).Value = "User";
-        ws.Cell(1, 2).Value = "Request";
+        ws.Cell(1, 2).Value = "Backlog";
         ws.Cell(1, 3).Value = "Project";
         ws.Cell(1, 4).Value = "Task";
         ws.Cell(1, 5).Value = "Date";
@@ -86,11 +86,11 @@ public sealed class ExportService : IExportService
         foreach (var row in rows
                      .OrderBy(x => x.UserName, StringComparer.Ordinal)
                      .ThenBy(x => x.WorkDate)
-                     .ThenBy(x => x.RequestCode, StringComparer.Ordinal)
+                     .ThenBy(x => x.BacklogCode, StringComparer.Ordinal)
                      .ThenBy(x => x.TaskId))
         {
             ws.Cell(r, 1).Value = row.UserName;
-            ws.Cell(r, 2).Value = row.RequestCode;
+            ws.Cell(r, 2).Value = row.BacklogCode;
             ws.Cell(r, 3).Value = row.Project;
             ws.Cell(r, 4).Value = row.TaskName;
             ws.Cell(r, 5).Value = row.WorkDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -116,9 +116,9 @@ public sealed class ExportService : IExportService
     }
 
     private static (string Sort, string Header) GroupKey(TimeLogReportRow r) =>
-        r.RequestCode == DefaultCode
-            ? ($"{r.RequestCode}|{r.TaskName}", $"{r.RequestCode} — {r.TaskName}")   // EXP-03
-            : ($"{r.RequestCode}|{r.Project}", $"{r.RequestCode} — {r.Project}");   // EXP-02
+        r.BacklogCode == DefaultCode
+            ? ($"{r.BacklogCode}|{r.TaskName}", $"{r.BacklogCode} — {r.TaskName}")   // EXP-03
+            : ($"{r.BacklogCode}|{r.Project}", $"{r.BacklogCode} — {r.Project}");   // EXP-02
 
     // "4" not "4.0"; "3.5" stays "3.5" (EXP-04).
     internal static string FormatHours(decimal h) =>

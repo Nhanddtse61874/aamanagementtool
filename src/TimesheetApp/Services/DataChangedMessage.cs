@@ -3,12 +3,12 @@ namespace TimesheetApp.Services;
 /// <summary>What kind of shared data changed, so subscribers reload only what they need.</summary>
 public enum DataKind
 {
-    Requests,
+    Backlogs,
     Tasks,        // a task was added/edited/soft-deleted (affects the Timesheet grid rows)
     Users,        // a user was added/soft-deleted
     Logs,         // time logs changed (affects Reports)
     Templates,    // task templates changed
-    DefaultTasks, // default tasks synced into the DEFAULT request (affects Timesheet rows)
+    DefaultTasks, // default tasks synced into the DEFAULT backlog (affects Timesheet rows)
     Standup       // daily-report standup entries/issues changed (affects the Daily Report board)
 }
 

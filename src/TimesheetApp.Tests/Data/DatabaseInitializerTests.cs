@@ -16,7 +16,7 @@ public class DatabaseInitializerTests : IDisposable
 
     private static readonly string[] ExpectedTables =
     {
-        "Users", "Requests", "Tasks", "TaskTemplates", "TimeLogs", "DefaultTasks", "Settings"
+        "Users", "Backlogs", "Tasks", "TaskTemplates", "TimeLogs", "DefaultTasks", "Settings"
     };
 
     public DatabaseInitializerTests()
@@ -52,8 +52,23 @@ public class DatabaseInitializerTests : IDisposable
         await _sut.InitializeAsync();
 
         using var c = _factory.Create();
-        var defaults = Count(c, "SELECT COUNT(*) FROM Requests WHERE request_code='DEFAULT';");
+        var defaults = Count(c, "SELECT COUNT(*) FROM Backlogs WHERE backlog_code='DEFAULT';");
         Assert.Equal(1, defaults); // DATA-03 idempotent
+    }
+
+    [Fact] // v6: the legacy Requests/RequestAudit tables are renamed to Backlogs/BacklogAudit; relaunching
+    public async Task InitializeAsync_DoesNotRecreate_Legacy_Request_Tables_On_Relaunch()
+    {
+        await _sut.InitializeAsync();
+        await _sut.InitializeAsync(); // second launch must NOT re-create the renamed-away legacy tables
+
+        using var c = _factory.Create();
+        foreach (var legacy in new[] { "Requests", "RequestAudit" })
+        {
+            var found = c.ExecuteScalar<string?>(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=@t;", new { t = legacy });
+            Assert.Null(found);
+        }
     }
 
     [Fact]
@@ -94,8 +109,8 @@ public class DatabaseInitializerTests : IDisposable
         using var c = _factory.Create();
         // seed FK targets
         c.Execute("INSERT INTO Users(name, is_active) VALUES('U', 1);");
-        c.Execute("INSERT INTO Requests(request_code, project, created_at) VALUES('R1','P','2026-06-21T00:00:00Z');");
-        c.Execute("INSERT INTO Tasks(request_id, task_name, order_index, is_active) VALUES(2,'T',0,1);");
+        c.Execute("INSERT INTO Backlogs(backlog_code, project, created_at) VALUES('R1','P','2026-06-21T00:00:00Z');");
+        c.Execute("INSERT INTO Tasks(backlog_id, task_name, order_index, is_active) VALUES(2,'T',0,1);");
         c.Execute("INSERT INTO TimeLogs(user_id, task_id, work_date, hours, created_at) " +
                   "VALUES(1,1,'2026-06-22',8.0,'2026-06-21T00:00:00Z');");
 
@@ -123,7 +138,7 @@ public class DatabaseInitializerTests : IDisposable
     {
         await _sut.InitializeAsync();
         using var c = _factory.Create();
-        var cols = c.Query<string>("SELECT name FROM pragma_table_info('Requests');").ToList();
+        var cols = c.Query<string>("SELECT name FROM pragma_table_info('Backlogs');").ToList();
         Assert.DoesNotContain("is_active", cols); // DATA-02 decision 4
         Assert.Contains("windows_username",
             c.Query<string>("SELECT name FROM pragma_table_info('Users');").ToList()); // DATA-02

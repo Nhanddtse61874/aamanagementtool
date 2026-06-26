@@ -9,7 +9,7 @@ public class TimesheetRowVmTests
     private static TimesheetRowVm NewRow() => new()
     {
         TaskId = 7,
-        RequestCode = "REQ-001",
+        BacklogCode = "REQ-001",
         Project = "ProjectX",
         TaskName = "Implement"
     };

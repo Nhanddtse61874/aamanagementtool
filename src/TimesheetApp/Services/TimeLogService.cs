@@ -15,7 +15,7 @@ public sealed class TimeLogService : ITimeLogService
     private readonly ITimeLogRepository _logs;
     private readonly IUserRepository _users;
     private readonly ITaskRepository _tasks;
-    private readonly IRequestRepository _requests;
+    private readonly IBacklogRepository _requests;
     private readonly IDbBackupHelper _backup;
     private readonly IClock _clock;
     private readonly IAppConfig _config;
@@ -23,7 +23,7 @@ public sealed class TimeLogService : ITimeLogService
 
     public TimeLogService(
         ITimeLogRepository logs, IUserRepository users, ITaskRepository tasks,
-        IRequestRepository requests, IDbBackupHelper backup, IClock clock,
+        IBacklogRepository requests, IDbBackupHelper backup, IClock clock,
         IAppConfig config, IJournalWarningSink journalWarnings)
     {
         _logs = logs; _users = users; _tasks = tasks; _requests = requests; _backup = backup; _clock = clock;
@@ -152,19 +152,19 @@ public sealed class TimeLogService : ITimeLogService
         var rows = tasks.Select(t =>
         {
             decimal? On(DateOnly d) => byKey[t.Id].Where(l => l.WorkDate == d).Select(l => (decimal?)l.Hours).FirstOrDefault();
-            // [ASSUMED] RequestCode left empty here. GetWeekAsync backs TS-01/02/05 (P3 scope);
+            // [ASSUMED] BacklogCode left empty here. GetWeekAsync backs TS-01/02/05 (P3 scope);
             // ITaskRepository.GetActiveForTimesheetAsync (spec §3) returns TaskItem which has no
-            // request_code. P3 either (a) extends that query to project request_code, or (b) the
-            // VM joins it from IRequestRepository when shaping rows. P2 ships the structurally
-            // correct WeekGrid with hours populated; RequestCode population is a P3 concern.
-            return new WeekRow(t.Id, RequestCode: "", t.TaskName, t.OrderIndex,
+            // backlog_code. P3 either (a) extends that query to project backlog_code, or (b) the
+            // VM joins it from IBacklogRepository when shaping rows. P2 ships the structurally
+            // correct WeekGrid with hours populated; BacklogCode population is a P3 concern.
+            return new WeekRow(t.Id, BacklogCode: "", t.TaskName, t.OrderIndex,
                 On(monday), On(monday.AddDays(1)), On(monday.AddDays(2)), On(monday.AddDays(3)), On(monday.AddDays(4)));
         }).ToList();
 
         return new WeekGrid(monday, rows);
     }
 
-    public async Task<IReadOnlyList<WeekRequestGroup>> GetWeekGroupedAsync(int userId, DateOnly mondayOfWeek)
+    public async Task<IReadOnlyList<WeekBacklogGroup>> GetWeekGroupedAsync(int userId, DateOnly mondayOfWeek)
     {
         var monday = MondayOf(mondayOfWeek);
         var friday = monday.AddDays(4);
@@ -175,7 +175,7 @@ public sealed class TimeLogService : ITimeLogService
             byTask[taskId].Where(l => l.WorkDate == d).Select(l => (decimal?)l.Hours).FirstOrDefault());
     }
 
-    public async Task<IReadOnlyList<WeekRequestGroup>> GetWeekGroupedAllUsersAsync(DateOnly mondayOfWeek)
+    public async Task<IReadOnlyList<WeekBacklogGroup>> GetWeekGroupedAllUsersAsync(DateOnly mondayOfWeek)
     {
         var monday = MondayOf(mondayOfWeek);
         var friday = monday.AddDays(4);
@@ -189,33 +189,33 @@ public sealed class TimeLogService : ITimeLogService
             summed.TryGetValue((taskId, d), out var h) ? h : (decimal?)null);
     }
 
-    // Shared group shaping: one group per request (incl. DEFAULT + empty), tasks ordered, with the
+    // Shared group shaping: one group per backlog (incl. DEFAULT + empty), tasks ordered, with the
     // per-(task,day) hours supplied by the caller (single user vs team aggregate).
-    private async Task<IReadOnlyList<WeekRequestGroup>> BuildGroupsAsync(
+    private async Task<IReadOnlyList<WeekBacklogGroup>> BuildGroupsAsync(
         DateOnly monday, Func<int, DateOnly, decimal?> hoursFor)
     {
-        var requests = await _requests.SearchAsync(null);   // ALL requests, incl. DEFAULT + empty ones
+        var requests = await _requests.SearchAsync(null);   // ALL backlogs, incl. DEFAULT + empty ones
         var tasks = await _tasks.GetActiveForTimesheetAsync();
-        var tasksByRequest = tasks.ToLookup(t => t.RequestId);
+        var tasksByBacklog = tasks.ToLookup(t => t.BacklogId);
 
         // v4: resolve assignee ids -> names (GetAll so a deactivated assignee still renders).
         var allUsers = await _users.GetAllAsync() ?? Array.Empty<User>();
         var userNames = allUsers.ToDictionary(u => u.Id, u => u.Name);
 
-        // Order by request_code so DEFAULT-vs-others is stable across reloads.
+        // Order by backlog_code so DEFAULT-vs-others is stable across reloads.
         return requests
-            .OrderBy(r => r.RequestCode, StringComparer.Ordinal)
+            .OrderBy(r => r.BacklogCode, StringComparer.Ordinal)
             .Select(r =>
             {
-                var rows = tasksByRequest[r.Id]
+                var rows = tasksByBacklog[r.Id]
                     .OrderBy(t => t.OrderIndex)
-                    .Select(t => new WeekRow(t.Id, r.RequestCode, t.TaskName, t.OrderIndex,
+                    .Select(t => new WeekRow(t.Id, r.BacklogCode, t.TaskName, t.OrderIndex,
                         hoursFor(t.Id, monday), hoursFor(t.Id, monday.AddDays(1)),
                         hoursFor(t.Id, monday.AddDays(2)), hoursFor(t.Id, monday.AddDays(3)),
                         hoursFor(t.Id, monday.AddDays(4))))
                     .ToList();
                 var assignee = r.AssigneeUserId is { } uid && userNames.TryGetValue(uid, out var n) ? n : null;
-                return new WeekRequestGroup(r.Id, r.RequestCode, r.Project, rows, r.PeriodMonth, r.Status, assignee);
+                return new WeekBacklogGroup(r.Id, r.BacklogCode, r.Project, rows, r.PeriodMonth, r.Type, assignee);
             })
             .ToList();
     }

@@ -12,7 +12,7 @@ public class TimeLogServiceTests
     private readonly Mock<ITimeLogRepository> _logs = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<ITaskRepository> _tasks = new();
-    private readonly Mock<IRequestRepository> _requests = new();
+    private readonly Mock<IBacklogRepository> _requests = new();
     private readonly Mock<IDbBackupHelper> _backup = new();
     private readonly Mock<IAppConfig> _config = new();
     private readonly SpyJournalWarningSink _journal = new();
@@ -262,7 +262,7 @@ public class TimeLogServiceTests
 
     // ---- GetWeekGroupedAsync: every request becomes a group, incl. DEFAULT + empty ones (TS-01/02) ----
 
-    private static Request Req(int id, string code, string project = "P") =>
+    private static Backlog Req(int id, string code, string project = "P") =>
         new(id, code, project, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
     [Fact]
@@ -285,15 +285,15 @@ public class TimeLogServiceTests
 
         var groups = await svc.GetWeekGroupedAsync(1, monday);
 
-        // Ordered by request_code (Ordinal): DEFAULT, REQ-001, REQ-002.
+        // Ordered by backlog_code (Ordinal): DEFAULT, REQ-001, REQ-002.
         Assert.Equal(3, groups.Count);
-        Assert.Equal("DEFAULT", groups[0].RequestCode);
-        Assert.Equal("REQ-001", groups[1].RequestCode);
-        Assert.Equal("REQ-002", groups[2].RequestCode);
+        Assert.Equal("DEFAULT", groups[0].BacklogCode);
+        Assert.Equal("REQ-001", groups[1].BacklogCode);
+        Assert.Equal("REQ-002", groups[2].BacklogCode);
 
         // REQ-001 has both its tasks, with the logged 4h landing on Monday for task 10.
         Assert.Equal(2, groups[1].Tasks.Count);
-        Assert.Equal("REQ-001", groups[1].Tasks[0].RequestCode); // RequestCode now populated (no longer "")
+        Assert.Equal("REQ-001", groups[1].Tasks[0].BacklogCode); // BacklogCode now populated (no longer "")
         Assert.Equal(4m, groups[1].Tasks[0].Mon);
 
         // DEFAULT carries its one task.
@@ -316,8 +316,8 @@ public class TimeLogServiceTests
 
         var groups = await svc.GetWeekGroupedAsync(1, monday);
 
-        var empty = Assert.Single(groups, g => g.RequestCode == "REQ-EMPTY");
+        var empty = Assert.Single(groups, g => g.BacklogCode == "REQ-EMPTY");
         Assert.Empty(empty.Tasks);
-        Assert.Contains(groups, g => g.RequestCode == "DEFAULT"); // DEFAULT still present
+        Assert.Contains(groups, g => g.BacklogCode == "DEFAULT"); // DEFAULT still present
     }
 }

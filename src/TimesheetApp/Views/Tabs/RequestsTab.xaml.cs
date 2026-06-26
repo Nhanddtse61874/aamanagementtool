@@ -6,9 +6,9 @@ using CommunityToolkit.Mvvm.Input;
 using TimesheetApp.ViewModels;
 using TimesheetApp.Views.Dialogs;
 
-public partial class RequestsTab : UserControl
+public partial class BacklogsTab : UserControl
 {
-    public RequestsTab()
+    public BacklogsTab()
     {
         InitializeComponent();
 
@@ -18,7 +18,7 @@ public partial class RequestsTab : UserControl
         // AddTask reads from the NewTaskBox TextBox (AddTask(string) is not a RelayCommand).
         AddTaskFromBoxCommand = new RelayCommand(AddTaskFromBox);
 
-        // Task row action commands: RemoveTask/MoveUp/MoveDown on RequestEditorViewModel are plain
+        // Task row action commands: RemoveTask/MoveUp/MoveDown on BacklogEditorViewModel are plain
         // methods (not [RelayCommand]-decorated), so they are wrapped here for XAML binding.
         RemoveTaskCommand = new RelayCommand<EditableTaskRowVm>(row =>
         {
@@ -41,7 +41,7 @@ public partial class RequestsTab : UserControl
     public IRelayCommand<EditableTaskRowVm> MoveUpCommand { get; }
     public IRelayCommand<EditableTaskRowVm> MoveDownCommand { get; }
 
-    private RequestsViewModel? Vm => DataContext as RequestsViewModel;
+    private BacklogsViewModel? Vm => DataContext as BacklogsViewModel;
 
     private async System.Threading.Tasks.Task SaveAsync()
     {

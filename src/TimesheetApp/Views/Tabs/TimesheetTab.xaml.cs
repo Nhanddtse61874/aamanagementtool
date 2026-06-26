@@ -27,10 +27,10 @@ public partial class TimesheetTab : UserControl
         dialog.ShowDialog();
     }
 
-    // Per-group "Add task": open the dedicated input dialog, then add to that request group.
+    // Per-group "Add task": open the dedicated input dialog, then add to that backlog group.
     private async void OnAddTask(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: RequestGroupVm group }) return;
+        if (sender is not FrameworkElement { DataContext: BacklogGroupVm group }) return;
         var dlg = new TaskInputDialog { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() == true && dlg.TaskName is { } name)
         {
