@@ -1,6 +1,32 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-26 (Daily Report P7/M2 built — awaiting UAT — rebased onto latest main: teal accent #0F766E / 13px design-file alignment)
+**Last updated:** 2026-06-26 (Backlog refactor `Request`→`Backlog` completed — test project migrated + a real `TimeLogRepository` SQL bug fixed + DB stray-table guard; 227 tests green)
+
+## Backlog refactor (`Request` → `Backlog`) — DONE (2026-06-26, branch `feature/daily-report-2026-06-25`, uncommitted→committed this session)
+A prior session began a domain rename **`Request` → `Backlog`** but left it half-done (app code compiled,
+the **test project was never migrated** → solution didn't build; STATE.md wasn't updated). This session
+**finished it**. The rename is NOT cosmetic-only — two semantic changes ride along:
+- **Ticket `Status` → `Type`** (`RequestStatus`→`BacklogType`, column `status`→`type`, audit field `"status"`→`"type"`).
+  The fixed set is unchanged: Continue/Implement/Investigate/IT/Estimate.
+- **New per-task `Status`** (`TaskItem.Status`, default `"Todo"`; new `TaskStatus.All` = Todo/In-process/Done/Pending).
+  Backlog status is now **derived from its tasks** at runtime (no ticket-level status column anymore).
+- Symbol map: `Request`→`Backlog`, `RequestCode`→`BacklogCode`, `IRequestRepository`/`RequestRepository`→
+  `IBacklogRepository`/`BacklogRepository`, `RequestsViewModel`→`BacklogsViewModel` (props `Requests`→`Backlogs`,
+  `FilterStatus`→`FilterType`), `RequestEditorViewModel`→`BacklogEditorViewModel`, `WeekRequestGroup`→`WeekBacklogGroup`,
+  `RequestAuditEntry`→`BacklogAuditEntry`, `MonthlyRequestTaskTotal`→`MonthlyBacklogTaskTotal`, `RequestNode`→`BacklogNode`,
+  `ProjectNode.Requests`→`.Backlogs`, repo/service methods `*ByRequest*`/`*ForRequest*`→`*ByBacklog*`/`*ForBacklog*`,
+  `SmartInputPanelVm.FindRequestCommand`→`FindBacklogCommand`.
+- **Schema migration v6** (DatabaseInitializer): `Requests`→`Backlogs`, `RequestAudit`→`BacklogAudit`, columns
+  `request_code`→`backlog_code` / `status`→`type` / `request_id`→`backlog_id` (Backlogs, Tasks, BacklogAudit,
+  StandupEntries), Tasks gains `status` (default 'Todo'). Base DDL still creates the **legacy-named** Requests/RequestAudit
+  so historical v2–v5 migrations apply, then v6 renames them.
+- **Bugs found/fixed while completing it:**
+  1. `TimeLogRepository.cs` was missed by the original refactor — its Reports/Export SQL still hit `Requests`/
+     `request_code`/`request_id` → live-app crash `SQLite Error 1: 'no such table: Requests'`. Fixed.
+  2. Stray-table-on-relaunch: `CreateTables` re-created legacy `Requests`/`RequestAudit` on every launch (they'd been
+     renamed away). Gated that DDL on `user_version < 6`. New regression test `InitializeAsync_DoesNotRecreate_Legacy_Request_Tables_On_Relaunch`.
+- **227 tests green** (+1 regression). NOTE: STATE.md sections BELOW still use old `Request*` wording — read them
+  with the rename in mind; not yet back-edited (surgical).
 
 ## Daily Report (Standup) — BUILT, awaiting UAT (2026-06-26, branch `feature/daily-report-2026-06-25`)
 New feature replacing the "Daily Report" SOON nav placeholder. **Schema v5** adds `StandupEntries`
