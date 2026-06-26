@@ -1,6 +1,7 @@
 <UserControl x:Class="TimesheetApp.Views.Tabs.UsersTab"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors">
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -31,14 +32,16 @@
         </DockPanel>
 
         <!-- USR-01: user list with avatar + Active/Inactive badge -->
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" AutoGenerateColumns="False"
-                  IsReadOnly="True" SelectionMode="Single">
+        <Border Grid.Row="1" Style="{StaticResource TableContainer}">
+        <DataGrid ItemsSource="{Binding Users}" AutoGenerateColumns="False"
+                  IsReadOnly="True" SelectionMode="Single"
+                  BorderThickness="0" beh:RoundedClip.Radius="8">
             <DataGrid.Columns>
                 <DataGridTemplateColumn Header="Name" Width="*">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
-                                <Border Background="{StaticResource Accent}" CornerRadius="12"
+                                <Border Background="{Binding Name, Converter={StaticResource AvatarBrush}}" CornerRadius="12"
                                         Width="24" Height="24" Margin="0,0,9,0">
                                     <TextBlock Text="{Binding Name, Converter={StaticResource Initial}}"
                                                Foreground="White" FontWeight="Bold" FontSize="11"
@@ -88,8 +91,8 @@
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <!-- USR-03: deactivate — disabled for already-inactive users -->
-                            <Button Content="Deactivate" Style="{StaticResource DangerGhostButton}"
-                                    HorizontalAlignment="Right" Margin="0,0,6,0" Padding="12,5"
+                            <Button Content="Deactivate" Style="{StaticResource MiniGhostButton}"
+                                    HorizontalAlignment="Right" Margin="0,0,6,0"
                                     IsEnabled="{Binding IsActive}"
                                     Command="{Binding DataContext.DeactivateCommand,
                                               RelativeSource={RelativeSource AncestorType=DataGrid}}"
@@ -99,5 +102,6 @@
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
+        </Border>
     </Grid>
 </UserControl>

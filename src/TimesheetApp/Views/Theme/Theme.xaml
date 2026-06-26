@@ -20,6 +20,7 @@
   <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="Border" Color="#E3E8EE"/>
   <SolidColorBrush x:Key="BorderStrong" Color="#D4DAE2"/>
+  <SolidColorBrush x:Key="MiniGhostBorder" Color="#CDD9F0"/>
   <SolidColorBrush x:Key="TextPrimary" Color="#1F2937"/>
   <SolidColorBrush x:Key="TextSecondary" Color="#64748B"/>
   <SolidColorBrush x:Key="HeaderBg" Color="#F1F5F9"/>
@@ -371,6 +372,15 @@
     <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
   </Style>
 
+  <!-- Rounded table container (design: tables use border:1px #E3E8EE; border-radius:8px; overflow:hidden).
+       Wrap a DataGrid in this Border and set the grid BorderThickness=0 + beh:RoundedClip.Radius=8. -->
+  <Style x:Key="TableContainer" TargetType="Border">
+    <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+  </Style>
+
   <Style TargetType="DataGridColumnHeader">
     <Setter Property="Background" Value="#F4F6F9"/>
     <Setter Property="Foreground" Value="#5B6675"/>
@@ -591,10 +601,35 @@
   </Style>
 
   <!-- Small secondary "ghost" action for in-grid buttons (Edit / Browse / Add task / Move) -->
-  <Style x:Key="MiniGhostButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
-    <Setter Property="Padding" Value="9,3"/>
+  <!-- Row action button — matches design 'miniGhost': accent (teal) text, light accent border, 5px radius. -->
+  <Style x:Key="MiniGhostButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+    <Setter Property="Background" Value="{StaticResource Surface}"/>
+    <Setter Property="Padding" Value="12,4"/>
     <Setter Property="FontSize" Value="12"/>
     <Setter Property="Margin" Value="0"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="bd" Background="{TemplateBinding Background}"
+                  BorderBrush="{StaticResource MiniGhostBorder}" BorderThickness="1"
+                  CornerRadius="5" Padding="{TemplateBinding Padding}">
+            <TextBlock Text="{TemplateBinding Content}"
+                       Foreground="{TemplateBinding Foreground}"
+                       FontSize="{TemplateBinding FontSize}" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
 
   <!-- Compact toolbar buttons (Timesheet Entry week-nav bar) — smaller than the default action button -->

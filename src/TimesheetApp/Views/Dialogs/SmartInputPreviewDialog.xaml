@@ -1,6 +1,7 @@
 <Window x:Class="TimesheetApp.Views.Dialogs.SmartInputPreviewDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors"
         Title="Smart fill" Width="460" Height="600" WindowStartupLocation="CenterOwner"
         Background="{StaticResource WindowBg}">
   <!-- DataContext is the TimesheetViewModel.SmartInput (SmartInputPanelVm) -->
@@ -73,12 +74,15 @@
     </StackPanel>
 
     <!-- 4) Preview of what will be written -->
-    <DataGrid ItemsSource="{Binding PreviewCells}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,8,0,0">
+    <Border Style="{StaticResource TableContainer}" Margin="0,8,0,0">
+    <DataGrid ItemsSource="{Binding PreviewCells}" AutoGenerateColumns="False" IsReadOnly="True"
+              BorderThickness="0" beh:RoundedClip.Radius="8">
       <DataGrid.Columns>
         <DataGridTextColumn Header="Task"  Binding="{Binding TaskName}" Width="*"/>
         <DataGridTextColumn Header="Date"  Binding="{Binding Date, StringFormat='yyyy-MM-dd'}" Width="Auto"/>
         <DataGridTextColumn Header="Hours" Binding="{Binding Hours, StringFormat=N1}" Width="Auto"/>
       </DataGrid.Columns>
     </DataGrid>
+    </Border>
   </DockPanel>
 </Window>

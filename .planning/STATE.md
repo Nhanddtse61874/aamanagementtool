@@ -1,6 +1,6 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-26 (design-file alignment: teal accent, 13px font, themed inputs, table styling)
+**Last updated:** 2026-06-26 (per-user avatar colours, rounded table containers, teal miniGhost row buttons — UNCOMMITTED in working tree)
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
@@ -9,7 +9,11 @@ Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `
 Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
 
 ## Current status
-- **194 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`3ab7df4`** (all work pushed).
+- **194 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`090700b`** (docs/STATE).
+  ⚠️ **UNCOMMITTED work in tree** (2026-06-26 session below): avatar colours, rounded tables, teal row buttons.
+  Files: `App.xaml`, `MainWindow.xaml`, `Theme.xaml`, `Views/Tabs/{Users,Requests,Reports}Tab.xaml`,
+  `Views/Dialogs/SmartInputPreviewDialog.xaml`, new `Views/Converters/AvatarBrushConverter.cs`, new
+  `Views/Behaviors/RoundedClip.cs`. (`src/.cr/` is unrelated/untracked.)
 - Schema is at **user_version 4** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization;
   v4 = `requests.assignee_user_id`).
 - UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
@@ -61,12 +65,42 @@ Big session. Features first, then a long UI pass to match the **design HTML file
 - DataGrid headers `#F4F6F9`/`#5B6675` 11px bold; Requests uppercase headers + **Status teal pill**; search/add
   boxes use an in-box **placeholder** overlay (no external "Search:" label). Settings Delete = red-outline.
 
-## Design alignment — still OPEN (user to decide; these differ because our features differ from the v1 mockup)
-- Design "+ New Request" is a *ghost* button + a separate *Search* primary; we use **live search** so New request
-  is the teal primary. Design has an Entry **Save** button; we use **auto-save** (Save removed). — keep ours or
-  match file?
-- Per-user **avatar colours** (file varies them; ours is teal for all). Rounded **bordered table containers**
-  (WPF DataGrid has no CornerRadius — needs a wrapping Border). Minor.
+## Design alignment — RESOLVED (2026-06-26)
+- "+ New Request" → **KEEP OURS** (live search + teal primary; design's ghost+Search not adopted). LOCKED.
+- Entry **Save** button → **KEEP OURS** (auto-save; no Save button). LOCKED.
+- Per-user **avatar colours** → **DONE** (matched design). Rounded **bordered table containers** → **DONE**.
+  See session section below.
+
+## Session 2026-06-26 — avatar colours + rounded tables + teal row buttons — DONE (build clean, 194 tests, NOT yet committed)
+Three surgical UI fixes to match the design HTML file. **All in the working tree, UNCOMMITTED** (user asked to
+record state first; commit per `commit_atomic: true` = one commit per task once user says go).
+- **Per-user avatar colours** (design `avatars[i % len]`): new `Views/Converters/AvatarBrushConverter.cs` hashes a
+  name (manual char-sum, NOT `string.GetHashCode` which is per-process randomised) → one of 5 design colours
+  `#2563EB #0891B2 #7C3AED #DB2777 #16A34A`, stable across restarts. Registered in `App.xaml` as `AvatarBrush`.
+  Applied: Users list avatar (binds `Name`) + sidebar user chip (`MainWindow.xaml`, binds `CurrentUserName`).
+  Old all-teal `{StaticResource Accent}` background replaced.
+- **Rounded table containers** (design `border:1px #E3E8EE; border-radius:8px; overflow:hidden`): new
+  `Views/Behaviors/RoundedClip.cs` attached behaviour `RoundedClip.Radius` clips a DataGrid to a rounded rect on
+  SizeChanged (WPF DataGrid has no CornerRadius → square corners poke out of a plain rounded Border). New
+  `TableContainer` Border style in `Theme.xaml`. Wrapped all 4 DataGrids (`BorderThickness=0` + `RoundedClip.Radius=8`):
+  Users, Requests, Reports (Weekly + Monthly), SmartInputPreviewDialog. `xmlns:beh` added to each file.
+- **Row action buttons → teal `miniGhost`** (design line 246/167): `MiniGhostButton` was based on the GREY
+  `GhostButton`; design's miniGhost is **teal text + light-blue border `#CDD9F0` + 5px radius**. Rewrote
+  `MiniGhostButton` with its own template: `Foreground=Accent`, border `MiniGhostBorder` (#CDD9F0), radius 5,
+  padding 12/4, SemiBold. Users **Deactivate** switched `DangerGhostButton` (red) → `MiniGhostButton` (teal) — design
+  uses miniGhost for the reversible toggle; Settings **Delete** stays red (`DangerGhostButton`, own template).
+  Side effect (intended, also design-faithful): Requests **Edit** + TaskIconButton glyphs now teal too.
+- **TWO WPF gotchas burned a lot of cycles (remember these):**
+  1. In a custom `ControlTemplate`, `TextElement.Foreground` on the **Border does NOT propagate** to a
+     `ContentPresenter`'s string text — it fell back to the DataGridCell's dark `TextPrimary`, so the button text
+     stayed BLACK despite `Foreground=Accent`. FIX: render content with an explicit `<TextBlock
+     Foreground="{TemplateBinding Foreground}">` instead of `ContentPresenter`. (This pattern is now in MiniGhostButton.)
+  2. `dotnet build` kept reporting MSB3027 "file locked / being used by another process" and silently shipping the
+     OLD exe — because **the app was left running** and locked `bin/.../TimesheetApp.exe`. The compile succeeded but
+     the copy failed, so every visual "fix" looked like it did nothing. ALWAYS close the running app (or
+     `taskkill /IM TimesheetApp.exe /F`) before rebuilding when iterating on UI.
+- **Verified** the teal button by launching the exe + UI-Automation nav to Users + screen-capture/zoom + pixel
+  sampling (teal:163 dark:0). Script in scratchpad (`verify2.ps1`) — reusable for headless UI checks on this app.
 
 ## UAT fixes — early build (historical, newest last)
 1. Interim Modern Light theme (`Views/Theme/Theme.xaml`) — SINCE SUPERSEDED: accent is now teal #0F766E per the design file.

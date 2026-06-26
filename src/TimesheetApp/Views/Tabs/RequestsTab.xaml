@@ -1,6 +1,7 @@
 <UserControl x:Class="TimesheetApp.Views.Tabs.RequestsTab"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors">
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -44,8 +45,10 @@
         </StackPanel>
 
         <!-- REQ-01: request list. NOTE: NO delete-request button anywhere (REQ-04). -->
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Requests}" AutoGenerateColumns="False"
-                  IsReadOnly="True" SelectionMode="Single">
+        <Border Grid.Row="1" Style="{StaticResource TableContainer}">
+        <DataGrid ItemsSource="{Binding Requests}" AutoGenerateColumns="False"
+                  IsReadOnly="True" SelectionMode="Single"
+                  BorderThickness="0" beh:RoundedClip.Radius="8">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="CODE" Binding="{Binding RequestCode}" Width="1.6*"/>
                 <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="1.2*"/>
@@ -79,6 +82,7 @@
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
+        </Border>
 
         <!-- REQ-02/03: editor overlay — shown when Editor != null -->
         <Border Grid.RowSpan="2" Background="#66000000"

@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:m="clr-namespace:TimesheetApp.Models"
-             xmlns:conv="clr-namespace:TimesheetApp.Views.Converters">
+             xmlns:conv="clr-namespace:TimesheetApp.Views.Converters"
+             xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors">
   <UserControl.Resources>
     <!-- Local resource: DateOnly<->DateTime? for DatePicker bindings. Declared here (not App.xaml)
          so the StaticResource resolves at runtime without cross-phase dependency. -->
@@ -100,8 +101,10 @@
       <DockPanel Grid.Column="0" Margin="0,0,8,0">
         <TextBlock DockPanel.Dock="Top" Text="Weekly (by day · ticket · task)" FontWeight="Bold"/>
         <!-- RPT-01: one row per (date, ticket, task) with summed hours -->
-        <DataGrid DockPanel.Dock="Top" Height="200" ItemsSource="{Binding WeeklyDetailRows}"
-                  AutoGenerateColumns="False" IsReadOnly="True">
+        <Border DockPanel.Dock="Top" Height="200" Style="{StaticResource TableContainer}">
+        <DataGrid ItemsSource="{Binding WeeklyDetailRows}"
+                  AutoGenerateColumns="False" IsReadOnly="True"
+                  BorderThickness="0" beh:RoundedClip.Radius="8">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=ddd dd/MM}" Width="Auto"/>
             <DataGridTextColumn Header="Ticket" Binding="{Binding RequestCode}" Width="*"/>
@@ -109,9 +112,12 @@
             <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}" Width="Auto"/>
           </DataGrid.Columns>
         </DataGrid>
+        </Border>
         <TextBlock DockPanel.Dock="Top" Text="Monthly (by request / task)" FontWeight="Bold" Margin="0,8,0,0"/>
         <!-- RPT-02: one row per (RequestCode, Project, TaskName) with summed hours -->
-        <DataGrid ItemsSource="{Binding MonthlyRows}" AutoGenerateColumns="False" IsReadOnly="True">
+        <Border Style="{StaticResource TableContainer}">
+        <DataGrid ItemsSource="{Binding MonthlyRows}" AutoGenerateColumns="False" IsReadOnly="True"
+                  BorderThickness="0" beh:RoundedClip.Radius="8">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Request" Binding="{Binding RequestCode}"/>
             <DataGridTextColumn Header="Project" Binding="{Binding Project}"/>
@@ -119,6 +125,7 @@
             <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}"/>
           </DataGrid.Columns>
         </DataGrid>
+        </Border>
       </DockPanel>
 
       <!-- Right column: RPT-03 drill-down TreeView (Project -> Request -> Task -> Date) -->
