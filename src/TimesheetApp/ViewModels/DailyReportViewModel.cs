@@ -219,6 +219,22 @@ public sealed partial class StandupIssueRowVm : ObservableObject
 
     [ObservableProperty] private string? _solutionText;
     [ObservableProperty] private string _status;
+    // Solution is optional. An issue with no saved solution shows a "Chưa có solution" placeholder + an
+    // "add solution" button instead of an empty, unlabeled input. Clicking it reveals the inline editor.
+    [ObservableProperty] private bool _isEditingSolution;
+
+    public bool HasSolution => !string.IsNullOrWhiteSpace(Model.SolutionText);
+    public bool ShowSolutionEditor => IsEditingSolution || HasSolution;   // editor: while adding, or once saved
+    public bool ShowNoSolution => !ShowSolutionEditor;                    // placeholder + add button
+
+    partial void OnIsEditingSolutionChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSolutionEditor));
+        OnPropertyChanged(nameof(ShowNoSolution));
+    }
+
+    [RelayCommand]
+    private void BeginEditSolution() => IsEditingSolution = true;
 
     [RelayCommand]
     private Task SaveAsync() =>

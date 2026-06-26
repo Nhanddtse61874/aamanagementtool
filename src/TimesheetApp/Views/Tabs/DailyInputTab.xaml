@@ -42,29 +42,60 @@
           <ItemsControl ItemsSource="{Binding Issues}" Margin="0,6,0,0">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}"
-                        BorderThickness="1" CornerRadius="6" Padding="9" Margin="0,0,0,6">
+                <!-- Amber "warning" until a solution is saved; flips to green "resolved" (✓) once it has one. -->
+                <Border x:Name="issueBox" Background="{StaticResource AmberBg}"
+                        BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+                        CornerRadius="6" Padding="9" Margin="0,0,0,6">
                   <StackPanel>
-                    <TextBlock Text="{Binding IssueText, StringFormat='⚠ {0}'}"
-                               FontWeight="SemiBold" Foreground="{StaticResource AmberFg}"/>
-                    <Grid Margin="0,6,0,0">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                      </Grid.ColumnDefinitions>
-                      <TextBox Grid.Column="0" Text="{Binding SolutionText, UpdateSourceTrigger=PropertyChanged}"
-                               ToolTip="Solution (leave blank = pending discussion)"/>
-                      <ComboBox Grid.Column="1" Width="105" Margin="6,0,0,0"
-                                ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding Status}"/>
-                      <Button Grid.Column="2" Content="Save" Style="{StaticResource MiniGhostButton}"
-                              Command="{Binding SaveCommand}" Margin="6,0,0,0"/>
-                      <Button Grid.Column="3" Content="✕" Style="{StaticResource MiniGhostButton}"
-                              Command="{Binding DeleteCommand}" Margin="6,0,0,0"/>
-                    </Grid>
+                    <!-- header: status icon + issue text + delete -->
+                    <DockPanel>
+                      <Button DockPanel.Dock="Right" Content="✕" Style="{StaticResource MiniGhostButton}"
+                              Command="{Binding DeleteCommand}" ToolTip="Delete issue" VerticalAlignment="Top"/>
+                      <TextBlock x:Name="issueIcon" DockPanel.Dock="Left" Text="⚠" FontWeight="Bold"
+                                 Foreground="{StaticResource AmberFg}" Margin="0,0,7,0" VerticalAlignment="Top"/>
+                      <TextBlock x:Name="issueText" Text="{Binding IssueText}" FontWeight="SemiBold"
+                                 Foreground="{StaticResource AmberFg}" TextWrapping="Wrap"/>
+                    </DockPanel>
+
+                    <!-- no solution yet: placeholder + "add solution" button (no empty input) -->
+                    <DockPanel Margin="0,8,0,0"
+                               Visibility="{Binding ShowNoSolution, Converter={StaticResource BoolToVisibleConverter}}">
+                      <Button DockPanel.Dock="Right" Content="&#10133; Nhập solution"
+                              Style="{StaticResource MiniGhostButton}" Command="{Binding BeginEditSolutionCommand}"/>
+                      <TextBlock Text="Chưa có solution" FontStyle="Italic" FontSize="12"
+                                 Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                    </DockPanel>
+
+                    <!-- solution editor: while adding one, or once it exists (then the row is "resolved") -->
+                    <StackPanel Margin="0,8,0,0"
+                                Visibility="{Binding ShowSolutionEditor, Converter={StaticResource BoolToVisibleConverter}}">
+                      <TextBlock Text="Solution" Style="{StaticResource FieldLabel}"/>
+                      <Grid Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*"/>
+                          <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding SolutionText, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Describe how the issue was solved"/>
+                        <ComboBox Grid.Column="1" Width="105" Margin="6,0,0,0"
+                                  ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding Status}"/>
+                        <Button Grid.Column="2" Content="Save" Style="{StaticResource MiniGhostButton}"
+                                Command="{Binding SaveCommand}" Margin="6,0,0,0"/>
+                      </Grid>
+                    </StackPanel>
                   </StackPanel>
                 </Border>
+
+                <DataTemplate.Triggers>
+                  <DataTrigger Binding="{Binding HasSolution}" Value="True">
+                    <Setter TargetName="issueBox" Property="Background" Value="{StaticResource BadgeGreenBg}"/>
+                    <Setter TargetName="issueBox" Property="BorderBrush" Value="{StaticResource ResolvedBorder}"/>
+                    <Setter TargetName="issueIcon" Property="Text" Value="&#10003;"/>
+                    <Setter TargetName="issueIcon" Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+                    <Setter TargetName="issueText" Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+                  </DataTrigger>
+                </DataTemplate.Triggers>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
