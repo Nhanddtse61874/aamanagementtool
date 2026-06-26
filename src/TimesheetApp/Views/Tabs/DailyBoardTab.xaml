@@ -31,12 +31,31 @@
           <ItemsControl ItemsSource="{Binding Issues}" Margin="12,5,0,0">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <TextBlock Margin="0,1" Foreground="{StaticResource AmberFg}" FontSize="13">
-                  <Run Text="⚠ ["/><Run Text="{Binding Status, Mode=OneWay}"/><Run Text="] "/>
-                  <Run Text="{Binding IssueText, Mode=OneWay}"/>
-                  <Run Text="  →  " Foreground="{StaticResource TextSecondary}"/>
-                  <Run Text="{Binding SolutionText, Mode=OneWay, TargetNullValue='(pending)'}"/>
-                </TextBlock>
+                <!-- Read-only: amber "warning" until solved, green "✓ resolved" once it has a solution. -->
+                <Border x:Name="bx" Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}"
+                        BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,3,0,0">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock x:Name="ic" Text="⚠" FontWeight="Bold" Foreground="{StaticResource AmberFg}"
+                                 Margin="0,0,6,0" VerticalAlignment="Top"/>
+                      <TextBlock x:Name="tx" Text="{Binding IssueText}" FontWeight="SemiBold"
+                                 Foreground="{StaticResource AmberFg}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <TextBlock Margin="20,3,0,0" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondary}"
+                               Text="{Binding SolutionText}"
+                               Visibility="{Binding HasSolution, Converter={StaticResource BoolToVisibleConverter}}"/>
+                  </StackPanel>
+                </Border>
+                <DataTemplate.Triggers>
+                  <DataTrigger Binding="{Binding HasSolution}" Value="True">
+                    <Setter TargetName="bx" Property="Background" Value="{StaticResource BadgeGreenBg}"/>
+                    <Setter TargetName="bx" Property="BorderBrush" Value="{StaticResource ResolvedBorder}"/>
+                    <Setter TargetName="ic" Property="Text" Value="&#10003;"/>
+                    <Setter TargetName="ic" Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+                    <Setter TargetName="tx" Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+                  </DataTrigger>
+                </DataTemplate.Triggers>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>

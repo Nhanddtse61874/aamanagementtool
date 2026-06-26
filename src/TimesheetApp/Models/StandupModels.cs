@@ -14,7 +14,11 @@ public sealed record StandupEntry(
 // Zero-or-more per entry (DR-04). SolutionText null/empty = pending discussion.
 public sealed record StandupIssue(
     int Id, int EntryId, string IssueText, string? SolutionText, string Status,
-    int OrderIndex, DateTimeOffset CreatedAt);
+    int OrderIndex, DateTimeOffset CreatedAt)
+{
+    // A solved issue (has a solution) renders as "resolved" (green ✓); otherwise as a warning (amber ⚠).
+    public bool HasSolution => !string.IsNullOrWhiteSpace(SolutionText);
+}
 
 // Allowed standup entry statuses (DR-05). Order = display order.
 public static class StandupStatus

@@ -60,9 +60,9 @@
                     <!-- no solution yet: placeholder + "add solution" button (no empty input) -->
                     <DockPanel Margin="0,8,0,0"
                                Visibility="{Binding ShowNoSolution, Converter={StaticResource BoolToVisibleConverter}}">
-                      <Button DockPanel.Dock="Right" Content="&#10133; Nhập solution"
+                      <Button DockPanel.Dock="Right" Content="&#10133; Add solution"
                               Style="{StaticResource MiniGhostButton}" Command="{Binding BeginEditSolutionCommand}"/>
-                      <TextBlock Text="Chưa có solution" FontStyle="Italic" FontSize="12"
+                      <TextBlock Text="No solution yet" FontStyle="Italic" FontSize="12"
                                  Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
                     </DockPanel>
 
@@ -108,36 +108,26 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <Grid Margin="22,4,22,16">
-    <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="*"/>
-      <ColumnDefinition Width="*"/>
-    </Grid.ColumnDefinitions>
+  <!-- Single stacked column (mirrors the Team Board layout): Yesterday section, then Today section. -->
+  <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="22,4,22,16">
+    <StackPanel>
+      <!-- Yesterday -->
+      <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
+        <TextBlock Text="Yesterday" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
+      </Border>
+      <ItemsControl ItemsSource="{Binding MyYesterday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,0"/>
+      <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Left"
+              Margin="0,0,0,18" Tag="yesterday" Click="OnAddEntry"
+              Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
 
-    <!-- Yesterday -->
-    <DockPanel Grid.Column="0" Margin="0,0,9,0">
-      <TextBlock DockPanel.Dock="Top" Text="Yesterday" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
-      <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel>
-          <ItemsControl ItemsSource="{Binding MyYesterday}" ItemTemplate="{StaticResource EntryTemplate}"/>
-          <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Left"
-                  Tag="yesterday" Click="OnAddEntry"
-                  Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
-        </StackPanel>
-      </ScrollViewer>
-    </DockPanel>
-
-    <!-- Today -->
-    <DockPanel Grid.Column="1" Margin="9,0,0,0">
-      <TextBlock DockPanel.Dock="Top" Text="Today" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
-      <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel>
-          <ItemsControl ItemsSource="{Binding MyToday}" ItemTemplate="{StaticResource EntryTemplate}"/>
-          <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Left"
-                  Tag="today" Click="OnAddEntry"
-                  Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
-        </StackPanel>
-      </ScrollViewer>
-    </DockPanel>
-  </Grid>
+      <!-- Today -->
+      <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
+        <TextBlock Text="Today" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
+      </Border>
+      <ItemsControl ItemsSource="{Binding MyToday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,0"/>
+      <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Left"
+              Margin="0,0,0,4" Tag="today" Click="OnAddEntry"
+              Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>
