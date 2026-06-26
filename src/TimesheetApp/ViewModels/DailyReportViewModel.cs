@@ -111,27 +111,36 @@ public sealed partial class DailyReportViewModel : ObservableObject
         }
     }
 
-    internal async Task DeleteEntryAsync(int entryId)
+    internal Task DeleteEntryAsync(int entryId) => RunAsync(async () =>
     {
         if (await _service.DeleteEntryAsync(entryId)) await ReloadAndBroadcastAsync();
-    }
+    });
 
-    internal async Task AddIssueAsync(int entryId, string issueText, string? solutionText, string status)
-    {
-        await _service.AddIssueAsync(entryId, issueText, solutionText, status);
-        await ReloadAndBroadcastAsync();
-    }
+    internal Task AddIssueAsync(int entryId, string issueText, string? solutionText, string status) =>
+        RunAsync(async () =>
+        {
+            await _service.AddIssueAsync(entryId, issueText, solutionText, status);
+            await ReloadAndBroadcastAsync();
+        });
 
-    internal async Task SaveIssueAsync(StandupIssue issue)
+    internal Task SaveIssueAsync(StandupIssue issue) => RunAsync(async () =>
     {
         await _service.UpdateIssueAsync(issue);
         await ReloadAndBroadcastAsync();
-    }
+    });
 
-    internal async Task DeleteIssueAsync(int issueId)
+    internal Task DeleteIssueAsync(int issueId) => RunAsync(async () =>
     {
         await _service.DeleteIssueAsync(issueId);
         await ReloadAndBroadcastAsync();
+    });
+
+    // Run a standup mutation, surfacing any failure as an inline message instead of an unhandled
+    // crash (the app has no global handler for fire-and-forget async-void UI callbacks).
+    private async Task RunAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex) { StatusMessage = ex.Message; }
     }
 
     internal async Task LoadTasksForDraftAsync(StandupDraftVm draft, int backlogId)

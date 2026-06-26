@@ -379,6 +379,9 @@ public sealed partial class TimesheetViewModel : ObservableObject
         if (_backlogs is null) return;
         var backlog = await _backlogs.GetByIdAsync(backlogId);
         if (backlog is null) return;
+        // The hidden DEFAULT backlog must NEVER belong to a month — it has to appear in EVERY month
+        // (it holds the recurring default tasks). Defense-in-depth: the UI already hides Move for it.
+        if (string.Equals(backlog.BacklogCode, "DEFAULT", StringComparison.Ordinal)) return;
 
         // Base month = the ticket's current period (or the filter month if unassigned), then +1.
         var baseMonth = ParseMonth(backlog.PeriodMonth) ?? SelectedMonth;

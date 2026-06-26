@@ -22,6 +22,17 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // UAT safety net: surface any unhandled UI-thread exception as a readable dialog instead of a
+        // silent crash (fire-and-forget async-void callbacks have nowhere else to report). Keep the app
+        // alive so a single failed action doesn't kill the session.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            MessageBox.Show(
+                args.Exception.Message + "\n\n" + args.Exception.GetType().FullName,
+                "Unexpected error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            args.Handled = true;
+        };
+
         // The SelectUserDialog (XC-07) may be shown modally BEFORE MainWindow exists. With the default
         // OnLastWindowClose, closing/cancelling that dialog would shut the app down before the main
         // window appears. Hold shutdown explicit during startup; switch to main-window-bound after Show().
