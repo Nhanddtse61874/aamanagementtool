@@ -141,21 +141,39 @@
             </Style>
           </TreeView.ItemContainerStyle>
           <TreeView.Resources>
+            <!-- Every level shows its rolled-up hours; the Date leaf shows the hours logged that day. -->
             <!-- Level 1: ProjectNode — children are Backlogs -->
             <HierarchicalDataTemplate DataType="{x:Type m:ProjectNode}" ItemsSource="{Binding Backlogs}">
-              <TextBlock Text="{Binding Project}" FontWeight="Bold"/>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Project}" FontWeight="Bold"/>
+                <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}" FontWeight="Bold"
+                           Foreground="{StaticResource TextSecondary}"/>
+              </StackPanel>
             </HierarchicalDataTemplate>
             <!-- Level 2: BacklogNode — children are Tasks -->
             <HierarchicalDataTemplate DataType="{x:Type m:BacklogNode}" ItemsSource="{Binding Tasks}">
-              <TextBlock Text="{Binding BacklogCode}"/>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding BacklogCode}"/>
+                <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}"
+                           Foreground="{StaticResource TextSecondary}"/>
+              </StackPanel>
             </HierarchicalDataTemplate>
             <!-- Level 3: TaskNode — children are Dates -->
             <HierarchicalDataTemplate DataType="{x:Type m:TaskNode}" ItemsSource="{Binding Dates}">
-              <TextBlock Text="{Binding TaskName}"/>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding TaskName}"/>
+                <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}"
+                           Foreground="{StaticResource TextSecondary}"/>
+              </StackPanel>
             </HierarchicalDataTemplate>
-            <!-- Level 4 leaf: DateEntry -->
+            <!-- Level 4 leaf: DateEntry — date + hours logged that day -->
             <DataTemplate DataType="{x:Type m:DateEntry}">
-              <TextBlock Text="{Binding Date, StringFormat=yyyy-MM-dd}"/>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Date, StringFormat='ddd, yyyy-MM-dd'}"
+                           Foreground="{StaticResource TextSecondary}"/>
+                <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}" FontWeight="SemiBold"
+                           Foreground="{StaticResource Accent}"/>
+              </StackPanel>
             </DataTemplate>
           </TreeView.Resources>
         </TreeView>
