@@ -337,6 +337,27 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _messenger.Send(new DataChangedMessage(DataKind.Tasks));
     }
 
+    /// Drag-reorder a task within its backlog group (same group only), persist order_index, then reload.
+    public async Task ReorderTaskAsync(int draggedTaskId, int targetTaskId)
+    {
+        if (IsReadOnly || draggedTaskId == targetTaskId) return;
+        var group = Groups.FirstOrDefault(g => g.Tasks.Any(t => t.TaskId == draggedTaskId));
+        if (group is null || group.Tasks.All(t => t.TaskId != targetTaskId)) return;   // same group only
+        var ids = group.Tasks.Select(t => t.TaskId).ToList();
+        ids.Remove(draggedTaskId);
+        ids.Insert(ids.IndexOf(targetTaskId), draggedTaskId);
+        for (var i = 0; i < ids.Count; i++) await _tasks.SetOrderAsync(ids[i], i);
+        await OnTaskAddedAsync();
+    }
+
+    /// Drag-to-trash: soft-delete a task (its time logs are preserved), then reload.
+    public async Task DeleteTaskAsync(int taskId)
+    {
+        if (IsReadOnly) return;
+        await _tasks.SetActiveAsync(taskId, false);
+        await OnTaskAddedAsync();
+    }
+
     private bool AnyDayOverEight() =>
         new[] { MonTotal, TueTotal, WedTotal, ThuTotal, FriTotal }.Any(t => t > 8m);
 

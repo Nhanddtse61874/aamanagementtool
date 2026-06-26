@@ -13,4 +13,5 @@ public interface ITaskRepository
     Task<int> InsertAsync(TaskItem task);                          // REQ-02/REQ-03/SET-04
     Task UpdateAsync(TaskItem task);                               // name + order_index
     Task SetActiveAsync(int taskId, bool isActive);                // soft delete (REQ-04/SET-04)
+    Task SetOrderAsync(int taskId, int orderIndex);                // drag-reorder within a backlog group
 }

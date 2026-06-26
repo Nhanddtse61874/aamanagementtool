@@ -84,6 +84,14 @@ public sealed class TaskRepository : ITaskRepository
             new { a = isActive ? 1 : 0, id = taskId });
     }
 
+    public async Task SetOrderAsync(int taskId, int orderIndex)
+    {
+        using var c = _factory.Create();
+        await c.ExecuteAsync(
+            "UPDATE Tasks SET order_index = @o WHERE id = @id;",
+            new { o = orderIndex, id = taskId });
+    }
+
     private static TaskItem MapTask(TaskRaw r) =>
         new((int)r.id, (int)r.backlog_id, r.task_name, (int)r.order_index, r.is_active != 0, r.status ?? "Todo");
 

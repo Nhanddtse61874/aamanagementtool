@@ -223,6 +223,16 @@
       </Grid>
     </Border>
 
+    <!-- Drag-to-delete zone for task rows (pinned just above the day-totals footer; editable view only). -->
+    <Border x:Name="TaskTrash" DockPanel.Dock="Bottom" AllowDrop="True" Drop="OnTaskTrashDrop"
+            DragEnter="OnTaskTrashDragOver" DragOver="OnTaskTrashDragOver" DragLeave="OnTaskTrashDragLeave"
+            Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+            CornerRadius="8" Padding="10,7" Margin="8,4,25,4"
+            Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibleConverter}}">
+      <TextBlock Text="&#128465;  Drop a task here to delete" HorizontalAlignment="Center"
+                 Foreground="{StaticResource AmberFg}" FontSize="12" FontWeight="SemiBold"/>
+    </Border>
+
     <!-- Single continuous table body: one "section" band per backlog, its task rows beneath (each with
          editable Mon–Fri cells). Scrollbar is ALWAYS reserved (Visible) so the columns line up with the
          header strip + footer (which reserve a matching 25px right gutter) at any window size. -->
@@ -279,7 +289,8 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
-                            Background="{StaticResource Surface}">
+                            Background="{StaticResource Surface}"
+                            AllowDrop="True" Drop="OnTaskDrop" DragOver="OnTaskDragOver">
                       <Grid>
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="2*"/>
@@ -287,8 +298,15 @@
                           <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="{Binding TaskName}" VerticalAlignment="Center"
-                                   FontSize="13" TextTrimming="CharacterEllipsis" Margin="28,5,8,5"/>
+                        <DockPanel Grid.Column="0" Margin="10,5,8,5">
+                          <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="14" Cursor="SizeAll"
+                                     Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"
+                                     ToolTip="Drag to reorder, or drop on the trash to delete"
+                                     Visibility="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibleConverter}}"
+                                     PreviewMouseLeftButtonDown="OnTaskDragHandleDown" PreviewMouseMove="OnTaskDragHandleMove"/>
+                          <TextBlock Text="{Binding TaskName}" VerticalAlignment="Center"
+                                     FontSize="13" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
 
                         <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
                           <TextBox Style="{StaticResource GridDayBox}"
