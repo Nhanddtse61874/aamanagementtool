@@ -51,6 +51,11 @@ public sealed partial class SmartInputPanelVm : ObservableObject
     public ObservableCollection<SmartTaskItem> Tasks { get; } = new();
 
     [ObservableProperty] private SmartInputMode _mode = SmartInputMode.DistributeEven;
+
+    /// True only in Split-evenly mode — the Total hours box applies only then (Full 8h ignores it).
+    public bool IsSplitEven => Mode == SmartInputMode.DistributeEven;
+    partial void OnModeChanged(SmartInputMode value) => OnPropertyChanged(nameof(IsSplitEven));
+
     [ObservableProperty] private DateOnly _from;
     [ObservableProperty] private DateOnly _to;
     [ObservableProperty] private decimal _totalHours;
