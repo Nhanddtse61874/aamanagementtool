@@ -7,11 +7,17 @@
        editable (solution + status) since that is the collaborative "fill after discussion" workflow. -->
   <UserControl.Resources>
 
-    <!-- One existing standup entry (DataContext = StandupEntryRowVm). -->
+    <!-- One existing standup entry (DataContext = StandupEntryRowVm). Drag the ⠿ grip to reorder or drop
+         onto the trash zone to delete. The card itself is a drop target for reordering. -->
     <DataTemplate x:Key="EntryTemplate">
-      <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,10" AllowDrop="True"
+              Drop="OnEntryDrop" DragOver="OnEntryDragOver">
         <StackPanel>
           <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="15" Cursor="SizeAll" Margin="0,0,9,0"
+                       VerticalAlignment="Top" Foreground="{StaticResource TextSecondary}"
+                       ToolTip="Drag to reorder, or drop on the trash to delete"
+                       PreviewMouseLeftButtonDown="OnEntryDragHandleDown" PreviewMouseMove="OnEntryDragHandleMove"/>
             <Border DockPanel.Dock="Right" Background="{StaticResource BadgeGrayBg}" CornerRadius="10"
                     Padding="9,2" VerticalAlignment="Top">
               <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="SemiBold"
@@ -113,6 +119,16 @@
     <Button DockPanel.Dock="Top" Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}"
             HorizontalAlignment="Left" Margin="0,0,0,10" Click="OnAddEntry"
             Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
+
+    <!-- Drag-to-delete zone (pinned at the bottom). Highlights while dragging an entry over it. -->
+    <Border x:Name="EntryTrash" DockPanel.Dock="Bottom" AllowDrop="True" Drop="OnEntryTrashDrop"
+            DragEnter="OnEntryTrashDragOver" DragOver="OnEntryTrashDragOver" DragLeave="OnEntryTrashDragLeave"
+            Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+            CornerRadius="8" Padding="10,8" Margin="0,10,0,0"
+            Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}">
+      <TextBlock Text="&#128465;  Drop an entry here to delete" HorizontalAlignment="Center"
+                 Foreground="{StaticResource AmberFg}" FontSize="12" FontWeight="SemiBold"/>
+    </Border>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel>

@@ -23,6 +23,8 @@ public interface IStandupService
     Task<int> AddEntryAsync(DateOnly workDate, StandupEntryDraft draft);
     Task<bool> UpdateEntryAsync(int entryId, StandupEntryDraft draft);
     Task<bool> DeleteEntryAsync(int entryId);
+    // Drag-reorder: move the dragged entry to the target entry's position (and section), same day + owner.
+    Task ReorderEntryAsync(int draggedId, int targetId);
 
     // Issue writes — collaborative, not gated by owner/lock (DR-04).
     Task<int> AddIssueAsync(int entryId, string issueText, string? solutionText, string status);

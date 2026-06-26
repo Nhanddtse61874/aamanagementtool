@@ -140,6 +140,26 @@ public class StandupServiceTests
         ctx.Repo.Verify(r => r.UpdateEntryAsync(It.Is<StandupEntry>(e => e.Id == 7 && e.Status == "Done")), Times.Once);
     }
 
+    [Fact] // drag-reorder: moving an entry onto the front slot reassigns 0..n within that section
+    public async Task ReorderEntry_within_section_reassigns_order()
+    {
+        var ctx = new Ctx();
+        var a = Entry(10, 1, Today, StandupSection.Today) with { OrderIndex = 0 };
+        var b = Entry(11, 1, Today, StandupSection.Today) with { OrderIndex = 1 };
+        var c = Entry(12, 1, Today, StandupSection.Today) with { OrderIndex = 2 };
+        ctx.Repo.Setup(r => r.GetEntryAsync(12)).ReturnsAsync(c);   // dragged
+        ctx.Repo.Setup(r => r.GetEntryAsync(10)).ReturnsAsync(a);   // target (front)
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today)).ReturnsAsync(new[] { a, b, c });
+        var svc = ctx.Make(Today);
+
+        await svc.ReorderEntryAsync(draggedId: 12, targetId: 10);
+
+        // new order: 12(0), 10(1), 11(2)
+        ctx.Repo.Verify(r => r.UpdateEntryAsync(It.Is<StandupEntry>(e => e.Id == 12 && e.OrderIndex == 0)), Times.Once);
+        ctx.Repo.Verify(r => r.UpdateEntryAsync(It.Is<StandupEntry>(e => e.Id == 10 && e.OrderIndex == 1)), Times.Once);
+        ctx.Repo.Verify(r => r.UpdateEntryAsync(It.Is<StandupEntry>(e => e.Id == 11 && e.OrderIndex == 2)), Times.Once);
+    }
+
     // DR-07: grouping + issue attach + editable flag
     [Fact]
     public async Task GetMyStandup_groups_sections_and_attaches_issues()

@@ -114,6 +114,41 @@ public sealed class StandupService : IStandupService
         return true;
     }
 
+    public async Task ReorderEntryAsync(int draggedId, int targetId)
+    {
+        if (draggedId == targetId) return;
+        var dragged = await _repo.GetEntryAsync(draggedId);
+        var target = await _repo.GetEntryAsync(targetId);
+        if (dragged is null || target is null) return;
+
+        var me = _currentUser.Current;
+        if (me is null || dragged.UserId != me.Id) return;          // owner only
+        if (!CanEditDay(dragged.WorkDate)) return;                  // edit-lock
+        if (dragged.WorkDate != target.WorkDate) return;           // only within the shown day
+
+        var section = target.Section;   // dropping onto the other section moves it there
+        var all = await _repo.GetEntriesAsync(me.Id, dragged.WorkDate);
+
+        // Rebuild the destination section's order with the dragged entry inserted at the target's slot.
+        var dest = all.Where(e => e.Section == section && e.Id != draggedId)
+                      .OrderBy(e => e.OrderIndex).ThenBy(e => e.Id).ToList();
+        var idx = dest.FindIndex(e => e.Id == targetId);
+        if (idx < 0) idx = dest.Count;
+        dest.Insert(idx, dragged);
+        for (var i = 0; i < dest.Count; i++)
+            await _repo.UpdateEntryAsync(dest[i] with { Section = section, OrderIndex = i });
+
+        // If it moved out of its old section, re-pack that section's order indexes.
+        if (dragged.Section != section)
+        {
+            var src = all.Where(e => e.Section == dragged.Section && e.Id != draggedId)
+                         .OrderBy(e => e.OrderIndex).ThenBy(e => e.Id).ToList();
+            for (var i = 0; i < src.Count; i++)
+                if (src[i].OrderIndex != i)
+                    await _repo.UpdateEntryAsync(src[i] with { OrderIndex = i });
+        }
+    }
+
     public async Task<int> AddIssueAsync(int entryId, string issueText, string? solutionText, string status)
     {
         if (string.IsNullOrWhiteSpace(issueText)) throw new ArgumentException("issue text required", nameof(issueText));

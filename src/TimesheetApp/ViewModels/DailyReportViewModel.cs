@@ -116,6 +116,13 @@ public sealed partial class DailyReportViewModel : ObservableObject
         if (await _service.DeleteEntryAsync(entryId)) await ReloadAndBroadcastAsync();
     });
 
+    // Drag-reorder an entry onto another entry's slot (same day; dropping onto the other section moves it).
+    internal Task ReorderEntryAsync(int draggedId, int targetId) => RunAsync(async () =>
+    {
+        await _service.ReorderEntryAsync(draggedId, targetId);
+        await ReloadAndBroadcastAsync();
+    });
+
     internal Task AddIssueAsync(int entryId, string issueText, string? solutionText, string status) =>
         RunAsync(async () =>
         {
