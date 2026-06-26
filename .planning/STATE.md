@@ -1,6 +1,6 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-26 (per-user avatar colours, rounded table containers, teal miniGhost row buttons — UNCOMMITTED in working tree)
+**Last updated:** 2026-06-26 (per-user avatar colours, rounded table containers, teal miniGhost row buttons — committed `960b570`, pushed)
 **How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
 
 ## What this is
@@ -9,11 +9,8 @@ Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `
 Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
 
 ## Current status
-- **194 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`090700b`** (docs/STATE).
-  ⚠️ **UNCOMMITTED work in tree** (2026-06-26 session below): avatar colours, rounded tables, teal row buttons.
-  Files: `App.xaml`, `MainWindow.xaml`, `Theme.xaml`, `Views/Tabs/{Users,Requests,Reports}Tab.xaml`,
-  `Views/Dialogs/SmartInputPreviewDialog.xaml`, new `Views/Converters/AvatarBrushConverter.cs`, new
-  `Views/Behaviors/RoundedClip.cs`. (`src/.cr/` is unrelated/untracked.)
+- **194 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`960b570`** (design-alignment
+  session below — avatar colours, rounded tables, teal row buttons; all pushed). (`src/.cr/` is unrelated/untracked.)
 - Schema is at **user_version 4** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization;
   v4 = `requests.assignee_user_id`).
 - UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
@@ -71,9 +68,9 @@ Big session. Features first, then a long UI pass to match the **design HTML file
 - Per-user **avatar colours** → **DONE** (matched design). Rounded **bordered table containers** → **DONE**.
   See session section below.
 
-## Session 2026-06-26 — avatar colours + rounded tables + teal row buttons — DONE (build clean, 194 tests, NOT yet committed)
-Three surgical UI fixes to match the design HTML file. **All in the working tree, UNCOMMITTED** (user asked to
-record state first; commit per `commit_atomic: true` = one commit per task once user says go).
+## Session 2026-06-26 — avatar colours + rounded tables + teal row buttons — DONE (build clean, 194 tests, committed `960b570` + pushed)
+Three surgical UI fixes to match the design HTML file. Shipped as **one commit** `960b570` (the 3 tasks share
+`UsersTab.xaml` + `Theme.xaml`, so a clean atomic-per-task split wasn't possible without interactive hunk staging).
 - **Per-user avatar colours** (design `avatars[i % len]`): new `Views/Converters/AvatarBrushConverter.cs` hashes a
   name (manual char-sum, NOT `string.GetHashCode` which is per-process randomised) → one of 5 design colours
   `#2563EB #0891B2 #7C3AED #DB2777 #16A34A`, stable across restarts. Registered in `App.xaml` as `AvatarBrush`.
