@@ -29,6 +29,56 @@
                     <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyArchivePathCommand}"/>
                 </StackPanel>
 
+                <!-- BK-01..07: Backup & Restore -->
+                <TextBlock Text="Backup &amp; Restore" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="Back up the full database to a local folder (ideally outside OneDrive). Restore replaces the current database — restart the app afterwards."
+                           Style="{StaticResource FieldHint}"/>
+                <TextBlock Text="Backup folder" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBox Width="420" Height="32" Text="{Binding BackupFolder, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Browse…" Height="32" Margin="8,0,0,0" Click="OnBrowseBackupFolder"
+                            Style="{StaticResource GhostButton}"/>
+                    <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyBackupSettingsCommand}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                    <CheckBox Content="Auto-backup once per day on startup" VerticalAlignment="Center"
+                              IsChecked="{Binding AutoBackupEnabled}"/>
+                    <TextBlock Text="Keep last" VerticalAlignment="Center" Margin="20,0,6,0"
+                               Foreground="{StaticResource TextSecondary}"/>
+                    <TextBox Width="56" Height="32" VerticalContentAlignment="Center"
+                             Text="{Binding BackupKeepCount, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="backups" VerticalAlignment="Center" Margin="6,0,0,0"
+                               Foreground="{StaticResource TextSecondary}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="Backup now" Height="32" Command="{Binding BackupNowCommand}"
+                            IsEnabled="{Binding HasBackupFolder}"/>
+                    <Button Content="Refresh" Height="32" Margin="8,0,0,0" Style="{StaticResource GhostButton}"
+                            Command="{Binding RefreshBackupsCommand}" IsEnabled="{Binding HasBackupFolder}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding BackupStatus}" Foreground="{StaticResource TextSecondary}"
+                           Margin="0,0,0,6" TextWrapping="Wrap"/>
+                <ItemsControl ItemsSource="{Binding Backups}" Margin="0,0,0,16">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                                    Margin="0,0,0,5" Padding="10,6">
+                                <DockPanel>
+                                    <Button Content="Restore" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                            Style="{StaticResource DangerGhostButton}"
+                                            Click="OnRestoreBackup"
+                                            CommandParameter="{Binding}"/>
+                                    <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0"
+                                               Foreground="{StaticResource TextSecondary}" FontSize="12"
+                                               Text="{Binding SizeBytes, StringFormat={}{0:N0} bytes}"/>
+                                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
+                                               Text="{Binding Timestamp, StringFormat=yyyy-MM-dd HH:mm:ss}"/>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
                 <!-- SET-02: N-days warning (default 3) -->
                 <TextBlock Text="&quot;Not logged&quot; warning window" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Warn if no hours are logged within this many recent working days."

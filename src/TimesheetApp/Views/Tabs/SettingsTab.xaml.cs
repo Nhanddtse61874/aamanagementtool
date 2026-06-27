@@ -4,6 +4,7 @@ using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.Input;
+using TimesheetApp.Services;
 using TimesheetApp.ViewModels;
 using TimesheetApp.Views.Dialogs;
 
@@ -75,6 +76,39 @@ public partial class SettingsTab : UserControl
             dlg.InitialDirectory = vm.ArchivePath;
         if (dlg.ShowDialog() == true)
             vm.ArchivePath = dlg.FolderName;
+    }
+
+    // BK-01: pick the backup folder (View concern — service stays WPF-free).
+    private void OnBrowseBackupFolder(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        var dlg = new OpenFolderDialog { Title = "Select backup folder" };
+        if (!string.IsNullOrWhiteSpace(vm.BackupFolder) && System.IO.Directory.Exists(vm.BackupFolder))
+            dlg.InitialDirectory = vm.BackupFolder;
+        if (dlg.ShowDialog() == true)
+            vm.BackupFolder = dlg.FolderName;
+    }
+
+    // BK-05: confirm before restoring, then offer to restart. Confirmation/restart are View concerns.
+    private async void OnRestoreBackup(object sender, RoutedEventArgs e)
+    {
+        if (Vm is null) return;
+        if (sender is not Button { CommandParameter: BackupInfo backup }) return;
+
+        var confirm = MessageBox.Show(
+            $"Restore the database from this backup?\n\n{System.IO.Path.GetFileName(backup.Path)}\n" +
+            $"({backup.Timestamp:yyyy-MM-dd HH:mm:ss})\n\n" +
+            "A safety copy of the current database is made first. The app must be restarted afterwards.",
+            "Restore database", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK) return;
+
+        await Vm.RestoreCommand.ExecuteAsync(backup);
+
+        var restart = MessageBox.Show(
+            Vm.BackupStatus + "\n\nClose the app now?",
+            "Restore database", MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (restart == MessageBoxResult.Yes)
+            Application.Current.Shutdown();
     }
 
     // "Add task" opens a dedicated input dialog instead of an inline text box.

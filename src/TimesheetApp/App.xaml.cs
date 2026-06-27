@@ -70,6 +70,7 @@ public partial class App : Application
         sc.AddSingleton<ISmartInputService, SmartInputService>();
         sc.AddSingleton<ICurrentUserService, CurrentUserService>();
         sc.AddSingleton<IDbBackupHelper, DbBackupHelper>();
+        sc.AddSingleton<IBackupService, BackupService>(); // P9: user-controlled local backup/restore
         sc.AddSingleton<ITimeLogService, TimeLogService>();
         sc.AddSingleton<IDefaultTaskSyncService, DefaultTaskSyncService>();
         sc.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
@@ -122,6 +123,11 @@ public partial class App : Application
         // Best-effort, never blocks startup (mirrors standup backfill above).
         try { await Services.GetRequiredService<ITaskListArchiveService>().BackfillMissingMonthsAsync(); }
         catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Task list archive backfill failed: {ex.Message}"); }
+
+        // BK-03: once-per-day local DB backup on startup when auto-backup is enabled. Best-effort,
+        // never blocks startup (mirrors the archive backfills above).
+        try { await Services.GetRequiredService<IBackupService>().AutoBackupIfDueAsync(); }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Auto-backup failed: {ex.Message}"); }
 
         // FIX C1 (DATA-03/TS-02): on a fresh DB the seeded DefaultTasks have no matching Tasks row
         // under the hidden DEFAULT request, so they never appear as Timesheet rows. SyncAsync was

@@ -23,8 +23,9 @@
 | **P6** | Settings + Export | SET-01, SET-02, SET-03, SET-04, EXP-01, EXP-02, EXP-03, EXP-04 |
 | **P7** | Daily Report (Standup) — M2 | DR-01, DR-02, DR-03, DR-04, DR-05, DR-06, DR-07, DR-08, DR-09, DR-10 |
 | **P8** | Task List (tracking, tags, holidays, Gantt) — M3 | TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07, TL-08, TL-09, TL-10, TL-11, TAG-01, TAG-02, HOL-01, HOL-02 |
+| **P9** | Local DB Backup + Restore — M5 | BK-01, BK-02, BK-03, BK-04, BK-05, BK-06, BK-07 |
 
-Total: **45 requirements (M1)** + **10 requirements (M2 / P7)** + **15 requirements (M3 / P8)**, every one mapped to exactly one phase.
+Total: **45 requirements (M1)** + **10 requirements (M2 / P7)** + **15 requirements (M3 / P8)** + **7 requirements (M5 / P9)**, every one mapped to exactly one phase. (P10 Multi-Team / P11 Export / P12 Retention requirements authored when those phases start — see `.planning/UPCOMING-FEATURES.md`.)
 
 ---
 
@@ -383,6 +384,42 @@ Acceptance: Marking a day inserts a `Holidays` row; unmarking deletes it; the ca
 ### HOL-02 — Holidays excluded from all working-day calculations
 Statement: Marked holidays are excluded from working-day computations everywhere — alongside Sat/Sun.
 Acceptance: A shared working-day helper treats Sat/Sun **and** any `Holidays` date as non-working; it is used by smart-input distribution (SI-01/SI-02), the schedule-warning math (TL-07), the "≤2 working days" window, and the Gantt day axis (TL-10). [ASSUMED] smart-input now consults Holidays (extends SI-02 which previously excluded weekends only).
+
+---
+
+## Local DB Backup + Restore (P9 / M5)
+
+**Source of truth:** STEP 2 brainstorm (2026-06-27, confirmed by user). Distinct from the existing **XC-10** `DbBackupHelper` (auto `.bak` next to the DB before bulk writes — that stays). P9 is a deliberate, user-controlled backup to a **local folder the user chooses, ideally outside OneDrive**, with restore. No DB schema change (file-level feature).
+
+**Locked decisions:** manual button **+** scheduled auto-backup; **restore included**; user **chooses the backup folder** (no silent default); backup = **full `.db` file only** (timestamped); keep last N (configurable). `[ASSUMED]` marks inferred detail.
+
+### BK-01 — User-chosen backup folder (Settings + persisted app-local)
+Statement: The user selects the local backup folder via a Browse picker in Settings; the path persists app-locally (like the DB path, per DATA-07).
+Acceptance: Choosing a folder persists it to `%APPDATA%\TimesheetApp\appsettings.json`; until a folder is set, backup actions are disabled with a clear "choose a folder" hint; the chosen path survives restart. `[ASSUMED]` storage in the same app-local config as DbPath/ArchivePath.
+
+### BK-02 — Manual "Backup now"
+Statement: A "Backup now" action copies the full live `.db` to the chosen folder as a timestamped file.
+Acceptance: Pressing it writes `timesheet_{yyyyMMddHHmmss}.db` (or similar) into the backup folder and reports success/failure with the resulting path; a no-op with a message if the DB file is missing or no folder is set. The copy is consistent (no open transaction — app uses short connections + `journal_mode=DELETE`, so an idle-time `File.Copy` is safe).
+
+### BK-03 — Scheduled auto-backup (toggle)
+Statement: When enabled, the app makes at most one automatic backup per day on startup if none exists for the current day.
+Acceptance: With auto-backup ON and no backup dated today in the folder, startup creates one (non-fatal, before the window is interactive, mirroring the standup/tasklist backfill pattern); with it OFF, none is made; a setting persists the toggle. `[ASSUMED]` once-per-day-on-startup cadence (vs interval timer).
+
+### BK-04 — Backup listing
+Statement: Settings lists existing backups in the folder with name, timestamp, and size, newest first.
+Acceptance: The list reflects the folder contents (timestamp parsed from filename or file metadata), refreshes after a backup/restore/prune, and shows an empty state when none exist.
+
+### BK-05 — Restore from a backup
+Statement: The user can select a backup and restore it, replacing the current `.db`, with confirmation and a pre-restore safety copy of the current DB.
+Acceptance: Restore prompts for confirmation; before overwriting it makes a safety copy of the current `.db` (so a wrong restore is reversible); it replaces the live `.db` with the chosen backup; afterwards it instructs the user to **restart the app** (and/or restarts) so no stale in-memory/connection state remains. Restore is blocked with a message if a backup file is unreadable. `[ASSUMED]` restart-after-restore rather than live hot-swap (safest given OneDrive + open handles).
+
+### BK-06 — Retention (keep last N)
+Statement: The backup folder is pruned to the newest N backups, N configurable.
+Acceptance: After a successful backup, older backups beyond N are deleted (best-effort, never failing the backup that just succeeded — mirrors `DbBackupHelper.PruneOldBackups`); N persists and defaults to a sensible value (e.g. 30); pruning only affects this app's own backup files (matched by name pattern), never unrelated files in the folder. `[ASSUMED]` default N=30.
+
+### BK-07 — Settings "Backup & Restore" section
+Statement: A Settings section hosts the folder picker, auto-backup toggle, retention N, "Backup now" button, and the backups list with a per-row Restore action.
+Acceptance: All controls are present and wired; status messages surface success/failure; the section follows the existing Settings styling/overlay conventions.
 
 ---
 

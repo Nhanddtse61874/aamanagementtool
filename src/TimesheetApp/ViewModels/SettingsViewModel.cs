@@ -24,6 +24,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IDefaultTaskSyncService _sync;
     private readonly ITagRepository _tags;                  // P8 TAG-01
     private readonly IPcaContactRepository _pca;            // P8 TL-11
+    private readonly IBackupService _backup;                // P9 BK-01..06
     private readonly IMessenger _messenger;
 
     public SettingsViewModel(
@@ -34,6 +35,7 @@ public partial class SettingsViewModel : ObservableObject
         ITagRepository tags,
         IPcaContactRepository pca,
         IHolidayRepository holidays,
+        IBackupService backup,
         IMessenger? messenger = null)
     {
         _config = config;
@@ -42,6 +44,7 @@ public partial class SettingsViewModel : ObservableObject
         _sync = sync;
         _tags = tags;
         _pca = pca;
+        _backup = backup;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         HolidayCalendar = new HolidayCalendarViewModel(holidays, _messenger);
     }
@@ -75,6 +78,21 @@ public partial class SettingsViewModel : ObservableObject
     // Owned month-grid holiday calendar.
     public HolidayCalendarViewModel HolidayCalendar { get; }
 
+    // --- P9: Backup & Restore (BK-01..07) ---
+
+    [ObservableProperty] private string _backupFolder = "";
+    [ObservableProperty] private bool _autoBackupEnabled;
+    [ObservableProperty] private int _backupKeepCount = 30;
+    [ObservableProperty] private string _backupStatus = "";
+
+    // Existing backups in the chosen folder (newest first); drives the list + per-row Restore.
+    public ObservableCollection<BackupInfo> Backups { get; } = new();
+
+    // Backup actions are gated until a folder is chosen (BK-01); bound to IsEnabled in XAML.
+    public bool HasBackupFolder => !string.IsNullOrWhiteSpace(BackupFolder);
+
+    partial void OnBackupFolderChanged(string value) => OnPropertyChanged(nameof(HasBackupFolder));
+
     public async Task LoadAsync()
     {
         DbPath = _config.DbPath;
@@ -84,6 +102,11 @@ public partial class SettingsViewModel : ObservableObject
         WarningDays = int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
             ? n
             : DefaultWarningDays;
+
+        BackupFolder = _config.BackupFolderPath;
+        AutoBackupEnabled = _config.AutoBackupEnabled;
+        BackupKeepCount = _config.BackupKeepCount;
+        RefreshBackups();
 
         await ReloadTemplatesAsync();
         await ReloadTagsAsync();
@@ -105,6 +128,57 @@ public partial class SettingsViewModel : ObservableObject
     {
         _config.SetArchivePath(ArchivePath);
         return Task.CompletedTask;
+    }
+
+    // ---------- P9: Backup & Restore (BK-01..06) ----------
+
+    // BK-01: persist the 3 backup settings app-local + refresh the list against the new folder.
+    [RelayCommand]
+    private void ApplyBackupSettings()
+    {
+        var keep = BackupKeepCount < 1 ? 1 : BackupKeepCount;
+        BackupKeepCount = keep;
+        _config.SetBackupFolderPath(BackupFolder);
+        _config.SetAutoBackupEnabled(AutoBackupEnabled);
+        _config.SetBackupKeepCount(keep);
+        RefreshBackups();
+        BackupStatus = "Backup settings saved.";
+    }
+
+    // BK-02: manual backup of the live .db to the chosen folder.
+    [RelayCommand]
+    private async Task BackupNowAsync()
+    {
+        var path = await _backup.BackupNowAsync();
+        BackupStatus = path is null
+            ? "No backup made — choose a folder and make sure the database file exists."
+            : $"Backup created: {System.IO.Path.GetFileName(path)}";
+        RefreshBackups();
+    }
+
+    // BK-04: re-read the folder contents.
+    [RelayCommand]
+    private void RefreshBackups()
+    {
+        Backups.Clear();
+        foreach (var b in _backup.ListBackups() ?? Array.Empty<BackupInfo>()) Backups.Add(b);
+    }
+
+    // BK-05: restore a chosen backup. Confirmation is owned by the View (WPF dialog); this method
+    // performs the restore and reports the restart instruction. Safety copy is made by the service.
+    [RelayCommand]
+    private async Task RestoreAsync(BackupInfo? backup)
+    {
+        if (backup is null) return;
+        try
+        {
+            await _backup.RestoreAsync(backup.Path);
+            BackupStatus = "Restore done — please restart the app for it to take effect.";
+        }
+        catch (Exception ex)
+        {
+            BackupStatus = $"Restore failed: {ex.Message}";
+        }
     }
 
     // SET-02: shared Settings table.

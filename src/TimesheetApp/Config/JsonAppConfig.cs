@@ -7,11 +7,23 @@ namespace TimesheetApp.Config;
 // canonical app-local path; the (path, default) ctor is the test/DI seam.
 public sealed class JsonAppConfig : IAppConfig
 {
-    private sealed record Model(string DbPath, string? ArchivePath = null);
+    // Nullable backup keys default to null in old config files -> tolerated (defaults applied on load).
+    private sealed record Model(
+        string DbPath,
+        string? ArchivePath = null,
+        string? BackupFolderPath = null,
+        bool? AutoBackupEnabled = null,
+        int? BackupKeepCount = null);
+
+    // P9 (BK-06): default retention when no value persisted yet.
+    private const int DefaultBackupKeepCount = 30;
 
     private readonly string _configPath;
     private string _dbPath;
     private string _archivePath;
+    private string _backupFolderPath;
+    private bool _autoBackupEnabled;
+    private int _backupKeepCount;
 
     public JsonAppConfig()
         : this(DefaultConfigPath(), DefaultDbPath())
@@ -24,10 +36,16 @@ public sealed class JsonAppConfig : IAppConfig
         var model = LoadModel(configPath);
         _dbPath = model?.DbPath ?? defaultDbPath;
         _archivePath = model?.ArchivePath ?? "";
+        _backupFolderPath = model?.BackupFolderPath ?? "";
+        _autoBackupEnabled = model?.AutoBackupEnabled ?? false;
+        _backupKeepCount = model?.BackupKeepCount ?? DefaultBackupKeepCount;
     }
 
     public string DbPath => _dbPath;
     public string ArchivePath => _archivePath;
+    public string BackupFolderPath => _backupFolderPath;
+    public bool AutoBackupEnabled => _autoBackupEnabled;
+    public int BackupKeepCount => _backupKeepCount;
 
     public void SetDbPath(string dbPath)
     {
@@ -41,11 +59,34 @@ public sealed class JsonAppConfig : IAppConfig
         Save();
     }
 
+    public void SetBackupFolderPath(string backupFolderPath)
+    {
+        _backupFolderPath = backupFolderPath;
+        Save();
+    }
+
+    public void SetAutoBackupEnabled(bool enabled)
+    {
+        _autoBackupEnabled = enabled;
+        Save();
+    }
+
+    public void SetBackupKeepCount(int keepCount)
+    {
+        _backupKeepCount = keepCount;
+        Save();
+    }
+
     private void Save()
     {
         var dir = Path.GetDirectoryName(_configPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        var model = new Model(_dbPath, string.IsNullOrWhiteSpace(_archivePath) ? null : _archivePath);
+        var model = new Model(
+            _dbPath,
+            string.IsNullOrWhiteSpace(_archivePath) ? null : _archivePath,
+            string.IsNullOrWhiteSpace(_backupFolderPath) ? null : _backupFolderPath,
+            _autoBackupEnabled,
+            _backupKeepCount);
         var json = JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
     }

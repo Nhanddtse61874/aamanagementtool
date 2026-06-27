@@ -55,7 +55,7 @@ public class SettingsViewModelTests
 
         return new SettingsViewModel(
             config.Object, settings.Object, templates.Object, sync.Object,
-            tags.Object, pca.Object, holidays.Object);
+            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>());
     }
 
     // ---------- SET-02: N-days default 3 + persist ----------
@@ -303,7 +303,7 @@ public class SettingsViewModelTests
         var sync = new Mock<IDefaultTaskSyncService>();
 
         var vm = new SettingsViewModel(config.Object, settings.Object, templates.Object, sync.Object,
-            tags.Object, pca.Object, holidays.Object);
+            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>());
         await vm.LoadAsync();
         vm.PcaContacts[0].Name = "Renamed";
 
