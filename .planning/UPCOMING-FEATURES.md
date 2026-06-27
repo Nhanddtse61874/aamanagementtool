@@ -27,7 +27,7 @@ Distinct from the existing XC-10 `DbBackupHelper` (which copies `{db}.{stamp}.ba
 ## P11 — Export Markdown Restructure [a.k.a. "M6"] — after P10
 Reworks the existing markdown exports (timesheet, daily, tasklist).
 - **Two destinations, MIRROR both every export:** a SharePoint/shared folder (in OneDrive) **and** a local folder. Both configurable.
-- **Folder structure** under each chosen root: 4 subfolders `timesheet/`, `daily/`, `tasklist/`, `db/`. Put each kind's markdown into its folder.
+- **Folder structure** under each chosen root: **a folder per team first**, then the 4 subfolders inside each team folder — `{root}/{TeamName}/timesheet/`, `{root}/{TeamName}/daily/`, `{root}/{TeamName}/tasklist/`, `{root}/{TeamName}/db/` (added 2026-06-27). Put each kind's markdown into its team's subfolder. (Team-aware → depends on P10.)
 - **`db/` subfolder contains BOTH:** a full **.db copy** AND the **markdown of pruned (old) months** — written to **both** destinations.
 - Team-aware (built after P10) — exports reflect team scoping.
 
