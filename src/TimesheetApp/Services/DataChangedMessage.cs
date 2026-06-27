@@ -9,7 +9,10 @@ public enum DataKind
     Logs,         // time logs changed (affects Reports)
     Templates,    // task templates changed
     DefaultTasks, // default tasks synced into the DEFAULT backlog (affects Timesheet rows)
-    Standup       // daily-report standup entries/issues changed (affects the Daily Report board)
+    Standup,      // daily-report standup entries/issues changed (affects the Daily Report board)
+    Tags,         // P8: user-defined tags changed (affects backlog editor + Task List chips)
+    PcaContacts,  // P8: external (PCA) contacts changed (affects backlog editor combo)
+    Holidays      // P8: holiday calendar changed (affects working-day math + Task List/Gantt)
 }
 
 /// <summary>

@@ -16,6 +16,7 @@
       <conv:InitialConverter x:Key="Initial"/>
       <conv:AvatarBrushConverter x:Key="AvatarBrush"/>
       <conv:DateOnlyConverter x:Key="DateOnly"/>
+      <conv:HexToBrushConverter x:Key="HexToBrush"/>
     </ResourceDictionary>
   </Application.Resources>
 </Application>

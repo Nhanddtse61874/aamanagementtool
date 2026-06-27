@@ -22,6 +22,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ISettingsRepository _settings;
     private readonly ITaskTemplateRepository _templates;   // canonical template store (reconciliation 2026-06-21)
     private readonly IDefaultTaskSyncService _sync;
+    private readonly ITagRepository _tags;                  // P8 TAG-01
+    private readonly IPcaContactRepository _pca;            // P8 TL-11
     private readonly IMessenger _messenger;
 
     public SettingsViewModel(
@@ -29,13 +31,19 @@ public partial class SettingsViewModel : ObservableObject
         ISettingsRepository settings,
         ITaskTemplateRepository templates,
         IDefaultTaskSyncService sync,
+        ITagRepository tags,
+        IPcaContactRepository pca,
+        IHolidayRepository holidays,
         IMessenger? messenger = null)
     {
         _config = config;
         _settings = settings;
         _templates = templates;
         _sync = sync;
+        _tags = tags;
+        _pca = pca;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
+        HolidayCalendar = new HolidayCalendarViewModel(holidays, _messenger);
     }
 
     [ObservableProperty] private string _dbPath = "";
@@ -51,6 +59,22 @@ public partial class SettingsViewModel : ObservableObject
     // Templates grouped for the Settings list: one entry per template name + its task count (SET-03).
     public ObservableCollection<TemplateSummary> TemplateGroups { get; } = new();
 
+    // --- P8: Tags (TAG-01) / PCA contacts (TL-11) / Holiday calendar (HOL-01) ---
+
+    public ObservableCollection<Tag> Tags { get; } = new();
+
+    // Editable row wrappers so the Name TextBox is two-way bindable (PcaContact is an immutable record).
+    public ObservableCollection<PcaContactRowVm> PcaContacts { get; } = new();
+
+    // The tag editor overlay; null = hidden (mirrors TemplateEditor).
+    [ObservableProperty] private TagEditorViewModel? _tagEditor;
+
+    // New-PCA-contact input box (mirrors UsersViewModel.NewUserName).
+    [ObservableProperty] private string _newPcaName = string.Empty;
+
+    // Owned month-grid holiday calendar.
+    public HolidayCalendarViewModel HolidayCalendar { get; }
+
     public async Task LoadAsync()
     {
         DbPath = _config.DbPath;
@@ -62,6 +86,9 @@ public partial class SettingsViewModel : ObservableObject
             : DefaultWarningDays;
 
         await ReloadTemplatesAsync();
+        await ReloadTagsAsync();
+        await ReloadPcaAsync();
+        await HolidayCalendar.LoadAsync();
     }
 
     // SET-01: app-local config only, never the shared Settings table.
@@ -151,4 +178,114 @@ public partial class SettingsViewModel : ObservableObject
                      .OrderBy(g => g.Key, StringComparer.Ordinal))
             TemplateGroups.Add(new TemplateSummary(g.Key, g.Count()));
     }
+
+    // ---------- TAG-01: custom tag CRUD (hard-delete; repo cascades BacklogTags links) ----------
+
+    [RelayCommand]
+    private void BeginCreateTag() => TagEditor = TagEditorViewModel.ForCreate();
+
+    [RelayCommand]
+    private void BeginEditTag(Tag tag)
+    {
+        if (tag is null) return;
+        TagEditor = TagEditorViewModel.ForEdit(tag);
+    }
+
+    [RelayCommand]
+    private async Task SaveTagAsync()
+    {
+        var editor = TagEditor;
+        if (editor is null) return;
+
+        var text = editor.Text.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return;     // a tag needs a label
+
+        var icon = editor.Icon.Trim();
+        var color = string.IsNullOrWhiteSpace(editor.Color) ? "#64748B" : editor.Color.Trim();
+
+        if (editor.IsEditMode)
+            await _tags.UpdateAsync(new Tag(editor.TagId, text, icon, color, DateTimeOffset.UtcNow));
+        else
+            await _tags.InsertAsync(new Tag(0, text, icon, color, DateTimeOffset.UtcNow));
+
+        TagEditor = null;
+        await ReloadTagsAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Tags)); // live-sync: editor + Task List chips
+    }
+
+    [RelayCommand]
+    private void CancelTag() => TagEditor = null;
+
+    [RelayCommand]
+    private async Task DeleteTagAsync(int tagId)
+    {
+        await _tags.DeleteAsync(tagId);   // cascades BacklogTags links in one tx
+        await ReloadTagsAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Tags));
+    }
+
+    private async Task ReloadTagsAsync()
+    {
+        var rows = await _tags.GetAllAsync();
+        Tags.Clear();
+        foreach (var t in rows) Tags.Add(t);
+    }
+
+    // ---------- TL-11: PCA contacts (soft-delete, mirrors UsersViewModel) ----------
+
+    [RelayCommand]
+    private async Task AddPcaContactAsync()
+    {
+        var name = NewPcaName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        await _pca.InsertAsync(new PcaContact(0, name, true));
+        NewPcaName = string.Empty;
+        await ReloadPcaAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.PcaContacts));
+    }
+
+    [RelayCommand]
+    private async Task RenamePcaContactAsync(int id)
+    {
+        var contact = PcaContacts.FirstOrDefault(c => c.Id == id);
+        if (contact is null) return;
+        var name = contact.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        await _pca.UpdateNameAsync(id, name);
+        await ReloadPcaAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.PcaContacts));
+    }
+
+    [RelayCommand]
+    private async Task DeactivatePcaContactAsync(int id)
+    {
+        await _pca.SetActiveAsync(id, false);   // soft-delete: historical backlogs keep the reference
+        await ReloadPcaAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.PcaContacts));
+    }
+
+    private async Task ReloadPcaAsync()
+    {
+        var rows = await _pca.GetAllAsync();   // incl. inactive (Settings list)
+        PcaContacts.Clear();
+        foreach (var p in rows) PcaContacts.Add(new PcaContactRowVm(p.Id, p.Name, p.IsActive));
+    }
+}
+
+// Editable row for the Settings PCA list (TL-11): a mutable Name TextBox + the immutable id/active flag.
+public sealed partial class PcaContactRowVm : ObservableObject
+{
+    public PcaContactRowVm(int id, string name, bool isActive)
+    {
+        Id = id;
+        _name = name;
+        IsActive = isActive;
+    }
+
+    public int Id { get; }
+    public bool IsActive { get; }
+
+    [ObservableProperty] private string _name;
 }

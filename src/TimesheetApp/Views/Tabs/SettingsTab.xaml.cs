@@ -31,6 +31,16 @@ public partial class SettingsTab : UserControl
         {
             if (row is not null) Vm?.TemplateEditor?.MoveDown(row);
         });
+
+        // TAG-01: icon/color quick-pick rows write into the open tag editor (plain VM setters).
+        PickIconCommand = new RelayCommand<string>(glyph =>
+        {
+            if (Vm?.TagEditor is { } ed && glyph is not null) ed.Icon = glyph;
+        });
+        PickColorCommand = new RelayCommand<string>(hex =>
+        {
+            if (Vm?.TagEditor is { } ed && hex is not null) ed.Color = hex;
+        });
     }
 
     // Commands exposed to XAML via RelativeSource AncestorType=UserControl.
@@ -38,6 +48,8 @@ public partial class SettingsTab : UserControl
     public IRelayCommand<TemplateTaskRowVm> RemoveTaskCommand { get; }
     public IRelayCommand<TemplateTaskRowVm> MoveUpCommand { get; }
     public IRelayCommand<TemplateTaskRowVm> MoveDownCommand { get; }
+    public IRelayCommand<string> PickIconCommand { get; }
+    public IRelayCommand<string> PickColorCommand { get; }
 
     private SettingsViewModel? Vm => DataContext as SettingsViewModel;
 

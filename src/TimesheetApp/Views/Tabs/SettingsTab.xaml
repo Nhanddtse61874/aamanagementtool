@@ -78,6 +78,186 @@
                            Style="{StaticResource FieldHint}"/>
                 <Button Content="Sync default tasks" HorizontalAlignment="Left"
                         Style="{StaticResource GhostButton}" Command="{Binding SaveDefaultTasksCommand}"/>
+
+                <!-- TAG-01: custom tags (icon + color + text), edited via the overlay -->
+                <TextBlock Text="Tags" Style="{StaticResource SectionTitle}" Margin="0,20,0,0"/>
+                <TextBlock Text="Custom labels (icon + color) you can attach to backlogs on the Task List."
+                           Style="{StaticResource FieldHint}"/>
+                <Button Content="&#10133; New tag" HorizontalAlignment="Left"
+                        Command="{Binding BeginCreateTagCommand}" Margin="0,0,0,6"/>
+                <ItemsControl ItemsSource="{Binding Tags}" Margin="0,0,0,16">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                                    Margin="0,0,0,5" Padding="10,6">
+                                <DockPanel>
+                                    <Button Content="Delete" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                            Style="{StaticResource DangerGhostButton}"
+                                            Command="{Binding DataContext.DeleteTagCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding Id}"/>
+                                    <Button Content="Edit" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                            Style="{StaticResource MiniGhostButton}"
+                                            Command="{Binding DataContext.BeginEditTagCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                    <!-- live tag chip: color via HexToBrushConverter + icon glyph + text -->
+                                    <Border CornerRadius="10" Padding="9,2" HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Background="{Binding Color, Converter={StaticResource HexToBrush}}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Icon}" Margin="0,0,5,0"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Text}" FontWeight="SemiBold"
+                                                       Foreground="White" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- TL-11: PCA contacts (soft-delete, mirrors Users) -->
+                <TextBlock Text="PCA contacts" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="External (PCA) contacts you can assign to a backlog. Deactivating keeps historical references."
+                           Style="{StaticResource FieldHint}"/>
+                <DockPanel Margin="0,0,0,6">
+                    <Button Content="&#10133; Add contact" DockPanel.Dock="Right" Margin="6,0,0,0"
+                            Command="{Binding AddPcaContactCommand}"/>
+                    <TextBox Width="260" HorizontalAlignment="Left"
+                             Text="{Binding NewPcaName, UpdateSourceTrigger=PropertyChanged}"/>
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding PcaContacts}" Margin="0,0,0,16">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                                    Margin="0,0,0,5" Padding="10,6">
+                                <DockPanel>
+                                    <Button Content="Deactivate" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                            Style="{StaticResource DangerGhostButton}"
+                                            IsEnabled="{Binding IsActive}"
+                                            Command="{Binding DataContext.DeactivatePcaContactCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding Id}"/>
+                                    <Button Content="Rename" DockPanel.Dock="Right" Margin="4,0,0,0"
+                                            Style="{StaticResource MiniGhostButton}"
+                                            Command="{Binding DataContext.RenamePcaContactCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding Id}"/>
+                                    <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0"
+                                               FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource Disabled}"
+                                               Text="Inactive">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                             VerticalAlignment="Center" IsEnabled="{Binding IsActive}"
+                                             BorderThickness="0" Background="Transparent"/>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- HOL-01: holiday calendar — a 7-col month grid; click a day to toggle a holiday -->
+                <TextBlock Text="Holiday calendar" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="Click a day to mark/unmark it a holiday. Weekends are excluded automatically."
+                           Style="{StaticResource FieldHint}"/>
+                <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8"
+                        Padding="12" Margin="0,0,0,16" HorizontalAlignment="Left" Width="380"
+                        DataContext="{Binding HolidayCalendar}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <Button Content="&#9664;" DockPanel.Dock="Left" Style="{StaticResource MiniGhostButton}"
+                                    Command="{Binding PrevMonthCommand}"/>
+                            <Button Content="&#9654;" DockPanel.Dock="Right" Style="{StaticResource MiniGhostButton}"
+                                    Command="{Binding NextMonthCommand}"/>
+                            <TextBlock Text="{Binding MonthLabel}" FontWeight="SemiBold" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <!-- weekday header -->
+                        <UniformGrid Columns="7" Margin="0,0,0,4">
+                            <TextBlock Text="Mon" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Tue" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Wed" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Thu" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Fri" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Sat" HorizontalAlignment="Center" Foreground="{StaticResource Disabled}" FontSize="11"/>
+                            <TextBlock Text="Sun" HorizontalAlignment="Center" Foreground="{StaticResource Disabled}" FontSize="11"/>
+                        </UniformGrid>
+                        <ItemsControl ItemsSource="{Binding Days}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="7"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- day cell: distinct styling for holiday / weekend / normal / out-of-month -->
+                                    <Button Margin="2" Height="34"
+                                            Command="{Binding DataContext.ToggleHolidayCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding Date}"
+                                            IsEnabled="{Binding IsInMonth}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Background" Value="{StaticResource Surface}"/>
+                                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                                <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                                <Setter Property="Cursor" Value="Hand"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="cell" CornerRadius="6"
+                                                                    Background="{TemplateBinding Background}"
+                                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                                                <TextBlock Text="{Binding DayNumber}"
+                                                                           HorizontalAlignment="Center"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{TemplateBinding Foreground}"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <!-- out-of-month: faint placeholder -->
+                                                    <DataTrigger Binding="{Binding IsInMonth}" Value="False">
+                                                        <Setter Property="Background" Value="Transparent"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+                                                        <Setter Property="BorderBrush" Value="Transparent"/>
+                                                    </DataTrigger>
+                                                    <!-- weekend: gray -->
+                                                    <DataTrigger Binding="{Binding IsWeekend}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource BadgeGrayBg}"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource BadgeGrayFg}"/>
+                                                    </DataTrigger>
+                                                    <!-- holiday: accent (teal) — wins over weekend -->
+                                                    <DataTrigger Binding="{Binding IsHoliday}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource Accent}"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 
@@ -157,6 +337,99 @@
                                     Style="{StaticResource GhostButton}" Padding="14,6"
                                     Command="{Binding AddTaskFromBoxCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Border>
+
+        <!-- TAG-01: tag editor overlay — mirrors the template editor card. -->
+        <Border Background="#66000000"
+                Visibility="{Binding TagEditor,
+                             Converter={StaticResource NullToCollapsedConverter}}">
+            <Border Width="460" MaxHeight="600" Background="{StaticResource Surface}" CornerRadius="12"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect Color="#0F172A" Opacity="0.28" BlurRadius="28" ShadowDepth="4" Direction="270"/>
+                </Border.Effect>
+                <DockPanel DataContext="{Binding TagEditor}">
+
+                    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
+                            Padding="20,15" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="Tag" FontWeight="Bold" FontSize="17"
+                                   Foreground="{StaticResource TextPrimary}"/>
+                    </Border>
+
+                    <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
+                            Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                        <DockPanel>
+                            <Button Content="Save" DockPanel.Dock="Right" Padding="22,6"
+                                    Command="{Binding DataContext.SaveTagCommand,
+                                        RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                            <Button Content="Cancel" DockPanel.Dock="Right" Style="{StaticResource GhostButton}"
+                                    Padding="18,6" Margin="0,0,8,0"
+                                    Command="{Binding DataContext.CancelTagCommand,
+                                        RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                            <TextBlock/>
+                        </DockPanel>
+                    </Border>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16">
+                        <StackPanel>
+                            <!-- live preview chip -->
+                            <TextBlock Text="Preview" Style="{StaticResource FieldLabel}"/>
+                            <Border CornerRadius="10" Padding="10,3" HorizontalAlignment="Left" Margin="0,0,0,14"
+                                    Background="{Binding Color, Converter={StaticResource HexToBrush}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Text}" FontWeight="SemiBold" Foreground="White"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="Label" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
+
+                            <TextBlock Text="Icon (emoji or glyph)" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding Icon, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,4"/>
+                            <ItemsControl ItemsSource="{Binding IconQuickPicks}" Margin="0,0,0,12">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Content="{Binding}" Width="34" Height="30" Margin="0,0,4,4"
+                                                Style="{StaticResource GhostButton}"
+                                                Command="{Binding DataContext.PickIconCommand,
+                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="Color (hex)" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,4"/>
+                            <ItemsControl ItemsSource="{Binding ColorSwatches}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Width="30" Height="26" Margin="0,0,4,4"
+                                                Background="{Binding Converter={StaticResource HexToBrush}}"
+                                                Command="{Binding DataContext.PickColorCommand,
+                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border CornerRadius="5" Background="{TemplateBinding Background}"
+                                                            BorderBrush="{StaticResource BorderStrong}" BorderThickness="1"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </ScrollViewer>
                 </DockPanel>

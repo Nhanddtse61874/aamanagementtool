@@ -36,7 +36,8 @@ public sealed class MainViewModelTests
             Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>());
         var settings = new SettingsViewModel(
             Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(),
-            Mock.Of<IDefaultTaskSyncService>());
+            Mock.Of<IDefaultTaskSyncService>(), Mock.Of<ITagRepository>(),
+            Mock.Of<IPcaContactRepository>(), Mock.Of<IHolidayRepository>());
         var dailyReport = new DailyReportViewModel(
             Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger());
 
@@ -165,7 +166,7 @@ public sealed class MainViewModelTests
             new BacklogsViewModel(Mock.Of<IBacklogRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>()),
             new UsersViewModel(Mock.Of<IUserRepository>()),
             new ReportsViewModel(Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(), Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>()),
-            new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>()),
+            new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>(), Mock.Of<ITagRepository>(), Mock.Of<IPcaContactRepository>(), Mock.Of<IHolidayRepository>()),
             new DailyReportViewModel(Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger()),
             _currentUser.Object, _users.Object, _config.Object, () => "tester");
 
