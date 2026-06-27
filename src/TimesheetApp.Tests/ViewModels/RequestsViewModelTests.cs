@@ -1,6 +1,7 @@
 using Moq;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
+using TimesheetApp.Tests.Data;
 using TimesheetApp.ViewModels;
 using Xunit;
 
@@ -174,5 +175,111 @@ public sealed class BacklogsViewModelTests
     public void BacklogRepository_has_no_SetActiveAsync()
     {
         Assert.Null(typeof(IBacklogRepository).GetMethod("SetActiveAsync"));
+    }
+}
+
+// v7 (P8 / TL-03): sqlite-backed round-trip of the editor — the 7 tracking columns, the selected PCA
+// contact and the checked tags must survive a SaveNew -> reload, and an edit must replace the tag set.
+public sealed class BacklogsViewModelV7RoundTripTests : IAsyncLifetime
+{
+    private TestDb _db = null!;
+    private BacklogRepository _backlogs = null!;
+    private TaskRepository _tasks = null!;
+    private TaskTemplateRepository _templates = null!;
+    private PcaContactRepository _pca = null!;
+    private TagRepository _tags = null!;
+
+    public async Task InitializeAsync()
+    {
+        _db = await TestDb.CreateAsync();
+        _backlogs = new BacklogRepository(_db);
+        _tasks = new TaskRepository(_db);
+        _templates = new TaskTemplateRepository(_db);
+        _pca = new PcaContactRepository(_db);
+        _tags = new TagRepository(_db);
+    }
+
+    public Task DisposeAsync() { _db.Dispose(); return Task.CompletedTask; }
+
+    private BacklogsViewModel CreateVm() =>
+        new(_backlogs, _tasks, _templates, null, null, null, _pca, _tags);
+
+    [Fact] // SaveNew persists all 7 v7 fields + PCA + checked tags; reload round-trips them.
+    public async Task SaveNew_roundtrips_tracking_fields_pca_and_tags()
+    {
+        var pcaId = await _pca.InsertAsync(new PcaContact(0, "Acme", true));
+        var t1 = await _tags.InsertAsync(new Tag(0, "Urgent", "⚡", "#FF0000", DateTimeOffset.UtcNow));
+        var t2 = await _tags.InsertAsync(new Tag(0, "Review", "👀", "#00FF00", DateTimeOffset.UtcNow));
+
+        var vm = CreateVm();
+        await vm.BeginCreateAsync();
+        var e = vm.Editor!;
+        e.BacklogCode = "REQ-RT";
+        e.Project = "ARCS";
+        e.AddTask("Do it");
+        e.DeadlineInternal = new DateOnly(2026, 7, 10);
+        e.DeadlineExternal = new DateOnly(2026, 7, 20);
+        e.RoughEstimateText = "12.5";
+        e.OfficialEstimateText = "16";
+        e.ProgressText = "40";
+        e.Note = "first cut";
+        e.SelectedPcaContact = e.PcaContacts.First(p => p.Id == pcaId);
+        e.TagPicks.First(p => p.Tag.Id == t1).IsChecked = true;
+        e.TagPicks.First(p => p.Tag.Id == t2).IsChecked = true;
+
+        await vm.SaveNewAsync();
+
+        var saved = (await _backlogs.SearchAsync(null)).Single(b => b.BacklogCode == "REQ-RT");
+        Assert.Equal(new DateOnly(2026, 7, 10), saved.DeadlineInternal);
+        Assert.Equal(new DateOnly(2026, 7, 20), saved.DeadlineExternal);
+        Assert.Equal(12.5m, saved.RoughEstimateHours);
+        Assert.Equal(16m, saved.OfficialEstimateHours);
+        Assert.Equal(40, saved.ProgressPercent);
+        Assert.Equal("first cut", saved.Note);
+        Assert.Equal(pcaId, saved.PcaContactId);
+        Assert.Equal(new[] { t1, t2 }, (await _backlogs.GetTagIdsAsync(saved.Id)).OrderBy(x => x).ToArray());
+    }
+
+    [Fact] // Editing replaces the tag set (SetTagsAsync replace-all) and re-checks the right boxes on reload.
+    public async Task SaveEdit_replaces_tag_set_and_reload_rechecks()
+    {
+        var t1 = await _tags.InsertAsync(new Tag(0, "A", "a", "#111111", DateTimeOffset.UtcNow));
+        var t2 = await _tags.InsertAsync(new Tag(0, "B", "b", "#222222", DateTimeOffset.UtcNow));
+        var t3 = await _tags.InsertAsync(new Tag(0, "C", "c", "#333333", DateTimeOffset.UtcNow));
+
+        var id = await _backlogs.InsertAsync(new Backlog(0, "REQ-EDIT", "ARCS", DateTimeOffset.UtcNow));
+        var taskId = await _db.SeedTaskAsync(id, "Existing");
+        await _backlogs.SetTagsAsync(id, new[] { t1, t2 });
+
+        var vm = CreateVm();
+        await vm.BeginEditAsync(id);
+        // Reload pre-checks the saved tags.
+        Assert.Equal(new[] { t1, t2 }, vm.Editor!.CheckedTagIds.OrderBy(x => x).ToArray());
+
+        // Replace {t1,t2} -> {t3}.
+        vm.Editor.TagPicks.First(p => p.Tag.Id == t1).IsChecked = false;
+        vm.Editor.TagPicks.First(p => p.Tag.Id == t2).IsChecked = false;
+        vm.Editor.TagPicks.First(p => p.Tag.Id == t3).IsChecked = true;
+
+        await vm.SaveEditAsync();
+
+        Assert.Equal(new[] { t3 }, await _backlogs.GetTagIdsAsync(id));
+    }
+
+    [Fact] // Out-of-range progress is rejected (null) so it is never persisted.
+    public async Task SaveNew_does_not_persist_out_of_range_progress()
+    {
+        var vm = CreateVm();
+        await vm.BeginCreateAsync();
+        var e = vm.Editor!;
+        e.BacklogCode = "REQ-PROG";
+        e.Project = "ARCS";
+        e.AddTask("T");
+        e.ProgressText = "150"; // rejected
+
+        await vm.SaveNewAsync();
+
+        var saved = (await _backlogs.SearchAsync(null)).Single(b => b.BacklogCode == "REQ-PROG");
+        Assert.Null(saved.ProgressPercent);
     }
 }

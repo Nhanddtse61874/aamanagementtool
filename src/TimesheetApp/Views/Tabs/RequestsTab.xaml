@@ -188,6 +188,98 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- v7: Task List tracking (spec §5.2). DEFAULT backlog never reaches this
+                                 editor (it has no Edit affordance), so no extra guard is needed here. -->
+                            <Border Background="{StaticResource HeaderBg}" CornerRadius="8" Padding="12,10"
+                                    Margin="0,2,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Tracking" Style="{StaticResource FieldLabel}"
+                                               FontWeight="Bold" Margin="0,0,0,8"/>
+
+                                    <!-- dual deadlines -->
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Internal deadline (PCT)" Style="{StaticResource FieldLabel}"/>
+                                            <DatePicker SelectedDate="{Binding DeadlineInternal, Converter={StaticResource DateOnly}}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="External deadline (PCA)" Style="{StaticResource FieldLabel}"/>
+                                            <DatePicker SelectedDate="{Binding DeadlineExternal, Converter={StaticResource DateOnly}}"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- dual estimates (hours) -->
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Rough estimate (hours)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Text="{Binding RoughEstimateText, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="Official estimate (hours)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Text="{Binding OfficialEstimateText, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- manual progress % + PCA contact -->
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Progress %" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Width="70" HorizontalAlignment="Left"
+                                                     Text="{Binding ProgressText, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="PCA contact" Style="{StaticResource FieldLabel}"/>
+                                            <ComboBox ItemsSource="{Binding PcaContacts}"
+                                                      SelectedItem="{Binding SelectedPcaContact}"
+                                                      DisplayMemberPath="Name"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- free-text note -->
+                                    <TextBlock Text="Note" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
+                                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
+                                             VerticalScrollBarVisibility="Auto" Margin="0,0,0,10"/>
+
+                                    <!-- tag multi-select: a checkbox per tag with a live chip preview -->
+                                    <TextBlock Text="Tags" Style="{StaticResource FieldLabel}"/>
+                                    <ItemsControl ItemsSource="{Binding TagPicks}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsChecked}" Margin="0,2"
+                                                          VerticalContentAlignment="Center">
+                                                    <Border CornerRadius="10" Padding="9,2" Margin="2,0,0,0"
+                                                            HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                            Background="{Binding Tag.Color, Converter={StaticResource HexToBrush}}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Tag.Icon}" Margin="0,0,5,0"
+                                                                       VerticalAlignment="Center"/>
+                                                            <TextBlock Text="{Binding Tag.Text}" FontWeight="SemiBold"
+                                                                       Foreground="White" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </CheckBox>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
                             <!-- REQ-02: template picker — selecting a template auto-appends its tasks below -->
                             <TextBlock Text="Add a template" Style="{StaticResource FieldLabel}"/>
                             <ComboBox ItemsSource="{Binding TemplateNames}"

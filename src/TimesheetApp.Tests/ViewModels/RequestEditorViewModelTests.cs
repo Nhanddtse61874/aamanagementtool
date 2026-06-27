@@ -184,4 +184,123 @@ public sealed class BacklogEditorViewModelTests
         Assert.Equal("C", active[1].TaskName);
         Assert.Equal(1, active[1].OrderIndex);
     }
+
+    // ---- v7 tracking fields (P8 / TL-03) ------------------------------------------------
+
+    private static IReadOnlyList<PcaContact> TwoContacts() => new[]
+    {
+        new PcaContact(8, "Acme", true),
+        new PcaContact(9, "Globex", true),
+    };
+
+    private static IReadOnlyList<Tag> ThreeTags() => new[]
+    {
+        new Tag(1, "Urgent", "⚡", "#FF0000", DateTimeOffset.UtcNow),
+        new Tag(2, "Blocked", "🚧", "#0000FF", DateTimeOffset.UtcNow),
+        new Tag(3, "Review", "👀", "#00FF00", DateTimeOffset.UtcNow),
+    };
+
+    [Fact] // v7: create mode defaults — no PCA, all tags listed unchecked, nulls everywhere.
+    public void Create_mode_v7_defaults()
+    {
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate(), null, TwoContacts(), ThreeTags());
+
+        Assert.Same(BacklogEditorViewModel.NoPcaContact, vm.SelectedPcaContact);
+        Assert.Null(vm.PcaContactId);
+        Assert.Equal(3, vm.PcaContacts.Count); // NoPcaContact + Acme + Globex
+        Assert.Equal(3, vm.TagPicks.Count);
+        Assert.All(vm.TagPicks, p => Assert.False(p.IsChecked));
+        Assert.Empty(vm.CheckedTagIds);
+        Assert.Null(vm.DeadlineInternal);
+        Assert.Null(vm.RoughEstimateHours);
+        Assert.Null(vm.OfficialEstimateHours);
+        Assert.Null(vm.ProgressPercent);
+        Assert.Null(vm.Note);
+    }
+
+    [Fact] // v7: edit mode preloads all tracking fields, the PCA contact, and the checked tags.
+    public void Edit_mode_preloads_v7_fields_pca_and_checked_tags()
+    {
+        var backlog = new Backlog(
+            7, "RQ-7", "ARCS", DateTimeOffset.UtcNow,
+            DeadlineInternal: new DateOnly(2026, 7, 10),
+            DeadlineExternal: new DateOnly(2026, 7, 20),
+            RoughEstimateHours: 12.5m, OfficialEstimateHours: 16m,
+            ProgressPercent: 40, Note: "first cut", PcaContactId: 9);
+
+        var vm = BacklogEditorViewModel.ForEdit(
+            backlog, System.Array.Empty<TaskItem>(), WebTemplate(), null, null,
+            TwoContacts(), ThreeTags(), new[] { 1, 3 });
+
+        Assert.Equal(new DateOnly(2026, 7, 10), vm.DeadlineInternal);
+        Assert.Equal(new DateOnly(2026, 7, 20), vm.DeadlineExternal);
+        Assert.Equal(12.5m, vm.RoughEstimateHours);
+        Assert.Equal(16m, vm.OfficialEstimateHours);
+        Assert.Equal("12.5", vm.RoughEstimateText);
+        Assert.Equal("16", vm.OfficialEstimateText);
+        Assert.Equal(40, vm.ProgressPercent);
+        Assert.Equal("40", vm.ProgressText);
+        Assert.Equal("first cut", vm.Note);
+        Assert.Equal(9, vm.PcaContactId);
+        Assert.Equal("Globex", vm.SelectedPcaContact.Name);
+        Assert.Equal(new[] { 1, 3 }, vm.CheckedTagIds.OrderBy(x => x).ToArray());
+    }
+
+    [Fact] // v7: NoPcaContact sentinel maps back to a null id.
+    public void Selecting_no_pca_contact_maps_to_null()
+    {
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate(), null, TwoContacts(), ThreeTags());
+        vm.SelectedPcaContact = vm.PcaContacts.First(p => p.Id == 8);
+        Assert.Equal(8, vm.PcaContactId);
+
+        vm.SelectedPcaContact = BacklogEditorViewModel.NoPcaContact;
+        Assert.Null(vm.PcaContactId);
+    }
+
+    [Fact] // v7: estimate text parses decimals; blank clears to null.
+    public void Estimate_text_parses_decimal_and_clears_on_blank()
+    {
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
+
+        vm.RoughEstimateText = "12.5";
+        Assert.Equal(12.5m, vm.RoughEstimateHours);
+
+        vm.RoughEstimateText = "";
+        Assert.Null(vm.RoughEstimateHours);
+    }
+
+    [Fact] // v7: garbage / negative estimate is rejected (null) with an error surfaced.
+    public void Estimate_text_rejects_garbage_and_negative()
+    {
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
+
+        vm.OfficialEstimateText = "abc";
+        Assert.Null(vm.OfficialEstimateHours);
+        Assert.False(string.IsNullOrEmpty(vm.ErrorMessage));
+
+        vm.ErrorMessage = null;
+        vm.OfficialEstimateText = "-5";
+        Assert.Null(vm.OfficialEstimateHours);
+        Assert.False(string.IsNullOrEmpty(vm.ErrorMessage));
+    }
+
+    [Fact] // v7: progress accepts 0-100, rejects out-of-range and non-integers.
+    public void Progress_validates_zero_to_hundred()
+    {
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
+
+        vm.ProgressText = "0";
+        Assert.Equal(0, vm.ProgressPercent);
+        vm.ProgressText = "100";
+        Assert.Equal(100, vm.ProgressPercent);
+
+        vm.ProgressText = "101";
+        Assert.Null(vm.ProgressPercent);
+        Assert.False(string.IsNullOrEmpty(vm.ErrorMessage));
+
+        vm.ErrorMessage = null;
+        vm.ProgressText = "x";
+        Assert.Null(vm.ProgressPercent);
+        Assert.False(string.IsNullOrEmpty(vm.ErrorMessage));
+    }
 }

@@ -16,11 +16,14 @@ public sealed partial class BacklogsViewModel : ObservableObject
     private readonly IMessenger _messenger;
     private readonly ICurrentUserService? _currentUser;
     private readonly IUserRepository? _users;   // v4: assignee pick list + name resolution
+    private readonly IPcaContactRepository? _pcaContacts;  // v7: PCA pick list
+    private readonly ITagRepository? _tagsRepo;            // v7: tag multi-select
 
     public BacklogsViewModel(
         IBacklogRepository backlogs, ITaskRepository tasks, ITaskTemplateRepository templates,
         IMessenger? messenger = null, ICurrentUserService? currentUser = null,
-        IUserRepository? users = null)
+        IUserRepository? users = null,
+        IPcaContactRepository? pcaContacts = null, ITagRepository? tagsRepo = null)
     {
         _backlogs = backlogs;
         _tasks = tasks;
@@ -28,6 +31,8 @@ public sealed partial class BacklogsViewModel : ObservableObject
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _currentUser = currentUser;
         _users = users;
+        _pcaContacts = pcaContacts;
+        _tagsRepo = tagsRepo;
     }
 
     // List row = the Backlog plus its active-task count + v2 period/type + v4 assignee (grid columns).
@@ -130,7 +135,9 @@ public sealed partial class BacklogsViewModel : ObservableObject
     {
         var templates = await _templates.GetAllAsync();
         var users = _users is null ? null : await _users.GetActiveAsync();
-        Editor = BacklogEditorViewModel.ForCreate(templates, users);
+        var pca = _pcaContacts is null ? null : await _pcaContacts.GetActiveAsync();
+        var tags = _tagsRepo is null ? null : await _tagsRepo.GetAllAsync();
+        Editor = BacklogEditorViewModel.ForCreate(templates, users, pca, tags);
     }
 
     [RelayCommand]
@@ -142,7 +149,11 @@ public sealed partial class BacklogsViewModel : ObservableObject
         var templates = await _templates.GetAllAsync();
         var audit = await _backlogs.GetAuditAsync(backlogId);
         var users = _users is null ? null : await _users.GetActiveAsync();
-        Editor = BacklogEditorViewModel.ForEdit(backlog, existing, templates, audit, users);
+        var pca = _pcaContacts is null ? null : await _pcaContacts.GetActiveAsync();
+        var tags = _tagsRepo is null ? null : await _tagsRepo.GetAllAsync();
+        var checkedTagIds = await _backlogs.GetTagIdsAsync(backlogId);
+        Editor = BacklogEditorViewModel.ForEdit(
+            backlog, existing, templates, audit, users, pca, tags, checkedTagIds);
     }
 
     [RelayCommand]
@@ -160,10 +171,17 @@ public sealed partial class BacklogsViewModel : ObservableObject
 
         var newId = await _backlogs.InsertAsync(
             new Backlog(0, Editor.BacklogCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
-                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId));
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId,
+                Editor.DeadlineInternal, Editor.DeadlineExternal,
+                Editor.RoughEstimateHours, Editor.OfficialEstimateHours,
+                Editor.ProgressPercent, Editor.Note, Editor.PcaContactId));
 
         foreach (var row in Editor.ActiveTasks)
             await _tasks.InsertAsync(new TaskItem(0, newId, row.TaskName.Trim(), row.OrderIndex, true));
+
+        // v7: persist the tag multi-select (replace-all). Skipped when no tag repo wired (legacy ctor).
+        if (_tagsRepo is not null)
+            await _backlogs.SetTagsAsync(newId, Editor.CheckedTagIds);
 
         Editor = null;
         await RefreshAsync();
@@ -178,8 +196,15 @@ public sealed partial class BacklogsViewModel : ObservableObject
 
         await _backlogs.UpdateAsync(
             new Backlog(id, Editor.BacklogCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
-                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId),
+                Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId,
+                Editor.DeadlineInternal, Editor.DeadlineExternal,
+                Editor.RoughEstimateHours, Editor.OfficialEstimateHours,
+                Editor.ProgressPercent, Editor.Note, Editor.PcaContactId),
             _currentUser?.Current?.Id, _currentUser?.Current?.Name);
+
+        // v7: replace the tag set for this backlog. Skipped when no tag repo wired (legacy ctor).
+        if (_tagsRepo is not null)
+            await _backlogs.SetTagsAsync(id, Editor.CheckedTagIds);
 
         // Soft-delete existing tasks flagged removed (REQ-04 — task only, never the backlog).
         foreach (var removed in Editor.Tasks.Where(t => t.IsRemoved && t.ExistingTaskId > 0))

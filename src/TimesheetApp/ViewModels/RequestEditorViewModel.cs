@@ -5,6 +5,19 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TimesheetApp.Models;
 
+// v7: one tag in the editor's multi-select; IsChecked drives SetTagsAsync on save.
+public sealed partial class TagPickVm : ObservableObject
+{
+    public TagPickVm(Tag tag, bool isChecked)
+    {
+        Tag = tag;
+        _isChecked = isChecked;
+    }
+
+    public Tag Tag { get; }
+    [ObservableProperty] private bool _isChecked;
+}
+
 public sealed partial class BacklogEditorViewModel : ObservableObject
 {
     private readonly IReadOnlyList<TaskTemplate> _templates;
@@ -12,7 +25,12 @@ public sealed partial class BacklogEditorViewModel : ObservableObject
     // v4: sentinel for "no assignee" (id 0) so the ComboBox can clear an assignment.
     public static readonly User Unassigned = new(0, "— Unassigned —", null, true);
 
-    private BacklogEditorViewModel(IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users)
+    // v7: sentinel for "no PCA contact" (id 0), mirroring the assignee Unassigned sentinel.
+    public static readonly PcaContact NoPcaContact = new(0, "— Unassigned —", true);
+
+    private BacklogEditorViewModel(
+        IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users,
+        IReadOnlyList<PcaContact>? pcaContacts, IReadOnlyList<Tag>? tags)
     {
         _templates = templates;
         Templates = new ObservableCollection<TaskTemplate>(templates);
@@ -21,6 +39,14 @@ public sealed partial class BacklogEditorViewModel : ObservableObject
         // Assignee pick list = "(unassigned)" + the active users; default selection is unassigned.
         Users = new[] { Unassigned }.Concat(users ?? Array.Empty<User>()).ToList();
         _selectedAssignee = Unassigned;
+
+        // v7: PCA pick list = "(unassigned)" + active contacts; default selection is none.
+        PcaContacts = new[] { NoPcaContact }.Concat(pcaContacts ?? Array.Empty<PcaContact>()).ToList();
+        _selectedPcaContact = NoPcaContact;
+
+        // v7: tag multi-select (all tags, none checked by default).
+        foreach (var t in tags ?? Array.Empty<Tag>())
+            TagPicks.Add(new TagPickVm(t, false));
     }
 
     public bool IsEditMode { get; private init; }
@@ -42,8 +68,63 @@ public sealed partial class BacklogEditorViewModel : ObservableObject
     public IReadOnlyList<User> Users { get; }
     public int? AssigneeUserId => SelectedAssignee is { Id: > 0 } u ? u.Id : null;
 
+    // v7 tracking (spec §5.2). DateOnly? deadlines bound to DatePickers via the DateOnly converter.
+    [ObservableProperty] private DateOnly? _deadlineInternal;
+    [ObservableProperty] private DateOnly? _deadlineExternal;
+
+    // v7 estimates. Bound as TEXT — parsed to decimal? on change; non-numeric/negative => null + error.
+    [ObservableProperty] private string? _roughEstimateText;
+    [ObservableProperty] private string? _officialEstimateText;
+    public decimal? RoughEstimateHours { get; private set; }
+    public decimal? OfficialEstimateHours { get; private set; }
+
+    [ObservableProperty] private string? _note;
+
+    // v7 manual progress (0-100). Bound as TEXT; out-of-range / non-numeric => null + error.
+    [ObservableProperty] private string? _progressText;
+    public int? ProgressPercent { get; private set; }
+
+    // v7: external (PCA) contact. Bound to a ComboBox; NoPcaContact (id 0) => null.
+    [ObservableProperty] private PcaContact _selectedPcaContact = NoPcaContact;
+    public IReadOnlyList<PcaContact> PcaContacts { get; }
+    public int? PcaContactId => SelectedPcaContact is { Id: > 0 } p ? p.Id : null;
+
+    // v7: tag multi-select; the ids of the checked tags form the SetTagsAsync replace-set.
+    public ObservableCollection<TagPickVm> TagPicks { get; } = new();
+    public IReadOnlyList<int> CheckedTagIds =>
+        TagPicks.Where(t => t.IsChecked).Select(t => t.Tag.Id).ToList();
+
     // Validation message shown in the editor (e.g. "must have at least one task" on create).
     [ObservableProperty] private string? _errorMessage;
+
+    // v7 parse handlers — keep the parsed value + text in sync, surfacing bad input via ErrorMessage.
+    partial void OnRoughEstimateTextChanged(string? value) =>
+        RoughEstimateHours = ParseEstimate(value, "Rough estimate");
+    partial void OnOfficialEstimateTextChanged(string? value) =>
+        OfficialEstimateHours = ParseEstimate(value, "Official estimate");
+    partial void OnProgressTextChanged(string? value) => ProgressPercent = ParseProgress(value);
+
+    // Empty => null (cleared, no error). Non-numeric / negative => null + an error message.
+    private decimal? ParseEstimate(string? value, string label)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (decimal.TryParse(value.Trim(),
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var d) && d >= 0)
+            return d;
+        ErrorMessage = $"{label} must be a number ≥ 0.";
+        return null;
+    }
+
+    // Empty => null (cleared). Non-integer / out of 0-100 => null + an error message.
+    private int? ParseProgress(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (int.TryParse(value.Trim(), out var p) && p is >= 0 and <= 100)
+            return p;
+        ErrorMessage = "Progress must be a whole number 0–100.";
+        return null;
+    }
 
     // Always set (month is required) — projected to the persisted "yyyy-MM".
     public string PeriodMonth => $"{PeriodYear:D4}-{PeriodMonthNumber:D2}";
@@ -73,16 +154,19 @@ public sealed partial class BacklogEditorViewModel : ObservableObject
     }
 
     public static BacklogEditorViewModel ForCreate(
-        IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users = null) =>
+        IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users = null,
+        IReadOnlyList<PcaContact>? pcaContacts = null, IReadOnlyList<Tag>? tags = null) =>
         // New tickets default to the current month (month/year fields default to today).
-        new(templates, users) { IsEditMode = false, EditingBacklogId = 0 };
+        new(templates, users, pcaContacts, tags) { IsEditMode = false, EditingBacklogId = 0 };
 
     public static BacklogEditorViewModel ForEdit(
         Backlog backlog, IReadOnlyList<TaskItem> existingTasks, IReadOnlyList<TaskTemplate> templates,
-        IReadOnlyList<BacklogAuditEntry>? audit = null, IReadOnlyList<User>? users = null)
+        IReadOnlyList<BacklogAuditEntry>? audit = null, IReadOnlyList<User>? users = null,
+        IReadOnlyList<PcaContact>? pcaContacts = null, IReadOnlyList<Tag>? tags = null,
+        IReadOnlyList<int>? checkedTagIds = null)
     {
         var (month, year) = ParsePeriodMonth(backlog.PeriodMonth);
-        var vm = new BacklogEditorViewModel(templates, users)
+        var vm = new BacklogEditorViewModel(templates, users, pcaContacts, tags)
         {
             IsEditMode = true,
             EditingBacklogId = backlog.Id,
@@ -93,15 +177,36 @@ public sealed partial class BacklogEditorViewModel : ObservableObject
             PeriodMonthNumber = month,
             PeriodYear = year,
             Type = backlog.Type,
+            // v7 tracking fields (text-bound estimates/progress projected back to text).
+            DeadlineInternal = backlog.DeadlineInternal,
+            DeadlineExternal = backlog.DeadlineExternal,
+            Note = backlog.Note,
+            RoughEstimateText = FormatHours(backlog.RoughEstimateHours),
+            OfficialEstimateText = FormatHours(backlog.OfficialEstimateHours),
+            ProgressText = backlog.ProgressPercent?.ToString(),
         };
         // Preselect the saved assignee (falls back to Unassigned if not in the list / null).
         vm.SelectedAssignee = vm.Users.FirstOrDefault(u => u.Id == backlog.AssigneeUserId) ?? Unassigned;
+        // Preselect the saved PCA contact (falls back to NoPcaContact if not in the list / null).
+        vm.SelectedPcaContact =
+            vm.PcaContacts.FirstOrDefault(p => p.Id == backlog.PcaContactId) ?? NoPcaContact;
+        // Check the tags currently linked to this backlog.
+        if (checkedTagIds is not null)
+        {
+            var set = new HashSet<int>(checkedTagIds);
+            foreach (var pick in vm.TagPicks)
+                if (set.Contains(pick.Tag.Id)) pick.IsChecked = true;
+        }
         foreach (var t in existingTasks.OrderBy(t => t.OrderIndex))
             vm.Tasks.Add(EditableTaskRowVm.Existing(t.Id, t.TaskName, t.OrderIndex));
         if (audit is not null)
             foreach (var a in audit) vm.AuditEntries.Add(a);
         return vm;
     }
+
+    // Render a stored estimate back into the text box without trailing zeros (e.g. 12.5, 16).
+    private static string? FormatHours(decimal? hours) =>
+        hours?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
     // "yyyy-MM" -> (month, year); falls back to the current month when missing/unparseable.
     private static (int Month, int Year) ParsePeriodMonth(string? yyyymm)
