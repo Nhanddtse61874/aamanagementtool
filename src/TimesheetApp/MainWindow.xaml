@@ -60,23 +60,27 @@
         <StackPanel Margin="12,12,12,0">
           <TextBlock Style="{StaticResource SidebarSection}" Text="WORKSPACE"/>
 
-          <RadioButton Style="{StaticResource NavItem}" Tag="&#128197;" Content="Timesheet"
+          <!-- WORKSPACE order (D2): Log Work · Backlog · Task List · Daily Report · Reports.
+               The "timesheet" key is kept (only the label changed) so ActiveView default + routing are untouched. -->
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#128197;" Content="Log Work"
                        IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
                                    ConverterParameter=timesheet, Mode=TwoWay}"/>
+
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#128203;" Content="Backlog"
+                       IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
+                                   ConverterParameter=backlog, Mode=TwoWay}"/>
+
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#9989;" Content="Task List"
+                       IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
+                                   ConverterParameter=tasklist, Mode=TwoWay}"/>
 
           <RadioButton Style="{StaticResource NavItem}" Tag="&#128221;" Content="Daily Report"
                        IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
                                    ConverterParameter=dailyreport, Mode=TwoWay}"/>
 
-          <!-- Planned (SOON) — disabled, pill on the right -->
-          <Grid>
-            <RadioButton Style="{StaticResource NavItem}" Tag="&#9989;" Content="Task List"
-                         IsEnabled="False"/>
-            <Border Style="{StaticResource SoonPill}" HorizontalAlignment="Right" Margin="0,0,8,0"
-                    IsHitTestVisible="False">
-              <TextBlock Text="SOON" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AmberFg}"/>
-            </Border>
-          </Grid>
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#128202;" Content="Reports"
+                       IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
+                                   ConverterParameter=reports, Mode=TwoWay}"/>
 
           <TextBlock Style="{StaticResource SidebarSection}" Text="ADMIN"/>
           <RadioButton Style="{StaticResource NavItem}" Tag="&#128101;" Content="Users"
@@ -140,26 +144,52 @@
       <!-- Content host: one panel per ActiveView, only the matching one visible -->
       <Grid Grid.Row="1">
 
-        <!-- ===== TIMESHEET (Entry / Backlog / Reports sub-tabs) ===== -->
+        <!-- ===== LOG WORK (timesheet entry grid) ===== -->
         <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
                                 ConverterParameter=timesheet}">
           <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,0">
             <TextBlock Text="&#128197;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
-            <TextBlock Style="{StaticResource FeatureTitle}" Text="Timesheet"/>
+            <TextBlock Style="{StaticResource FeatureTitle}" Text="Log Work"/>
             <TextBlock Text="Log hours per backlog &amp; task" Margin="10,0,0,0"
                        Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
-          <TabControl x:Name="SubTabs" Margin="22,8,22,0" SelectionChanged="OnSubTabChanged">
-            <TabItem Header="Entry">
-              <tabs:TimesheetTab DataContext="{Binding Timesheet}"/>
-            </TabItem>
-            <TabItem Header="Backlog">
-              <tabs:BacklogsTab DataContext="{Binding Backlogs}"/>
-            </TabItem>
-            <TabItem Header="Reports">
-              <tabs:ReportsTab DataContext="{Binding Reports}"/>
-            </TabItem>
-          </TabControl>
+          <tabs:TimesheetTab DataContext="{Binding Timesheet}" Margin="22,8,22,0"/>
+        </DockPanel>
+
+        <!-- ===== BACKLOG ===== -->
+        <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
+                                ConverterParameter=backlog}">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,0">
+            <TextBlock Text="&#128203;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Style="{StaticResource FeatureTitle}" Text="Backlog"/>
+            <TextBlock Text="Manage backlogs &amp; their tasks" Margin="10,0,0,0"
+                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+          </StackPanel>
+          <tabs:BacklogsTab DataContext="{Binding Backlogs}" Margin="22,8,22,0"/>
+        </DockPanel>
+
+        <!-- ===== TASK LIST ===== -->
+        <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
+                                ConverterParameter=tasklist}">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,0">
+            <TextBlock Text="&#9989;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Style="{StaticResource FeatureTitle}" Text="Task List"/>
+            <TextBlock Text="Per-month overview of all backlogs" Margin="10,0,0,0"
+                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+          </StackPanel>
+          <tabs:TaskListTab DataContext="{Binding TaskList}" Margin="22,8,22,0"/>
+        </DockPanel>
+
+        <!-- ===== REPORTS ===== -->
+        <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
+                                ConverterParameter=reports}">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,0">
+            <TextBlock Text="&#128202;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Style="{StaticResource FeatureTitle}" Text="Reports"/>
+            <TextBlock Text="Logged-hours analytics" Margin="10,0,0,0"
+                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+          </StackPanel>
+          <tabs:ReportsTab DataContext="{Binding Reports}" Margin="22,8,22,0"/>
         </DockPanel>
 
         <!-- ===== DAILY REPORT (Input / Board sub-tabs) ===== -->

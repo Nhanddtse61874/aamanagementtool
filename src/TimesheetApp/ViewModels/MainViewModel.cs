@@ -33,10 +33,11 @@ public sealed partial class MainViewModel : ObservableObject
         ReportsViewModel reports,
         SettingsViewModel settings,
         DailyReportViewModel dailyReport,
+        TaskListViewModel taskList,
         ICurrentUserService currentUser,
         IUserRepository users,
         IAppConfig config)
-        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, currentUser, users, config,
+        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, taskList, currentUser, users, config,
                () => Environment.UserName)
     {
     }
@@ -49,6 +50,7 @@ public sealed partial class MainViewModel : ObservableObject
         ReportsViewModel reports,
         SettingsViewModel settings,
         DailyReportViewModel dailyReport,
+        TaskListViewModel taskList,
         ICurrentUserService currentUser,
         IUserRepository users,
         IAppConfig config,
@@ -60,6 +62,7 @@ public sealed partial class MainViewModel : ObservableObject
         Reports = reports;
         Settings = settings;
         DailyReport = dailyReport;
+        TaskList = taskList;
         _currentUser = currentUser;
         _users = users;
         _config = config;
@@ -72,6 +75,7 @@ public sealed partial class MainViewModel : ObservableObject
     public ReportsViewModel Reports { get; }
     public SettingsViewModel Settings { get; }
     public DailyReportViewModel DailyReport { get; }
+    public TaskListViewModel TaskList { get; }
 
     [ObservableProperty] private string _currentUserName = string.Empty;
 
@@ -81,17 +85,26 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnCurrentUserNameChanged(string value) => OnPropertyChanged(nameof(CurrentUserInitial));
 
-    // Active sidebar destination: timesheet | daily | tasks | users | settings. Drives both the
-    // nav highlight (RadioButton IsChecked via StringMatchConverter) and content visibility.
+    // Active sidebar destination (string key): timesheet (= "Log Work") | backlog | tasklist |
+    // dailyreport | reports | users | settings. Drives both the nav highlight (RadioButton IsChecked
+    // via StringMatchConverter) and content-panel visibility. Each is now a top-level item.
     [ObservableProperty] private string _activeView = "timesheet";
 
-    // Switching destinations reloads the relevant tab so it shows fresh data. Reuses the existing
-    // index-based ActivateTabAsync (0 Timesheet, 2 Users, 4 Settings); daily/tasks are static.
+    // Switching destinations reloads the relevant view so it shows fresh data. Top-level keys route
+    // either through the index-based ActivateTabAsync (timesheet=0, users=2, reports=3, settings=4) or
+    // straight to a VM load (backlog, tasklist, dailyreport).
     partial void OnActiveViewChanged(string value)
     {
-        if (value == "dailyreport") { _ = SafeLoad(() => DailyReport.LoadAsync()); return; }
-        var index = value switch { "timesheet" => 0, "users" => 2, "settings" => 4, _ => -1 };
-        if (index >= 0) _ = ActivateTabAsync(index);
+        switch (value)
+        {
+            case "dailyreport": _ = SafeLoad(() => DailyReport.LoadAsync()); return;
+            case "backlog": _ = SafeLoad(() => Backlogs.LoadAsync()); return;
+            case "tasklist": _ = SafeLoad(() => TaskList.LoadAsync()); return;
+            case "reports": _ = ActivateTabAsync(3); return;
+            case "timesheet": _ = ActivateTabAsync(0); return;
+            case "users": _ = ActivateTabAsync(2); return;
+            case "settings": _ = ActivateTabAsync(4); return;
+        }
     }
 
     // XC-08: non-empty when OneDrive conflict-copy siblings of the DB exist; the View shows a banner.
@@ -122,9 +135,10 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Reload the activated tab's data so changes made in another tab are reflected (e.g. a task
-    /// created in Backlogs appears in the Timesheet grid). Wired to the TabControl's SelectionChanged.
-    /// Index order matches MainWindow: 0 Timesheet, 1 Backlog, 2 Users, 3 Reports, 4 Settings.
+    /// Reload a view's data so changes made elsewhere are reflected (e.g. a task created in Backlog
+    /// appears in the Log Work grid). Called from <see cref="OnActiveViewChanged"/> for the views that
+    /// reuse this index-based reload. Index map (unchanged): 0 Log Work (timesheet), 1 Backlog,
+    /// 2 Users, 3 Reports, 4 Settings.
     /// </summary>
     public async Task ActivateTabAsync(int index)
     {

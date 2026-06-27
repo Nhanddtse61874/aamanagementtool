@@ -22,6 +22,14 @@ public sealed class MainViewModelTests
 
     private static User U(int id, string name) => new(id, name, null, true);
 
+    // TaskListViewModel has no behaviour exercised by these shell tests; build a mock-backed instance
+    // with an isolated messenger so its DataChangedMessage registration can't trigger spurious reloads.
+    private static TaskListViewModel CreateTaskList() => new(
+        Mock.Of<IBacklogRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITimeLogRepository>(),
+        Mock.Of<ITagRepository>(), Mock.Of<IPcaContactRepository>(), Mock.Of<IUserRepository>(),
+        Mock.Of<IHolidayRepository>(), Mock.Of<IWorkingDayCalculator>(), Mock.Of<IScheduleStateService>(),
+        Mock.Of<ITaskListArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger());
+
     // Build a MainViewModel with real (mock-backed) tab VMs. Tab loads are best-effort and isolated
     // in MainViewModel, so default-returning mocks are sufficient for these tests.
     private MainViewModel CreateVm(Func<string>? windowsUserName = null, string? dbPath = null)
@@ -46,7 +54,7 @@ public sealed class MainViewModelTests
             dbPath ?? Path.Combine(Path.GetTempPath(), "mvm-test-" + Guid.NewGuid().ToString("N"), "timesheet.db"));
 
         return new MainViewModel(
-            timesheet, requests, usersVm, reports, settings, dailyReport,
+            timesheet, requests, usersVm, reports, settings, dailyReport, CreateTaskList(),
             _currentUser.Object, _users.Object, _config.Object,
             windowsUserName ?? (() => "tester"));
     }
@@ -168,6 +176,7 @@ public sealed class MainViewModelTests
             new ReportsViewModel(Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(), Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>()),
             new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>(), Mock.Of<ITagRepository>(), Mock.Of<IPcaContactRepository>(), Mock.Of<IHolidayRepository>()),
             new DailyReportViewModel(Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger()),
+            CreateTaskList(),
             _currentUser.Object, _users.Object, _config.Object, () => "tester");
 
         Assert.Empty(timesheet.Groups);
