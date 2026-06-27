@@ -11,7 +11,10 @@ namespace TimesheetApp.Services;
 /// creates team "Architect Improvement", backfills team_id on every legacy backlog/standup row and
 /// joins every user to it, then sets it active. On a FRESH DB it creates an active "My Team". Backup
 /// first (XC-10); bulk writes run in their own transaction, OUTSIDE the initializer's transaction.
-/// Idempotent: returns immediately once any team exists ("Teams empty?" guard, R3).</summary>
+/// Idempotent + self-healing: when a team already exists it still re-runs the (no-op-when-done)
+/// backfill so a migration interrupted between team-create and backfill completes on next startup
+/// (I2). On a fresh DB it also repoints the initializer's seeded global DEFAULT to the new team so a
+/// later per-team DefaultTaskSync doesn't strand a team_id=NULL DEFAULT (I1, R3).</summary>
 public sealed class TeamBootstrapService : ITeamBootstrapService
 {
     private const string MigratedTeamName = "Architect Improvement";
@@ -36,8 +39,18 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
 
     public async Task EnsureBootstrappedAsync()
     {
-        // Idempotent guard: any team => already bootstrapped (first-run-done OR migrated). (R3)
-        if ((await _teams.GetAllAsync()).Count > 0) return;
+        // A team already exists => bootstrap was at least started. It may have crashed between
+        // team-create and the backfill (separate transactions), stranding legacy team_id=NULL rows
+        // forever (I2). Resolve the bootstrap team and ALWAYS re-run the idempotent backfill so an
+        // interrupted migration completes; a fully-done DB makes every statement a no-op. (R3)
+        var existing = (await _teams.GetAllAsync())
+            .OrderBy(t => t.Id)
+            .FirstOrDefault();
+        if (existing is not null)
+        {
+            await BackfillTeamAsync(existing.Id, backupFirst: false);
+            return;
+        }
 
         if (await HasBusinessDataAsync())
             await MigrateExistingDbAsync();
@@ -48,13 +61,35 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
     // Existing v8 DB carrying legacy team-less data: migrate everything to "Architect Improvement".
     private async Task MigrateExistingDbAsync()
     {
-        await _backup.BackupAsync(); // XC-10: bulk write -> backup first (no-op when DB absent).
-
         var teamId = await EnsureTeamAsync(MigratedTeamName);
+        await BackfillTeamAsync(teamId, backupFirst: true);
+        _config.SetActiveTeamId(teamId);
+    }
+
+    // Fresh DB (no business data): create the renamable default team and make it active. The
+    // initializer already seeded a global DEFAULT (team_id NULL); repoint it to the new team so a
+    // later per-team DefaultTaskSync doesn't create a SECOND DEFAULT and strand the NULL one (I1).
+    private async Task FirstRunAsync()
+    {
+        var teamId = await EnsureTeamAsync(FreshTeamName);
+        await BackfillTeamAsync(teamId, backupFirst: false);
+        _config.SetActiveTeamId(teamId);
+    }
+
+    // Idempotent backfill: repoint every team-less backlog/standup row to the bootstrap team and
+    // join every user. Re-running it is a no-op (WHERE team_id IS NULL / INSERT OR IGNORE), which is
+    // what makes an interrupted migration self-heal on the next startup (I2). Bulk writes run in one
+    // transaction, OUTSIDE the initializer's transaction.
+    private async Task BackfillTeamAsync(int teamId, bool backupFirst)
+    {
+        if (teamId <= 0) return;
+
+        if (backupFirst)
+            await _backup.BackupAsync(); // XC-10: bulk write -> backup first (no-op when DB absent).
 
         using var c = _factory.Create();
         using var tx = c.BeginTransaction();
-        // Repoint every legacy backlog (incl. the single global DEFAULT -> becomes this team's DEFAULT).
+        // Repoint every team-less backlog (incl. the seeded global DEFAULT -> becomes this team's DEFAULT).
         await c.ExecuteAsync(
             "UPDATE Backlogs SET team_id = @t WHERE team_id IS NULL;", new { t = teamId }, tx);
         await c.ExecuteAsync(
@@ -64,16 +99,6 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
             "INSERT OR IGNORE INTO UserTeams(user_id, team_id) SELECT id, @t FROM Users;",
             new { t = teamId }, tx);
         tx.Commit();
-
-        _config.SetActiveTeamId(teamId);
-    }
-
-    // Fresh DB (no business data): create the renamable default team and make it active. Per-team
-    // DEFAULT seeding is W3's DefaultTaskSync; the user->team join is W9's MainViewModel.
-    private async Task FirstRunAsync()
-    {
-        var teamId = await EnsureTeamAsync(FreshTeamName);
-        _config.SetActiveTeamId(teamId);
     }
 
     // Idempotent create-by-name (GetByNameAsync guard); returns the team id.

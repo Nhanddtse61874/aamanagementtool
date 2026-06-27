@@ -16,12 +16,24 @@ public sealed class CurrentTeamService : ICurrentTeamService
     private readonly IMessenger _messenger;
 
     private IReadOnlyList<Team> _available = Array.Empty<Team>();
+    private int _currentUserId;        // last-known user from InitializeAsync (for live re-resolve, I3)
+    private bool _initialized;         // ignore broadcasts until the first InitializeAsync
+    private bool _suppressReentry;     // SetActiveTeamAsync sends DataKind.Teams -> don't re-resolve self
 
     public CurrentTeamService(ITeamRepository teams, IAppConfig config, IMessenger messenger)
     {
         _teams = teams;
         _config = config;
         _messenger = messenger;
+
+        // Live refresh: a team create/rename/deactivate/membership change elsewhere broadcasts
+        // DataKind.Teams. Re-resolve AvailableTeams for the current user and fall the active team back
+        // if it is no longer valid, so the switcher + the 4 TeamFilters update without a restart (I3).
+        _messenger.Register<CurrentTeamService, DataChangedMessage>(this, static (s, m) =>
+        {
+            if (m.Kind == DataKind.Teams)
+                _ = s.OnTeamsChangedAsync();
+        });
     }
 
     public int ActiveTeamId { get; private set; }
@@ -32,11 +44,10 @@ public sealed class CurrentTeamService : ICurrentTeamService
 
     public async Task InitializeAsync(int currentUserId)
     {
-        // AvailableTeams = the user's memberships ∩ active teams (only active teams are selectable).
-        var memberOf = (await _teams.GetTeamIdsForUserAsync(currentUserId)).ToHashSet();
-        _available = (await _teams.GetActiveAsync())
-            .Where(t => memberOf.Contains(t.Id))
-            .ToList();
+        _currentUserId = currentUserId;
+        _initialized = true;
+
+        await ResolveAvailableAsync(currentUserId);
 
         // Resolve: persisted id if still available, else first available, else 0 (zero-team edge).
         var persisted = _config.ActiveTeamId;
@@ -54,7 +65,36 @@ public sealed class CurrentTeamService : ICurrentTeamService
         ActiveTeamId = teamId;
         _config.SetActiveTeamId(teamId);
         ActiveTeamChanged?.Invoke(this, EventArgs.Empty);
-        _messenger.Send(new DataChangedMessage(DataKind.Teams));
+
+        // Broadcast the change without re-resolving ourselves on the echo (feedback-loop guard, I3).
+        _suppressReentry = true;
+        try { _messenger.Send(new DataChangedMessage(DataKind.Teams)); }
+        finally { _suppressReentry = false; }
         await Task.CompletedTask;
+    }
+
+    // Re-resolve AvailableTeams on a DataKind.Teams broadcast. Only changes the active team when the
+    // current one is no longer valid (fall back to first available, else 0) — an unchanged active team
+    // stays put and fires no event (avoids churning working-scope VMs). Idempotent. (I3)
+    internal async Task OnTeamsChangedAsync()
+    {
+        if (!_initialized || _suppressReentry) return;
+
+        await ResolveAvailableAsync(_currentUserId);
+
+        if (_available.Any(t => t.Id == ActiveTeamId)) return;   // still valid -> nothing to do
+
+        ActiveTeamId = _available.Count > 0 ? _available[0].Id : 0;
+        _config.SetActiveTeamId(ActiveTeamId);
+        ActiveTeamChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // AvailableTeams = the user's memberships ∩ active teams (only active teams are selectable).
+    private async Task ResolveAvailableAsync(int userId)
+    {
+        var memberOf = (await _teams.GetTeamIdsForUserAsync(userId)).ToHashSet();
+        _available = (await _teams.GetActiveAsync())
+            .Where(t => memberOf.Contains(t.Id))
+            .ToList();
     }
 }

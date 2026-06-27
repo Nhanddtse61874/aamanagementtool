@@ -647,6 +647,39 @@
     <Setter Property="Margin" Value="0,0,6,0"/>
   </Style>
 
+  <!-- Ghost-styled ToggleButton (e.g. TeamFilter "Teams ▾" dropdown). Mirrors ToolbarGhostButton but
+       TargetType="ToggleButton" so the popup-toggle binding works (a Button-targeted style cannot be
+       applied to a ToggleButton — InvalidOperationException at load). -->
+  <Style x:Key="ToolbarGhostToggle" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+    <Setter Property="Foreground" Value="{StaticResource GhostText}"/>
+    <Setter Property="Background" Value="{StaticResource Surface}"/>
+    <Setter Property="Padding" Value="9,4"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Margin" Value="0,0,6,0"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ToggleButton">
+          <Border x:Name="bd" Background="{TemplateBinding Background}"
+                  BorderBrush="{StaticResource BorderStrong}" BorderThickness="1"
+                  CornerRadius="6" Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- Small danger-outline action (e.g. Deactivate) — red text/border, soft-red hover. -->
   <Style x:Key="DangerGhostButton" TargetType="Button" BasedOn="{StaticResource MiniGhostButton}">
     <Setter Property="Foreground" Value="{StaticResource Danger}"/>

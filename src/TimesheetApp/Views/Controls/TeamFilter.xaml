@@ -7,7 +7,7 @@
     <StackPanel Orientation="Horizontal"
                 Visibility="{Binding ShowFilter, Converter={StaticResource BoolToVisibleConverter}}">
         <TextBlock Text="Teams:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-        <ToggleButton x:Name="TeamsToggle" Style="{StaticResource ToolbarGhostButton}"
+        <ToggleButton x:Name="TeamsToggle" Style="{StaticResource ToolbarGhostToggle}"
                       Content="{Binding HeaderText}" Padding="10,4"/>
         <Popup IsOpen="{Binding IsChecked, ElementName=TeamsToggle}" StaysOpen="False"
                PlacementTarget="{Binding ElementName=TeamsToggle}" Placement="Bottom"

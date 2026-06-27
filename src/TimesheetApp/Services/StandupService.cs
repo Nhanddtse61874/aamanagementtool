@@ -154,7 +154,8 @@ public sealed class StandupService : IStandupService
         if (dragged.WorkDate != target.WorkDate) return;           // only within the shown day
 
         var section = target.Section;   // dropping onto the other section moves it there
-        var all = await _repo.GetEntriesAsync(me.Id, dragged.WorkDate);
+        // Scope order math to the active team so reordering doesn't churn other teams' OrderIndex (I4).
+        var all = await _repo.GetEntriesAsync(me.Id, dragged.WorkDate, _currentTeam.ActiveTeamId);
 
         // Rebuild the destination section's order with the dragged entry inserted at the target's slot.
         var dest = all.Where(e => e.Section == section && e.Id != draggedId)
@@ -213,7 +214,8 @@ public sealed class StandupService : IStandupService
 
     private async Task<int> NextOrderAsync(int userId, DateOnly workDate, string section)
     {
-        var existing = await _repo.GetEntriesAsync(userId, workDate);
+        // Active-team scope so the next order index is per-team, not across all teams (I4).
+        var existing = await _repo.GetEntriesAsync(userId, workDate, _currentTeam.ActiveTeamId);
         var inSection = existing.Where(e => e.Section == section).ToList();
         return inSection.Count == 0 ? 0 : inSection.Max(e => e.OrderIndex) + 1;
     }

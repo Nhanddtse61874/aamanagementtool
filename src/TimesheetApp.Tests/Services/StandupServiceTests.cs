@@ -173,6 +173,41 @@ public class StandupServiceTests
         ctx.Repo.Verify(r => r.UpdateEntryAsync(It.Is<StandupEntry>(e => e.Id == 11 && e.OrderIndex == 2)), Times.Once);
     }
 
+    // I4: reorder order-math must be scoped to the active team so it doesn't churn other teams' rows.
+    [Fact]
+    public async Task ReorderEntry_queries_only_active_team()
+    {
+        var ctx = new Ctx();
+        ctx.CurrentTeam.ActiveTeamId = 42;
+        var a = Entry(10, 1, Today, StandupSection.Today) with { OrderIndex = 0 };
+        var c = Entry(12, 1, Today, StandupSection.Today) with { OrderIndex = 1 };
+        ctx.Repo.Setup(r => r.GetEntryAsync(12)).ReturnsAsync(c);
+        ctx.Repo.Setup(r => r.GetEntryAsync(10)).ReturnsAsync(a);
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, 42)).ReturnsAsync(new[] { a, c });
+        var svc = ctx.Make(Today);
+
+        await svc.ReorderEntryAsync(draggedId: 12, targetId: 10);
+
+        ctx.Repo.Verify(r => r.GetEntriesAsync(1, Today, 42), Times.Once);
+        ctx.Repo.Verify(r => r.GetEntriesAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), (int?)null), Times.Never);
+    }
+
+    // I4: NextOrder (via AddEntry) must also scope to the active team.
+    [Fact]
+    public async Task AddEntry_next_order_queries_only_active_team()
+    {
+        var ctx = new Ctx();
+        ctx.CurrentTeam.ActiveTeamId = 42;
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, 42)).ReturnsAsync(Array.Empty<StandupEntry>());
+        ctx.Repo.Setup(r => r.InsertEntryAsync(It.IsAny<StandupEntry>())).ReturnsAsync(1);
+        var svc = ctx.Make(Today);
+
+        await svc.AddEntryAsync(Today, Draft());
+
+        ctx.Repo.Verify(r => r.GetEntriesAsync(1, Today, 42), Times.Once);
+        ctx.Repo.Verify(r => r.GetEntriesAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), (int?)null), Times.Never);
+    }
+
     // DR-07: grouping + issue attach + editable flag
     [Fact]
     public async Task GetMyStandup_groups_sections_and_attaches_issues()
