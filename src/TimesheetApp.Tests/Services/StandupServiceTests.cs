@@ -26,15 +26,28 @@ public class StandupServiceTests
         public Task SetWindowsUsernameAsync(int userId, string windowsUsername) => Task.CompletedTask;
     }
 
+    private sealed class FakeCurrentTeam : ICurrentTeamService
+    {
+        public int ActiveTeamId { get; set; } = 7;
+        public Team? ActiveTeam => null;
+        public IReadOnlyList<Team> AvailableTeams => Array.Empty<Team>();
+        public event EventHandler? ActiveTeamChanged { add { } remove { } }
+        public Task InitializeAsync(int currentUserId) => Task.CompletedTask;
+        public Task SetActiveTeamAsync(int teamId) => Task.CompletedTask;
+    }
+
     private sealed class Ctx
     {
         public Mock<IStandupRepository> Repo = new();
         public Mock<IUserRepository> Users = new();
+        public Mock<ITeamRepository> Teams = new();
         public Mock<IBacklogRepository> Backlogs = new();
         public Mock<ITaskRepository> Tasks = new();
         public FakeCurrentUser Current = new() { Current = new User(1, "Alice", "alice", true) };
+        public FakeCurrentTeam CurrentTeam = new();
         public StandupService Make(DateOnly today) =>
-            new(Repo.Object, Current, Users.Object, Backlogs.Object, Tasks.Object, new FakeClock { Today = today });
+            new(Repo.Object, Current, CurrentTeam, Users.Object, Teams.Object,
+                Backlogs.Object, Tasks.Object, new FakeClock { Today = today });
     }
 
     private static StandupEntryDraft Draft(
@@ -184,15 +197,17 @@ public class StandupServiceTests
         Assert.Equal("blocked", Assert.Single(today.Issues).IssueText);
     }
 
-    // DR-08: one card per active user, empty sections allowed
+    // DR-08 / TM-07: one card per MEMBER of the checked teams, empty sections allowed.
+    // The convenience overload defaults to the active team (id 7).
     [Fact]
-    public async Task GetTeamStandup_returns_one_per_active_user_even_when_empty()
+    public async Task GetTeamStandup_returns_one_per_team_member_even_when_empty()
     {
         var ctx = new Ctx();
         ctx.Users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[]
         {
             new User(1, "Alice", null, true), new User(2, "Bob", null, true),
         });
+        ctx.Teams.Setup(t => t.GetUserIdsForTeamAsync(7)).ReturnsAsync(new[] { 1, 2 });
         ctx.Repo.Setup(r => r.GetEntriesForDayAsync(Today, It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[] { Entry(10, 1, Today, StandupSection.Today) });
         ctx.Repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
@@ -207,6 +222,79 @@ public class StandupServiceTests
         var bob = team.Single(t => t.UserId == 2);
         Assert.Empty(bob.Today);
         Assert.Empty(bob.Yesterday);
+    }
+
+    // TM-06: a new entry carries the active team's id.
+    [Fact]
+    public async Task AddEntry_stamps_active_team_id()
+    {
+        var ctx = new Ctx();
+        ctx.CurrentTeam.ActiveTeamId = 42;
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, It.IsAny<int?>())).ReturnsAsync(Array.Empty<StandupEntry>());
+        ctx.Repo.Setup(r => r.InsertEntryAsync(It.IsAny<StandupEntry>())).ReturnsAsync(9);
+        var svc = ctx.Make(Today);
+
+        await svc.AddEntryAsync(Today, Draft());
+
+        ctx.Repo.Verify(r => r.InsertEntryAsync(It.Is<StandupEntry>(e => e.TeamId == 42)), Times.Once);
+    }
+
+    // TM-06: the Input tab passes the active team to the day query (active-team only).
+    [Fact]
+    public async Task GetMyStandup_queries_only_active_team()
+    {
+        var ctx = new Ctx();
+        ctx.CurrentTeam.ActiveTeamId = 42;
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, It.IsAny<int?>())).ReturnsAsync(Array.Empty<StandupEntry>());
+        ctx.Repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
+            .ReturnsAsync(Array.Empty<StandupIssue>());
+        var svc = ctx.Make(Today);
+
+        await svc.GetMyStandupAsync(Today);
+
+        ctx.Repo.Verify(r => r.GetEntriesAsync(1, Today, 42), Times.Once);
+    }
+
+    // TM-07: the board feed filters entries by the checked teams and cards = those teams' members.
+    [Fact]
+    public async Task GetTeamStandup_with_teamIds_filters_by_checked_teams_and_members()
+    {
+        var ctx = new Ctx();
+        ctx.Users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[]
+        {
+            new User(1, "Alice", null, true), new User(2, "Bob", null, true), new User(3, "Cara", null, true),
+        });
+        // team 10 -> {1}, team 20 -> {2}; user 3 is in neither checked team.
+        ctx.Teams.Setup(t => t.GetUserIdsForTeamAsync(10)).ReturnsAsync(new[] { 1 });
+        ctx.Teams.Setup(t => t.GetUserIdsForTeamAsync(20)).ReturnsAsync(new[] { 2 });
+        ctx.Repo.Setup(r => r.GetEntriesForDayAsync(Today, It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync(new[] { Entry(10, 1, Today, StandupSection.Today) });
+        ctx.Repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
+            .ReturnsAsync(Array.Empty<StandupIssue>());
+        var svc = ctx.Make(Today);
+
+        var team = await svc.GetTeamStandupAsync(Today, new[] { 10, 20 });
+
+        Assert.Equal(2, team.Count);                       // members of the checked teams only (no Cara)
+        Assert.Contains(team, t => t.UserId == 1);
+        Assert.Contains(team, t => t.UserId == 2);
+        Assert.DoesNotContain(team, t => t.UserId == 3);
+        ctx.Repo.Verify(r => r.GetEntriesForDayAsync(Today,
+            It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 10, 20 }))), Times.Once);
+    }
+
+    // TM-07: empty teamIds (or teamId 0) => empty board, no queries leak match-all.
+    [Fact]
+    public async Task GetTeamStandup_with_empty_teamIds_returns_empty()
+    {
+        var ctx = new Ctx();
+        var svc = ctx.Make(Today);
+
+        var team = await svc.GetTeamStandupAsync(Today, Array.Empty<int>());
+
+        Assert.Empty(team);
+        ctx.Repo.Verify(r => r.GetEntriesForDayAsync(It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()), Times.Never);
+        ctx.Teams.Verify(t => t.GetUserIdsForTeamAsync(It.IsAny<int>()), Times.Never);
     }
 
     // DR-04: issues are collaborative — adding succeeds regardless of owner/day; bad status rejected

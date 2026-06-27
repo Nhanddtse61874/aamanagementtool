@@ -7,9 +7,12 @@ namespace TimesheetApp.Services;
 // (anyone, any day) so they are NOT gated.
 public interface IStandupService
 {
-    // The signed-in member's standup for a day (Input tab, DR-07).
+    // The signed-in member's standup for a day, scoped to the active team (Input tab, DR-07 / TM-06).
     Task<UserStandup> GetMyStandupAsync(DateOnly workDate);
-    // Every active user's standup for a day (Board tab, DR-08).
+    // The multi-team board feed for a day (Board tab, DR-08 / TM-07): entries for the checked teams,
+    // one card per MEMBER of those teams. Empty teamIds => empty board.
+    Task<IReadOnlyList<UserStandup>> GetTeamStandupAsync(DateOnly workDate, IReadOnlyList<int> teamIds);
+    // Convenience overload defaulting to the active team only (kept so the W7-unmodified VM compiles).
     Task<IReadOnlyList<UserStandup>> GetTeamStandupAsync(DateOnly workDate);
 
     // Picker support (DR-07).

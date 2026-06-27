@@ -9,18 +9,23 @@ public sealed class StandupService : IStandupService
 {
     private readonly IStandupRepository _repo;
     private readonly ICurrentUserService _currentUser;
+    private readonly ICurrentTeamService _currentTeam;
     private readonly IUserRepository _users;
+    private readonly ITeamRepository _teams;
     private readonly IBacklogRepository _backlogs;
     private readonly ITaskRepository _tasks;
     private readonly IClock _clock;
 
     public StandupService(
-        IStandupRepository repo, ICurrentUserService currentUser, IUserRepository users,
+        IStandupRepository repo, ICurrentUserService currentUser, ICurrentTeamService currentTeam,
+        IUserRepository users, ITeamRepository teams,
         IBacklogRepository backlogs, ITaskRepository tasks, IClock clock)
     {
         _repo = repo;
         _currentUser = currentUser;
+        _currentTeam = currentTeam;
         _users = users;
+        _teams = teams;
         _backlogs = backlogs;
         _tasks = tasks;
         _clock = clock;
@@ -37,18 +42,37 @@ public sealed class StandupService : IStandupService
         var me = _currentUser.Current;
         if (me is null) return new UserStandup(0, "", Array.Empty<StandupEntryView>(), Array.Empty<StandupEntryView>());
 
-        var entries = await _repo.GetEntriesAsync(me.Id, workDate);
+        // Input tab is active-team only (TM-06).
+        var entries = await _repo.GetEntriesAsync(me.Id, workDate, _currentTeam.ActiveTeamId);
         var issues = await LoadIssuesAsync(entries);
         var editable = CanEditDay(workDate); // owner is always the current user here
         return BuildUserStandup(me.Id, me.Name, entries, issues, editable);
     }
 
-    public async Task<IReadOnlyList<UserStandup>> GetTeamStandupAsync(DateOnly workDate)
+    // Overload kept so the W7-unmodified DailyReportViewModel still compiles: defaults the board to the
+    // active team only. W7 will switch the call site to the (workDate, teamIds) overload below.
+    public Task<IReadOnlyList<UserStandup>> GetTeamStandupAsync(DateOnly workDate) =>
+        GetTeamStandupAsync(workDate, new[] { _currentTeam.ActiveTeamId });
+
+    public async Task<IReadOnlyList<UserStandup>> GetTeamStandupAsync(DateOnly workDate, IReadOnlyList<int> teamIds)
     {
-        var active = await _users.GetActiveAsync() ?? Array.Empty<User>();
-        var all = await _repo.GetEntriesForDayAsync(workDate);
+        // teamId 0 / empty set => empty board (no match-all leak — TM-07).
+        var effectiveTeams = teamIds.Where(t => t > 0).Distinct().ToList();
+        if (effectiveTeams.Count == 0) return Array.Empty<UserStandup>();
+
+        var all = await _repo.GetEntriesForDayAsync(workDate, effectiveTeams);
         var issues = await LoadIssuesAsync(all);
         var currentId = _currentUser.Current?.Id ?? 0;
+
+        // Cards = the MEMBERS of the checked teams (union of UserTeams), not all active users.
+        var memberIds = new HashSet<int>();
+        foreach (var teamId in effectiveTeams)
+            foreach (var uid in await _teams.GetUserIdsForTeamAsync(teamId))
+                memberIds.Add(uid);
+
+        var active = (await _users.GetActiveAsync() ?? Array.Empty<User>())
+            .Where(u => memberIds.Contains(u.Id))
+            .ToList();
 
         var byUser = all.GroupBy(e => e.UserId).ToDictionary(g => g.Key, g => (IReadOnlyList<StandupEntry>)g.ToList());
         var result = new List<UserStandup>();
@@ -61,7 +85,9 @@ public sealed class StandupService : IStandupService
         return result;
     }
 
-    public Task<IReadOnlyList<Backlog>> SearchBacklogsAsync(string? term) => _backlogs.SearchAsync(term);
+    // Input picker is active-team only (TM-06).
+    public Task<IReadOnlyList<Backlog>> SearchBacklogsAsync(string? term) =>
+        _backlogs.SearchAsync(term, new[] { _currentTeam.ActiveTeamId });
 
     public Task<IReadOnlyList<TaskItem>> GetTasksForBacklogAsync(int backlogId) =>
         _tasks.GetActiveByBacklogAsync(backlogId);
@@ -77,7 +103,8 @@ public sealed class StandupService : IStandupService
         var entry = new StandupEntry(
             0, me.Id, workDate, draft.Section, backlogId, draft.BacklogCode.Trim(),
             draft.TaskText.Trim(), draft.Description ?? "", draft.Deadline, draft.Status,
-            await NextOrderAsync(me.Id, workDate, draft.Section), _clock.UtcNow);
+            await NextOrderAsync(me.Id, workDate, draft.Section), _clock.UtcNow,
+            TeamId: _currentTeam.ActiveTeamId);   // TM-06: new entry carries the active team
         return await _repo.InsertEntryAsync(entry);
     }
 
