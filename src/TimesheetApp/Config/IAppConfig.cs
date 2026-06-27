@@ -20,4 +20,11 @@ public interface IAppConfig
 
     int BackupKeepCount { get; }
     void SetBackupKeepCount(int keepCount);
+
+    // P10 (TM-05): the active team is an app-local, per-machine/user UI preference (DATA-07 locality
+    // split — never in the shared OneDrive DB, else two users fight over one active team). 0 = unset
+    // (resolved to first available membership on startup). Backward-compatible: old config files
+    // missing the key default to 0.
+    int ActiveTeamId { get; }
+    void SetActiveTeamId(int teamId);
 }

@@ -12,7 +12,8 @@ public enum DataKind
     Standup,      // daily-report standup entries/issues changed (affects the Daily Report board)
     Tags,         // P8: user-defined tags changed (affects backlog editor + Task List chips)
     PcaContacts,  // P8: external (PCA) contacts changed (affects backlog editor combo)
-    Holidays      // P8: holiday calendar changed (affects working-day math + Task List/Gantt)
+    Holidays,     // P8: holiday calendar changed (affects working-day math + Task List/Gantt)
+    Teams         // P10: teams / membership / active-team changed (affects switcher, filters, working scope)
 }
 
 /// <summary>

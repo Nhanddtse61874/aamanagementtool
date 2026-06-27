@@ -54,6 +54,20 @@ public class JsonAppConfigTests : IDisposable
         Assert.Equal("", cfg.BackupFolderPath);
         Assert.False(cfg.AutoBackupEnabled);
         Assert.Equal(30, cfg.BackupKeepCount);
+        Assert.Equal(0, cfg.ActiveTeamId); // P10: missing key -> 0 (unset)
+    }
+
+    // P10 (TM-05): the active team persists app-locally and survives a reload.
+    [Fact]
+    public void ActiveTeamId_Persists_And_Survives_Reload()
+    {
+        var cfg = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+        Assert.Equal(0, cfg.ActiveTeamId); // default on a brand-new config
+
+        cfg.SetActiveTeamId(7);
+
+        var reloaded = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+        Assert.Equal(7, reloaded.ActiveTeamId);
     }
 
     [Fact]

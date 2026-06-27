@@ -28,12 +28,14 @@ public class BackupServiceTests : IDisposable
         public string BackupFolderPath { get; set; } = "";
         public bool AutoBackupEnabled { get; set; }
         public int BackupKeepCount { get; set; } = 30;
+        public int ActiveTeamId { get; set; }
 
         public void SetDbPath(string v) => DbPath = v;
         public void SetArchivePath(string v) => ArchivePath = v;
         public void SetBackupFolderPath(string v) => BackupFolderPath = v;
         public void SetAutoBackupEnabled(bool v) => AutoBackupEnabled = v;
         public void SetBackupKeepCount(int v) => BackupKeepCount = v;
+        public void SetActiveTeamId(int v) => ActiveTeamId = v;
     }
 
     private (BackupService svc, FakeConfig cfg) Make(DateTimeOffset utcNow, bool setFolder = true, int keep = 30)
