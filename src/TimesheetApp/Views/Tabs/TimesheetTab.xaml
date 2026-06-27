@@ -34,7 +34,7 @@
       <Setter Property="Padding" Value="0,5"/>
     </Style>
 
-    <!-- Request "section" row: a full-width clickable band that collapses/expands its tasks. -->
+    <!-- Backlog "section" row: a full-width clickable band that collapses/expands its tasks. -->
     <Style x:Key="SectionToggle" TargetType="ToggleButton">
       <Setter Property="Background" Value="{StaticResource TableHeaderBg}"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -131,7 +131,7 @@
                 ToolTip="Auto-fill hours for one task over a date range (split evenly / full 8h)"/>
         <Button Command="{Binding ToggleCollapseAllCommand}"
                 Style="{StaticResource ToolbarGhostButton}"
-                ToolTip="Collapse / expand all request groups">
+                ToolTip="Collapse / expand all backlog groups">
           <TextBlock><Run Text="&#9776; "/><Run Text="{Binding CollapseToggleText, Mode=OneWay}"/></TextBlock>
         </Button>
       </StackPanel>
@@ -223,7 +223,17 @@
       </Grid>
     </Border>
 
-    <!-- Single continuous table body: one "section" band per request, its task rows beneath (each with
+    <!-- Drag-to-delete zone for task rows (pinned just above the day-totals footer; editable view only). -->
+    <Border x:Name="TaskTrash" DockPanel.Dock="Bottom" AllowDrop="True" Drop="OnTaskTrashDrop"
+            DragEnter="OnTaskTrashDragOver" DragOver="OnTaskTrashDragOver" DragLeave="OnTaskTrashDragLeave"
+            Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+            CornerRadius="8" Padding="10,7" Margin="8,4,25,4"
+            Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibleConverter}}">
+      <TextBlock Text="&#128465;  Drop a task here to delete" HorizontalAlignment="Center"
+                 Foreground="{StaticResource AmberFg}" FontSize="12" FontWeight="SemiBold"/>
+    </Border>
+
+    <!-- Single continuous table body: one "section" band per backlog, its task rows beneath (each with
          editable Mon–Fri cells). Scrollbar is ALWAYS reserved (Visible) so the columns line up with the
          header strip + footer (which reserve a matching 25px right gutter) at any window size. -->
     <ScrollViewer VerticalScrollBarVisibility="Visible" Margin="8,0">
@@ -232,7 +242,7 @@
           <DataTemplate>
             <StackPanel>
 
-              <!-- ===== Request section row (click to collapse/expand) ===== -->
+              <!-- ===== Backlog section row (click to collapse/expand) ===== -->
               <ToggleButton Style="{StaticResource SectionToggle}" IsChecked="{Binding IsExpanded, Mode=TwoWay}">
                 <Grid>
                   <Grid.ColumnDefinitions>
@@ -245,14 +255,14 @@
                        Spans the day columns so badges/Move have room (only the total sits in col 6). -->
                   <StackPanel Grid.Column="0" Grid.ColumnSpan="6" Orientation="Horizontal" Margin="10,6">
                     <TextBlock Style="{StaticResource SectionCaret}"/>
-                    <TextBlock Text="{Binding RequestCode}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding BacklogCode}" FontWeight="Bold" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding Project, StringFormat=' · {0}'}" VerticalAlignment="Center"
                                Foreground="{StaticResource TextSecondary}"
                                Visibility="{Binding Project, Converter={StaticResource NullToCollapsedConverter}}"/>
                     <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,1" Margin="10,0,0,0"
                             VerticalAlignment="Center"
-                            Visibility="{Binding Status, Converter={StaticResource NullToCollapsedConverter}}">
-                      <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
+                            Visibility="{Binding Type, Converter={StaticResource NullToCollapsedConverter}}">
+                      <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
                                  Foreground="{StaticResource Accent}"/>
                     </Border>
                     <TextBlock Text="{Binding PeriodMonth}" FontSize="11" Margin="8,0,0,0"
@@ -279,7 +289,8 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
-                            Background="{StaticResource Surface}">
+                            Background="{StaticResource Surface}"
+                            AllowDrop="True" Drop="OnTaskDrop" DragOver="OnTaskDragOver">
                       <Grid>
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="2*"/>
@@ -287,8 +298,15 @@
                           <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="{Binding TaskName}" VerticalAlignment="Center"
-                                   FontSize="13" TextTrimming="CharacterEllipsis" Margin="28,5,8,5"/>
+                        <DockPanel Grid.Column="0" Margin="10,5,8,5">
+                          <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="14" Cursor="SizeAll"
+                                     Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"
+                                     ToolTip="Drag to reorder, or drop on the trash to delete"
+                                     Visibility="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibleConverter}}"
+                                     PreviewMouseLeftButtonDown="OnTaskDragHandleDown" PreviewMouseMove="OnTaskDragHandleMove"/>
+                          <TextBlock Text="{Binding TaskName}" VerticalAlignment="Center"
+                                     FontSize="13" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
 
                         <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
                           <TextBox Style="{StaticResource GridDayBox}"
@@ -336,7 +354,7 @@
                           Visibility="{Binding CanMoveMonth, Converter={StaticResource BoolToVisibleConverter}}"
                           IsEnabled="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=UserControl}}"
                           Command="{Binding DataContext.MoveMonthCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                          CommandParameter="{Binding RequestId}"
+                          CommandParameter="{Binding BacklogId}"
                           ToolTip="Advance this ticket to the next month (audited)"/>
                   <!-- Add task opens a dedicated input dialog (handled in code-behind per group). -->
                   <Button Content="&#10133; Add task" Click="OnAddTask" HorizontalAlignment="Left"

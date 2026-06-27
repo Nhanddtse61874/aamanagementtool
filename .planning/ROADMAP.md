@@ -13,7 +13,17 @@
   - [x] App shell (MainWindow/MainViewModel) + startup
   - See `.planning/M1-SUMMARY.md`.
 
+## In review (awaiting UAT)
+- **M2 — Daily Report (Standup) [P7]** — branch `feature/daily-report-2026-06-25`, 225 tests green, app launches clean.
+  - [x] DR-01 schema v5 (StandupEntries + StandupIssues, additive migration)
+  - [x] DR-02..04 entries (ad-hoc codes, nullable deadline) + multi-issue (status open/pending/resolved)
+  - [x] DR-05 status set Todo/In-process/Done/Pending · DR-06 edit-lock (today+yesterday)
+  - [x] DR-07 Input tab (request/task picker + ad-hoc) · DR-08 Team board (per active user)
+  - [x] DR-09 weekly markdown archive (1 file/week, startup backfill) · DR-10 nav + live refresh
+  - UAT: `.planning/P7-Daily-Report-UAT.md`. Spec: `docs/superpowers/specs/2026-06-25-daily-report-standup-design.md`. Plan: `docs/superpowers/plans/2026-06-25-P7-daily-report.md`.
+
 ## Backlog / deferred (non-blocking, from QA)
+- Daily Report: inline edit of an existing entry's fields (today = delete + re-add); per-row reorder.
 - XC-09 journal warning → surface to a UI banner (currently `Trace`).
 - XC-10 backup retention prune + same-ms filename collision guard.
 - Timesheet row labels show request_code (GetWeekAsync RequestCode).

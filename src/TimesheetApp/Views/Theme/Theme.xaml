@@ -515,6 +515,7 @@
   <SolidColorBrush x:Key="AmberBg" Color="#FFF7ED"/>
   <SolidColorBrush x:Key="AmberBorder" Color="#FDE9C8"/>
   <SolidColorBrush x:Key="AmberFg" Color="#B45309"/>
+  <SolidColorBrush x:Key="ResolvedBorder" Color="#BBF7D0"/>
 
   <!-- Sidebar section label (WORKSPACE / ADMIN) -->
   <Style x:Key="SidebarSection" TargetType="TextBlock">

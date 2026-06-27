@@ -21,8 +21,9 @@
 | **P4** | Requests + Users UI | REQ-01, REQ-02, REQ-03, REQ-04, USR-01, USR-02, USR-03 |
 | **P5** | Reports | RPT-01, RPT-02, RPT-03, RPT-04 |
 | **P6** | Settings + Export | SET-01, SET-02, SET-03, SET-04, EXP-01, EXP-02, EXP-03, EXP-04 |
+| **P7** | Daily Report (Standup) — M2 | DR-01, DR-02, DR-03, DR-04, DR-05, DR-06, DR-07, DR-08, DR-09, DR-10 |
 
-Total: **45 requirements**, every one mapped to exactly one phase.
+Total: **45 requirements (M1)** + **10 requirements (M2 / P7)**, every one mapped to exactly one phase.
 
 ---
 
@@ -255,6 +256,53 @@ Acceptance: A DEFAULT Annual Leave log renders under `### DEFAULT — Annual Lea
 ### EXP-04 — Markdown hours/escaping formatting
 Statement: Hours render as integer when whole (`4` not `4.0`) else 1 decimal (`3.5`); `|` in task names is escaped.
 Acceptance: Whole hours show no decimal; fractional show 1 decimal; a task name containing `|` is escaped (`\|`) so the table stays valid. [ASSUMED] formatting detail (research §4.1, refines spec example)
+
+---
+
+## Daily Report — Standup (P7 / M2)
+
+**Source of truth:** `docs/superpowers/specs/2026-06-25-daily-report-standup-design.md` (approved 2026-06-25).
+Each REQ is atomic, testable, user-centric. New persisted data (schema v5); no change to M1 behavior.
+
+### DR-01 — Schema v5: StandupEntries + StandupIssues (additive migration)
+Statement: Migration v4→v5 adds `StandupEntries` and `StandupIssues` tables (forward-only, additive, gated on `PRAGMA user_version`).
+Acceptance: Opening a v4 DB creates both tables + indexes and sets `user_version=5`; running init twice is idempotent; `StandupIssues.entry_id` FK → `StandupEntries(id)` with `ON DELETE CASCADE`. Existing M1 tables/data untouched.
+
+### DR-02 — Standup entry persistence keyed per (user, day, section)
+Statement: A standup row stores `user_id, work_date, section('yesterday'|'today'), request_id?(nullable), request_code, task_text, description, deadline?(nullable), status, order_index, created_at`.
+Acceptance: Inserting/reading round-trips all fields; `request_id` is null for ad-hoc codes; `deadline` is nullable; rows are scoped and queryable by `(user_id, work_date)` and by `work_date` (team).
+
+### DR-03 — Ad-hoc request codes (no FK, no reverse-link)
+Statement: A standup row may carry a free-text `request_code` not present in `Requests`.
+Acceptance: Saving a row whose code is not an existing request persists with `request_id = null` and the typed code; no join to Requests is required to read it; a later-created real request is NOT back-linked.
+
+### DR-04 — Multiple issues per entry, each with optional solution + status
+Statement: An entry has zero or more `StandupIssues`, each `issue_text` (required), `solution_text` (nullable = pending), `status ∈ {open, pending, resolved}`.
+Acceptance: An entry with no issues persists with none; adding N issues round-trips N rows; deleting an entry cascades its issues; a blank solution renders as pending.
+
+### DR-05 — Status set Todo / In-process / Done / Pending
+Statement: A standup entry's `status` is one of the fixed set Todo / In-process / Done / Pending.
+Acceptance: The service rejects any status outside the set; the input UI offers exactly these four.
+
+### DR-06 — Edit-lock: own rows editable only for today + yesterday
+Statement: A member may add/edit/delete only their own entries, and only when `work_date` is today or yesterday (≤1 day in the past). Older days are read-only; no backfill. Issues are exempt (anyone, anytime).
+Acceptance: `CanEditDay(today)` and `CanEditDay(yesterday)` are true; any older date is false; entry add/edit/delete on a locked day is a no-op; issue add/edit/delete is allowed regardless of day or owner.
+
+### DR-07 — Input tab: own standup with request/task picker
+Statement: The Input tab shows the signed-in user's Yesterday/Today rows for a selected date and lets them add rows by picking an existing request (its tasks become pickable, deadline/status typed) or typing an ad-hoc code, plus a free-text description and issues.
+Acceptance: Selecting an existing request lists its tasks; typing a new code is accepted as ad-hoc; saving creates an entry owned by the current user on the selected date; on a locked day the tab is read-only.
+
+### DR-08 — Board tab: whole-team view for a day
+Statement: The Board tab renders one card per active user for the selected date, each showing their Yesterday/Today rows + issues (read-only).
+Acceptance: Every active user appears (dynamic count); a user with no rows shows empty sections; cards reflect the persisted data for that date.
+
+### DR-09 — Weekly markdown archive, one file per week, auto-backfill on startup
+Statement: A markdown snapshot per week is written to `…/Documents/TimesheetApp/StandupArchives/{yyyyMMdd}_daily.md` (stamp = week's Monday). On every app startup, any completed week (strictly before the current week) that has standup data but no archive file is generated.
+Acceptance: Exporting a week writes a Mon–Fri markdown grouped by date→user→section+issues; re-export overwrites idempotently; a startup with an un-archived completed week produces its file; a week with no data produces no file.
+
+### DR-10 — Nav + cross-tab live refresh
+Statement: The "Daily Report" sidebar item is enabled (replacing the SOON placeholder) and hosts Input + Board sub-tabs; standup edits broadcast a `DataKind.Standup` change so the board refreshes live.
+Acceptance: Clicking the nav shows the Daily Report view; saving in Input updates the Board without a manual reload; switching to the tab loads the selected day.
 
 ---
 

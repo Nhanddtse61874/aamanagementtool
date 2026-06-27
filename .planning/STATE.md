@@ -1,232 +1,77 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-26 (per-user avatar colours, rounded table containers, teal miniGhost row buttons — committed `960b570`, pushed)
-**How to resume:** open a session in `E:\Learning\AgentArchitectureManagement` and say *"đọc .planning/STATE.md để tiếp tục"*.
+**Last updated:** 2026-06-27 — feature branch `feature/daily-report-2026-06-25` MERGED into `main`
+(Backlog refactor + Daily Report + Smart-fill/Reports redesign + drag&drop). **228 tests green**, build clean.
+
+## How to resume
+Open a session in `E:\Learning\AAM 2nd\aamanagementtool` and say *"đọc .planning/STATE.md để tiếp tục"*.
+Branch is now `main`. Run `git log origin/main..main` to see if it still needs pushing.
 
 ## What this is
 WPF Desktop Timesheet Tool (.NET 8 / WPF MVVM / SQLite+Dapper / ClosedXML / CommunityToolkit.Mvvm).
-Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `src/TimesheetApp`.
-Tests: `src/TimesheetApp.Tests`. Branch: `main`. GitHub: **Nhanddtse61874/aamanagementtool** (private).
-
-## Current status
-- **194 tests green**, `dotnet build` clean, app runs. Latest commit on `main`: **`960b570`** (design-alignment
-  session below — avatar colours, rounded tables, teal row buttons; all pushed). (`src/.cr/` is unrelated/untracked.)
-- Schema is at **user_version 4** (v2 = ticket lifecycle cols + RequestAudit; v3 = project normalization;
-  v4 = `requests.assignee_user_id`).
-- UI is fully **English**. Local perms in `.claude/settings.local.json` (gitignored).
-- Built autonomously, then many rounds of **UAT-driven UI rework**. Planning artifacts in `.planning/` + `docs/superpowers/`.
-- **`CLAUDE.md` is now at the repo root** (copied from happypowerprocess plugin). Key rules the user enforces:
-  **Surgical Changes** (touch only what's needed, don't "improve" working code), **UAT / Never auto-advance**
-  (small change → build → user tests → next; don't batch huge sweeps). FOLLOW THESE — the user pushed back hard
-  when I over-reached and broke working things (e.g. a ComboBox restyle that broke DisplayMemberPath → reverted).
-- **THE DESIGN SOURCE OF TRUTH** = `E:\Learning\AAM\Design Old\Designfromclaude\Timesheet Tool.dc.html` (an HTML
-  mockup, 474 lines). READ IT before any UI change — do not eyeball screenshots. It defines the exact tokens:
-  accent `#0F766E` teal, page `#E6EAEF`, surface `#fff`, borders `#D4DAE2`/`#E3E8EE`/`#F0F2F6`, text `#1F2937`/`#64748B`,
-  table header `#F4F6F9`/`#5B6675`, font `'Segoe UI'` **13px**, ghostBtn gray text `#334155`, primaryBtn=accent,
-  miniGhost=accent text, miniDanger=red outline.
+Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `src/TimesheetApp`; tests `src/TimesheetApp.Tests`.
+GitHub: **Nhanddtse61874/aamanagementtool** (private). Local perms in `.claude/settings.local.json` (gitignored).
 
 ## Commands
-- Build: `dotnet build src/TimesheetApp.sln`
-- Test: `dotnet test src/TimesheetApp.sln`
-- Run: `dotnet run --project src/TimesheetApp` (or run the built exe in `bin/Debug/net8.0-windows/TimesheetApp.exe`)
-- DB lives at `%USERPROFILE%\Documents\TimesheetApp\timesheet.db` (path stored in `%APPDATA%\TimesheetApp\appsettings.json`).
+- Build: `dotnet build src/TimesheetApp.sln`   ·  Test: `dotnet test src/TimesheetApp.sln`
+- Run: `dotnet run --project src/TimesheetApp` (or `bin/Debug/net8.0-windows/TimesheetApp.exe`)
+- DB: `%USERPROFILE%\Documents\TimesheetApp\timesheet.db` (path in `%APPDATA%\TimesheetApp\appsettings.json`).
+- **Seed clean sample data**: scratchpad seeder at `…\3375b5db-…\scratchpad\seeder\` —
+  `dotnet run --project Seeder.csproj` (delete the db first to reset); `-- check` prints DB contents,
+  `-- repro` exercises the add-issue path. Seeds 4 users (Nhan mapped to the Windows account so the app
+  auto-selects it), 4 backlogs (ARCS-1001/PLUS-2002/ARMS-3003/OTHER-404) + tasks + a week of timesheet +
+  standup with an unresolved (amber) and a resolved (green) issue.
 
-## Session 2026-06-25/26 — features + design-file alignment — DONE (commits `4a700e3`..`3ab7df4`)
-Big session. Features first, then a long UI pass to match the **design HTML file** (see source-of-truth above).
-**Features:**
-- **Auto-save cells** (`4a700e3`): Entry cells persist on LostFocus; Save button gone, replaced by a status
-  indicator (`TimesheetViewModel.SaveStatus`/`SaveStatusIsError`). `TimesheetRowVm.DayChanged` carries
-  `(row, DayColumn)`; red cell never written; team view read-only.
-- **Assignee per Request (migration v4)** (`f3f378d`): `requests.assignee_user_id`; repo persists + audits by
-  NAME; Edit-request dialog has an Assignee dropdown (`RequestEditorViewModel.Unassigned` sentinel id 0 → null);
-  Requests list **Assignee** column; Entry group header 👤 badge. Tasks stay shared (no per-task owner).
-- **Entry grid redesign** (`587fc61`): single continuous table — each request = a clickable section band
-  (caret + CODE · project + badges + group total in the TOTAL col); task rows with editable Mon–Fri cells
-  (plain `TextBox`es via `GridDayBox` style, auto-save on LostFocus); "Move to next month" lives in the
-  expanded add-task row; DAY TOTALS footer shows the week grand total. Replaced the old Expander+DataGrid.
-- **Excel export wired** (`d64b1af`): `ExportService` was built but unused — now a "⬇ Export to Excel" button on
-  Reports (SaveFileDialog in `ReportsTab.xaml.cs`; `ReportsViewModel.BuildExcelExportAsync`).
-- **Reports UX** (`d64b1af`): grids AUTO-LOAD on filter change (target/week/month/project); added a **Project**
-  filter; dropped Weekly/Monthly/Refresh-banner buttons. **Drill-down Expand/Collapse-all** toggle (`1258a54`).
-- **Requests filters** (`d64b1af`): live in-memory search + Project/Status/Assignee/Month dropdowns (options
-  built from the loaded data; single DB load, all filtering in `ApplyFilters`).
-- **Add-task dialog** (`b5e89af`,`e4f60a4`): a dedicated `Views/Dialogs/TaskInputDialog` replaces every inline
-  "type + Add" row (Request editor, Settings template editor, Entry per-group quick-add).
-**Design-file alignment (read the HTML file!):**
-- Themed **ComboBox** + **DatePicker** controls in `Theme.xaml` (rounded white + caret/calendar, match TextBox).
-  NOTE: the ComboBox `ContentSite` MUST bind SelectionBoxItem + ItemTemplate + TemplateSelector + StringFormat
-  or DisplayMemberPath combos render the raw object (that bug bit once → reverted → fixed).
-- **Accent → teal `#0F766E`** (`5e03682`); **palette tokens + 13px base font + ghost gray text** (`da43e89`).
-- **No floating-card frame** — the app fills the window white (the gray-margin card looked wrong on desktop;
-  user explicitly rejected it after I tried it) (`b237ad9`).
-- DataGrid headers `#F4F6F9`/`#5B6675` 11px bold; Requests uppercase headers + **Status teal pill**; search/add
-  boxes use an in-box **placeholder** overlay (no external "Search:" label). Settings Delete = red-outline.
+## Schema — user_version **6**
+v2 ticket lifecycle cols + RequestAudit; v3 project normalization; v4 `assignee_user_id`; v5 Daily Report
+(StandupEntries/StandupIssues); **v6 = Request→Backlog rename** (tables `Requests`→`Backlogs`,
+`RequestAudit`→`BacklogAudit`; cols `request_code`→`backlog_code`, ticket `status`→`type`,
+`request_id`→`backlog_id` on Backlogs/Tasks/BacklogAudit/StandupEntries; Tasks gains `status` default 'Todo').
+DDL still creates the legacy `Requests`/`RequestAudit` (gated on `user_version < 6`) so historical migrations
+apply, then v6 renames them. App has a global `DispatcherUnhandledException` handler (UAT-friendly error dialog).
 
-## Design alignment — RESOLVED (2026-06-26)
-- "+ New Request" → **KEEP OURS** (live search + teal primary; design's ghost+Search not adopted). LOCKED.
-- Entry **Save** button → **KEEP OURS** (auto-save; no Save button). LOCKED.
-- Per-user **avatar colours** → **DONE** (matched design). Rounded **bordered table containers** → **DONE**.
-  See session section below.
+## Done this session (2026-06-26/27) — all on `main` now
+1. **Backlog refactor (`Request`→`Backlog`) COMPLETED** — a prior session left it half-done (app compiled, test
+   project broken). Finished the test migration + fixed a real `TimeLogRepository` SQL bug (still queried
+   `Requests` → would crash Reports live) + guarded the stray-`Requests`-table-on-relaunch. Symbols:
+   `Backlog`/`BacklogCode`/`IBacklogRepository`/`BacklogRepository`/`BacklogsViewModel`/`BacklogEditorViewModel`/
+   `WeekBacklogGroup`/`BacklogAuditEntry`/`MonthlyBacklogTaskTotal`/`BacklogNode`; ticket `Status`→`Type`
+   (`BacklogType`); new per-task `TaskItem.Status` (+`TaskStatus.All` Todo/In-process/Done/Pending).
+2. **DEFAULT backlog never gets a month** — `MoveMonthAsync` guards it (UI already hides Move); it holds the
+   recurring default tasks and shows in EVERY month (Entry month-filter exempts null period_month).
+3. **Daily Report issue UX redesign** — issue card: ⚠ amber "warning" until a solution is saved, then flips to
+   green "✓ resolved". No-solution shows "No solution yet" + "Add solution" button (no empty input). Applied to
+   BOTH Input tab and Team Board (`StandupIssue.HasSolution`). Input tab relaid out to a single stacked column
+   (mirrors Board). Standup VM actions wrapped in try/catch → inline StatusMessage.
+4. **Daily Report Add-entry** — ONE pinned "Add entry" button (was 2); section (Yesterday/Today) picked inside
+   the dialog via radios (`StandupDraftVm.Section` settable, two-way via StringMatchConverter).
+5. **Smart fill** — contains search (`SearchAsync` LIKE, not exact `GetByCodeAsync`; multi-match prefixes the
+   code); two-column dialog (form left, preview right full-height, scrolls); Preview button pinned; Total hours
+   greyed for Full 8h; themed to app dialog convention.
+6. **Reports drill-down** — every level shows rolled-up hours (Project/Backlog/Task) and the Date leaf shows
+   weekday + hours logged that day.
+7. **Drag & drop (both big features)**:
+   - **Daily Report**: ⠿ grip drag-reorders entries within/across Yesterday/Today; drop on the pinned
+     "🗑 Drop an entry here to delete" zone deletes. `StandupService.ReorderEntryAsync` (owner+lock gated).
+   - **Timesheet Entry**: ⠿ grip drag-reorders task rows within a backlog; drop-on-trash soft-deletes the task
+     (time logs preserved). `ITaskRepository.SetOrderAsync`; `TimesheetViewModel.ReorderTaskAsync/DeleteTaskAsync`
+     (no-op in read-only team view).
 
-## Session 2026-06-26 — avatar colours + rounded tables + teal row buttons — DONE (build clean, 194 tests, committed `960b570` + pushed)
-Three surgical UI fixes to match the design HTML file. Shipped as **one commit** `960b570` (the 3 tasks share
-`UsersTab.xaml` + `Theme.xaml`, so a clean atomic-per-task split wasn't possible without interactive hunk staging).
-- **Per-user avatar colours** (design `avatars[i % len]`): new `Views/Converters/AvatarBrushConverter.cs` hashes a
-  name (manual char-sum, NOT `string.GetHashCode` which is per-process randomised) → one of 5 design colours
-  `#2563EB #0891B2 #7C3AED #DB2777 #16A34A`, stable across restarts. Registered in `App.xaml` as `AvatarBrush`.
-  Applied: Users list avatar (binds `Name`) + sidebar user chip (`MainWindow.xaml`, binds `CurrentUserName`).
-  Old all-teal `{StaticResource Accent}` background replaced.
-- **Rounded table containers** (design `border:1px #E3E8EE; border-radius:8px; overflow:hidden`): new
-  `Views/Behaviors/RoundedClip.cs` attached behaviour `RoundedClip.Radius` clips a DataGrid to a rounded rect on
-  SizeChanged (WPF DataGrid has no CornerRadius → square corners poke out of a plain rounded Border). New
-  `TableContainer` Border style in `Theme.xaml`. Wrapped all 4 DataGrids (`BorderThickness=0` + `RoundedClip.Radius=8`):
-  Users, Requests, Reports (Weekly + Monthly), SmartInputPreviewDialog. `xmlns:beh` added to each file.
-- **Row action buttons → teal `miniGhost`** (design line 246/167): `MiniGhostButton` was based on the GREY
-  `GhostButton`; design's miniGhost is **teal text + light-blue border `#CDD9F0` + 5px radius**. Rewrote
-  `MiniGhostButton` with its own template: `Foreground=Accent`, border `MiniGhostBorder` (#CDD9F0), radius 5,
-  padding 12/4, SemiBold. Users **Deactivate** switched `DangerGhostButton` (red) → `MiniGhostButton` (teal) — design
-  uses miniGhost for the reversible toggle; Settings **Delete** stays red (`DangerGhostButton`, own template).
-  Side effect (intended, also design-faithful): Requests **Edit** + TaskIconButton glyphs now teal too.
-- **TWO WPF gotchas burned a lot of cycles (remember these):**
-  1. In a custom `ControlTemplate`, `TextElement.Foreground` on the **Border does NOT propagate** to a
-     `ContentPresenter`'s string text — it fell back to the DataGridCell's dark `TextPrimary`, so the button text
-     stayed BLACK despite `Foreground=Accent`. FIX: render content with an explicit `<TextBlock
-     Foreground="{TemplateBinding Foreground}">` instead of `ContentPresenter`. (This pattern is now in MiniGhostButton.)
-  2. `dotnet build` kept reporting MSB3027 "file locked / being used by another process" and silently shipping the
-     OLD exe — because **the app was left running** and locked `bin/.../TimesheetApp.exe`. The compile succeeded but
-     the copy failed, so every visual "fix" looked like it did nothing. ALWAYS close the running app (or
-     `taskkill /IM TimesheetApp.exe /F`) before rebuilding when iterating on UI.
-- **Verified** the teal button by launching the exe + UI-Automation nav to Users + screen-capture/zoom + pixel
-  sampling (teal:163 dark:0). Script in scratchpad (`verify2.ps1`) — reusable for headless UI checks on this app.
-
-## UAT fixes — early build (historical, newest last)
-1. Interim Modern Light theme (`Views/Theme/Theme.xaml`) — SINCE SUPERSEDED: accent is now teal #0F766E per the design file.
-2. First-run: **SelectUserDialog can create a user inline** + `ShutdownMode=OnExplicitShutdown` during startup (cancel no longer kills app).
-3. **DB parent-dir auto-create** on first run (was crashing with SQLite Error 14).
-4. QA gate fixes: **C1** startup `DefaultTaskSync.SyncAsync` runs at App.OnStartup; **I1** XC-09 journal check wired to bulk write paths.
-5. **Live cross-tab sync** via `WeakReferenceMessenger` (`Services/DataChangedMessage.cs`): producers Send on save, consumers reload (Requests→Timesheet, Settings→Timesheet, Users→Reports, Timesheet→Reports). + tab-activation reload (`MainViewModel.ActivateTabAsync` + MainWindow SelectionChanged).
-6. **Smart Input** wired into Timesheet (a "⚡ Smart fill" button opens `SmartInputPreviewDialog`).
-7. **Grouped/expandable Timesheet by Request** (Expander ▼/▶): every request shows even if empty; inline "➕ Add task" per group; footer totals across all groups. (`RequestGroupVm`, `TimeLogService.GetWeekGroupedAsync`, `WeekRequestGroup`.)
-8. **Template editor dialog** (`TemplateEditorViewModel`): name once + multi-task list, labeled; Edit/Delete; `ITaskTemplateRepository.DeleteByTemplateNameAsync`. All Settings inputs labeled.
-9. **Reports**: user-NAME dropdown + **"Cả team (tất cả)"** option (`ReportTarget`; team uses `GetExportRowsAsync`, single user uses `GetReportRowsAsync`).
-10. **Auto-apply template on dropdown selection** (picking a template now adds its tasks immediately; guard prevents duplicate). Root cause: user selected template but never clicked the separate Apply button → request saved empty (DB-verified).
-
-## Visual redesign — DONE (2026-06-23, "Worklog" design)
-User sent an HTML/React mockup (`E:\Learning\AAM\Design Old\Designfromclaude\`). Applied a full
-**sidebar shell** redesign (decisions: brand→"Worklog" display-only, DB path unchanged; dropped
-invented columns Role/Email/Status/Last-used; kept derivable Tasks-count/avatar/badge/stat-cards):
-- **Shell** (`MainWindow.xaml` rewrite): left sidebar (Worklog logo, WORKSPACE/ADMIN sections,
-  user chip w/ avatar+green dot), feature header per view. Nav = RadioButtons bound to
-  `MainViewModel.ActiveView` via `StringMatchConverter` (two-way) + `StringMatchToVisibilityConverter`
-  for content swap. `OnActiveViewChanged` reuses `ActivateTabAsync(0/2/4)`.
-- **Requests + Reports are now SUB-TABS of Timesheet** (Entry/Requests/Reports TabControl in MainWindow,
-  `OnSubTabChanged` maps sub-tab idx→ActivateTabAsync 0/1/3). Users + Settings are sidebar ADMIN items.
-- **Planned placeholders**: Daily Report + Task List shown as disabled nav items w/ "SOON" pill.
-- Per-tab polish: Timesheet **Week-total chip** (`TimesheetViewModel.WeekTotal`) + **group-total chip**
-  (`RequestGroupVm.GroupTotal/RefreshTotal`); Requests **Tasks-count column** (`RequestsViewModel`
-  now uses `RequestListItem` record w/ TaskCount); Users **avatar (`InitialConverter`) + Active/Inactive
-  badge**; Reports **4 stat cards** (`WeekTotalText/AvgPerDayText/DaysLoggedText` computed in LoadWeekly).
-- New theme styles in `Theme.xaml` (NavItem, SidebarSection, SoonPill, StatCard, MiniGhostButton, badge brushes).
-- **181 tests still green, build clean.** Verified by screenshotting all 5 destinations (app launches as "Worklog").
-- Old-UI reference shots preserved in `E:\Learning\AAM\Design Old\01_tab_*.png` (current design = the new one).
-
-## Ticket lifecycle v2 — DONE (2026-06-23, schema v2)
-Requests gained **start_date / end_date / period_month ("yyyy-MM") / status** + a **RequestAudit**
-change-history table (migration v2, gated on user_version). Status set = Continue / Implement /
-Investigate / IT / Estimate (`RequestStatus.All`).
-- **Phase A** (`b5a6e05`): Request entity + repo CRUD for the new cols; `UpdateAsync` diffs the four
-  audited fields and writes RequestAudit rows with the current user (`GetAuditAsync` reads history).
-  Requests editor got Tháng(period)/Status/Start/End inputs + a "Lịch sử thay đổi" list; grid shows
-  Month/Status columns. New tickets default to the current month.
-- **Phase B** (`08618eb`): Entry **user filter** ("Cả team" read-only aggregate via
-  `TimeLogService.GetWeekGroupedAllUsersAsync` + per-user editable), **month filter** (only tickets of
-  the picked month; null/DEFAULT always shown), and per-group **"Move ▶"** (bumps period_month to next
-  month, audited). `TimesheetViewModel` gained optional `IUserRepository/IRequestRepository/ICurrentUserService`.
-- 182 tests (added a RequestRepository audit round-trip integration test); migration verified on the real DB.
-- Repo is on GitHub: **Nhanddtse61874/aamanagementtool** (private). Local perms in `.claude/settings.local.json` (gitignored).
-
-## UI polish + feature rework — DONE (2026-06-24, commits up to `f27d895`)
-After the Worklog redesign + ticket lifecycle, a long UAT polish pass (newest last):
-- **Reports**: Weekly grid now breaks down by **date · ticket · task · hours** (`WeeklyDetailRow` +
-  `ReportAggregator.WeeklyDetailRows`). Entering Reports **auto-loads** the default view (whole team,
-  current month + week) via `ActivateTabAsync(3)` so stat cards / grids / drill-down show immediately.
-- **Request editor**: month is **required** via **Month + Year combos** (not a DatePicker);
-  **Project is a fixed enum dropdown** = ARCS / PlusArcs / ARMS / Other (`RequestProjects.All`).
-  Creating a request **requires ≥1 task** (editor stays open with a red message otherwise).
-- **Migration v3**: normalizes legacy free-text `Request.project` onto the enum (DEFAULT kept).
-- **English UI**: all user-facing strings translated (labels, tooltips, dialogs, banners, dropdowns).
-- **Entry day grid = Excel-like**: bordered/centred day cells (GridLinesVisibility=All), header strip +
-  footer reserve the scrollbar gutter (always-visible) and the indent was removed, so columns line up at
-  ANY window size. Compact, balanced toolbar: segmented prev/week/next + Save + Smart fill + **Collapse all
-  ⇄ Expand all** toggle (`TimesheetViewModel.ToggleCollapseAllCommand`), Week-total chip anchored right.
-  Entry **month filter** is also Month+Year combos (`FilterMonthNumber/FilterYear`).
-- **Smart fill REDESIGNED** (`SmartInputPanelVm` rewritten, new dialog): enter **request code → Find →
-  tasks as checkboxes → check tasks → From/To DatePickers + total hours (or Full 8h) → Preview → Confirm**.
-  Total (Split evenly) + the 8h/day cap are distributed across **all checked tasks × working days**.
-  New `ITimeLogService.ValidateSmartFillAsync/ApplySmartFillAsync` validate the combined per-day totals
-  and apply atomically (`SmartFillTask` record). Date range defaults to the on-screen week.
-- **Buttons**: smaller default (Padding 16,8→10,4); secondary actions → ghost, destructive → danger,
-  Settings input-row buttons height-matched to inputs (32px).
-
-## Auto-save cells — DONE (2026-06-24, commit `4a700e3`)
-Entry cells persist on commit (LostFocus); the **Save button is gone**, replaced by a status indicator
-(`SaveStatus`/`SaveStatusIsError`: "Saving…" / green "✓ Saved" / red warning). `TimesheetRowVm.DayChanged`
-now carries `(row, DayColumn)` so `OnRowDayChanged` auto-saves ONLY the changed cell via `AutoSaveCellAsync`.
-A red cell (`TimesheetRowVm.HasErrorFor(col)`) is never written; the service still rejects a day >8h
-(status warns, value reverts on reload). Team (read-only) view skips auto-save. `SaveCellAsync` now returns
-`SaveResult`. Note: `SaveCommand`/`CanSave`/`AnyDayOverEight` are KEPT (internal bulk-save, no button) so
-`Save_DisabledWhenAnyColumnExceedsEight` still guards the >8h invariant. 3 new VM auto-save tests.
-
-## Assignee + Entry redesign — DONE (2026-06-25, commits `f3f378d`, `587fc61`)
-- **Assignee per Request (migration v4)**: `requests.assignee_user_id` (nullable, not an FK). RequestRepo
-  persists+reads it and **audits changes by NAME** (gated on id change). Edit-request dialog got an
-  **Assignee dropdown** (`RequestEditorViewModel.Unassigned` sentinel id 0 → null; `Users`/`SelectedAssignee`/
-  `AssigneeUserId`). Requests list shows an **Assignee column**; Entry section headers show a 👤 badge
-  (`WeekRequestGroup.AssigneeName`, resolved in `TimeLogService.BuildGroupsAsync` via `_users.GetAllAsync`).
-  `RequestsViewModel`/`TimeLogService` guard null user lists (mocks return null). Tasks stay shared
-  (decision: no per-task owner) — assignee is ticket-level only.
-- **Edit-request dialog restyled** to the Worklog theme: rounded shadowed card, New/Edit title, hierarchical
-  buttons (Save primary, Cancel/Add ghost, ▲▼✕ icon), sticky footer w/ error. Dropped the redundant
-  "Apply Template" button (selecting a template auto-appends). `FieldLabel` style added.
-- **Entry grid redesigned to a single continuous table** (user mockup): each request = a full-width clickable
-  **section band** (caret + CODE · project + badges, group total right-aligned under TOTAL); task rows beneath
-  with editable Mon–Fri cells aligned to shared 7-col star grid (2*,*,*,*,*,*,*); **"Move to next month"
-  moved into the expanded add-task row** (right) so the header never clips. Header uppercased (TASK/MON../TOTAL),
-  `Header()` now uppercases the day-of-week; DAY TOTALS footer shows the week grand total; Prev/Next relabeled.
-  Replaces the old per-group Expander+DataGrid. Auto-save (LostFocus) unchanged on the new TextBox cells.
-
-## Backlog batch — DONE (2026-06-24, commits `5b441de`..`086efae`)
-Autonomous pass over the remaining UX backlog (newest last):
-- **XC-10 .bak prune + XC-09 banner** (`5b441de`): `DbBackupHelper` deletes stale `{db}.{stamp}.bak`
-  siblings after each backup, keeping only the newest `KeepBackups` (10) — best-effort, never fails a
-  backup. `UiJournalWarningSink` wraps the trace sink (still traced) + raises an event; `App` marshals
-  it onto the UI thread → `MainViewModel.JournalWarning` shown as a dismissible **red banner** next to
-  the XC-08 conflict banner. Sink + VM stay System.Windows-free.
-- **Zero-config first run** (`62c6e8d`): a fresh DB (zero users) **auto-creates** a user from the
-  Windows account + maps it — no dialog. When users exist but the account is unmapped, SelectUserDialog
-  still shows and now **prefills** the create-name box with `Environment.UserName`.
-- **Persist Collapse-all** (`bcc9d40`): the Entry collapse/expand-all toggle is saved to settings
-  (`entry.collapseAll`) and restored on load. `TimesheetViewModel` gained optional `ISettingsRepository`.
-  Also **fixed the long-standing flaky** `ActivateTab_reloads_timesheet_rows` (isolated messenger).
-- **Jump-to-week** (`086efae`): a `DatePicker` (`TimesheetViewModel.JumpDate`) on the Entry toolbar
-  snaps the grid to any date's Monday + reloads; Prev/Next keep it in sync (`OnCurrentWeekChanged`).
-- **191 tests green** (full suite stable across repeated runs); app launches clean.
-
-## Remaining UX backlog (NOT yet done)
-- Per-tab button/spacing review if any still feel large; remember per-GROUP expand state across restarts
-  (only the global collapse-all flag is persisted today).
+## Open / not yet verified
+- **Drag & drop is mouse interaction — NOT auto-tested.** UAT needed: grips draggable, drop reorders, trash
+  deletes, highlight on drag-over. Handlers live in `DailyInputTab.xaml.cs` / `TimesheetTab.xaml.cs`.
+- The merge took the **feature** side for `RequestsTab.xaml` / `ReportsTab.xaml` / `SmartInputPreviewDialog.xaml`
+  conflicts (origin/main's design-tweak commits `960b570`/`1792a75` were superseded by the feature branch's own
+  design work). If a Users/tables/buttons tweak looks missing, recover it from commit `960b570`.
 
 ## Decisions locked (don't re-litigate)
-- Brand "Worklog" is **display-only**; DB path stays `timesheet.db`.
-- Requests/Reports are **sub-tabs of Timesheet**; Users/Settings under sidebar ADMIN; Daily Report/Task List are SOON placeholders.
-- Entry "Cả team / Whole team (read-only)" view is **read-only aggregate**; a specific user is editable.
-- "Move ▶" = advance ticket to the **next** month (audited). Arbitrary month change is via the Requests editor.
-- Smart fill total = **grand total split across checked tasks × days** (not per task).
-- Projects are the fixed enum; legacy values were normalized by migration v3.
+- Brand "Worklog" display-only; DB path `timesheet.db`. Requests/Reports are sub-tabs of Timesheet; Users/Settings
+  under sidebar ADMIN. Entry "whole team" view = read-only aggregate. "Move ▶" advances ticket to next month (audited).
+- Projects = fixed enum ARCS/PlusArcs/ARMS/Other. Smart-fill total = grand total split across checked tasks × days.
+- DESIGN SOURCE OF TRUTH = `E:\Learning\AAM\Design Old\Designfromclaude\Timesheet Tool.dc.html` (teal #0F766E,
+  page #E6EAEF, surface #fff, 'Segoe UI' 13px). Read it before UI changes.
 
-## Working style notes (this user)
-- Iterative UAT: build a focused fix → **run the app** → user tests → next ("kiểm từng bước"). Verify with screenshots.
-- Mirror the user's chat language (Vietnamese ↔ English). Commit + push each accepted change to `main`.
-- When a feature "doesn't work", get **DB/runtime evidence first** — several issues were UX traps / not-wired, not logic bugs.
-- Note: `MainViewModelTests.ActivateTab_reloads_timesheet_rows` was historically **flaky** (process-wide
-  default WeakReferenceMessenger cross-talk) — **fixed in `bcc9d40`** by giving its VM an isolated messenger.
+## Working style (this user)
+- Iterative UAT: focused change → run the app → user tests → next. Mirror the user's language (VN↔EN).
+- When a feature "doesn't work", get DB/runtime evidence first (several issues were UX traps / not-wired, not logic).
+- Commit + push each accepted change. Surgical changes; don't "improve" working code unasked.

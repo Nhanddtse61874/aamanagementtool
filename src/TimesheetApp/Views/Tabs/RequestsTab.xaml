@@ -1,22 +1,21 @@
-<UserControl x:Class="TimesheetApp.Views.Tabs.RequestsTab"
+<UserControl x:Class="TimesheetApp.Views.Tabs.BacklogsTab"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- REQ-01: live search + structured filters (all in-memory) + New request. -->
+        <!-- REQ-01: live search + structured filters (all in-memory) + New backlog. -->
         <StackPanel Grid.Row="0" Margin="0,0,0,8">
             <DockPanel Margin="0,0,0,6">
-                <Button Content="&#10133; New request" Command="{Binding BeginCreateCommand}"
+                <Button Content="&#10133; New backlog" Command="{Binding BeginCreateCommand}"
                         DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
                 <!-- Placeholder lives INSIDE the box (design) instead of an external "Search:" label. -->
                 <Grid>
                     <TextBox x:Name="SearchBox" Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="Filter by request code or project (live)"/>
+                             ToolTip="Filter by backlog code or project (live)"/>
                     <TextBlock Text="Search code or project…" Foreground="{StaticResource Disabled}"
                                Margin="10,0" VerticalAlignment="Center" IsHitTestVisible="False">
                         <TextBlock.Style>
@@ -35,8 +34,8 @@
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                 <ComboBox Width="110" ItemsSource="{Binding ProjectOptions}" SelectedItem="{Binding FilterProject}"/>
-                <TextBlock Text="Status:" VerticalAlignment="Center" Margin="14,0,4,0"/>
-                <ComboBox Width="120" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding FilterStatus}"/>
+                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                <ComboBox Width="120" ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding FilterType}"/>
                 <TextBlock Text="Assignee:" VerticalAlignment="Center" Margin="14,0,4,0"/>
                 <ComboBox Width="130" ItemsSource="{Binding AssigneeOptions}" SelectedItem="{Binding FilterAssignee}"/>
                 <TextBlock Text="Month:" VerticalAlignment="Center" Margin="14,0,4,0"/>
@@ -44,23 +43,21 @@
             </StackPanel>
         </StackPanel>
 
-        <!-- REQ-01: request list. NOTE: NO delete-request button anywhere (REQ-04). -->
-        <Border Grid.Row="1" Style="{StaticResource TableContainer}">
-        <DataGrid ItemsSource="{Binding Requests}" AutoGenerateColumns="False"
-                  IsReadOnly="True" SelectionMode="Single"
-                  BorderThickness="0" beh:RoundedClip.Radius="8">
+        <!-- REQ-01: backlog list. NOTE: NO delete-backlog button anywhere (REQ-04). -->
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Backlogs}" AutoGenerateColumns="False"
+                  IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="CODE" Binding="{Binding RequestCode}" Width="1.6*"/>
+                <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.6*"/>
                 <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="1.2*"/>
                 <DataGridTextColumn Header="MONTH" Binding="{Binding PeriodMonth}" Width="80"/>
-                <!-- Status as a teal pill (matches the design's status badge) -->
-                <DataGridTemplateColumn Header="STATUS" Width="110">
+                <!-- Type as a teal pill (matches the design's type badge) -->
+                <DataGridTemplateColumn Header="TYPE" Width="110">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
-                                    Visibility="{Binding Status, Converter={StaticResource NullToCollapsedConverter}}">
-                                <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
+                                    Visibility="{Binding Type, Converter={StaticResource NullToCollapsedConverter}}">
+                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{StaticResource Accent}"/>
                             </Border>
                         </DataTemplate>
@@ -71,7 +68,7 @@
                 <DataGridTemplateColumn Header="" Width="90">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <!-- REQ-03: edit only — no Request delete affordance (REQ-04) -->
+                            <!-- REQ-03: edit only — no Backlog delete affordance (REQ-04) -->
                             <Button Content="Edit" Style="{StaticResource MiniGhostButton}"
                                     HorizontalAlignment="Right" Margin="0,0,6,0"
                                     Command="{Binding DataContext.BeginEditCommand,
@@ -82,7 +79,6 @@
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
-        </Border>
 
         <!-- REQ-02/03: editor overlay — shown when Editor != null -->
         <Border Grid.RowSpan="2" Background="#66000000"
@@ -102,10 +98,10 @@
                         <TextBlock FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Text" Value="New request"/>
+                                    <Setter Property="Text" Value="New backlog"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsEditMode}" Value="True">
-                                            <Setter Property="Text" Value="Edit request"/>
+                                            <Setter Property="Text" Value="Edit backlog"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -138,7 +134,7 @@
                         <StackPanel>
 
                             <TextBlock Text="Code" Style="{StaticResource FieldLabel}"/>
-                            <TextBox Text="{Binding RequestCode, UpdateSourceTrigger=PropertyChanged}"
+                            <TextBox Text="{Binding BacklogCode, UpdateSourceTrigger=PropertyChanged}"
                                      Margin="0,0,0,10"/>
 
                             <TextBlock Text="Project" Style="{StaticResource FieldLabel}"/>
@@ -150,7 +146,7 @@
                             <ComboBox ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedAssignee}"
                                       DisplayMemberPath="Name" Margin="0,0,0,10"/>
 
-                            <!-- v2: ticket month (required: month + year) + status -->
+                            <!-- v2: ticket month (required: month + year) + type -->
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
@@ -170,8 +166,8 @@
                                               SelectedItem="{Binding PeriodYear}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="4">
-                                    <TextBlock Text="Status" Style="{StaticResource FieldLabel}"/>
-                                    <ComboBox ItemsSource="{Binding Statuses}" SelectedItem="{Binding Status}"/>
+                                    <TextBlock Text="Type" Style="{StaticResource FieldLabel}"/>
+                                    <ComboBox ItemsSource="{Binding Types}" SelectedItem="{Binding Type}"/>
                                 </StackPanel>
                             </Grid>
 
@@ -210,7 +206,7 @@
                                                 BorderBrush="{StaticResource Border}" BorderThickness="1"
                                                 CornerRadius="6" Padding="6,4" Margin="0,0,0,5">
                                             <DockPanel>
-                                                <!-- REQ-04: soft-delete TASK only, NOT the request -->
+                                                <!-- REQ-04: soft-delete TASK only, NOT the backlog -->
                                                 <Button Content="&#10005;" DockPanel.Dock="Right"
                                                         Style="{StaticResource TaskIconButton}"
                                                         Foreground="{StaticResource Danger}" ToolTip="Remove task"
@@ -250,7 +246,7 @@
                                     Command="{Binding AddTaskFromBoxCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
 
-                            <!-- v2: change history (start/end/month/status) — only shown when present -->
+                            <!-- v2: change history (start/end/month/type) — only shown when present -->
                             <StackPanel Margin="0,16,0,0">
                                 <StackPanel.Style>
                                     <Style TargetType="StackPanel">

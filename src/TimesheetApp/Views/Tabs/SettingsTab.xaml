@@ -17,6 +17,18 @@
                     <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyDbPathCommand}"/>
                 </StackPanel>
 
+                <!-- SET-05: Daily report archive folder -->
+                <TextBlock Text="Daily report archive" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="Folder where weekly daily-report markdown files are exported. Leave empty to use the default (next to the database file)."
+                           Style="{StaticResource FieldHint}"/>
+                <TextBlock Text="Archive folder" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBox Width="420" Height="32" Text="{Binding ArchivePath, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Browse…" Height="32" Margin="8,0,0,0" Click="OnBrowseArchive"
+                            Style="{StaticResource GhostButton}"/>
+                    <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyArchivePathCommand}"/>
+                </StackPanel>
+
                 <!-- SET-02: N-days warning (default 3) -->
                 <TextBlock Text="&quot;Not logged&quot; warning window" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Warn if no hours are logged within this many recent working days."

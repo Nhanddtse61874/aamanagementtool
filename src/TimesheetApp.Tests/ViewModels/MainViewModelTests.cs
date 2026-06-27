@@ -28,8 +28,8 @@ public sealed class MainViewModelTests
     {
         var timesheet = new TimesheetViewModel(
             Mock.Of<ITimeLogService>(), Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 0);
-        var requests = new RequestsViewModel(
-            Mock.Of<IRequestRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>());
+        var requests = new BacklogsViewModel(
+            Mock.Of<IBacklogRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>());
         var usersVm = new UsersViewModel(Mock.Of<IUserRepository>());
         var reports = new ReportsViewModel(
             Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(),
@@ -37,13 +37,15 @@ public sealed class MainViewModelTests
         var settings = new SettingsViewModel(
             Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(),
             Mock.Of<IDefaultTaskSyncService>());
+        var dailyReport = new DailyReportViewModel(
+            Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger());
 
         // Default conflict scan target: a path with no siblings so no spurious warning fires.
         _config.SetupGet(c => c.DbPath).Returns(
             dbPath ?? Path.Combine(Path.GetTempPath(), "mvm-test-" + Guid.NewGuid().ToString("N"), "timesheet.db"));
 
         return new MainViewModel(
-            timesheet, requests, usersVm, reports, settings,
+            timesheet, requests, usersVm, reports, settings, dailyReport,
             _currentUser.Object, _users.Object, _config.Object,
             windowsUserName ?? (() => "tester"));
     }
@@ -148,7 +150,7 @@ public sealed class MainViewModelTests
         var svc = new Mock<ITimeLogService>();
         var groups = new[]
         {
-            new WeekRequestGroup(1, "REQ-1", "P",
+            new WeekBacklogGroup(1, "REQ-1", "P",
                 new[] { new WeekRow(42, "REQ-1", "New Task", 0, null, null, null, null, null) })
         };
         svc.Setup(s => s.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>())).ReturnsAsync(groups);
@@ -160,10 +162,11 @@ public sealed class MainViewModelTests
             () => 1, new WeakReferenceMessenger());
         var vm = new MainViewModel(
             timesheet,
-            new RequestsViewModel(Mock.Of<IRequestRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>()),
+            new BacklogsViewModel(Mock.Of<IBacklogRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>()),
             new UsersViewModel(Mock.Of<IUserRepository>()),
             new ReportsViewModel(Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(), Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>()),
             new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>()),
+            new DailyReportViewModel(Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger()),
             _currentUser.Object, _users.Object, _config.Object, () => "tester");
 
         Assert.Empty(timesheet.Groups);

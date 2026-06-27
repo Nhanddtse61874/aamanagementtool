@@ -20,7 +20,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private readonly Func<int> _currentUserId;
     private readonly IMessenger _messenger;
     private readonly IUserRepository? _users;        // v2: Entry user filter (Cả team / other user)
-    private readonly IRequestRepository? _requests;  // v2: move-ticket-to-month
+    private readonly IBacklogRepository? _backlogs;  // v2: move-ticket-to-month
     private readonly ICurrentUserService? _currentUser; // v2: audit changed-by for move-month
     private readonly ISettingsRepository? _settings; // persists the collapse-all preference across restarts
     private bool _suppressTotals;
@@ -31,7 +31,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
     public TimesheetViewModel(
         ITimeLogService timeLogs, ITaskRepository tasks, ISmartInputService smartInput, IClock clock,
         Func<int> currentUserId, IMessenger? messenger = null,
-        IUserRepository? users = null, IRequestRepository? requests = null,
+        IUserRepository? users = null, IBacklogRepository? backlogs = null,
         ICurrentUserService? currentUser = null, ISettingsRepository? settings = null)
     {
         _timeLogs = timeLogs;
@@ -40,13 +40,13 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _currentUserId = currentUserId;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _users = users;
-        _requests = requests;
+        _backlogs = backlogs;
         _currentUser = currentUser;
         _settings = settings;
 
         // Smart-fill targets whichever user the Entry filter is viewing (defaults to the login user).
-        // It looks up a request by code + lists its tasks, so it needs the request/task repositories.
-        SmartInput = new SmartInputPanelVm(timeLogs, requests, tasks, () => EffectiveUserId);
+        // It looks up a backlog by code + lists its tasks, so it needs the backlog/task repositories.
+        SmartInput = new SmartInputPanelVm(timeLogs, backlogs, tasks, () => EffectiveUserId);
         SmartInput.Applied += async () => await ReloadAsync();
 
         // Assign the backing fields directly so the change handlers (which reload) do NOT fire
@@ -57,10 +57,10 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _filterYear = today.Year;
 
         // Live cross-tab sync: reload the grid when tasks/templates/default-tasks change elsewhere
-        // (e.g. a task created in the Requests tab). static lambda + recipient arg keeps the weak ref.
+        // (e.g. a task created in the Backlog tab). static lambda + recipient arg keeps the weak ref.
         _messenger.Register<TimesheetViewModel, DataChangedMessage>(this, static (r, m) =>
         {
-            if (m.Kind is DataKind.Tasks or DataKind.Templates or DataKind.DefaultTasks or DataKind.Requests)
+            if (m.Kind is DataKind.Tasks or DataKind.Templates or DataKind.DefaultTasks or DataKind.Backlogs)
                 _ = r.ReloadAsync();
         });
 
@@ -143,7 +143,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
                            ?? Targets.FirstOrDefault(t => !t.IsTeam);
     }
 
-    public ObservableCollection<RequestGroupVm> Groups { get; } = new();
+    public ObservableCollection<BacklogGroupVm> Groups { get; } = new();
 
     /// All task rows across every group — used for footer totals + Save iteration.
     private IEnumerable<TimesheetRowVm> AllRows => Groups.SelectMany(g => g.Tasks);
@@ -189,7 +189,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
         if (saved is not null) AllCollapsed = saved == "true";
     }
 
-    // Quick collapse/expand of ALL request groups at once (Entry header button).
+    // Quick collapse/expand of ALL backlog groups at once (Entry header button).
     [ObservableProperty] private bool _allCollapsed;
 
     public string CollapseToggleText => AllCollapsed ? "Expand all" : "Collapse all";
@@ -233,17 +233,17 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
         _suppressTotals = true;
 
-        // Preserve each group's expand/collapse state across reloads, keyed by RequestId.
-        var expandedById = Groups.ToDictionary(g => g.RequestId, g => g.IsExpanded);
+        // Preserve each group's expand/collapse state across reloads, keyed by BacklogId.
+        var expandedById = Groups.ToDictionary(g => g.BacklogId, g => g.IsExpanded);
         foreach (var r in AllRows) r.DayChanged -= OnRowDayChanged;
         Groups.Clear();
 
         foreach (var grp in grouped)
         {
-            var groupVm = new RequestGroupVm(
-                grp.RequestId, grp.RequestCode, grp.Project, _tasks, OnTaskAddedAsync,
-                grp.PeriodMonth, grp.Status, grp.AssigneeName);
-            if (expandedById.TryGetValue(grp.RequestId, out var wasExpanded))
+            var groupVm = new BacklogGroupVm(
+                grp.BacklogId, grp.BacklogCode, grp.Project, _tasks, OnTaskAddedAsync,
+                grp.PeriodMonth, grp.Type, grp.AssigneeName);
+            if (expandedById.TryGetValue(grp.BacklogId, out var wasExpanded))
                 groupVm.IsExpanded = wasExpanded;
 
             foreach (var wr in grp.Tasks)
@@ -251,7 +251,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
                 var row = new TimesheetRowVm
                 {
                     TaskId = wr.TaskId,
-                    RequestCode = wr.RequestCode,
+                    BacklogCode = wr.BacklogCode,
                     Project = grp.Project,
                     TaskName = wr.TaskName,
                     Mon = wr.Mon,
@@ -325,16 +325,37 @@ public sealed partial class TimesheetViewModel : ObservableObject
         ThuTotal = rows.Sum(r => r.Thu ?? 0);
         FriTotal = rows.Sum(r => r.Fri ?? 0);
         OnPropertyChanged(nameof(WeekTotal));
-        foreach (var g in Groups) g.RefreshTotal(); // live per-request header totals
+        foreach (var g in Groups) g.RefreshTotal(); // live per-backlog header totals
         SaveCommand.NotifyCanExecuteChanged();
     }
 
-    /// Inline add-task callback handed to each RequestGroupVm: after the Task is inserted, reload the
+    /// Inline add-task callback handed to each BacklogGroupVm: after the Task is inserted, reload the
     /// grid (so the new empty row appears) and broadcast so other tabs refresh too.
     private async Task OnTaskAddedAsync()
     {
         await ReloadAsync();
         _messenger.Send(new DataChangedMessage(DataKind.Tasks));
+    }
+
+    /// Drag-reorder a task within its backlog group (same group only), persist order_index, then reload.
+    public async Task ReorderTaskAsync(int draggedTaskId, int targetTaskId)
+    {
+        if (IsReadOnly || draggedTaskId == targetTaskId) return;
+        var group = Groups.FirstOrDefault(g => g.Tasks.Any(t => t.TaskId == draggedTaskId));
+        if (group is null || group.Tasks.All(t => t.TaskId != targetTaskId)) return;   // same group only
+        var ids = group.Tasks.Select(t => t.TaskId).ToList();
+        ids.Remove(draggedTaskId);
+        ids.Insert(ids.IndexOf(targetTaskId), draggedTaskId);
+        for (var i = 0; i < ids.Count; i++) await _tasks.SetOrderAsync(ids[i], i);
+        await OnTaskAddedAsync();
+    }
+
+    /// Drag-to-trash: soft-delete a task (its time logs are preserved), then reload.
+    public async Task DeleteTaskAsync(int taskId)
+    {
+        if (IsReadOnly) return;
+        await _tasks.SetActiveAsync(taskId, false);
+        await OnTaskAddedAsync();
     }
 
     private bool AnyDayOverEight() =>
@@ -374,20 +395,23 @@ public sealed partial class TimesheetViewModel : ObservableObject
     /// Move a ticket to the NEXT month (its period_month bumps by one). Audited as the current user,
     /// then the grid reloads so the ticket leaves the current month's view (TS / v2).
     [RelayCommand]
-    private async Task MoveMonthAsync(int requestId)
+    private async Task MoveMonthAsync(int backlogId)
     {
-        if (_requests is null) return;
-        var req = await _requests.GetByIdAsync(requestId);
-        if (req is null) return;
+        if (_backlogs is null) return;
+        var backlog = await _backlogs.GetByIdAsync(backlogId);
+        if (backlog is null) return;
+        // The hidden DEFAULT backlog must NEVER belong to a month — it has to appear in EVERY month
+        // (it holds the recurring default tasks). Defense-in-depth: the UI already hides Move for it.
+        if (string.Equals(backlog.BacklogCode, "DEFAULT", StringComparison.Ordinal)) return;
 
         // Base month = the ticket's current period (or the filter month if unassigned), then +1.
-        var baseMonth = ParseMonth(req.PeriodMonth) ?? SelectedMonth;
+        var baseMonth = ParseMonth(backlog.PeriodMonth) ?? SelectedMonth;
         var next = baseMonth.AddMonths(1).ToString("yyyy-MM");
 
-        await _requests.UpdateAsync(req with { PeriodMonth = next },
+        await _backlogs.UpdateAsync(backlog with { PeriodMonth = next },
             _currentUser?.Current?.Id, _currentUser?.Current?.Name);
         await ReloadAsync();
-        _messenger.Send(new DataChangedMessage(DataKind.Requests));
+        _messenger.Send(new DataChangedMessage(DataKind.Backlogs));
     }
 
     private static DateOnly? ParseMonth(string? yyyymm) =>

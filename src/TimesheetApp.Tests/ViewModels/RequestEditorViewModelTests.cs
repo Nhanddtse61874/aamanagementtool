@@ -5,7 +5,7 @@ using Xunit;
 
 namespace TimesheetApp.Tests.ViewModels;
 
-public sealed class RequestEditorViewModelTests
+public sealed class BacklogEditorViewModelTests
 {
     private static IReadOnlyList<TaskTemplate> WebTemplate() => new[]
     {
@@ -17,10 +17,10 @@ public sealed class RequestEditorViewModelTests
     [Fact] // REQ-02: create mode starts empty
     public void Create_mode_starts_empty()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
 
         Assert.False(vm.IsEditMode);
-        Assert.Equal(0, vm.EditingRequestId);
+        Assert.Equal(0, vm.EditingBacklogId);
         Assert.Empty(vm.Tasks);
         Assert.Equal(new[] { "API", "Web" }, vm.TemplateNames); // distinct, ordered
     }
@@ -28,9 +28,9 @@ public sealed class RequestEditorViewModelTests
     [Fact] // v4: create mode defaults to Unassigned (null id); the pick list is "(unassigned)" + users.
     public void Create_mode_defaults_to_unassigned()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate(), new[] { new User(5, "Cara", null, true) });
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate(), new[] { new User(5, "Cara", null, true) });
 
-        Assert.Same(RequestEditorViewModel.Unassigned, vm.SelectedAssignee);
+        Assert.Same(BacklogEditorViewModel.Unassigned, vm.SelectedAssignee);
         Assert.Null(vm.AssigneeUserId);
         Assert.Equal(2, vm.Users.Count); // Unassigned + Cara
     }
@@ -39,20 +39,20 @@ public sealed class RequestEditorViewModelTests
     public void Edit_mode_preselects_assignee_and_unassigned_maps_to_null()
     {
         var users = new[] { new User(5, "Cara", null, true) };
-        var req = new Request(3, "REQ-X", "ARCS", DateTimeOffset.UtcNow, AssigneeUserId: 5);
+        var req = new Backlog(3, "REQ-X", "ARCS", DateTimeOffset.UtcNow, AssigneeUserId: 5);
 
-        var vm = RequestEditorViewModel.ForEdit(req, System.Array.Empty<TaskItem>(), WebTemplate(), null, users);
+        var vm = BacklogEditorViewModel.ForEdit(req, System.Array.Empty<TaskItem>(), WebTemplate(), null, users);
         Assert.Equal(5, vm.AssigneeUserId);
         Assert.Equal("Cara", vm.SelectedAssignee.Name);
 
-        vm.SelectedAssignee = RequestEditorViewModel.Unassigned;
+        vm.SelectedAssignee = BacklogEditorViewModel.Unassigned;
         Assert.Null(vm.AssigneeUserId);
     }
 
     [Fact] // UX fix: selecting a template auto-applies its tasks (no separate Apply click needed)
     public void SelectingTemplate_autoApplies_withoutExplicitApplyCall()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
 
         vm.SelectedTemplateName = "Web"; // auto-apply on selection
 
@@ -62,7 +62,7 @@ public sealed class RequestEditorViewModelTests
     [Fact] // Applying the same template again must NOT duplicate its tasks
     public void SameTemplate_appliedAgain_doesNotDuplicate()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
 
         vm.SelectedTemplateName = "Web"; // auto-applies (2)
         vm.ApplyTemplate();               // explicit re-apply, same template
@@ -73,7 +73,7 @@ public sealed class RequestEditorViewModelTests
     [Fact] // REQ-02: applying a template appends only that template's tasks, ordered
     public void ApplyTemplate_appends_selected_template_tasks_in_order()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
         vm.SelectedTemplateName = "Web";
 
         vm.ApplyTemplate();
@@ -89,7 +89,7 @@ public sealed class RequestEditorViewModelTests
     [Fact] // REQ-02: custom add appends after template tasks with next order_index
     public void AddTask_appends_with_next_order_index()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
         vm.SelectedTemplateName = "Web";
         vm.ApplyTemplate();
 
@@ -103,7 +103,7 @@ public sealed class RequestEditorViewModelTests
     [Fact] // REQ-02: removing a NEW task drops it and reindexes
     public void RemoveTask_new_drops_and_reindexes()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
         vm.AddTask("A");
         vm.AddTask("B");
         vm.AddTask("C");
@@ -120,7 +120,7 @@ public sealed class RequestEditorViewModelTests
     [Fact] // REQ-02: reorder via MoveUp swaps and reindexes order_index
     public void MoveUp_swaps_and_reindexes()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
         vm.AddTask("A");
         vm.AddTask("B");
 
@@ -135,18 +135,18 @@ public sealed class RequestEditorViewModelTests
     [Fact] // REQ-03: edit mode preloads request + existing tasks
     public void Edit_mode_preloads_request_and_existing_tasks()
     {
-        var req = new Request(7, "RQ-7", "Billing", DateTimeOffset.UtcNow);
+        var req = new Backlog(7, "RQ-7", "Billing", DateTimeOffset.UtcNow);
         var existing = new[]
         {
             new TaskItem(11, 7, "Analyse", 0, true),
             new TaskItem(12, 7, "Implement", 1, true),
         };
 
-        var vm = RequestEditorViewModel.ForEdit(req, existing, WebTemplate());
+        var vm = BacklogEditorViewModel.ForEdit(req, existing, WebTemplate());
 
         Assert.True(vm.IsEditMode);
-        Assert.Equal(7, vm.EditingRequestId);
-        Assert.Equal("RQ-7", vm.RequestCode);
+        Assert.Equal(7, vm.EditingBacklogId);
+        Assert.Equal("RQ-7", vm.BacklogCode);
         Assert.Equal("Billing", vm.Project);
         Assert.Equal(2, vm.Tasks.Count);
         Assert.Equal(11, vm.Tasks[0].ExistingTaskId);
@@ -156,9 +156,9 @@ public sealed class RequestEditorViewModelTests
     [Fact] // REQ-04: removing an EXISTING task flags IsRemoved (soft-delete), keeps it in Tasks
     public void RemoveTask_existing_flags_removed_not_dropped()
     {
-        var req = new Request(7, "RQ-7", "Billing", DateTimeOffset.UtcNow);
+        var req = new Backlog(7, "RQ-7", "Billing", DateTimeOffset.UtcNow);
         var existing = new[] { new TaskItem(11, 7, "Analyse", 0, true) };
-        var vm = RequestEditorViewModel.ForEdit(req, existing, WebTemplate());
+        var vm = BacklogEditorViewModel.ForEdit(req, existing, WebTemplate());
 
         vm.RemoveTask(vm.Tasks[0]);
 
@@ -170,7 +170,7 @@ public sealed class RequestEditorViewModelTests
     [Fact] // ActiveTasks excludes removed + reindexes 0..n
     public void ActiveTasks_excludes_removed_and_reindexes()
     {
-        var vm = RequestEditorViewModel.ForCreate(WebTemplate());
+        var vm = BacklogEditorViewModel.ForCreate(WebTemplate());
         vm.AddTask("A");
         vm.AddTask("B");
         vm.AddTask("C");

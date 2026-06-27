@@ -5,13 +5,13 @@ using TimesheetApp.Models;
 
 namespace TimesheetApp.Services;
 
-/// <summary>Maintains the hidden DEFAULT request and reconciles DefaultTasks into Tasks under it.
+/// <summary>Maintains the hidden DEFAULT backlog and reconciles DefaultTasks into Tasks under it.
 /// Rename = soft-delete old + insert new (TimeLogs preserved, decision 7). (DATA-03, SET-04, XC-10)</summary>
 public sealed class DefaultTaskSyncService : IDefaultTaskSyncService
 {
     private const string DefaultCode = "DEFAULT";
 
-    private readonly IRequestRepository _requests;
+    private readonly IBacklogRepository _requests;
     private readonly ITaskRepository _tasks;
     private readonly IDefaultTaskRepository _defaults;
     private readonly IDbBackupHelper _backup;
@@ -19,7 +19,7 @@ public sealed class DefaultTaskSyncService : IDefaultTaskSyncService
     private readonly IJournalWarningSink _journalWarnings;
 
     public DefaultTaskSyncService(
-        IRequestRepository requests, ITaskRepository tasks,
+        IBacklogRepository requests, ITaskRepository tasks,
         IDefaultTaskRepository defaults, IDbBackupHelper backup,
         IAppConfig config, IJournalWarningSink journalWarnings)
     {
@@ -31,23 +31,23 @@ public sealed class DefaultTaskSyncService : IDefaultTaskSyncService
         _journalWarnings = journalWarnings;
     }
 
-    public async Task<int> EnsureDefaultRequestIdAsync()
+    public async Task<int> EnsureDefaultBacklogIdAsync()
     {
         var existing = await _requests.GetByCodeAsync(DefaultCode);
         if (existing is not null) return existing.Id;
-        return await _requests.InsertAsync(new Request(0, DefaultCode, DefaultCode, DateTimeOffset.UtcNow));
+        return await _requests.InsertAsync(new Backlog(0, DefaultCode, DefaultCode, DateTimeOffset.UtcNow));
     }
 
     public async Task SyncAsync()
     {
         await _backup.BackupAsync(); // XC-10: sync is a bulk write -> backup first (no-op when DB absent).
 
-        var defReqId = await EnsureDefaultRequestIdAsync();
+        var defReqId = await EnsureDefaultBacklogIdAsync();
 
         var activeDefaults = (await _defaults.GetActiveAsync())
             .Select(d => d.TaskName)
             .ToHashSet(StringComparer.Ordinal);
-        var tasksUnderDefault = await _tasks.GetActiveByRequestAsync(defReqId);
+        var tasksUnderDefault = await _tasks.GetActiveByBacklogAsync(defReqId);
         var existingNames = tasksUnderDefault
             .Select(t => t.TaskName)
             .ToHashSet(StringComparer.Ordinal);

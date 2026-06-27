@@ -22,6 +22,17 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // UAT safety net: surface any unhandled UI-thread exception as a readable dialog instead of a
+        // silent crash (fire-and-forget async-void callbacks have nowhere else to report). Keep the app
+        // alive so a single failed action doesn't kill the session.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            MessageBox.Show(
+                args.Exception.Message + "\n\n" + args.Exception.GetType().FullName,
+                "Unexpected error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            args.Handled = true;
+        };
+
         // The SelectUserDialog (XC-07) may be shown modally BEFORE MainWindow exists. With the default
         // OnLastWindowClose, closing/cancelling that dialog would shut the app down before the main
         // window appears. Hold shutdown explicit during startup; switch to main-window-bound after Show().
@@ -48,7 +59,7 @@ public partial class App : Application
 
         // Repositories (singletons — stateless; connection opened per method).
         sc.AddSingleton<IUserRepository, UserRepository>();
-        sc.AddSingleton<IRequestRepository, RequestRepository>();
+        sc.AddSingleton<IBacklogRepository, BacklogRepository>();
         sc.AddSingleton<ITaskRepository, TaskRepository>();
         sc.AddSingleton<ITimeLogRepository, TimeLogRepository>();
         sc.AddSingleton<ISettingsRepository, SettingsRepository>();
@@ -64,6 +75,10 @@ public partial class App : Application
         sc.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
         sc.AddSingleton<IReportAggregator, ReportAggregator>(); // pure roll-up, stateless
         sc.AddSingleton<IExportService, ExportService>();       // headless export (EXP-01..04)
+        // P7 Daily Report (standup) — repo + orchestration + weekly markdown archive.
+        sc.AddSingleton<IStandupRepository, StandupRepository>();
+        sc.AddSingleton<IStandupService, StandupService>();
+        sc.AddSingleton<IStandupArchiveService, StandupArchiveService>();
 
         // Current-user-id provider (Func<int>) per plan/spec: TimesheetViewModel persists cells for
         // the logged-in user. Resolution defers to ICurrentUserService.Current (set by login flow);
@@ -78,15 +93,21 @@ public partial class App : Application
         // ViewModels (transient).
         sc.AddTransient<MainViewModel>();
         sc.AddTransient<TimesheetViewModel>();
-        sc.AddTransient<RequestsViewModel>();
+        sc.AddTransient<BacklogsViewModel>();
         sc.AddTransient<UsersViewModel>();
         sc.AddTransient<ReportsViewModel>();
         sc.AddTransient<SettingsViewModel>();
+        sc.AddTransient<DailyReportViewModel>();
 
         Services = sc.BuildServiceProvider();
 
         // One-time bootstrap BEFORE the first window: schema + migrations + DEFAULT seed.
         await Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
+
+        // DR-09: back up any completed week that has standup data but no markdown archive yet
+        // (desktop app has no scheduler; runs lazily on each startup). Best-effort, never blocks startup.
+        try { await Services.GetRequiredService<IStandupArchiveService>().BackfillMissingWeeksAsync(); }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Standup archive backfill failed: {ex.Message}"); }
 
         // FIX C1 (DATA-03/TS-02): on a fresh DB the seeded DefaultTasks have no matching Tasks row
         // under the hidden DEFAULT request, so they never appear as Timesheet rows. SyncAsync was

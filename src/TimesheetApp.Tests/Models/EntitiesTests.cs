@@ -27,10 +27,10 @@ public class EntitiesTests
     }
 
     [Fact]
-    public void TaskItem_Has_RequestId_OrderIndex_IsActive()
+    public void TaskItem_Has_BacklogId_OrderIndex_IsActive()
     {
-        var task = new TaskItem(Id: 1, RequestId: 9, TaskName: "Annual Leave", OrderIndex: 0, IsActive: true);
-        Assert.Equal(9, task.RequestId);
+        var task = new TaskItem(Id: 1, BacklogId: 9, TaskName: "Annual Leave", OrderIndex: 0, IsActive: true);
+        Assert.Equal(9, task.BacklogId);
         Assert.Equal("Annual Leave", task.TaskName);
         Assert.Equal(0, task.OrderIndex);
     }
@@ -38,11 +38,11 @@ public class EntitiesTests
     [Fact]
     public void Request_Has_Code_Project_CreatedAt_No_IsActive_Member()
     {
-        var request = new Request(Id: 1, RequestCode: "DEFAULT", Project: "DEFAULT",
+        var request = new Backlog(Id: 1, BacklogCode: "DEFAULT", Project: "DEFAULT",
             CreatedAt: DateTimeOffset.UnixEpoch);
-        Assert.Equal("DEFAULT", request.RequestCode);
-        // Requests are NOT soft-deletable in v1 (DATA-02 decision 4) -> no IsActive property.
-        Assert.Null(typeof(Request).GetProperty("IsActive"));
+        Assert.Equal("DEFAULT", request.BacklogCode);
+        // Backlogs are NOT soft-deletable in v1 (DATA-02 decision 4) -> no IsActive property.
+        Assert.Null(typeof(Backlog).GetProperty("IsActive"));
     }
 
     [Fact]

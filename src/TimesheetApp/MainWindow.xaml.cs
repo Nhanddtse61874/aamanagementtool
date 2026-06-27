@@ -8,8 +8,8 @@ public partial class MainWindow : Window
 {
     public MainWindow() => InitializeComponent();
 
-    // Timesheet sub-tab switch (Entry / Requests / Reports). Maps the sub-tab index to the shell's
-    // existing index-based reload (0 Timesheet, 1 Requests, 3 Reports) so a change made elsewhere
+    // Timesheet sub-tab switch (Entry / Backlog / Reports). Maps the sub-tab index to the shell's
+    // existing index-based reload (0 Timesheet, 1 Backlog, 3 Reports) so a change made elsewhere
     // shows when the sub-tab is activated. TabControl.SelectionChanged also bubbles up from inner
     // selectors (ComboBox/DataGrid/ListBox), so only react when a TabItem is the newly-selected item.
     private async void OnSubTabChanged(object sender, SelectionChangedEventArgs e)

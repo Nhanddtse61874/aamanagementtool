@@ -28,14 +28,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     public MainViewModel(
         TimesheetViewModel timesheet,
-        RequestsViewModel requests,
+        BacklogsViewModel backlogs,
         UsersViewModel usersVm,
         ReportsViewModel reports,
         SettingsViewModel settings,
+        DailyReportViewModel dailyReport,
         ICurrentUserService currentUser,
         IUserRepository users,
         IAppConfig config)
-        : this(timesheet, requests, usersVm, reports, settings, currentUser, users, config,
+        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, currentUser, users, config,
                () => Environment.UserName)
     {
     }
@@ -43,20 +44,22 @@ public sealed partial class MainViewModel : ObservableObject
     // Test seam: inject the Windows-username provider so NeedsSelection persistence is deterministic.
     internal MainViewModel(
         TimesheetViewModel timesheet,
-        RequestsViewModel requests,
+        BacklogsViewModel backlogs,
         UsersViewModel usersVm,
         ReportsViewModel reports,
         SettingsViewModel settings,
+        DailyReportViewModel dailyReport,
         ICurrentUserService currentUser,
         IUserRepository users,
         IAppConfig config,
         Func<string> windowsUserName)
     {
         Timesheet = timesheet;
-        Requests = requests;
+        Backlogs = backlogs;
         Users = usersVm;
         Reports = reports;
         Settings = settings;
+        DailyReport = dailyReport;
         _currentUser = currentUser;
         _users = users;
         _config = config;
@@ -64,10 +67,11 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     public TimesheetViewModel Timesheet { get; }
-    public RequestsViewModel Requests { get; }
+    public BacklogsViewModel Backlogs { get; }
     public UsersViewModel Users { get; }
     public ReportsViewModel Reports { get; }
     public SettingsViewModel Settings { get; }
+    public DailyReportViewModel DailyReport { get; }
 
     [ObservableProperty] private string _currentUserName = string.Empty;
 
@@ -85,6 +89,7 @@ public sealed partial class MainViewModel : ObservableObject
     // index-based ActivateTabAsync (0 Timesheet, 2 Users, 4 Settings); daily/tasks are static.
     partial void OnActiveViewChanged(string value)
     {
+        if (value == "dailyreport") { _ = SafeLoad(() => DailyReport.LoadAsync()); return; }
         var index = value switch { "timesheet" => 0, "users" => 2, "settings" => 4, _ => -1 };
         if (index >= 0) _ = ActivateTabAsync(index);
     }
@@ -118,15 +123,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Reload the activated tab's data so changes made in another tab are reflected (e.g. a task
-    /// created in Requests appears in the Timesheet grid). Wired to the TabControl's SelectionChanged.
-    /// Index order matches MainWindow: 0 Timesheet, 1 Requests, 2 Users, 3 Reports, 4 Settings.
+    /// created in Backlogs appears in the Timesheet grid). Wired to the TabControl's SelectionChanged.
+    /// Index order matches MainWindow: 0 Timesheet, 1 Backlog, 2 Users, 3 Reports, 4 Settings.
     /// </summary>
     public async Task ActivateTabAsync(int index)
     {
         switch (index)
         {
             case 0: await SafeLoad(() => Timesheet.LoadCommand.ExecuteAsync(null)); break;
-            case 1: await SafeLoad(() => Requests.LoadAsync()); break;
+            case 1: await SafeLoad(() => Backlogs.LoadAsync()); break;
             case 2: await SafeLoad(() => Users.LoadAsync()); break;
             case 3:
                 // Default Reports view = whole team, current month (+ week for the stat cards/weekly grid).
@@ -185,7 +190,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task LoadTabsAsync()
     {
         await SafeLoad(() => Timesheet.LoadCommand.ExecuteAsync(null));
-        await SafeLoad(() => Requests.LoadAsync());
+        await SafeLoad(() => Backlogs.LoadAsync());
         await SafeLoad(() => Users.LoadAsync());
         await SafeLoad(() => Reports.LoadBannerAsync());
         await SafeLoad(() => Settings.LoadAsync());

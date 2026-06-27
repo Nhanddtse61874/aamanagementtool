@@ -5,14 +5,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TimesheetApp.Models;
 
-public sealed partial class RequestEditorViewModel : ObservableObject
+public sealed partial class BacklogEditorViewModel : ObservableObject
 {
     private readonly IReadOnlyList<TaskTemplate> _templates;
 
     // v4: sentinel for "no assignee" (id 0) so the ComboBox can clear an assignment.
     public static readonly User Unassigned = new(0, "— Unassigned —", null, true);
 
-    private RequestEditorViewModel(IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users)
+    private BacklogEditorViewModel(IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users)
     {
         _templates = templates;
         Templates = new ObservableCollection<TaskTemplate>(templates);
@@ -24,9 +24,9 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     }
 
     public bool IsEditMode { get; private init; }
-    public int EditingRequestId { get; private init; }
+    public int EditingBacklogId { get; private init; }
 
-    [ObservableProperty] private string _requestCode = string.Empty;
+    [ObservableProperty] private string _backlogCode = string.Empty;
     [ObservableProperty] private string _project = string.Empty;
     [ObservableProperty] private string? _selectedTemplateName;
 
@@ -35,7 +35,7 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty] private DateOnly? _endDate;
     [ObservableProperty] private int _periodMonthNumber = DateTime.Today.Month;
     [ObservableProperty] private int _periodYear = DateTime.Today.Year;
-    [ObservableProperty] private string? _status;
+    [ObservableProperty] private string? _type;
 
     // v4: assignee (the user responsible). Bound to a ComboBox of Users; Unassigned (id 0) => null.
     [ObservableProperty] private User _selectedAssignee = Unassigned;
@@ -48,14 +48,14 @@ public sealed partial class RequestEditorViewModel : ObservableObject
     // Always set (month is required) — projected to the persisted "yyyy-MM".
     public string PeriodMonth => $"{PeriodYear:D4}-{PeriodMonthNumber:D2}";
 
-    public IReadOnlyList<string> Statuses { get; } = RequestStatus.All;
-    public IReadOnlyList<string> Projects { get; } = RequestProjects.All;
+    public IReadOnlyList<string> Types { get; } = BacklogType.All;
+    public IReadOnlyList<string> Projects { get; } = BacklogProjects.All;
     public IReadOnlyList<int> Months { get; } = Enumerable.Range(1, 12).ToList();
     public IReadOnlyList<int> Years { get; } =
         Enumerable.Range(DateTime.Today.Year - 2, 6).ToList(); // current-2 .. current+3
 
-    // v2 change history for this request (read-only; populated in ForEdit).
-    public ObservableCollection<RequestAuditEntry> AuditEntries { get; } = new();
+    // v2 change history for this backlog (read-only; populated in ForEdit).
+    public ObservableCollection<BacklogAuditEntry> AuditEntries { get; } = new();
 
     public ObservableCollection<TaskTemplate> Templates { get; }
     public IReadOnlyList<string> TemplateNames { get; }
@@ -72,30 +72,30 @@ public sealed partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    public static RequestEditorViewModel ForCreate(
+    public static BacklogEditorViewModel ForCreate(
         IReadOnlyList<TaskTemplate> templates, IReadOnlyList<User>? users = null) =>
         // New tickets default to the current month (month/year fields default to today).
-        new(templates, users) { IsEditMode = false, EditingRequestId = 0 };
+        new(templates, users) { IsEditMode = false, EditingBacklogId = 0 };
 
-    public static RequestEditorViewModel ForEdit(
-        Request request, IReadOnlyList<TaskItem> existingTasks, IReadOnlyList<TaskTemplate> templates,
-        IReadOnlyList<RequestAuditEntry>? audit = null, IReadOnlyList<User>? users = null)
+    public static BacklogEditorViewModel ForEdit(
+        Backlog backlog, IReadOnlyList<TaskItem> existingTasks, IReadOnlyList<TaskTemplate> templates,
+        IReadOnlyList<BacklogAuditEntry>? audit = null, IReadOnlyList<User>? users = null)
     {
-        var (month, year) = ParsePeriodMonth(request.PeriodMonth);
-        var vm = new RequestEditorViewModel(templates, users)
+        var (month, year) = ParsePeriodMonth(backlog.PeriodMonth);
+        var vm = new BacklogEditorViewModel(templates, users)
         {
             IsEditMode = true,
-            EditingRequestId = request.Id,
-            RequestCode = request.RequestCode,
-            Project = request.Project,
-            StartDate = request.StartDate,
-            EndDate = request.EndDate,
+            EditingBacklogId = backlog.Id,
+            BacklogCode = backlog.BacklogCode,
+            Project = backlog.Project,
+            StartDate = backlog.StartDate,
+            EndDate = backlog.EndDate,
             PeriodMonthNumber = month,
             PeriodYear = year,
-            Status = request.Status,
+            Type = backlog.Type,
         };
         // Preselect the saved assignee (falls back to Unassigned if not in the list / null).
-        vm.SelectedAssignee = vm.Users.FirstOrDefault(u => u.Id == request.AssigneeUserId) ?? Unassigned;
+        vm.SelectedAssignee = vm.Users.FirstOrDefault(u => u.Id == backlog.AssigneeUserId) ?? Unassigned;
         foreach (var t in existingTasks.OrderBy(t => t.OrderIndex))
             vm.Tasks.Add(EditableTaskRowVm.Existing(t.Id, t.TaskName, t.OrderIndex));
         if (audit is not null)

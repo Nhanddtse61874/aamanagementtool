@@ -9,7 +9,7 @@ namespace TimesheetApp.ViewModels;
 public sealed class TimesheetRowVm : ObservableObject, INotifyDataErrorInfo
 {
     public int TaskId { get; init; }
-    public string RequestCode { get; init; } = "";
+    public string BacklogCode { get; init; } = "";
     public string Project { get; init; } = "";
     public string TaskName { get; init; } = "";
 

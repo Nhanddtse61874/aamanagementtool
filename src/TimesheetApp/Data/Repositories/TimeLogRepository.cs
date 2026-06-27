@@ -47,15 +47,15 @@ public sealed class TimeLogRepository : ITimeLogRepository
         // INNER JOIN by id, NO is_active predicate (XC-06): soft-deleted task/user names still resolve.
         var rows = await c.QueryAsync<ReportRaw>(
             @"SELECT u.id AS user_id, u.name AS user_name,
-                     r.request_code AS request_code, r.project AS project,
+                     r.backlog_code AS backlog_code, r.project AS project,
                      t.id AS task_id, t.task_name AS task_name,
                      l.work_date AS work_date, l.hours AS hours
               FROM TimeLogs l
               JOIN Tasks    t ON t.id = l.task_id
-              JOIN Requests r ON r.id = t.request_id
+              JOIN Backlogs r ON r.id = t.backlog_id
               JOIN Users    u ON u.id = l.user_id
               WHERE l.user_id = @u AND l.work_date >= @from AND l.work_date <= @to
-              ORDER BY r.project, r.request_code, t.order_index, l.work_date;",
+              ORDER BY r.project, r.backlog_code, t.order_index, l.work_date;",
             new { u = userId, from = Iso(from), to = Iso(to) });
         return rows.Select(MapReportRow).ToList();
     }
@@ -66,16 +66,16 @@ public sealed class TimeLogRepository : ITimeLogRepository
         // Same INNER JOIN with NO is_active predicate (XC-06); optional project filter.
         var rows = await c.QueryAsync<ReportRaw>(
             @"SELECT u.id AS user_id, u.name AS user_name,
-                     r.request_code AS request_code, r.project AS project,
+                     r.backlog_code AS backlog_code, r.project AS project,
                      t.id AS task_id, t.task_name AS task_name,
                      l.work_date AS work_date, l.hours AS hours
               FROM TimeLogs l
               JOIN Tasks    t ON t.id = l.task_id
-              JOIN Requests r ON r.id = t.request_id
+              JOIN Backlogs r ON r.id = t.backlog_id
               JOIN Users    u ON u.id = l.user_id
               WHERE l.work_date >= @from AND l.work_date <= @to
                 AND (@proj IS NULL OR r.project = @proj)
-              ORDER BY u.name, r.project, r.request_code, t.order_index, l.work_date;",
+              ORDER BY u.name, r.project, r.backlog_code, t.order_index, l.work_date;",
             new { from = Iso(from), to = Iso(to), proj = projectFilter });
         return rows.Select(MapReportRow).ToList();
     }
@@ -126,7 +126,7 @@ public sealed class TimeLogRepository : ITimeLogRepository
 
     private static TimeLogReportRow MapReportRow(ReportRaw r) => new(
         (int)r.user_id, r.user_name,
-        r.request_code, r.project,
+        r.backlog_code, r.project,
         (int)r.task_id, r.task_name,
         DateOnly.ParseExact(r.work_date, "yyyy-MM-dd", CultureInfo.InvariantCulture),
         (decimal)r.hours);
@@ -146,7 +146,7 @@ public sealed class TimeLogRepository : ITimeLogRepository
     {
         public long user_id { get; set; }
         public string user_name { get; set; } = "";
-        public string request_code { get; set; } = "";
+        public string backlog_code { get; set; } = "";
         public string project { get; set; } = "";
         public long task_id { get; set; }
         public string task_name { get; set; } = "";

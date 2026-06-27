@@ -21,7 +21,7 @@ public sealed partial class SmartTaskItem : ObservableObject
 /// One preview row: which task / day / hours the fill will write.
 public sealed record SmartPreviewRow(string TaskName, DateOnly Date, decimal Hours);
 
-/// Smart-fill panel (SI redesign): enter a request code -> load its tasks as checkboxes -> check the
+/// Smart-fill panel (SI redesign): enter a backlog code -> load its tasks as checkboxes -> check the
 /// ones to fill -> pick From/To + total hours -> preview -> apply. Total hours (Split evenly) and the
 /// 8h/day cap are spread across ALL checked tasks; apply is atomic (SI-05).
 public sealed partial class SmartInputPanelVm : ObservableObject
@@ -29,28 +29,33 @@ public sealed partial class SmartInputPanelVm : ObservableObject
     private const int DayCapTenths = 80; // 8.0h
 
     private readonly ITimeLogService _timeLogs;
-    private readonly IRequestRepository? _requests;
+    private readonly IBacklogRepository? _backlogs;
     private readonly ITaskRepository _tasks;
     private readonly Func<int> _currentUserId;
 
     private List<SmartFillTask> _planned = new();
 
     public SmartInputPanelVm(
-        ITimeLogService timeLogs, IRequestRepository? requests, ITaskRepository tasks, Func<int> currentUserId)
+        ITimeLogService timeLogs, IBacklogRepository? backlogs, ITaskRepository tasks, Func<int> currentUserId)
     {
         _timeLogs = timeLogs;
-        _requests = requests;
+        _backlogs = backlogs;
         _tasks = tasks;
         _currentUserId = currentUserId;
     }
 
-    [ObservableProperty] private string _requestCode = string.Empty;
+    [ObservableProperty] private string _backlogCode = string.Empty;
     [ObservableProperty] private string? _loadError;
 
     /// Tasks of the found request, shown as checkboxes.
     public ObservableCollection<SmartTaskItem> Tasks { get; } = new();
 
     [ObservableProperty] private SmartInputMode _mode = SmartInputMode.DistributeEven;
+
+    /// True only in Split-evenly mode — the Total hours box applies only then (Full 8h ignores it).
+    public bool IsSplitEven => Mode == SmartInputMode.DistributeEven;
+    partial void OnModeChanged(SmartInputMode value) => OnPropertyChanged(nameof(IsSplitEven));
+
     [ObservableProperty] private DateOnly _from;
     [ObservableProperty] private DateOnly _to;
     [ObservableProperty] private decimal _totalHours;
@@ -66,9 +71,10 @@ public sealed partial class SmartInputPanelVm : ObservableObject
     /// Raised after a successful atomic apply; owner VM reloads the week grid.
     public event Action? Applied;
 
-    /// Find the request by code and load its active tasks as checkboxes.
+    /// Find backlogs whose code/project CONTAINS the term (partial match) and load their active tasks
+    /// as checkboxes. When more than one backlog matches, each task is prefixed with its backlog code.
     [RelayCommand]
-    private async Task FindRequestAsync()
+    private async Task FindBacklogAsync()
     {
         Tasks.Clear();
         PreviewCells.Clear();
@@ -76,17 +82,28 @@ public sealed partial class SmartInputPanelVm : ObservableObject
         PreviewError = null;
         CanApply = false;
 
-        var code = RequestCode?.Trim();
-        if (string.IsNullOrEmpty(code)) { LoadError = "Enter a request code."; return; }
-        if (_requests is null) { LoadError = "Request lookup is unavailable."; return; }
+        var term = BacklogCode?.Trim();
+        if (string.IsNullOrEmpty(term)) { LoadError = "Type part of a backlog code to search."; return; }
+        if (_backlogs is null) { LoadError = "Backlog lookup is unavailable."; return; }
 
-        var req = await _requests.GetByCodeAsync(code);
-        if (req is null) { LoadError = $"Request '{code}' not found."; return; }
+        // Contains search (LIKE %term%) on backlog_code OR project; hide the internal DEFAULT backlog.
+        var matches = (await _backlogs.SearchAsync(term))
+            .Where(b => !string.Equals(b.BacklogCode, "DEFAULT", StringComparison.Ordinal))
+            .ToList();
+        if (matches.Count == 0) { LoadError = $"No backlog matches '{term}'."; return; }
 
-        var tasks = await _tasks.GetActiveByRequestAsync(req.Id);
-        foreach (var t in tasks.OrderBy(t => t.OrderIndex))
-            Tasks.Add(new SmartTaskItem { TaskId = t.Id, TaskName = t.TaskName });
-        if (Tasks.Count == 0) LoadError = "This request has no tasks.";
+        var prefixWithCode = matches.Count > 1;
+        foreach (var bl in matches)
+        {
+            var tasks = await _tasks.GetActiveByBacklogAsync(bl.Id);
+            foreach (var t in tasks.OrderBy(t => t.OrderIndex))
+                Tasks.Add(new SmartTaskItem
+                {
+                    TaskId = t.Id,
+                    TaskName = prefixWithCode ? $"{bl.BacklogCode} · {t.TaskName}" : t.TaskName,
+                });
+        }
+        if (Tasks.Count == 0) LoadError = "Matching backlog(s) have no tasks.";
     }
 
     [RelayCommand]

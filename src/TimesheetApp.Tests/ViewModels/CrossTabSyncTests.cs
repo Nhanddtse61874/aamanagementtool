@@ -14,16 +14,16 @@ namespace TimesheetApp.Tests.ViewModels;
 /// </summary>
 public sealed class CrossTabSyncTests
 {
-    [Fact] // Creating a request/task in the Requests tab reloads the Timesheet grid live.
+    [Fact] // Creating a request/task in the Backlogs tab reloads the Timesheet grid live.
     public async Task RequestSave_reloads_Timesheet_via_messenger()
     {
         var bus = new WeakReferenceMessenger();
 
         var svc = new Mock<ITimeLogService>();
-        var empty = System.Array.Empty<WeekRequestGroup>();
+        var empty = System.Array.Empty<WeekBacklogGroup>();
         var withTask = new[]
         {
-            new WeekRequestGroup(1, "R1", "P",
+            new WeekBacklogGroup(1, "R1", "P",
                 new[] { new WeekRow(5, "R1", "New Task", 0, null, null, null, null, null) })
         };
         svc.SetupSequence(s => s.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
@@ -35,13 +35,13 @@ public sealed class CrossTabSyncTests
         await timesheet.LoadCommand.ExecuteAsync(null);
         Assert.Empty(timesheet.Groups);
 
-        var reqRepo = new Mock<IRequestRepository>();
-        reqRepo.Setup(r => r.InsertAsync(It.IsAny<Request>())).ReturnsAsync(10);
-        reqRepo.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(System.Array.Empty<Request>());
-        var requests = new RequestsViewModel(
+        var reqRepo = new Mock<IBacklogRepository>();
+        reqRepo.Setup(r => r.InsertAsync(It.IsAny<Backlog>())).ReturnsAsync(10);
+        reqRepo.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(System.Array.Empty<Backlog>());
+        var requests = new BacklogsViewModel(
             reqRepo.Object, Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>(), bus);
-        requests.Editor = RequestEditorViewModel.ForCreate(System.Array.Empty<TaskTemplate>());
-        requests.Editor.RequestCode = "R1";
+        requests.Editor = BacklogEditorViewModel.ForCreate(System.Array.Empty<TaskTemplate>());
+        requests.Editor.BacklogCode = "R1";
         requests.Editor.Project = "P";
         requests.Editor.AddTask("New Task"); // a new request now requires at least one task
 

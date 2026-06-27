@@ -14,13 +14,13 @@ public class TimesheetViewModelTests
     private static readonly DateOnly Wed = new(2026, 6, 17);
     private static readonly DateOnly Mon = new(2026, 6, 15);
 
-    // Build the grouped shape from flat WeekRows: each distinct RequestCode becomes one group.
-    private static IReadOnlyList<WeekRequestGroup> Groups(params WeekRow[] rows)
+    // Build the grouped shape from flat WeekRows: each distinct BacklogCode becomes one group.
+    private static IReadOnlyList<WeekBacklogGroup> Groups(params WeekRow[] rows)
     {
         var id = 1;
         return rows
-            .GroupBy(r => r.RequestCode)
-            .Select(g => new WeekRequestGroup(id++, g.Key, "", g.ToList()))
+            .GroupBy(r => r.BacklogCode)
+            .Select(g => new WeekBacklogGroup(id++, g.Key, "", g.ToList()))
             .ToList();
     }
 
@@ -29,7 +29,7 @@ public class TimesheetViewModelTests
         vm.Groups.SelectMany(g => g.Tasks).ToList();
 
     private static (TimesheetViewModel vm, Mock<ITimeLogService> tl, Mock<ISmartInputService> si) Make(
-        IReadOnlyList<WeekRequestGroup>? initial = null, int userId = 1)
+        IReadOnlyList<WeekBacklogGroup>? initial = null, int userId = 1)
     {
         var tl = new Mock<ITimeLogService>();
         var si = new Mock<ISmartInputService>();
@@ -38,7 +38,7 @@ public class TimesheetViewModelTests
         clock.SetupGet(c => c.Today).Returns(Wed);
 
         tl.Setup(t => t.GetWeekGroupedAsync(userId, It.IsAny<DateOnly>()))
-          .ReturnsAsync((int _, DateOnly _) => initial ?? System.Array.Empty<WeekRequestGroup>());
+          .ReturnsAsync((int _, DateOnly _) => initial ?? System.Array.Empty<WeekBacklogGroup>());
         tl.Setup(t => t.SaveCellAsync(userId, It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<decimal>()))
           .ReturnsAsync(new SaveResult(true, null));
         tl.Setup(t => t.ClearCellAsync(userId, It.IsAny<int>(), It.IsAny<DateOnly>()))
@@ -56,13 +56,13 @@ public class TimesheetViewModelTests
     {
         var tl = new Mock<ITimeLogService>();
         tl.Setup(t => t.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
-          .ReturnsAsync(System.Array.Empty<WeekRequestGroup>());
+          .ReturnsAsync(System.Array.Empty<WeekBacklogGroup>());
         var clock = new Mock<IClock>();
         clock.SetupGet(c => c.Today).Returns(Wed); // selected month defaults to 2026-06
 
-        var requests = new Mock<IRequestRepository>();
+        var requests = new Mock<IBacklogRepository>();
         requests.Setup(r => r.GetByIdAsync(5))
-                .ReturnsAsync(new Request(5, "REQ-5", "P", DateTimeOffset.UtcNow, PeriodMonth: "2026-06"));
+                .ReturnsAsync(new Backlog(5, "REQ-5", "P", DateTimeOffset.UtcNow, PeriodMonth: "2026-06"));
 
         var currentUser = new Mock<ICurrentUserService>();
         currentUser.SetupGet(c => c.Current).Returns(new User(7, "Nhan", null, true));
@@ -74,7 +74,7 @@ public class TimesheetViewModelTests
         await vm.MoveMonthCommand.ExecuteAsync(5);
 
         requests.Verify(r => r.UpdateAsync(
-            It.Is<Request>(x => x.Id == 5 && x.PeriodMonth == "2026-07"), 7, "Nhan"), Times.Once);
+            It.Is<Backlog>(x => x.Id == 5 && x.PeriodMonth == "2026-07"), 7, "Nhan"), Times.Once);
     }
 
     [Fact]
@@ -147,10 +147,10 @@ public class TimesheetViewModelTests
         await vm.LoadCommand.ExecuteAsync(null);
 
         Assert.Equal(2, vm.Groups.Count);
-        Assert.Equal("REQ-001", vm.Groups[0].RequestCode);
+        Assert.Equal("REQ-001", vm.Groups[0].BacklogCode);
         Assert.Equal(7, vm.Groups[0].Tasks[0].TaskId);
         Assert.Equal(4m, vm.Groups[0].Tasks[0].Mon);
-        Assert.Equal("DEFAULT", vm.Groups[1].RequestCode);
+        Assert.Equal("DEFAULT", vm.Groups[1].BacklogCode);
         Assert.Equal("Annual Leave", vm.Groups[1].Tasks[0].TaskName);
     }
 
@@ -158,12 +158,12 @@ public class TimesheetViewModelTests
     public async Task EmptyRequest_RendersAsGroupWithNoTasks()
     {
         // One request that has NO tasks -> a group with an empty Tasks list still shows.
-        var groups = new[] { new WeekRequestGroup(3, "REQ-EMPTY", "Proj", System.Array.Empty<WeekRow>()) };
+        var groups = new[] { new WeekBacklogGroup(3, "REQ-EMPTY", "Proj", System.Array.Empty<WeekRow>()) };
         var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
         Assert.Single(vm.Groups);
-        Assert.Equal("REQ-EMPTY", vm.Groups[0].RequestCode);
+        Assert.Equal("REQ-EMPTY", vm.Groups[0].BacklogCode);
         Assert.Empty(vm.Groups[0].Tasks);
     }
 
@@ -244,7 +244,7 @@ public class TimesheetViewModelTests
     {
         var tl = new Mock<ITimeLogService>();
         tl.Setup(t => t.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
-          .ReturnsAsync(System.Array.Empty<WeekRequestGroup>());
+          .ReturnsAsync(System.Array.Empty<WeekBacklogGroup>());
         var clock = new Mock<IClock>();
         clock.SetupGet(c => c.Today).Returns(Wed);
 
@@ -287,7 +287,7 @@ public class TimesheetViewModelTests
     [Fact] // Inline add-task on a group inserts a Task under that request, then reloads + broadcasts.
     public async Task AddTask_OnGroup_InsertsTaskUnderRequest_AndReloads()
     {
-        var groups = new[] { new WeekRequestGroup(42, "REQ-001", "Proj", System.Array.Empty<WeekRow>()) };
+        var groups = new[] { new WeekBacklogGroup(42, "REQ-001", "Proj", System.Array.Empty<WeekRow>()) };
         var tl = new Mock<ITimeLogService>();
         var si = new Mock<ISmartInputService>();
         var tasks = new Mock<ITaskRepository>();
@@ -305,7 +305,7 @@ public class TimesheetViewModelTests
         await grp.AddTaskCommand.ExecuteAsync(null);
 
         tasks.Verify(r => r.InsertAsync(It.Is<TaskItem>(
-            t => t.RequestId == 42 && t.TaskName == "New Task" && t.IsActive)), Times.Once);
+            t => t.BacklogId == 42 && t.TaskName == "New Task" && t.IsActive)), Times.Once);
         // Add reloads the grid (then broadcasts; the VM also self-reloads on that broadcast -> >=1).
         tl.Verify(t => t.GetWeekGroupedAsync(1, It.IsAny<DateOnly>()), Times.AtLeastOnce);
         Assert.Equal("", grp.NewTaskName); // cleared after add
@@ -314,7 +314,7 @@ public class TimesheetViewModelTests
     [Fact] // Blank task name is a no-op: no insert, no reload.
     public async Task AddTask_BlankName_DoesNothing()
     {
-        var groups = new[] { new WeekRequestGroup(42, "REQ-001", "Proj", System.Array.Empty<WeekRow>()) };
+        var groups = new[] { new WeekBacklogGroup(42, "REQ-001", "Proj", System.Array.Empty<WeekRow>()) };
         var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 

@@ -64,15 +64,11 @@
                        IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
                                    ConverterParameter=timesheet, Mode=TwoWay}"/>
 
+          <RadioButton Style="{StaticResource NavItem}" Tag="&#128221;" Content="Daily Report"
+                       IsChecked="{Binding ActiveView, Converter={StaticResource StringMatch},
+                                   ConverterParameter=dailyreport, Mode=TwoWay}"/>
+
           <!-- Planned (SOON) — disabled, pill on the right -->
-          <Grid>
-            <RadioButton Style="{StaticResource NavItem}" Tag="&#128221;" Content="Daily Report"
-                         IsEnabled="False"/>
-            <Border Style="{StaticResource SoonPill}" HorizontalAlignment="Right" Margin="0,0,8,0"
-                    IsHitTestVisible="False">
-              <TextBlock Text="SOON" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AmberFg}"/>
-            </Border>
-          </Grid>
           <Grid>
             <RadioButton Style="{StaticResource NavItem}" Tag="&#9989;" Content="Task List"
                          IsEnabled="False"/>
@@ -144,24 +140,58 @@
       <!-- Content host: one panel per ActiveView, only the matching one visible -->
       <Grid Grid.Row="1">
 
-        <!-- ===== TIMESHEET (Entry / Requests / Reports sub-tabs) ===== -->
+        <!-- ===== TIMESHEET (Entry / Backlog / Reports sub-tabs) ===== -->
         <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
                                 ConverterParameter=timesheet}">
           <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="22,16,22,0">
             <TextBlock Text="&#128197;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Timesheet"/>
-            <TextBlock Text="Log hours per request &amp; task" Margin="10,0,0,0"
+            <TextBlock Text="Log hours per backlog &amp; task" Margin="10,0,0,0"
                        Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <TabControl x:Name="SubTabs" Margin="22,8,22,0" SelectionChanged="OnSubTabChanged">
             <TabItem Header="Entry">
               <tabs:TimesheetTab DataContext="{Binding Timesheet}"/>
             </TabItem>
-            <TabItem Header="Requests">
-              <tabs:RequestsTab DataContext="{Binding Requests}"/>
+            <TabItem Header="Backlog">
+              <tabs:BacklogsTab DataContext="{Binding Backlogs}"/>
             </TabItem>
             <TabItem Header="Reports">
               <tabs:ReportsTab DataContext="{Binding Reports}"/>
+            </TabItem>
+          </TabControl>
+        </DockPanel>
+
+        <!-- ===== DAILY REPORT (Input / Board sub-tabs) ===== -->
+        <!-- Visibility binds to MainViewModel.ActiveView; the inner header + tabs use the DailyReport VM.
+             (Setting DataContext on this DockPanel would break the ActiveView visibility binding.) -->
+        <DockPanel Visibility="{Binding ActiveView, Converter={StaticResource StringMatchToVisibility},
+                                ConverterParameter=dailyreport}">
+          <StackPanel DockPanel.Dock="Top" Margin="22,16,22,0" DataContext="{Binding DailyReport}">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#128221;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
+              <TextBlock Style="{StaticResource FeatureTitle}" Text="Daily Report"/>
+              <TextBlock Text="Standup — what each member did yesterday &amp; is doing today" Margin="10,0,0,0"
+                         Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+            </StackPanel>
+            <!-- Shared date toolbar (drives both Input and Board sub-tabs) -->
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+              <Button Content="◀" Style="{StaticResource ToolbarGhostButton}" Command="{Binding PrevDayCommand}"/>
+              <DatePicker Width="150" Margin="6,0" VerticalContentAlignment="Center"
+                          SelectedDate="{Binding SelectedDate, Converter={StaticResource DateOnly}}"/>
+              <Button Content="▶" Style="{StaticResource ToolbarGhostButton}" Command="{Binding NextDayCommand}"/>
+              <Button Content="Archive week" Style="{StaticResource ToolbarGhostButton}" Margin="14,0,0,0"
+                      Command="{Binding ArchiveWeekCommand}"/>
+              <TextBlock Text="{Binding StatusMessage}" Margin="14,0,0,0" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextSecondary}" FontSize="12"/>
+            </StackPanel>
+          </StackPanel>
+          <TabControl Margin="22,8,22,0" DataContext="{Binding DailyReport}">
+            <TabItem Header="Input">
+              <tabs:DailyInputTab/>
+            </TabItem>
+            <TabItem Header="Team board">
+              <tabs:DailyBoardTab/>
             </TabItem>
           </TabControl>
         </DockPanel>

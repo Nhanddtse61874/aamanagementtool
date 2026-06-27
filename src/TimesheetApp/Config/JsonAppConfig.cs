@@ -7,10 +7,11 @@ namespace TimesheetApp.Config;
 // canonical app-local path; the (path, default) ctor is the test/DI seam.
 public sealed class JsonAppConfig : IAppConfig
 {
-    private sealed record Model(string DbPath);
+    private sealed record Model(string DbPath, string? ArchivePath = null);
 
     private readonly string _configPath;
     private string _dbPath;
+    private string _archivePath;
 
     public JsonAppConfig()
         : this(DefaultConfigPath(), DefaultDbPath())
@@ -20,28 +21,41 @@ public sealed class JsonAppConfig : IAppConfig
     public JsonAppConfig(string configPath, string defaultDbPath)
     {
         _configPath = configPath;
-        _dbPath = Load(configPath) ?? defaultDbPath;
+        var model = LoadModel(configPath);
+        _dbPath = model?.DbPath ?? defaultDbPath;
+        _archivePath = model?.ArchivePath ?? "";
     }
 
     public string DbPath => _dbPath;
+    public string ArchivePath => _archivePath;
 
     public void SetDbPath(string dbPath)
     {
         _dbPath = dbPath;
+        Save();
+    }
+
+    public void SetArchivePath(string archivePath)
+    {
+        _archivePath = archivePath;
+        Save();
+    }
+
+    private void Save()
+    {
         var dir = Path.GetDirectoryName(_configPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        var json = JsonSerializer.Serialize(new Model(dbPath),
-            new JsonSerializerOptions { WriteIndented = true });
+        var model = new Model(_dbPath, string.IsNullOrWhiteSpace(_archivePath) ? null : _archivePath);
+        var json = JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
     }
 
-    private static string? Load(string configPath)
+    private static Model? LoadModel(string configPath)
     {
         if (!File.Exists(configPath)) return null;
         try
         {
-            var model = JsonSerializer.Deserialize<Model>(File.ReadAllText(configPath));
-            return string.IsNullOrWhiteSpace(model?.DbPath) ? null : model!.DbPath;
+            return JsonSerializer.Deserialize<Model>(File.ReadAllText(configPath));
         }
         catch (JsonException)
         {

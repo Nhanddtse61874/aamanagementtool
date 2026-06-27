@@ -54,6 +54,17 @@ public partial class SettingsTab : UserControl
             vm.DbPath = dlg.FileName;
     }
 
+    // Browse folder for daily report archive path.
+    private void OnBrowseArchive(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        var dlg = new OpenFolderDialog { Title = "Select archive folder" };
+        if (!string.IsNullOrWhiteSpace(vm.ArchivePath) && System.IO.Directory.Exists(vm.ArchivePath))
+            dlg.InitialDirectory = vm.ArchivePath;
+        if (dlg.ShowDialog() == true)
+            vm.ArchivePath = dlg.FolderName;
+    }
+
     // "Add task" opens a dedicated input dialog instead of an inline text box.
     private void AddTaskFromBox()
     {
