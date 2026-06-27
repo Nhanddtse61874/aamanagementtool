@@ -1,5 +1,7 @@
+using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Config;
 using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
@@ -22,9 +24,14 @@ namespace TimesheetApp.ViewModels;
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly ICurrentUserService _currentUser;
+    private readonly ICurrentTeamService _currentTeam;
     private readonly IUserRepository _users;
     private readonly IAppConfig _config;
+    private readonly IMessenger _messenger;
     private readonly Func<string> _windowsUserName;
+    // Re-entrancy guard: refreshing AvailableTeams/ActiveTeam from the service must not echo back
+    // into the ActiveTeam setter (which would call SetActiveTeamAsync for a no-op change).
+    private bool _suppressActiveTeamSet;
 
     public MainViewModel(
         TimesheetViewModel timesheet,
@@ -35,14 +42,16 @@ public sealed partial class MainViewModel : ObservableObject
         DailyReportViewModel dailyReport,
         TaskListViewModel taskList,
         ICurrentUserService currentUser,
+        ICurrentTeamService currentTeam,
         IUserRepository users,
         IAppConfig config)
-        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, taskList, currentUser, users, config,
+        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, taskList, currentUser, currentTeam, users, config,
                () => Environment.UserName)
     {
     }
 
-    // Test seam: inject the Windows-username provider so NeedsSelection persistence is deterministic.
+    // Test seam: inject the Windows-username provider so NeedsSelection persistence is deterministic,
+    // and an optional messenger so DataKind.Teams cross-tab sync can be isolated per test.
     internal MainViewModel(
         TimesheetViewModel timesheet,
         BacklogsViewModel backlogs,
@@ -52,9 +61,11 @@ public sealed partial class MainViewModel : ObservableObject
         DailyReportViewModel dailyReport,
         TaskListViewModel taskList,
         ICurrentUserService currentUser,
+        ICurrentTeamService currentTeam,
         IUserRepository users,
         IAppConfig config,
-        Func<string> windowsUserName)
+        Func<string> windowsUserName,
+        IMessenger? messenger = null)
     {
         Timesheet = timesheet;
         Backlogs = backlogs;
@@ -64,9 +75,19 @@ public sealed partial class MainViewModel : ObservableObject
         DailyReport = dailyReport;
         TaskList = taskList;
         _currentUser = currentUser;
+        _currentTeam = currentTeam;
         _users = users;
         _config = config;
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
         _windowsUserName = windowsUserName;
+
+        // Live refresh of the team switcher: when teams/membership/active-team change anywhere
+        // (Settings CRUD, SetActiveTeamAsync), rebuild the switcher list + selection. static lambda
+        // + recipient arg keeps the weak ref.
+        _messenger.Register<MainViewModel, DataChangedMessage>(this, static (r, m) =>
+        {
+            if (m.Kind == DataKind.Teams) r.RefreshTeamsFromService();
+        });
     }
 
     public TimesheetViewModel Timesheet { get; }
@@ -84,6 +105,54 @@ public sealed partial class MainViewModel : ObservableObject
         string.IsNullOrWhiteSpace(CurrentUserName) ? "?" : CurrentUserName.Trim()[..1].ToUpperInvariant();
 
     partial void OnCurrentUserNameChanged(string value) => OnPropertyChanged(nameof(CurrentUserInitial));
+
+    // ===== Active-team switcher (TM-05, architecture §5a) =====
+
+    // The current user's active team memberships. Source for the sidebar ComboBox.
+    public ObservableCollection<Team> AvailableTeams { get; } = new();
+
+    // The active team. The two-way bound ComboBox SelectedItem; setting it persists via the service.
+    [ObservableProperty] private Team? _activeTeam;
+
+    // Hide the switcher for single-team users (nothing to switch).
+    public bool ShowTeamSwitcher => AvailableTeams.Count > 1;
+
+    // ComboBox SelectedItem change → persist the active team. Guarded against re-entrancy (the
+    // service-driven refresh sets ActiveTeam directly), null, and same-id no-ops.
+    partial void OnActiveTeamChanged(Team? value)
+    {
+        if (_suppressActiveTeamSet) return;
+        if (value is null) return;
+        if (value.Id == _currentTeam.ActiveTeamId) return;
+        _ = SafeLoad(() => _currentTeam.SetActiveTeamAsync(value.Id));
+    }
+
+    /// <summary>
+    /// Rebuild AvailableTeams + the selected ActiveTeam from <see cref="ICurrentTeamService"/>.
+    /// Call after the service is initialized (W9 startup wiring invokes this right after
+    /// <c>ICurrentTeamService.InitializeAsync</c>); also runs on every DataKind.Teams broadcast.
+    /// On a team change this also reloads the active view's data so the working scope reflects the
+    /// new team (mirrors the per-view reload OnActiveViewChanged uses).
+    /// </summary>
+    public void RefreshTeamsFromService()
+    {
+        _suppressActiveTeamSet = true;
+        try
+        {
+            AvailableTeams.Clear();
+            foreach (var t in _currentTeam.AvailableTeams) AvailableTeams.Add(t);
+            ActiveTeam = AvailableTeams.FirstOrDefault(t => t.Id == _currentTeam.ActiveTeamId);
+        }
+        finally
+        {
+            _suppressActiveTeamSet = false;
+        }
+
+        OnPropertyChanged(nameof(ShowTeamSwitcher));
+
+        // Reload the currently active view so its data reflects the (possibly) new active team.
+        OnActiveViewChanged(ActiveView);
+    }
 
     // Active sidebar destination (string key): timesheet (= "Log Work") | backlog | tasklist |
     // dailyreport | reports | users | settings. Drives both the nav highlight (RadioButton IsChecked

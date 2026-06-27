@@ -56,6 +56,18 @@
           </Border>
         </Border>
 
+        <!-- Active-team switcher (TM-05). Docked above the user chip; hidden for single-team users.
+             Setting SelectedItem persists via ICurrentTeamService.SetActiveTeamAsync (VM setter). -->
+        <Border DockPanel.Dock="Bottom" Padding="12,12,12,0"
+                Visibility="{Binding ShowTeamSwitcher, Converter={StaticResource BoolToVisibleConverter}}">
+          <StackPanel>
+            <TextBlock Style="{StaticResource SidebarSection}" Text="TEAM"/>
+            <ComboBox ItemsSource="{Binding AvailableTeams}"
+                      SelectedItem="{Binding ActiveTeam, Mode=TwoWay}"
+                      DisplayMemberPath="Name"/>
+          </StackPanel>
+        </Border>
+
         <!-- Navigation -->
         <StackPanel Margin="12,12,12,0">
           <TextBlock Style="{StaticResource SidebarSection}" Text="WORKSPACE"/>

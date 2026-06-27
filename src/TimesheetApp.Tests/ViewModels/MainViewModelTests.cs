@@ -17,10 +17,18 @@ namespace TimesheetApp.Tests.ViewModels;
 public sealed class MainViewModelTests
 {
     private readonly Mock<ICurrentUserService> _currentUser = new();
+    private readonly Mock<ICurrentTeamService> _currentTeam = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IAppConfig> _config = new();
 
     private static User U(int id, string name) => new(id, name, null, true);
+    private static Team T(int id, string name) => new(id, name, true, DateTimeOffset.UtcNow);
+
+    public MainViewModelTests()
+    {
+        // Default team context: no teams unless a test overrides this (Moq last-setup-wins).
+        _currentTeam.SetupGet(s => s.AvailableTeams).Returns(System.Array.Empty<Team>());
+    }
 
     // TaskListViewModel has no behaviour exercised by these shell tests; build a mock-backed instance
     // with an isolated messenger so its DataChangedMessage registration can't trigger spurious reloads.
@@ -54,10 +62,12 @@ public sealed class MainViewModelTests
         _config.SetupGet(c => c.DbPath).Returns(
             dbPath ?? Path.Combine(Path.GetTempPath(), "mvm-test-" + Guid.NewGuid().ToString("N"), "timesheet.db"));
 
+        // Isolated messenger so a DataKind.Teams broadcast from another test can't trigger a spurious
+        // switcher refresh (the team mock default is configured in the test-class constructor).
         return new MainViewModel(
             timesheet, requests, usersVm, reports, settings, dailyReport, CreateTaskList(),
-            _currentUser.Object, _users.Object, _config.Object,
-            windowsUserName ?? (() => "tester"));
+            _currentUser.Object, _currentTeam.Object, _users.Object, _config.Object,
+            windowsUserName ?? (() => "tester"), new WeakReferenceMessenger());
     }
 
     // selector that must NOT be called when the user resolves automatically
@@ -178,13 +188,115 @@ public sealed class MainViewModelTests
             new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>(), Mock.Of<ITagRepository>(), Mock.Of<IPcaContactRepository>(), Mock.Of<IHolidayRepository>(), Mock.Of<IBackupService>(), Mock.Of<ITeamRepository>(), Mock.Of<IUserRepository>()),
             new DailyReportViewModel(Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger()),
             CreateTaskList(),
-            _currentUser.Object, _users.Object, _config.Object, () => "tester");
+            _currentUser.Object, _currentTeam.Object, _users.Object, _config.Object, () => "tester", new WeakReferenceMessenger());
 
         Assert.Empty(timesheet.Groups);
         await vm.ActivateTabAsync(0);
         Assert.Single(timesheet.Groups);
         Assert.Single(timesheet.Groups[0].Tasks);
         Assert.Equal("New Task", timesheet.Groups[0].Tasks[0].TaskName);
+    }
+
+    // ===== W6: active-team switcher (TM-05) =====
+
+    // Build a VM with a supplied messenger so DataKind.Teams broadcasts can be observed.
+    private MainViewModel CreateVmWithMessenger(WeakReferenceMessenger messenger)
+    {
+        var timesheet = new TimesheetViewModel(
+            Mock.Of<ITimeLogService>(), Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), Mock.Of<IClock>(), () => 0,
+            new WeakReferenceMessenger());
+        var requests = new BacklogsViewModel(
+            Mock.Of<IBacklogRepository>(), Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>());
+        var usersVm = new UsersViewModel(Mock.Of<IUserRepository>());
+        var reports = new ReportsViewModel(
+            Mock.Of<ITimeLogRepository>(), Mock.Of<ITimeLogService>(), Mock.Of<ISettingsRepository>(),
+            Mock.Of<IUserRepository>(), Mock.Of<IClock>(), Mock.Of<IReportAggregator>());
+        var settings = new SettingsViewModel(
+            Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(),
+            Mock.Of<IDefaultTaskSyncService>(), Mock.Of<ITagRepository>(),
+            Mock.Of<IPcaContactRepository>(), Mock.Of<IHolidayRepository>(), Mock.Of<IBackupService>(),
+            Mock.Of<ITeamRepository>(), Mock.Of<IUserRepository>());
+        var dailyReport = new DailyReportViewModel(
+            Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger());
+
+        _config.SetupGet(c => c.DbPath).Returns(
+            Path.Combine(Path.GetTempPath(), "mvm-test-" + Guid.NewGuid().ToString("N"), "timesheet.db"));
+
+        return new MainViewModel(
+            timesheet, requests, usersVm, reports, settings, dailyReport, CreateTaskList(),
+            _currentUser.Object, _currentTeam.Object, _users.Object, _config.Object,
+            () => "tester", messenger);
+    }
+
+    [Fact] // TM-05: selecting a team in the switcher persists via SetActiveTeamAsync
+    public void Setting_ActiveTeam_calls_SetActiveTeamAsync()
+    {
+        _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(1);
+        _currentTeam.Setup(s => s.SetActiveTeamAsync(It.IsAny<int>())).Returns(Task.CompletedTask);
+        var vm = CreateVm();
+
+        vm.ActiveTeam = T(2, "Team B");
+
+        _currentTeam.Verify(s => s.SetActiveTeamAsync(2), Times.Once);
+    }
+
+    [Fact] // Re-entrancy / no-op guards: setting the same id (or null) does NOT call SetActiveTeamAsync
+    public void Setting_ActiveTeam_to_same_id_or_null_does_not_persist()
+    {
+        _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(5);
+        var vm = CreateVm();
+
+        vm.ActiveTeam = T(5, "Team A"); // same as active id -> no-op
+        vm.ActiveTeam = null;           // null -> no-op
+
+        _currentTeam.Verify(s => s.SetActiveTeamAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact] // ShowTeamSwitcher reflects team count (hidden for single-team users)
+    public void ShowTeamSwitcher_reflects_team_count()
+    {
+        var vm = CreateVm();
+
+        _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "Only") });
+        _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(1);
+        vm.RefreshTeamsFromService();
+        Assert.False(vm.ShowTeamSwitcher);
+        Assert.Single(vm.AvailableTeams);
+
+        _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "A"), T(2, "B") });
+        vm.RefreshTeamsFromService();
+        Assert.True(vm.ShowTeamSwitcher);
+        Assert.Equal(2, vm.AvailableTeams.Count);
+    }
+
+    [Fact] // RefreshTeamsFromService picks the service's active team as the selection
+    public void RefreshTeamsFromService_selects_active_team()
+    {
+        _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "A"), T(2, "B") });
+        _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(2);
+        var vm = CreateVm();
+
+        vm.RefreshTeamsFromService();
+
+        Assert.NotNull(vm.ActiveTeam);
+        Assert.Equal(2, vm.ActiveTeam!.Id);
+        // selecting via refresh must not echo back into SetActiveTeamAsync
+        _currentTeam.Verify(s => s.SetActiveTeamAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact] // On DataKind.Teams broadcast the switcher list + selection refresh from the service
+    public void DataKind_Teams_broadcast_refreshes_switcher()
+    {
+        var messenger = new WeakReferenceMessenger();
+        _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "A"), T(2, "B"), T(3, "C") });
+        _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(3);
+        var vm = CreateVmWithMessenger(messenger);
+
+        messenger.Send(new DataChangedMessage(DataKind.Teams));
+
+        Assert.Equal(3, vm.AvailableTeams.Count);
+        Assert.True(vm.ShowTeamSwitcher);
+        Assert.Equal(3, vm.ActiveTeam!.Id);
     }
 
     [Fact] // XC-08: no sibling -> ConflictWarning empty (banner stays collapsed)
