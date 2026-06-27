@@ -24,8 +24,9 @@
 | **P7** | Daily Report (Standup) — M2 | DR-01, DR-02, DR-03, DR-04, DR-05, DR-06, DR-07, DR-08, DR-09, DR-10 |
 | **P8** | Task List (tracking, tags, holidays, Gantt) — M3 | TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07, TL-08, TL-09, TL-10, TL-11, TAG-01, TAG-02, HOL-01, HOL-02 |
 | **P9** | Local DB Backup + Restore — M5 | BK-01, BK-02, BK-03, BK-04, BK-05, BK-06, BK-07 |
+| **P10** | Multi-Team (team scoping, membership, active team, multi-team view) — M4 | TM-01, TM-02, TM-03, TM-04, TM-05, TM-06, TM-07, TM-08, TM-09, TM-10 |
 
-Total: **45 requirements (M1)** + **10 requirements (M2 / P7)** + **15 requirements (M3 / P8)** + **7 requirements (M5 / P9)**, every one mapped to exactly one phase. (P10 Multi-Team / P11 Export / P12 Retention requirements authored when those phases start — see `.planning/UPCOMING-FEATURES.md`.)
+Total: **45 (M1)** + **10 (M2/P7)** + **15 (M3/P8)** + **7 (M5/P9)** + **10 (M4/P10)** requirements. (P11 Export / P12 Retention authored when those phases start — see `.planning/UPCOMING-FEATURES.md`.)
 
 ---
 
@@ -420,6 +421,54 @@ Acceptance: After a successful backup, older backups beyond N are deleted (best-
 ### BK-07 — Settings "Backup & Restore" section
 Statement: A Settings section hosts the folder picker, auto-backup toggle, retention N, "Backup now" button, and the backups list with a per-row Restore action.
 Acceptance: All controls are present and wired; status messages surface success/failure; the section follows the existing Settings styling/overlay conventions.
+
+---
+
+## Multi-Team (P10 / M4)
+
+**Source of truth:** STEP 2 brainstorm (2026-06-27), locked decisions in `.planning/UPCOMING-FEATURES.md` (P10). Schema **v7→v8** additive. Builds on P8 (Task List) + P9 (backup). **Execution PAUSES for user plan approval** (schema-wide). `[ASSUMED]` marks inferred detail.
+
+**Locked decisions:** Team = new top-level entity; Project enum unchanged; User↔Team many-to-many; backlog-scoped (Standup also `team_id`); Users/Tags/Holidays/PCA/Templates/DefaultTasks global; DEFAULT backlog per team; ONE active team for editing + multi-team checkbox view on Backlog/TaskList/Reports/DailyBoard; migrate existing data into team "Architect Improvement"; first-run setup + validated defaults.
+
+### TM-01 — Schema v8: Teams + UserTeams + team_id (additive migration)
+Statement: Migration v7→v8 adds `Teams(id, name, is_active DEFAULT 1, created_at)`, `UserTeams(user_id, team_id, PK(user_id,team_id))`, `team_id` on `Backlogs` and `StandupEntries` (no inline FK, per OneDrive precedent), gated on `PRAGMA user_version`.
+Acceptance: Opening a v7 DB creates the tables/columns, sets user_version=8, idempotent; existing M1/M2/M3 data untouched; backward-compatible.
+
+### TM-02 — Data migration: assign existing data to "Architect Improvement"
+Statement: The v8 migration (or a one-time bootstrap) creates a team named "Architect Improvement", assigns every existing non-DEFAULT backlog, every StandupEntry, and every existing user (UserTeams) to it; the existing single DEFAULT backlog becomes that team's DEFAULT.
+Acceptance: After upgrade, all prior backlogs/standup carry that team_id; all users are members; the team is the active team; no orphaned business data. [ASSUMED] team name fixed to "Architect Improvement" per user.
+
+### TM-03 — Team entity CRUD + membership (Settings)
+Statement: Settings lets the user create/rename/deactivate teams and assign/unassign users to teams (many-to-many).
+Acceptance: Team CRUD persists; membership add/remove persists in UserTeams; a user may belong to ≥2 teams; deactivating a team hides it from switchers/filters but preserves its data; broadcasts a `DataKind.Teams` change.
+
+### TM-04 — DEFAULT backlog per team + DefaultTasks sync per team
+Statement: Each team has its own hidden DEFAULT backlog; DefaultTasks materialize as tasks under every team's DEFAULT backlog.
+Acceptance: Creating a team creates its DEFAULT backlog (idempotent); DefaultTaskSync seeds/updates default tasks under each team's DEFAULT; Annual Leave/Meeting hours log under the active team's DEFAULT and attribute to that team in reports.
+
+### TM-05 — Active team selection + sidebar switcher (persisted)
+Statement: A single "active team" is selectable from the user's teams via a sidebar switcher; new data (timesheet logs, backlogs, standup) is created under it; the choice persists.
+Acceptance: The switcher lists the current user's active teams; changing it reloads team-scoped views; the active team persists app-locally (per machine/user) across restarts; defaults to the migrated/first team. [ASSUMED] persisted in app-local config.
+
+### TM-06 — Working scope = active team
+Statement: Timesheet entry, backlog creation, and standup creation are scoped to the active team.
+Acceptance: The Timesheet grid shows only the active team's tasks (incl. its DEFAULT); a new backlog is created with team_id = active team; a new standup entry carries the active team. Switching team switches the working set.
+
+### TM-07 — Multi-team display filter (checkbox) on view screens
+Statement: Backlog list, Task List, Reports, and Daily Report board offer a multi-select checkbox of teams (from the user's teams) to display aggregated data across the checked teams.
+Acceptance: Checking multiple teams shows their combined rows/cards; each screen indicates team per row/card where ambiguous; default selection = the active team; selection persists per screen for the session. [ASSUMED] default = active team only.
+
+### TM-08 — Team-aware reports & exports
+Statement: Reports and markdown/Excel exports are team-aware (filter/group by the selected team(s); identify team in output).
+Acceptance: Reports reflect the checked teams; exports include a team grouping/column or filter; per-team Annual Leave (TM-04) is separable. [ASSUMED] team grouping in markdown header.
+
+### TM-09 — First-run setup + validated defaults
+Statement: On a fresh DB (no teams), a first-run setup creates an initial team, sets it active, seeds its DEFAULT + default tasks, and applies validated default values for all settings.
+Acceptance: A brand-new DB ends with exactly one active team, a working DEFAULT, seeded default tasks, and sane defaults (N-days warning=3, backup off, retention defaults, etc.); the app is immediately usable; no null/invalid setting state. [ASSUMED] first-run creates a default-named team the user can rename.
+
+### TM-10 — No regression to team-agnostic features
+Statement: Existing M1/M2/M3 behavior continues to work under the team model.
+Acceptance: Smart-fill, validation, Daily Report, Task List chips/Gantt, backup all function; all prior tests pass; queries that gained a team dimension still return correct results for the active/checked teams.
 
 ---
 
