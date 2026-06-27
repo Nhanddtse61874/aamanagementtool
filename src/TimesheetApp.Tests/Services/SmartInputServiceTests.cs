@@ -129,4 +129,41 @@ public class SmartInputServiceTests
         Assert.False(r.Ok);
         Assert.Empty(r.Cells);
     }
+
+    // ---- HOL-02: holiday-aware overloads (a holiday in the range gets no hours) ----
+    [Fact]
+    public void DistributeEven_holiday_overload_excludes_a_marked_holiday()
+    {
+        // Mon 06-15 .. Wed 06-17 = 3 weekdays; mark Tue 06-16 as a holiday -> only Mon + Wed.
+        var holidays = new HashSet<DateOnly> { new(2026, 6, 16) };
+        var r = _svc.DistributeEven(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 17), 10m, holidays);
+
+        Assert.True(r.Ok);
+        Assert.Equal(2, r.Cells.Count);
+        Assert.DoesNotContain(r.Cells, c => c.Date == new DateOnly(2026, 6, 16));
+        Assert.Equal(10m, r.Cells.Sum(c => c.Hours));   // total still preserved across the 2 working days
+    }
+
+    [Fact]
+    public void DistributeEven_no_holiday_overload_is_unchanged_by_empty_set()
+    {
+        var baseline = _svc.DistributeEven(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 17), 10m);
+        var withEmpty = _svc.DistributeEven(
+            new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 17), 10m, new HashSet<DateOnly>());
+
+        Assert.Equal(baseline.Cells.Select(c => c.Hours), withEmpty.Cells.Select(c => c.Hours));
+        Assert.Equal(baseline.Cells.Select(c => c.Date), withEmpty.Cells.Select(c => c.Date));
+    }
+
+    [Fact]
+    public void FillFull8h_holiday_overload_excludes_a_marked_holiday()
+    {
+        var holidays = new HashSet<DateOnly> { new(2026, 6, 16) };
+        var r = _svc.FillFull8h(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 17), holidays);
+
+        Assert.True(r.Ok);
+        Assert.Equal(2, r.Cells.Count);
+        Assert.DoesNotContain(r.Cells, c => c.Date == new DateOnly(2026, 6, 16));
+        Assert.All(r.Cells, c => Assert.Equal(8m, c.Hours));
+    }
 }
