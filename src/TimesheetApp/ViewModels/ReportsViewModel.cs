@@ -21,6 +21,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     private readonly IReportAggregator _aggregator;
     private readonly IMessenger _messenger;
     private readonly IExportService? _export;   // EXP-01: wired to the Export to Excel button
+    private readonly ICurrentTeamService? _currentTeam;   // v8 (P10): multi-team filter
 
     public ReportsViewModel(
         ITimeLogRepository timeLogs,
@@ -30,7 +31,8 @@ public sealed partial class ReportsViewModel : ObservableObject
         IClock clock,
         IReportAggregator aggregator,
         IMessenger? messenger = null,
-        IExportService? export = null)
+        IExportService? export = null,
+        ICurrentTeamService? currentTeam = null)
     {
         _timeLogs = timeLogs;
         _timeLogService = timeLogService;
@@ -40,6 +42,14 @@ public sealed partial class ReportsViewModel : ObservableObject
         _aggregator = aggregator;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _export = export;
+        _currentTeam = currentTeam;
+
+        // P10 (TM-07): the multi-team checkbox filter; reload both grids on a selection/active-team change.
+        if (_currentTeam is not null)
+        {
+            TeamFilter = new TeamFilterViewModel(_currentTeam);
+            TeamFilter.SelectionChanged += (_, _) => { if (_autoLoad) _ = RefreshReportsAsync(); };
+        }
 
         // default selection = the week / month containing "today"
         var today = _clock.Today;
@@ -67,6 +77,9 @@ public sealed partial class ReportsViewModel : ObservableObject
     private static readonly ReportTarget TeamTarget = new(0, "Whole team (all)");
 
     public ObservableCollection<ReportTarget> Targets { get; } = new();
+
+    // P10: the shared multi-team filter (null when no current-team service is wired — legacy ctor / tests).
+    public TeamFilterViewModel? TeamFilter { get; }
 
     [ObservableProperty] private ReportTarget? _selectedTarget;
     [ObservableProperty] private DateOnly _selectedWeekMonday;
@@ -149,10 +162,12 @@ public sealed partial class ReportsViewModel : ObservableObject
     // a single user uses the per-user report query.
     private async Task<IReadOnlyList<TimeLogReportRow>> GetRowsForTargetAsync(DateOnly from, DateOnly to)
     {
+        // P10 (TM-07): scope to the checked teams (null = all teams = legacy/no-filter behavior).
+        var teamIds = TeamFilter?.CheckedTeamIds;
         var target = SelectedTarget;
         var rows = target is null || target.UserId == 0
-            ? await _timeLogs.GetExportRowsAsync(from, to, null)
-            : await _timeLogs.GetReportRowsAsync(target.UserId, from, to);
+            ? await _timeLogs.GetExportRowsAsync(from, to, null, teamIds)
+            : await _timeLogs.GetReportRowsAsync(target.UserId, from, to, teamIds);
         var project = ProjectFilter;
         return project is null ? rows : rows.Where(r => r.Project == project).ToList();
     }

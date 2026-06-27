@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:m="clr-namespace:TimesheetApp.Models"
-             xmlns:conv="clr-namespace:TimesheetApp.Views.Converters">
+             xmlns:conv="clr-namespace:TimesheetApp.Views.Converters"
+             xmlns:ctrl="clr-namespace:TimesheetApp.Views.Controls">
   <UserControl.Resources>
     <!-- Local resource: DateOnly<->DateTime? for DatePicker bindings. Declared here (not App.xaml)
          so the StaticResource resolves at runtime without cross-phase dependency. -->
@@ -46,6 +47,10 @@
       <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
         <TextBlock Text="Project:" VerticalAlignment="Center" Margin="0,0,4,0"/>
         <ComboBox Width="100" ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"/>
+      </StackPanel>
+      <!-- P10 (TM-07): multi-team checkbox filter (hidden for single-team users). -->
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <ctrl:TeamFilter DataContext="{Binding TeamFilter}" VerticalAlignment="Center"/>
       </StackPanel>
       <Button Content="&#11015; Export to Excel" Click="OnExportExcel"
               Style="{StaticResource ToolbarButton}" Margin="0,0,0,6"

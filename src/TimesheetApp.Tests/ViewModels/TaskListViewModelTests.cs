@@ -48,6 +48,33 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
         new(_backlogs, _tasks, _timeLogs, _tags, _pca, _users, _holidays, _calc, _schedule,
             new StubArchive(), new FakeClock { Today = today }, messenger: null);
 
+    // P10: a VM wired with a team filter over the given service.
+    private TaskListViewModel CreateVm(DateOnly today, ICurrentTeamService currentTeam) =>
+        new(_backlogs, _tasks, _timeLogs, _tags, _pca, _users, _holidays, _calc, _schedule,
+            new StubArchive(), new FakeClock { Today = today }, messenger: null, currentTeam: currentTeam);
+
+    // Minimal in-memory team context: two teams, raises ActiveTeamChanged on Switch.
+    private sealed class FakeTeam : ICurrentTeamService
+    {
+        public int ActiveTeamId { get; private set; }
+        public Team? ActiveTeam => AvailableTeams.FirstOrDefault(t => t.Id == ActiveTeamId);
+        public IReadOnlyList<Team> AvailableTeams { get; }
+        public event EventHandler? ActiveTeamChanged;
+        public FakeTeam(int activeId, params Team[] teams) { AvailableTeams = teams; ActiveTeamId = activeId; }
+        public Task InitializeAsync(int currentUserId) => Task.CompletedTask;
+        public Task SetActiveTeamAsync(int teamId)
+        {
+            ActiveTeamId = teamId;
+            ActiveTeamChanged?.Invoke(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }
+    }
+
+    private static FakeTeam TwoTeams(int activeId = 20) =>
+        new(activeId,
+            new Team(10, "Alpha", true, DateTimeOffset.UtcNow),
+            new Team(20, "Beta", true, DateTimeOffset.UtcNow));
+
     private sealed class StubArchive : ITaskListArchiveService
     {
         public string FileNameFor(int year, int month) => $"{year:0000}{month:00}_tasklist.md";
@@ -58,14 +85,14 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
     private async Task<int> SeedBacklogAsync(
         string code, string month, DateOnly? start = null, DateOnly? internalDeadline = null,
         decimal? rough = null, decimal? official = null, int? progress = null,
-        int? assigneeUserId = null, int? pcaContactId = null) =>
+        int? assigneeUserId = null, int? pcaContactId = null, int? teamId = null) =>
         await _backlogs.InsertAsync(new Backlog(
             0, code, "ARCS", DateTimeOffset.UtcNow,
             StartDate: start, PeriodMonth: month,
             AssigneeUserId: assigneeUserId,
             DeadlineInternal: internalDeadline,
             RoughEstimateHours: rough, OfficialEstimateHours: official,
-            ProgressPercent: progress, PcaContactId: pcaContactId));
+            ProgressPercent: progress, PcaContactId: pcaContactId, TeamId: teamId));
 
     private TaskListRowVm Row(TaskListViewModel vm, string code) =>
         vm.Rows.Single(r => r.BacklogCode == code);
@@ -239,5 +266,59 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
         Assert.Equal("—", Row(vm, "PROG-NULL").ProgressText);
         Assert.True(Row(vm, "PROG-60").HasProgress);
         Assert.Equal("60%", Row(vm, "PROG-60").ProgressText);
+    }
+
+    // ===== P10 W7 (TM-07) =====
+
+    // Default filter = active team only → only the active team's backlogs become rows.
+    [Fact]
+    public async Task LoadAsync_scopes_rows_to_active_team_by_default()
+    {
+        await SeedBacklogAsync("ALPHA-1", "2026-06", teamId: 10);
+        await SeedBacklogAsync("BETA-1", "2026-06", teamId: 20);
+
+        var vm = CreateVm(new DateOnly(2026, 6, 15), TwoTeams(activeId: 20));
+        Assert.Equal(new[] { 20 }, vm.TeamFilter!.CheckedTeamIds);
+        await vm.LoadAsync();
+
+        Assert.Equal(new[] { "BETA-1" }, vm.Rows.Select(r => r.BacklogCode).ToArray());
+    }
+
+    // Checking a second team aggregates both teams' backlogs and shows the team label.
+    [Fact]
+    public async Task Checking_second_team_aggregates_and_shows_team_label()
+    {
+        await SeedBacklogAsync("ALPHA-1", "2026-06", teamId: 10);
+        await SeedBacklogAsync("BETA-1", "2026-06", teamId: 20);
+
+        var vm = CreateVm(new DateOnly(2026, 6, 15), TwoTeams(activeId: 20));
+        await vm.LoadAsync();
+
+        vm.TeamFilter!.Teams.First(t => t.Team.Id == 10).IsChecked = true; // triggers reload
+        await vm.LoadAsync();
+
+        Assert.Equal(new[] { "ALPHA-1", "BETA-1" }, vm.Rows.Select(r => r.BacklogCode).OrderBy(c => c).ToArray());
+        var alpha = Row(vm, "ALPHA-1");
+        Assert.True(alpha.ShowTeam);
+        Assert.Equal("Alpha", alpha.TeamName);
+    }
+
+    // Switching the active team resets the filter to {new active team} and reloads.
+    [Fact]
+    public async Task Active_team_switch_resets_filter_and_reloads()
+    {
+        await SeedBacklogAsync("ALPHA-1", "2026-06", teamId: 10);
+        await SeedBacklogAsync("BETA-1", "2026-06", teamId: 20);
+
+        var team = TwoTeams(activeId: 20);
+        var vm = CreateVm(new DateOnly(2026, 6, 15), team);
+        await vm.LoadAsync();
+        Assert.Equal(new[] { "BETA-1" }, vm.Rows.Select(r => r.BacklogCode).ToArray());
+
+        await team.SetActiveTeamAsync(10);   // raises ActiveTeamChanged → filter resets + reload
+        await Task.Yield();
+
+        Assert.Equal(new[] { 10 }, vm.TeamFilter!.CheckedTeamIds);
+        Assert.Equal(new[] { "ALPHA-1" }, vm.Rows.Select(r => r.BacklogCode).ToArray());
     }
 }

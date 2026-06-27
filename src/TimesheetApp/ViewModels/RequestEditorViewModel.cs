@@ -52,6 +52,10 @@ public sealed partial class BacklogEditorViewModel : ObservableObject
     public bool IsEditMode { get; private init; }
     public int EditingBacklogId { get; private init; }
 
+    // v8 (P10): the owning team of the backlog being edited (null on create / pre-bootstrap rows).
+    // Carried through so SaveEdit preserves the existing team_id (editing never re-stamps the team).
+    public int? TeamId { get; private init; }
+
     [ObservableProperty] private string _backlogCode = string.Empty;
     [ObservableProperty] private string _project = string.Empty;
     [ObservableProperty] private string? _selectedTemplateName;
@@ -170,6 +174,7 @@ public sealed partial class BacklogEditorViewModel : ObservableObject
         {
             IsEditMode = true,
             EditingBacklogId = backlog.Id,
+            TeamId = backlog.TeamId,   // v8: preserve the existing team on edit (FIX-2)
             BacklogCode = backlog.BacklogCode,
             Project = backlog.Project,
             StartDate = backlog.StartDate,

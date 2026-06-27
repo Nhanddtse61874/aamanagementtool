@@ -27,12 +27,14 @@ public sealed partial class TaskListViewModel : ObservableObject
     private readonly ITaskListArchiveService _archive;
     private readonly IClock _clock;
     private readonly IMessenger _messenger;
+    private readonly ICurrentTeamService? _currentTeam;   // v8 (P10): active team + multi-team filter
 
     public TaskListViewModel(
         IBacklogRepository backlogs, ITaskRepository tasks, ITimeLogRepository timeLogs,
         ITagRepository tagsRepo, IPcaContactRepository pcaContacts, IUserRepository users,
         IHolidayRepository holidays, IWorkingDayCalculator calc, IScheduleStateService schedule,
-        ITaskListArchiveService archive, IClock clock, IMessenger? messenger = null)
+        ITaskListArchiveService archive, IClock clock, IMessenger? messenger = null,
+        ICurrentTeamService? currentTeam = null)
     {
         _backlogs = backlogs;
         _tasks = tasks;
@@ -46,6 +48,14 @@ public sealed partial class TaskListViewModel : ObservableObject
         _archive = archive;
         _clock = clock;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
+        _currentTeam = currentTeam;
+
+        // P10 (TM-07): the multi-team checkbox filter; reload the grid on a selection/active-team change.
+        if (_currentTeam is not null)
+        {
+            TeamFilter = new TeamFilterViewModel(_currentTeam);
+            TeamFilter.SelectionChanged += (_, _) => _ = LoadAsync();
+        }
 
         // Default the month selector to the current month (assign backing fields so the change
         // handlers do NOT fire a reload during construction — the first load is driven by LoadAsync).
@@ -65,6 +75,9 @@ public sealed partial class TaskListViewModel : ObservableObject
     }
 
     public ObservableCollection<TaskListRowVm> Rows { get; } = new();
+
+    // P10: the shared multi-team filter (null when no current-team service is wired — legacy ctor / tests).
+    public TeamFilterViewModel? TeamFilter { get; }
 
     // Month selector (year + month combos, mirrors the Timesheet/editor month pickers).
     [ObservableProperty] private int _selectedYear;
@@ -95,7 +108,9 @@ public sealed partial class TaskListViewModel : ObservableObject
         var today = _clock.Today;
 
         // Load the lookups once per reload (A2: holiday set is built once and passed into the pure calc).
-        var allBacklogs = await _backlogs.SearchAsync(null);
+        // P10 (TM-07): scope to the checked teams (null = all teams = legacy/no-filter behavior).
+        var teamIds = TeamFilter?.CheckedTeamIds;
+        var allBacklogs = await _backlogs.SearchAsync(null, teamIds);
         var loggedByBacklog = await _timeLogs.GetLoggedHoursByBacklogAsync();
         var tagIdsByBacklog = await _backlogs.GetTagIdsForAllAsync();
         var tagsById = (await _tagsRepo.GetAllAsync()).ToDictionary(t => t.Id);
@@ -103,6 +118,11 @@ public sealed partial class TaskListViewModel : ObservableObject
         var userNames = (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Name);
         var pcaNames = (await _pcaContacts.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
         var holidaySet = (await _holidays.GetAllAsync()).Select(h => h.Date).ToHashSet();
+
+        // P10: id -> team name (from the user's available teams) + label visibility when >1 team is checked.
+        var teamNames = _currentTeam?.AvailableTeams.ToDictionary(t => t.Id, t => t.Name)
+                        ?? new Dictionary<int, string>();
+        var showTeam = TeamFilter?.ShowTeamColumn ?? false;
 
         var rows = new List<TaskListRowVm>();
         // Gantt source: the backlog + its computed schedule state, captured while we build the grid rows
@@ -135,7 +155,8 @@ public sealed partial class TaskListViewModel : ObservableObject
                 b.DeadlineInternal, b.DeadlineExternal, b.StartDate,
                 b.ProgressPercent, logged, estimate, state, tags, tasks);
 
-            rows.Add(new TaskListRowVm(row));
+            var teamName = b.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : null;
+            rows.Add(new TaskListRowVm(row, teamName, showTeam));
             ganttSource.Add((b, state));
         }
 
@@ -252,13 +273,19 @@ public sealed partial class TaskListViewModel : ObservableObject
 /// (expand flag + the ordered chip list bound by the chips cell). Wave 6 reads Row for the Gantt shape.
 public sealed partial class TaskListRowVm : ObservableObject
 {
-    public TaskListRowVm(TaskListRow row)
+    public TaskListRowVm(TaskListRow row, string? teamName = null, bool showTeam = false)
     {
         Row = row;
         Chips = BuildChips(row);
+        TeamName = teamName;
+        ShowTeam = showTeam;
     }
 
     public TaskListRow Row { get; }
+
+    // P10 (TM-07): the owning team's name + whether to show it (only when >1 team is checked).
+    public string? TeamName { get; }
+    public bool ShowTeam { get; }
 
     // Convenience pass-throughs for binding (keeps the XAML cells terse).
     public string BacklogCode => Row.BacklogCode;

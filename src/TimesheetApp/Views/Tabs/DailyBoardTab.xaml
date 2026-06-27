@@ -1,6 +1,7 @@
 <UserControl x:Class="TimesheetApp.Views.Tabs.DailyBoardTab"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:TimesheetApp.Views.Controls">
 
   <!-- DataContext = DailyReportViewModel. Read-only team board for the selected day: one card per active
        user (dynamic count), each showing Yesterday/Today entries + issues. Tokens reuse Theme.xaml. -->
@@ -94,7 +95,13 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="22,4,22,16">
-    <ItemsControl ItemsSource="{Binding Board}" ItemTemplate="{StaticResource UserCardTemplate}"/>
-  </ScrollViewer>
+  <DockPanel Margin="22,4,22,16">
+    <!-- P10 (TM-07): board multi-team checkbox filter (hidden for single-team users). -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+      <ctrl:TeamFilter DataContext="{Binding TeamFilter}" VerticalAlignment="Center"/>
+    </StackPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Board}" ItemTemplate="{StaticResource UserCardTemplate}"/>
+    </ScrollViewer>
+  </DockPanel>
 </UserControl>

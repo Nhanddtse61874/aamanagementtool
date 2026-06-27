@@ -20,7 +20,7 @@ public class ReportsViewModelTests
                     Mock<ITimeLogService> svc,
                     Mock<ISettingsRepository> settings,
                     Mock<IUserRepository> users)
-        Build(DateOnly today)
+        Build(DateOnly today, ICurrentTeamService? currentTeam = null)
     {
         var repo = new Mock<ITimeLogRepository>();
         var svc = new Mock<ITimeLogService>();
@@ -28,8 +28,22 @@ public class ReportsViewModelTests
         var users = new Mock<IUserRepository>();
         users.Setup(u => u.GetActiveAsync()).ReturnsAsync(System.Array.Empty<User>());
         var clock = new FakeClock { Today = today };
-        var vm = new ReportsViewModel(repo.Object, svc.Object, settings.Object, users.Object, clock, new ReportAggregator());
+        var vm = new ReportsViewModel(repo.Object, svc.Object, settings.Object, users.Object, clock,
+            new ReportAggregator(), messenger: null, export: null, currentTeam: currentTeam);
         return (vm, repo, svc, settings, users);
+    }
+
+    // P10: a team service with two teams (active = 20).
+    private static Mock<ICurrentTeamService> TeamSvc(int activeId = 20)
+    {
+        var mock = new Mock<ICurrentTeamService>();
+        mock.SetupGet(s => s.AvailableTeams).Returns(new[]
+        {
+            new Team(10, "Alpha", true, DateTimeOffset.UtcNow),
+            new Team(20, "Beta", true, DateTimeOffset.UtcNow),
+        });
+        mock.SetupGet(s => s.ActiveTeamId).Returns(activeId);
+        return mock;
     }
 
     private static TimeLogReportRow Row(string proj, string code, int taskId, string task, string date, decimal h) =>
@@ -178,5 +192,40 @@ public class ReportsViewModelTests
         Assert.Single(vm.MonthlyRows);
         repo.Verify(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), null, It.IsAny<IReadOnlyList<int>?>()), Times.Once);
         repo.Verify(r => r.GetReportRowsAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()), Times.Never);
+    }
+
+    // ===== P10 W7 (TM-07) =====
+
+    // Default filter = active team only → the export query is scoped to [activeTeamId].
+    [Fact]
+    public async Task LoadMonthly_passes_active_team_ids_to_export_query()
+    {
+        var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18), currentTeam: TeamSvc(activeId: 20).Object);
+        Assert.Equal(new[] { 20 }, vm.TeamFilter!.CheckedTeamIds);
+        vm.SelectedTarget = new ReportsViewModel.ReportTarget(0, "Whole team (all)");
+        vm.SelectedMonth = new DateOnly(2026, 6, 1);
+        repo.Setup(r => r.GetExportRowsAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), null, It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync(System.Array.Empty<TimeLogReportRow>());
+
+        await vm.LoadMonthlyAsync();
+
+        repo.Verify(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), null,
+            It.Is<IReadOnlyList<int>?>(ids => ids != null && ids.SequenceEqual(new[] { 20 }))), Times.Once);
+    }
+
+    // A single-user target passes the team ids to the per-user report query too.
+    [Fact]
+    public async Task LoadWeekly_passes_active_team_ids_to_report_query()
+    {
+        var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18), currentTeam: TeamSvc(activeId: 20).Object);
+        vm.SelectedTarget = new ReportsViewModel.ReportTarget(7, "Greg");
+        vm.SelectedWeekMonday = new DateOnly(2026, 6, 15);
+        repo.Setup(r => r.GetReportRowsAsync(7, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync(System.Array.Empty<TimeLogReportRow>());
+
+        await vm.LoadWeeklyAsync();
+
+        repo.Verify(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19),
+            It.Is<IReadOnlyList<int>?>(ids => ids != null && ids.SequenceEqual(new[] { 20 }))), Times.Once);
     }
 }

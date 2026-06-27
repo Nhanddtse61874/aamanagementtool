@@ -19,7 +19,8 @@ public class DailyReportViewModelTests
     }
 
     private static (DailyReportViewModel vm, Mock<IStandupService> svc, Mock<IStandupArchiveService> arch)
-        Build(DateOnly today, bool canEdit = true, UserStandup? mine = null)
+        Build(DateOnly today, bool canEdit = true, UserStandup? mine = null,
+              ICurrentTeamService? currentTeam = null)
     {
         var svc = new Mock<IStandupService>();
         svc.Setup(s => s.CanEditDay(It.IsAny<DateOnly>())).Returns(canEdit);
@@ -27,10 +28,26 @@ public class DailyReportViewModelTests
             .ReturnsAsync(mine ?? new UserStandup(1, "Alice", Array.Empty<StandupEntryView>(), Array.Empty<StandupEntryView>()));
         svc.Setup(s => s.GetTeamStandupAsync(It.IsAny<DateOnly>()))
             .ReturnsAsync(Array.Empty<UserStandup>());
+        svc.Setup(s => s.GetTeamStandupAsync(It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>>()))
+            .ReturnsAsync(Array.Empty<UserStandup>());
         svc.Setup(s => s.SearchBacklogsAsync(null)).ReturnsAsync(Array.Empty<Backlog>());
         var arch = new Mock<IStandupArchiveService>();
-        var vm = new DailyReportViewModel(svc.Object, arch.Object, new FakeClock { Today = today }, new WeakReferenceMessenger());
+        var vm = new DailyReportViewModel(svc.Object, arch.Object, new FakeClock { Today = today },
+            new WeakReferenceMessenger(), currentTeam);
         return (vm, svc, arch);
+    }
+
+    // P10: a team service with two teams (active = 20).
+    private static Mock<ICurrentTeamService> TeamSvc(int activeId = 20)
+    {
+        var mock = new Mock<ICurrentTeamService>();
+        mock.SetupGet(s => s.AvailableTeams).Returns(new[]
+        {
+            new Team(10, "Alpha", true, DateTimeOffset.UtcNow),
+            new Team(20, "Beta", true, DateTimeOffset.UtcNow),
+        });
+        mock.SetupGet(s => s.ActiveTeamId).Returns(activeId);
+        return mock;
     }
 
     private static StandupEntryView View(int entryId, string section, bool editable = true) =>
@@ -133,5 +150,33 @@ public class DailyReportViewModelTests
         arch.Setup(a => a.ExportWeekAsync(It.IsAny<DateOnly>())).ReturnsAsync((string?)null);
         await vm.ArchiveWeekCommand.ExecuteAsync(null);
         Assert.Contains("No standup data", vm.StatusMessage);
+    }
+
+    // P10 W7 (TM-07): the board uses the teamIds overload with the default = active team only.
+    [Fact]
+    public async Task Board_uses_teamIds_overload_scoped_to_active_team()
+    {
+        var (vm, svc, _) = Build(Today, currentTeam: TeamSvc(activeId: 20).Object);
+        Assert.Equal(new[] { 20 }, vm.TeamFilter!.CheckedTeamIds);
+
+        await vm.LoadAsync();
+
+        svc.Verify(s => s.GetTeamStandupAsync(Today,
+            It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 20 }))), Times.Once);
+    }
+
+    // P10 W7: checking a second team reloads the board with both ids.
+    [Fact]
+    public async Task Board_aggregates_checked_teams()
+    {
+        var (vm, svc, _) = Build(Today, currentTeam: TeamSvc(activeId: 20).Object);
+        await vm.LoadAsync();
+
+        vm.TeamFilter!.Teams.First(t => t.Team.Id == 10).IsChecked = true; // triggers reload
+        await Task.Yield();
+
+        svc.Verify(s => s.GetTeamStandupAsync(Today,
+            It.Is<IReadOnlyList<int>>(ids => ids.OrderBy(x => x).SequenceEqual(new[] { 10, 20 }))),
+            Times.AtLeastOnce);
     }
 }

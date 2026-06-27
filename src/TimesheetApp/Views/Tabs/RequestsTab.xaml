@@ -1,6 +1,7 @@
 <UserControl x:Class="TimesheetApp.Views.Tabs.BacklogsTab"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:TimesheetApp.Views.Controls">
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -40,6 +41,9 @@
                 <ComboBox Width="130" ItemsSource="{Binding AssigneeOptions}" SelectedItem="{Binding FilterAssignee}"/>
                 <TextBlock Text="Month:" VerticalAlignment="Center" Margin="14,0,4,0"/>
                 <ComboBox Width="100" ItemsSource="{Binding MonthOptions}" SelectedItem="{Binding FilterMonth}"/>
+                <!-- P10 (TM-07): multi-team checkbox filter (hidden for single-team users). -->
+                <ctrl:TeamFilter DataContext="{Binding TeamFilter}" Margin="14,0,0,0"
+                                 VerticalAlignment="Center"/>
             </StackPanel>
         </StackPanel>
 
@@ -64,6 +68,19 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="ASSIGNEE" Binding="{Binding AssigneeName}" Width="1.2*"/>
+                <!-- P10 (TM-07): team chip, shown only when >1 team is checked (ShowTeam). -->
+                <DataGridTemplateColumn Header="TEAM" Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Visibility="{Binding ShowTeam, Converter={StaticResource BoolToVisibleConverter}}">
+                                <TextBlock Text="{Binding TeamName}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent}"/>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="TASKS" Binding="{Binding TaskCount}" Width="64"/>
                 <DataGridTemplateColumn Header="" Width="90">
                     <DataGridTemplateColumn.CellTemplate>

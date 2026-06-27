@@ -17,18 +17,29 @@ public sealed partial class DailyReportViewModel : ObservableObject
     private readonly IStandupArchiveService _archive;
     private readonly IClock _clock;
     private readonly IMessenger _messenger;
+    private readonly ICurrentTeamService? _currentTeam;   // v8 (P10): board multi-team filter
 
     public DailyReportViewModel(
-        IStandupService service, IStandupArchiveService archive, IClock clock, IMessenger? messenger = null)
+        IStandupService service, IStandupArchiveService archive, IClock clock, IMessenger? messenger = null,
+        ICurrentTeamService? currentTeam = null)
     {
         _service = service;
         _archive = archive;
         _clock = clock;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
+        _currentTeam = currentTeam;
 
         _selectedDate = _clock.Today;
         NewYesterday = new StandupDraftVm(StandupSection.Yesterday, this);
         NewToday = new StandupDraftVm(StandupSection.Today, this);
+
+        // P10 (TM-07): the board's multi-team checkbox filter; reload on a selection/active-team change.
+        // The Input tab stays active-team only (GetMyStandupAsync reads the active team internally).
+        if (_currentTeam is not null)
+        {
+            TeamFilter = new TeamFilterViewModel(_currentTeam);
+            TeamFilter.SelectionChanged += (_, _) => _ = LoadAsync();
+        }
 
         // Live refresh when standup/users/backlogs change anywhere.
         _messenger.Register<DailyReportViewModel, DataChangedMessage>(this, static (vm, m) =>
@@ -50,6 +61,9 @@ public sealed partial class DailyReportViewModel : ObservableObject
     public StandupDraftVm NewYesterday { get; }
     public StandupDraftVm NewToday { get; }
 
+    // P10: the board's shared multi-team filter (null when no current-team service is wired — legacy ctor).
+    public TeamFilterViewModel? TeamFilter { get; }
+
     partial void OnSelectedDateChanged(DateOnly value) => _ = LoadAsync();
 
     [RelayCommand]
@@ -63,7 +77,11 @@ public sealed partial class DailyReportViewModel : ObservableObject
         Fill(MyYesterday, mine.Yesterday);
         Fill(MyToday, mine.Today);
 
-        var board = await _service.GetTeamStandupAsync(SelectedDate);
+        // P10 (TM-07): the board aggregates the checked teams' members. When no team service is wired
+        // (legacy ctor) fall back to the active-team convenience overload.
+        var board = TeamFilter is not null
+            ? await _service.GetTeamStandupAsync(SelectedDate, TeamFilter.CheckedTeamIds)
+            : await _service.GetTeamStandupAsync(SelectedDate);
         Board.Clear();
         foreach (var u in board) Board.Add(u);
 

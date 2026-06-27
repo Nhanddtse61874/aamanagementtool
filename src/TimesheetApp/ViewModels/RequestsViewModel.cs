@@ -18,12 +18,14 @@ public sealed partial class BacklogsViewModel : ObservableObject
     private readonly IUserRepository? _users;   // v4: assignee pick list + name resolution
     private readonly IPcaContactRepository? _pcaContacts;  // v7: PCA pick list
     private readonly ITagRepository? _tagsRepo;            // v7: tag multi-select
+    private readonly ICurrentTeamService? _currentTeam;    // v8 (P10): active team + multi-team filter
 
     public BacklogsViewModel(
         IBacklogRepository backlogs, ITaskRepository tasks, ITaskTemplateRepository templates,
         IMessenger? messenger = null, ICurrentUserService? currentUser = null,
         IUserRepository? users = null,
-        IPcaContactRepository? pcaContacts = null, ITagRepository? tagsRepo = null)
+        IPcaContactRepository? pcaContacts = null, ITagRepository? tagsRepo = null,
+        ICurrentTeamService? currentTeam = null)
     {
         _backlogs = backlogs;
         _tasks = tasks;
@@ -33,12 +35,24 @@ public sealed partial class BacklogsViewModel : ObservableObject
         _users = users;
         _pcaContacts = pcaContacts;
         _tagsRepo = tagsRepo;
+        _currentTeam = currentTeam;
+
+        // P10 (TM-07): the multi-team checkbox filter. Reloads the list on a selection/active-team change.
+        if (_currentTeam is not null)
+        {
+            TeamFilter = new TeamFilterViewModel(_currentTeam);
+            TeamFilter.SelectionChanged += (_, _) => _ = RefreshAsync();
+        }
     }
 
+    // P10: the shared multi-team filter (null when no current-team service is wired — legacy ctor / tests).
+    public TeamFilterViewModel? TeamFilter { get; }
+
     // List row = the Backlog plus its active-task count + v2 period/type + v4 assignee (grid columns).
+    // v8 (P10): TeamName + ShowTeam drive a team chip shown only when >1 team is checked.
     public sealed record BacklogListItem(
         int Id, string BacklogCode, string Project, int TaskCount, string? PeriodMonth, string? Type,
-        string? AssigneeName);
+        string? AssigneeName, string? TeamName = null, bool ShowTeam = false);
 
     private const string AllOption = "All";
 
@@ -73,20 +87,29 @@ public sealed partial class BacklogsViewModel : ObservableObject
     [RelayCommand]
     public async Task RefreshAsync()
     {
-        var rows = await _backlogs.SearchAsync(null);
+        // P10 (TM-07): scope the list to the checked teams (null = all teams = legacy/no-filter behavior).
+        var teamIds = TeamFilter?.CheckedTeamIds;
+        var rows = await _backlogs.SearchAsync(null, teamIds);
 
         // v4: id -> name map (GetAll so a deactivated assignee still resolves) for the Assignee column/filter.
         var names = _users is null
             ? new Dictionary<int, string>()
             : (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Name);
 
+        // P10: id -> team name (from the user's available teams) + chip visibility when >1 team is checked.
+        var teamNames = _currentTeam?.AvailableTeams.ToDictionary(t => t.Id, t => t.Name)
+                        ?? new Dictionary<int, string>();
+        var showTeam = TeamFilter?.ShowTeamColumn ?? false;
+
         var items = new List<BacklogListItem>();
         foreach (var r in rows)
         {
             var tasks = await _tasks.GetActiveByBacklogAsync(r.Id);
             var assignee = r.AssigneeUserId is { } uid && names.TryGetValue(uid, out var n) ? n : null;
+            var teamName = r.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : null;
             items.Add(new BacklogListItem(
-                r.Id, r.BacklogCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Type, assignee));
+                r.Id, r.BacklogCode, r.Project, tasks?.Count ?? 0, r.PeriodMonth, r.Type, assignee,
+                teamName, showTeam));
         }
         _all = items;
         RebuildFilterOptions();
@@ -169,12 +192,15 @@ public sealed partial class BacklogsViewModel : ObservableObject
         }
         Editor.ErrorMessage = null;
 
+        // FIX-2 (TM-06): a NEW backlog is stamped with the active team so it shows up in team grids.
+        // Editing keeps the existing team (SaveEditAsync below preserves Editor.TeamId).
         var newId = await _backlogs.InsertAsync(
             new Backlog(0, Editor.BacklogCode.Trim(), (Editor.Project ?? string.Empty).Trim(), DateTimeOffset.UtcNow,
                 Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId,
                 Editor.DeadlineInternal, Editor.DeadlineExternal,
                 Editor.RoughEstimateHours, Editor.OfficialEstimateHours,
-                Editor.ProgressPercent, Editor.Note, Editor.PcaContactId));
+                Editor.ProgressPercent, Editor.Note, Editor.PcaContactId,
+                TeamId: _currentTeam?.ActiveTeamId is { } tid and > 0 ? tid : null));
 
         foreach (var row in Editor.ActiveTasks)
             await _tasks.InsertAsync(new TaskItem(0, newId, row.TaskName.Trim(), row.OrderIndex, true));
@@ -199,7 +225,8 @@ public sealed partial class BacklogsViewModel : ObservableObject
                 Editor.StartDate, Editor.EndDate, Editor.PeriodMonth, Editor.Type, Editor.AssigneeUserId,
                 Editor.DeadlineInternal, Editor.DeadlineExternal,
                 Editor.RoughEstimateHours, Editor.OfficialEstimateHours,
-                Editor.ProgressPercent, Editor.Note, Editor.PcaContactId),
+                Editor.ProgressPercent, Editor.Note, Editor.PcaContactId,
+                TeamId: Editor.TeamId),   // FIX-2: editing preserves the existing team_id
             _currentUser?.Current?.Id, _currentUser?.Current?.Name);
 
         // v7: replace the tag set for this backlog. Skipped when no tag repo wired (legacy ctor).

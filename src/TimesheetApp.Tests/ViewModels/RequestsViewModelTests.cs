@@ -1,6 +1,7 @@
 using Moq;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
+using TimesheetApp.Services;
 using TimesheetApp.Tests.Data;
 using TimesheetApp.ViewModels;
 using Xunit;
@@ -15,6 +16,24 @@ public sealed class BacklogsViewModelTests
 
     private BacklogsViewModel CreateVm() =>
         new(_requests.Object, _tasks.Object, _templates.Object);
+
+    // P10: a VM wired with a multi-team filter (two teams, active = 20).
+    private static Mock<ICurrentTeamService> TeamSvc(int activeId = 20)
+    {
+        var mock = new Mock<ICurrentTeamService>();
+        mock.SetupGet(s => s.AvailableTeams).Returns(new[]
+        {
+            new Team(10, "Alpha", true, DateTimeOffset.UtcNow),
+            new Team(20, "Beta", true, DateTimeOffset.UtcNow),
+        });
+        mock.SetupGet(s => s.ActiveTeamId).Returns(activeId);
+        return mock;
+    }
+
+    private BacklogsViewModel CreateVmWithTeam(ICurrentTeamService team) =>
+        new(_requests.Object, _tasks.Object, _templates.Object,
+            messenger: null, currentUser: null, users: null, pcaContacts: null, tagsRepo: null,
+            currentTeam: team);
 
     private static Backlog R(int id, string code, string proj) =>
         new(id, code, proj, DateTimeOffset.UtcNow);
@@ -175,6 +194,59 @@ public sealed class BacklogsViewModelTests
     public void BacklogRepository_has_no_SetActiveAsync()
     {
         Assert.Null(typeof(IBacklogRepository).GetMethod("SetActiveAsync"));
+    }
+
+    // ===== P10 W7 (TM-07 / FIX-2) =====
+
+    [Fact] // Default filter = active team only → SearchAsync is scoped to [activeTeamId].
+    public async Task Load_scopes_search_to_active_team_by_default()
+    {
+        var team = TeamSvc(activeId: 20);
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync(Array.Empty<Backlog>());
+        var vm = CreateVmWithTeam(team.Object);
+
+        Assert.Equal(new[] { 20 }, vm.TeamFilter!.CheckedTeamIds);
+
+        await vm.LoadAsync();
+
+        _requests.Verify(r => r.SearchAsync(null,
+            It.Is<IReadOnlyList<int>?>(ids => ids != null && ids.SequenceEqual(new[] { 20 }))), Times.Once);
+    }
+
+    [Fact] // Checking a second team aggregates → SearchAsync gets both ids on reload.
+    public async Task Checking_second_team_reloads_with_both_ids()
+    {
+        var team = TeamSvc(activeId: 20);
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync(Array.Empty<Backlog>());
+        var vm = CreateVmWithTeam(team.Object);
+        await vm.LoadAsync();
+
+        vm.TeamFilter!.Teams.First(t => t.Team.Id == 10).IsChecked = true; // triggers reload
+
+        await Task.Yield();
+        _requests.Verify(r => r.SearchAsync(null,
+            It.Is<IReadOnlyList<int>?>(ids => ids != null && ids.OrderBy(x => x).SequenceEqual(new[] { 10, 20 }))),
+            Times.AtLeastOnce);
+    }
+
+    [Fact] // FIX-2 (TM-06): a NEW backlog is stamped with the active team id.
+    public async Task SaveNew_stamps_active_team_id()
+    {
+        var team = TeamSvc(activeId: 20);
+        _requests.Setup(r => r.InsertAsync(It.IsAny<Backlog>())).ReturnsAsync(99);
+        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync(Array.Empty<Backlog>());
+        var vm = CreateVmWithTeam(team.Object);
+        await vm.BeginCreateAsync();
+        vm.Editor!.BacklogCode = "RQ-T";
+        vm.Editor.Project = "ARCS";
+        vm.Editor.AddTask("First");
+
+        await vm.SaveNewAsync();
+
+        _requests.Verify(r => r.InsertAsync(It.Is<Backlog>(b => b.TeamId == 20)), Times.Once);
     }
 }
 
