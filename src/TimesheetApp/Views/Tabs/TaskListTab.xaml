@@ -109,7 +109,7 @@
     <!-- Collapsible chart area (Gantt placeholder for Wave 6). Collapses via IsChartCollapsed. -->
     <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}"
             BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8"
-            MinHeight="120" Margin="0,0,0,10" Padding="12">
+            MinHeight="120" MaxHeight="320" Margin="0,0,0,10" Padding="12">
       <Border.Style>
         <Style TargetType="Border">
           <Setter Property="Visibility" Value="Visible"/>
@@ -120,11 +120,15 @@
           </Style.Triggers>
         </Style>
       </Border.Style>
-      <!-- Wave 6 fills this with the Gantt Canvas (driven by IsGantt). For now a placeholder. -->
+      <!-- Gantt canvas (shown when IsGantt). Horizontally scrollable; bars are drawn in code-behind
+           reading ActualWidth post-layout (R5). When in Grid mode, a hint sits in its place. -->
       <Grid>
-        <TextBlock Text="Gantt (Wave 6)" Foreground="{StaticResource TextSecondary}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource ShowWhenTrue}"/>
-        <TextBlock Text="Chart area" Foreground="{StaticResource TextSecondary}"
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      Style="{StaticResource ShowWhenTrue}">
+          <Canvas x:Name="GanttCanvas" Background="Transparent"
+                  SizeChanged="OnGanttCanvasSizeChanged"/>
+        </ScrollViewer>
+        <TextBlock Text="Switch to Gantt to see the timeline." Foreground="{StaticResource TextSecondary}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource ShowWhenGrid}"/>
       </Grid>
     </Border>
