@@ -13,8 +13,10 @@
   - [x] App shell (MainWindow/MainViewModel) + startup
   - See `.planning/M1-SUMMARY.md`.
 
-## In review (awaiting UAT)
-- **M3 — Task List [P8]** — branch `feature/task-list-2026-06-27`, schema v7, **314 tests green**, build clean, QA-passed, goal-backward VERIFIED.
+## In review (awaiting UAT) — all on branch `feature/task-list-2026-06-27` (not merged), **430 tests green**, schema v8
+- **M5 — Local DB Backup [P9]** — manual + scheduled backup, restore, retention; QA-approved. UAT: `.planning/P9-*` (folder picker + restore).
+- **M4 — Multi-Team [P10]** — schema v8, team scoping/membership/active-team/multi-team view, team-aware reports; QA-passed (BLOCK→fixed), goal-backward VERIFIED. UAT: `.planning/P10-Multi-Team-UAT.md`. Spec: `docs/superpowers/specs/2026-06-27-multi-team-design.md`. Summary: `.planning/P10-Multi-Team-SUMMARY.md`.
+- **M3 — Task List [P8]** — schema v7→(v8), **build clean, QA-passed, goal-backward VERIFIED**.
   - [x] TL-01 schema v7 (Backlog tracking cols + Tags/BacklogTags/PcaContacts/Holidays, additive)
   - [x] TL-02 sidebar restructure (Backlog/Task List/Reports top-level)
   - [x] TL-03 backlog tracking fields (dual deadline/estimate, assignees, note, tags)

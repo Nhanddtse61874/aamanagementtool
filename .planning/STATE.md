@@ -1,13 +1,15 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-27 — **M3 Task List [P8] implemented on branch `feature/task-list-2026-06-27`**
-(schema v7, 314 tests green, build clean, QA-passed, goal-backward VERIFIED). **AWAITING USER UAT before merge** —
-see `.planning/P8-Task-List-UAT.md`. Prior: M2 Daily Report merged into `main`.
+**Last updated:** 2026-06-28 — branch `feature/task-list-2026-06-27` now holds **THREE stacked features**:
+**M3 Task List [P8]** + **M5 Local Backup [P9]** + **M4 Multi-Team [P10]** — schema **v8**, **430 tests green**, build clean,
+all QA-passed + goal-backward VERIFIED. **AWAITING USER UAT before merge** (see `.planning/P8/P9/P10 *-UAT.md`).
+Prior: M2 Daily Report merged into `main`. **Queued next: P11 Export restructure → P12 Retention** (see `.planning/UPCOMING-FEATURES.md`; P12 PAUSES at plan).
 
 ## How to resume
 Open a session in `E:\Learning\AAM 2nd\aamanagementtool` and say *"đọc .planning/STATE.md để tiếp tục"*.
-Current branch `feature/task-list-2026-06-27` (NOT yet merged). If UAT passed → finish STEP 10/11 (merge to main).
-If UAT found issues → loop fixes via STEP 7. Run `dotnet test src/TimesheetApp.sln` (expect 314 green).
+Branch `feature/task-list-2026-06-27` (NOT merged). UAT passed → STEP 10/11 (merge the whole branch to main).
+UAT issues → loop fixes via STEP 7. `dotnet test src/TimesheetApp.sln` → expect **430 green**.
+Config: model_profile `quality`, defaults {haiku,sonnet,opus} → effective sonnet/opus (no haiku); autonomous run, PAUSE at plan for schema/destructive phases (P12).
 
 ## M3 Task List [P8] — what was built (2026-06-27, this session)
 Per-month backlog tracking overview. Schema **v7** (additive v6→v7): Backlogs +deadline_internal/external,
@@ -37,9 +39,12 @@ GitHub: **Nhanddtse61874/aamanagementtool** (private). Local perms in `.claude/s
   auto-selects it), 4 backlogs (ARCS-1001/PLUS-2002/ARMS-3003/OTHER-404) + tasks + a week of timesheet +
   standup with an unresolved (amber) and a resolved (green) issue.
 
-## Schema — user_version **7** (v7 = P8 Task List, on feature branch; `main` is still v6)
+## Schema — user_version **8** (v7=P8 Task List, v8=P10 Multi-Team; on feature branch; `main` still v6)
+v8 (P10): new tables Teams/UserTeams; nullable team_id on Backlogs + StandupEntries (no inline FK). Data migration is a
+POST-INIT bootstrap (TeamBootstrapService) — not in the init tx — assigning existing data to "Architect Improvement".
 v7 (P8): Backlogs +deadline_internal/external +rough/official_estimate_hours +progress_percent +note +pca_contact_id;
-new tables Tags/BacklogTags/PcaContacts/Holidays. Migration appended at array index 7, const bumped 6→7, additive-only.
+new tables Tags/BacklogTags/PcaContacts/Holidays. Both additive, const-bumped, gated on user_version.
+P9 (backup) = file-level, no schema change.
 ## Schema — user_version **6** (history)
 v2 ticket lifecycle cols + RequestAudit; v3 project normalization; v4 `assignee_user_id`; v5 Daily Report
 (StandupEntries/StandupIssues); **v6 = Request→Backlog rename** (tables `Requests`→`Backlogs`,
