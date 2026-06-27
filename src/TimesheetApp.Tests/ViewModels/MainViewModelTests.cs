@@ -19,6 +19,7 @@ public sealed class MainViewModelTests
     private readonly Mock<ICurrentUserService> _currentUser = new();
     private readonly Mock<ICurrentTeamService> _currentTeam = new();
     private readonly Mock<IUserRepository> _users = new();
+    private readonly Mock<ITeamRepository> _teams = new();
     private readonly Mock<IAppConfig> _config = new();
 
     private static User U(int id, string name) => new(id, name, null, true);
@@ -66,7 +67,7 @@ public sealed class MainViewModelTests
         // switcher refresh (the team mock default is configured in the test-class constructor).
         return new MainViewModel(
             timesheet, requests, usersVm, reports, settings, dailyReport, CreateTaskList(),
-            _currentUser.Object, _currentTeam.Object, _users.Object, _config.Object,
+            _currentUser.Object, _currentTeam.Object, _users.Object, _teams.Object, _config.Object,
             windowsUserName ?? (() => "tester"), new WeakReferenceMessenger());
     }
 
@@ -188,7 +189,7 @@ public sealed class MainViewModelTests
             new SettingsViewModel(Mock.Of<IAppConfig>(), Mock.Of<ISettingsRepository>(), Mock.Of<ITaskTemplateRepository>(), Mock.Of<IDefaultTaskSyncService>(), Mock.Of<ITagRepository>(), Mock.Of<IPcaContactRepository>(), Mock.Of<IHolidayRepository>(), Mock.Of<IBackupService>(), Mock.Of<ITeamRepository>(), Mock.Of<IUserRepository>()),
             new DailyReportViewModel(Mock.Of<IStandupService>(), Mock.Of<IStandupArchiveService>(), Mock.Of<IClock>(), new WeakReferenceMessenger()),
             CreateTaskList(),
-            _currentUser.Object, _currentTeam.Object, _users.Object, _config.Object, () => "tester", new WeakReferenceMessenger());
+            _currentUser.Object, _currentTeam.Object, _users.Object, _teams.Object, _config.Object, () => "tester", new WeakReferenceMessenger());
 
         Assert.Empty(timesheet.Groups);
         await vm.ActivateTabAsync(0);
@@ -224,7 +225,7 @@ public sealed class MainViewModelTests
 
         return new MainViewModel(
             timesheet, requests, usersVm, reports, settings, dailyReport, CreateTaskList(),
-            _currentUser.Object, _currentTeam.Object, _users.Object, _config.Object,
+            _currentUser.Object, _currentTeam.Object, _users.Object, _teams.Object, _config.Object,
             () => "tester", messenger);
     }
 
@@ -297,6 +298,74 @@ public sealed class MainViewModelTests
         Assert.Equal(3, vm.AvailableTeams.Count);
         Assert.True(vm.ShowTeamSwitcher);
         Assert.Equal(3, vm.ActiveTeam!.Id);
+    }
+
+    // ===== W9: first-run user->team join + current-team init (TM-09, architecture §6b) =====
+
+    [Fact] // After init the resolved user is joined to the bootstrapped active team and the team service is initialized
+    public async Task Init_joins_resolved_user_to_active_team_and_initializes_team_service()
+    {
+        _currentUser.Setup(s => s.ResolveAsync())
+            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.Resolved, U(7, "Alice")));
+        _config.SetupGet(c => c.ActiveTeamId).Returns(3); // bootstrap persisted the active team
+        var vm = CreateVm();
+
+        await vm.InitializeAsync(NeverCalled);
+
+        _teams.Verify(t => t.AddMemberAsync(7, 3), Times.Once);          // first-run join (idempotent)
+        _currentTeam.Verify(s => s.InitializeAsync(7), Times.Once);      // team context resolved for this user
+    }
+
+    [Fact] // Fresh-DB auto-created user is also joined to the active team and the switcher is populated
+    public async Task Init_freshDb_autoCreatedUser_joins_active_team_and_populates_switcher()
+    {
+        _currentUser.Setup(s => s.ResolveAsync())
+            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.NeedsSelection, null));
+        _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(System.Array.Empty<User>());
+        _users.Setup(u => u.InsertAsync(It.IsAny<User>())).ReturnsAsync(9);
+        _currentUser.SetupGet(s => s.Current).Returns(U(9, "sam"));
+        _config.SetupGet(c => c.ActiveTeamId).Returns(1);
+        // After the join + InitializeAsync the service exposes the joined team as available + active.
+        _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "My Team") });
+        _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(1);
+        var vm = CreateVm(windowsUserName: () => "sam");
+
+        await vm.InitializeAsync(NeverCalled);
+
+        _teams.Verify(t => t.AddMemberAsync(9, 1), Times.Once);
+        _currentTeam.Verify(s => s.InitializeAsync(9), Times.Once);
+        Assert.Single(vm.AvailableTeams);
+        Assert.NotNull(vm.ActiveTeam);
+        Assert.Equal(1, vm.ActiveTeam!.Id);
+    }
+
+    [Fact] // Cancelled selection (no user) -> no join, no team init (child VMs see id 0)
+    public async Task Init_cancelledSelection_does_not_join_or_init_team()
+    {
+        _currentUser.Setup(s => s.ResolveAsync())
+            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.NeedsSelection, null));
+        _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[] { U(1, "Bob") });
+        _config.SetupGet(c => c.ActiveTeamId).Returns(2);
+        var vm = CreateVm();
+
+        await vm.InitializeAsync(_ => null); // cancelled
+
+        _teams.Verify(t => t.AddMemberAsync(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        _currentTeam.Verify(s => s.InitializeAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact] // Unset active team (0) -> never insert a bogus membership, but still init the team service
+    public async Task Init_unsetActiveTeam_skips_join_but_initializes_team_service()
+    {
+        _currentUser.Setup(s => s.ResolveAsync())
+            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.Resolved, U(4, "Dana")));
+        _config.SetupGet(c => c.ActiveTeamId).Returns(0);
+        var vm = CreateVm();
+
+        await vm.InitializeAsync(NeverCalled);
+
+        _teams.Verify(t => t.AddMemberAsync(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        _currentTeam.Verify(s => s.InitializeAsync(4), Times.Once);
     }
 
     [Fact] // XC-08: no sibling -> ConflictWarning empty (banner stays collapsed)

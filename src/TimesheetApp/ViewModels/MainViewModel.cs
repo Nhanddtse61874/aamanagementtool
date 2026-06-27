@@ -26,6 +26,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ICurrentUserService _currentUser;
     private readonly ICurrentTeamService _currentTeam;
     private readonly IUserRepository _users;
+    private readonly ITeamRepository _teams;
     private readonly IAppConfig _config;
     private readonly IMessenger _messenger;
     private readonly Func<string> _windowsUserName;
@@ -44,8 +45,9 @@ public sealed partial class MainViewModel : ObservableObject
         ICurrentUserService currentUser,
         ICurrentTeamService currentTeam,
         IUserRepository users,
+        ITeamRepository teams,
         IAppConfig config)
-        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, taskList, currentUser, currentTeam, users, config,
+        : this(timesheet, backlogs, usersVm, reports, settings, dailyReport, taskList, currentUser, currentTeam, users, teams, config,
                () => Environment.UserName)
     {
     }
@@ -63,6 +65,7 @@ public sealed partial class MainViewModel : ObservableObject
         ICurrentUserService currentUser,
         ICurrentTeamService currentTeam,
         IUserRepository users,
+        ITeamRepository teams,
         IAppConfig config,
         Func<string> windowsUserName,
         IMessenger? messenger = null)
@@ -77,6 +80,7 @@ public sealed partial class MainViewModel : ObservableObject
         _currentUser = currentUser;
         _currentTeam = currentTeam;
         _users = users;
+        _teams = teams;
         _config = config;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _windowsUserName = windowsUserName;
@@ -198,9 +202,35 @@ public sealed partial class MainViewModel : ObservableObject
     /// </param>
     public async Task InitializeAsync(Func<IReadOnlyList<User>, User?> selectUser)
     {
-        await ResolveCurrentUserAsync(selectUser);
+        var user = await ResolveCurrentUserAsync(selectUser);
+        await InitializeActiveTeamAsync(user);
         DetectConflictCopies();
         await LoadTabsAsync();
+    }
+
+    /// <summary>
+    /// P10 (TM-05/TM-09, architecture §6b): resolve the active-team context for the just-resolved
+    /// user and populate the sidebar switcher. The startup bootstrap (App.OnStartup) already created
+    /// the team(s) and persisted the active id in <see cref="IAppConfig.ActiveTeamId"/>; here we make
+    /// sure the resolved user is a member of that team (idempotent INSERT OR IGNORE — a no-op for an
+    /// already-migrated user, the actual first-run join for a freshly auto-created one), then init the
+    /// current-team service so AvailableTeams includes the just-joined team and refresh the switcher.
+    /// </summary>
+    private async Task InitializeActiveTeamAsync(User? user)
+    {
+        if (user is null) return; // user cancelled selection — no team context to resolve
+
+        // First-run join: ensure the resolved user is a member of the bootstrapped active team. Safe
+        // to call for any resolved user (idempotent). Guarded against an unset (0) active id so we
+        // never insert a bogus membership before bootstrap has run.
+        var activeTeamId = _config.ActiveTeamId;
+        if (activeTeamId > 0)
+            await _teams.AddMemberAsync(user.Id, activeTeamId);
+
+        // Resolve AvailableTeams + active team for this user (now including the just-joined team),
+        // then push the result into the switcher.
+        await _currentTeam.InitializeAsync(user.Id);
+        RefreshTeamsFromService();
     }
 
     /// <summary>
@@ -228,13 +258,15 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private async Task ResolveCurrentUserAsync(Func<IReadOnlyList<User>, User?> selectUser)
+    // Returns the resolved current user (or null if selection was cancelled) so the caller can join
+    // them to the active team (TM-09 first-run join).
+    private async Task<User?> ResolveCurrentUserAsync(Func<IReadOnlyList<User>, User?> selectUser)
     {
         var result = await _currentUser.ResolveAsync();
         if (result.Outcome == CurrentUserOutcome.Resolved && result.User is { } resolved)
         {
             CurrentUserName = resolved.Name;
-            return;
+            return resolved;
         }
 
         var active = await _users.GetActiveAsync();
@@ -248,15 +280,16 @@ public sealed partial class MainViewModel : ObservableObject
             var newId = await _users.InsertAsync(new User(0, displayName, null, true));
             await _currentUser.SetWindowsUsernameAsync(newId, winName);
             CurrentUserName = _currentUser.Current?.Name ?? displayName;
-            return;
+            return _currentUser.Current ?? new User(newId, displayName, null, true);
         }
 
         // NeedsSelection with existing users: present them to the View, persist the chosen mapping (XC-07).
         var chosen = selectUser(active);
-        if (chosen is null) return; // cancelled — Current stays null, child VMs see id 0
+        if (chosen is null) return null; // cancelled — Current stays null, child VMs see id 0
 
         await _currentUser.SetWindowsUsernameAsync(chosen.Id, _windowsUserName());
         CurrentUserName = _currentUser.Current?.Name ?? chosen.Name;
+        return _currentUser.Current ?? chosen;
     }
 
     private void DetectConflictCopies()

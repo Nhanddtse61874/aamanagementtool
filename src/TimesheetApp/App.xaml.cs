@@ -39,7 +39,67 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         var sc = new ServiceCollection();
+        ConfigureServices(sc);
 
+        Services = sc.BuildServiceProvider();
+
+        // One-time bootstrap BEFORE the first window: schema + migrations + DEFAULT seed.
+        await Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
+
+        // P10 (TM-02/TM-09, architecture §6b): create the team(s) the rest of startup depends on.
+        // Runs AFTER InitializeAsync (needs the v8 schema) and BEFORE the archive backfills +
+        // DefaultTaskSync (per-team sync iterates active teams, so teams must exist first). Idempotent
+        // (no-op once any team exists) and backup-first. Teams are required for a usable app, so unlike
+        // the best-effort backfills below this is NOT swallowed — a bootstrap failure surfaces like
+        // InitializeAsync does (via DispatcherUnhandledException) rather than launching a team-less shell.
+        await Services.GetRequiredService<ITeamBootstrapService>().EnsureBootstrappedAsync();
+
+        // DR-09: back up any completed week that has standup data but no markdown archive yet
+        // (desktop app has no scheduler; runs lazily on each startup). Best-effort, never blocks startup.
+        try { await Services.GetRequiredService<IStandupArchiveService>().BackfillMissingWeeksAsync(); }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Standup archive backfill failed: {ex.Message}"); }
+
+        // TL-09: back up any completed month that has task-list data but no markdown archive yet.
+        // Best-effort, never blocks startup (mirrors standup backfill above).
+        try { await Services.GetRequiredService<ITaskListArchiveService>().BackfillMissingMonthsAsync(); }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Task list archive backfill failed: {ex.Message}"); }
+
+        // BK-03: once-per-day local DB backup on startup when auto-backup is enabled. Best-effort,
+        // never blocks startup (mirrors the archive backfills above).
+        try { await Services.GetRequiredService<IBackupService>().AutoBackupIfDueAsync(); }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Auto-backup failed: {ex.Message}"); }
+
+        // FIX C1 (DATA-03/TS-02): on a fresh DB the seeded DefaultTasks have no matching Tasks row
+        // under the hidden DEFAULT request, so they never appear as Timesheet rows. SyncAsync was
+        // only invoked from SettingsViewModel, so it never ran at startup. Run it here AFTER init
+        // commits — SyncAsync opens its own connections/transactions, so App-level placement is
+        // correct (it must not run inside the initializer's open transaction).
+        await Services.GetRequiredService<IDefaultTaskSyncService>().SyncAsync();
+
+        // Shell startup: resolve MainViewModel and run its InitializeAsync (current-user resolution +
+        // XC-08 conflict scan + best-effort tab loads). The SelectUserDialog is shown from this View/App
+        // layer via the injected selector — the VM stays WPF-free (spec §5/§6, XC-07).
+        var mainVm = Services.GetRequiredService<MainViewModel>();
+        await mainVm.InitializeAsync(ShowSelectUserDialog);
+
+        // XC-09: surface lingering-journal warnings on the shell banner. Marshalled onto the UI thread
+        // here (the sink stays System.Windows-free). The singleton sink outlives the VM, so this is safe.
+        var journalSink = Services.GetRequiredService<UiJournalWarningSink>();
+        journalSink.WarningRaised += (_, _) =>
+            Dispatcher.Invoke(() => mainVm.JournalWarning = journalSink.LatestWarning);
+
+        MainWindow = new MainWindow { DataContext = mainVm };
+        MainWindow.Show();
+
+        // Window is up: bind shutdown to it so closing the main window exits the app normally.
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+    }
+
+    // DI composition (architecture §6). Extracted from OnStartup so it can be exercised by a
+    // DI-resolution test (W9) WITHOUT duplicating the registration block — the test builds this exact
+    // graph and asserts every VM/service resolves. Pure registration: no DB/window side effects.
+    internal static void ConfigureServices(ServiceCollection sc)
+    {
         // Config + connection seam. SqliteConnectionFactory + JsonAppConfig resolve the DB path
         // from IAppConfig (JsonAppConfig() default ctor -> %APPDATA%\TimesheetApp\appsettings.json,
         // default DB under %USERPROFILE%\Documents\TimesheetApp\timesheet.db on first run).
@@ -84,6 +144,12 @@ public partial class App : Application
         sc.AddSingleton<ITagRepository, TagRepository>();
         sc.AddSingleton<IPcaContactRepository, PcaContactRepository>();
         sc.AddSingleton<IHolidayRepository, HolidayRepository>();
+        // P10 Multi-Team — team repo + current-team context + bootstrap (W9 wiring). NOTE: do NOT add
+        // a second Func<int> for the active team id — it would clobber the existing user-id provider
+        // (last-wins). Services that need the team id inject ICurrentTeamService directly.
+        sc.AddSingleton<ITeamRepository, TeamRepository>();
+        sc.AddSingleton<ICurrentTeamService, CurrentTeamService>();
+        sc.AddSingleton<ITeamBootstrapService, TeamBootstrapService>();
         // P8 Task List — new services.
         sc.AddSingleton<IWorkingDayCalculator, WorkingDayCalculator>();
         sc.AddSingleton<IScheduleStateService, ScheduleStateService>();
@@ -108,51 +174,6 @@ public partial class App : Application
         sc.AddTransient<SettingsViewModel>();
         sc.AddTransient<DailyReportViewModel>();
         sc.AddTransient<TaskListViewModel>();
-
-        Services = sc.BuildServiceProvider();
-
-        // One-time bootstrap BEFORE the first window: schema + migrations + DEFAULT seed.
-        await Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
-
-        // DR-09: back up any completed week that has standup data but no markdown archive yet
-        // (desktop app has no scheduler; runs lazily on each startup). Best-effort, never blocks startup.
-        try { await Services.GetRequiredService<IStandupArchiveService>().BackfillMissingWeeksAsync(); }
-        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Standup archive backfill failed: {ex.Message}"); }
-
-        // TL-09: back up any completed month that has task-list data but no markdown archive yet.
-        // Best-effort, never blocks startup (mirrors standup backfill above).
-        try { await Services.GetRequiredService<ITaskListArchiveService>().BackfillMissingMonthsAsync(); }
-        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Task list archive backfill failed: {ex.Message}"); }
-
-        // BK-03: once-per-day local DB backup on startup when auto-backup is enabled. Best-effort,
-        // never blocks startup (mirrors the archive backfills above).
-        try { await Services.GetRequiredService<IBackupService>().AutoBackupIfDueAsync(); }
-        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Auto-backup failed: {ex.Message}"); }
-
-        // FIX C1 (DATA-03/TS-02): on a fresh DB the seeded DefaultTasks have no matching Tasks row
-        // under the hidden DEFAULT request, so they never appear as Timesheet rows. SyncAsync was
-        // only invoked from SettingsViewModel, so it never ran at startup. Run it here AFTER init
-        // commits — SyncAsync opens its own connections/transactions, so App-level placement is
-        // correct (it must not run inside the initializer's open transaction).
-        await Services.GetRequiredService<IDefaultTaskSyncService>().SyncAsync();
-
-        // Shell startup: resolve MainViewModel and run its InitializeAsync (current-user resolution +
-        // XC-08 conflict scan + best-effort tab loads). The SelectUserDialog is shown from this View/App
-        // layer via the injected selector — the VM stays WPF-free (spec §5/§6, XC-07).
-        var mainVm = Services.GetRequiredService<MainViewModel>();
-        await mainVm.InitializeAsync(ShowSelectUserDialog);
-
-        // XC-09: surface lingering-journal warnings on the shell banner. Marshalled onto the UI thread
-        // here (the sink stays System.Windows-free). The singleton sink outlives the VM, so this is safe.
-        var journalSink = Services.GetRequiredService<UiJournalWarningSink>();
-        journalSink.WarningRaised += (_, _) =>
-            Dispatcher.Invoke(() => mainVm.JournalWarning = journalSink.LatestWarning);
-
-        MainWindow = new MainWindow { DataContext = mainVm };
-        MainWindow.Show();
-
-        // Window is up: bind shutdown to it so closing the main window exits the app normally.
-        ShutdownMode = ShutdownMode.OnMainWindowClose;
     }
 
     // View-layer picker passed to MainViewModel on NeedsSelection. Returns the chosen user, or null
