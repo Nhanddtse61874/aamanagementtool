@@ -147,6 +147,14 @@
           </TreeView.ItemContainerStyle>
           <TreeView.Resources>
             <!-- Every level shows its rolled-up hours; the Date leaf shows the hours logged that day. -->
+            <!-- Level 0: TeamNode — children are Projects (P10 TM-08; one node when a single team) -->
+            <HierarchicalDataTemplate DataType="{x:Type m:TeamNode}" ItemsSource="{Binding Projects}">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding TeamName}" FontWeight="Bold"/>
+                <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}" FontWeight="Bold"
+                           Foreground="{StaticResource TextSecondary}"/>
+              </StackPanel>
+            </HierarchicalDataTemplate>
             <!-- Level 1: ProjectNode — children are Backlogs -->
             <HierarchicalDataTemplate DataType="{x:Type m:ProjectNode}" ItemsSource="{Binding Backlogs}">
               <StackPanel Orientation="Horizontal">

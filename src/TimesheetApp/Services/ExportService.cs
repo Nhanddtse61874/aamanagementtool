@@ -10,6 +10,7 @@ namespace TimesheetApp.Services;
 public sealed class ExportService : IExportService
 {
     private const string DefaultCode = "DEFAULT";
+    private const string NoTeamLabel = "(no team)";   // v8: rows whose backlog has no team yet (pre-bootstrap)
 
     private readonly ITimeLogRepository _logs;
     private readonly IUserRepository _users;
@@ -35,35 +36,42 @@ public sealed class ExportService : IExportService
           .Append(filter.Month.ToString("D2", CultureInfo.InvariantCulture))
           .AppendLine().AppendLine();
 
-        // user -> "group label" -> rows.
+        // team -> user -> "group label" -> rows. (TM-08: team grouping above user.)
         // Real backlog group label = "{code} — {project}".
         // DEFAULT group label = "{code} — {task_name}" (EXP-03, decision 1).
-        foreach (var userGroup in rows
-                     .GroupBy(r => (r.UserId, r.UserName))
-                     .OrderBy(g => g.Key.UserName, StringComparer.Ordinal))
+        foreach (var teamGroup in rows
+                     .GroupBy(r => r.TeamName ?? NoTeamLabel)
+                     .OrderBy(g => g.Key, StringComparer.Ordinal))
         {
-            sb.Append("## ").Append(userGroup.Key.UserName).AppendLine().AppendLine();
+            sb.Append("## ").Append(teamGroup.Key).AppendLine().AppendLine();
 
-            var groups = userGroup
-                .GroupBy(r => GroupKey(r))
-                .OrderBy(g => g.Key.Sort, StringComparer.Ordinal);
-
-            foreach (var grp in groups)
+            foreach (var userGroup in teamGroup
+                         .GroupBy(r => (r.UserId, r.UserName))
+                         .OrderBy(g => g.Key.UserName, StringComparer.Ordinal))
             {
-                sb.Append("### ").Append(grp.Key.Header).AppendLine();
-                sb.AppendLine("| Date | Task | Hours |");
-                sb.AppendLine("| --- | --- | --- |");
-                foreach (var row in grp.OrderBy(r => r.WorkDate).ThenBy(r => r.TaskId))
+                sb.Append("### ").Append(userGroup.Key.UserName).AppendLine().AppendLine();
+
+                var groups = userGroup
+                    .GroupBy(r => GroupKey(r))
+                    .OrderBy(g => g.Key.Sort, StringComparer.Ordinal);
+
+                foreach (var grp in groups)
                 {
-                    sb.Append("| ")
-                      .Append(row.WorkDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
-                      .Append(" | ")
-                      .Append(EscapePipe(row.TaskName))
-                      .Append(" | ")
-                      .Append(FormatHours(row.Hours))
-                      .AppendLine(" |");
+                    sb.Append("#### ").Append(grp.Key.Header).AppendLine();
+                    sb.AppendLine("| Date | Task | Hours |");
+                    sb.AppendLine("| --- | --- | --- |");
+                    foreach (var row in grp.OrderBy(r => r.WorkDate).ThenBy(r => r.TaskId))
+                    {
+                        sb.Append("| ")
+                          .Append(row.WorkDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+                          .Append(" | ")
+                          .Append(EscapePipe(row.TaskName))
+                          .Append(" | ")
+                          .Append(FormatHours(row.Hours))
+                          .AppendLine(" |");
+                    }
+                    sb.AppendLine();
                 }
-                sb.AppendLine();
             }
         }
         return sb.ToString();
@@ -75,26 +83,29 @@ public sealed class ExportService : IExportService
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Timesheet");
 
-        ws.Cell(1, 1).Value = "User";
-        ws.Cell(1, 2).Value = "Backlog";
-        ws.Cell(1, 3).Value = "Project";
-        ws.Cell(1, 4).Value = "Task";
-        ws.Cell(1, 5).Value = "Date";
-        ws.Cell(1, 6).Value = "Hours";
+        ws.Cell(1, 1).Value = "Team";          // TM-08: leftmost Team column
+        ws.Cell(1, 2).Value = "User";
+        ws.Cell(1, 3).Value = "Backlog";
+        ws.Cell(1, 4).Value = "Project";
+        ws.Cell(1, 5).Value = "Task";
+        ws.Cell(1, 6).Value = "Date";
+        ws.Cell(1, 7).Value = "Hours";
 
         var r = 2;
         foreach (var row in rows
-                     .OrderBy(x => x.UserName, StringComparer.Ordinal)
+                     .OrderBy(x => x.TeamName ?? NoTeamLabel, StringComparer.Ordinal)
+                     .ThenBy(x => x.UserName, StringComparer.Ordinal)
                      .ThenBy(x => x.WorkDate)
                      .ThenBy(x => x.BacklogCode, StringComparer.Ordinal)
                      .ThenBy(x => x.TaskId))
         {
-            ws.Cell(r, 1).Value = row.UserName;
-            ws.Cell(r, 2).Value = row.BacklogCode;
-            ws.Cell(r, 3).Value = row.Project;
-            ws.Cell(r, 4).Value = row.TaskName;
-            ws.Cell(r, 5).Value = row.WorkDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            ws.Cell(r, 6).Value = (double)row.Hours;
+            ws.Cell(r, 1).Value = row.TeamName ?? NoTeamLabel;
+            ws.Cell(r, 2).Value = row.UserName;
+            ws.Cell(r, 3).Value = row.BacklogCode;
+            ws.Cell(r, 4).Value = row.Project;
+            ws.Cell(r, 5).Value = row.TaskName;
+            ws.Cell(r, 6).Value = row.WorkDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            ws.Cell(r, 7).Value = (double)row.Hours;
             r++;
         }
 
@@ -109,7 +120,7 @@ public sealed class ExportService : IExportService
     {
         var from = new DateOnly(filter.Year, filter.Month, 1);
         var to = from.AddMonths(1).AddDays(-1);
-        var rows = await _logs.GetExportRowsAsync(from, to, filter.Project);
+        var rows = await _logs.GetExportRowsAsync(from, to, filter.Project, filter.TeamIds);
         if (filter.UserId is int uid)
             rows = rows.Where(x => x.UserId == uid).ToList();
         return rows;

@@ -24,11 +24,13 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
     private readonly IWorkingDayCalculator _calc;
     private readonly IAppConfig _config;
     private readonly IClock _clock;
+    private readonly ITeamRepository? _teams;   // v8 (P10 TM-08): resolves the Team column (optional for legacy tests)
 
     public TaskListArchiveService(
         IBacklogRepository backlogs, ITaskRepository tasks, ITimeLogRepository logs, ITagRepository tags,
         IPcaContactRepository pcas, IUserRepository users, IHolidayRepository holidays,
-        IScheduleStateService schedule, IWorkingDayCalculator calc, IAppConfig config, IClock clock)
+        IScheduleStateService schedule, IWorkingDayCalculator calc, IAppConfig config, IClock clock,
+        ITeamRepository? teams = null)
     {
         _backlogs = backlogs;
         _tasks = tasks;
@@ -41,6 +43,7 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
         _calc = calc;
         _config = config;
         _clock = clock;
+        _teams = teams;
     }
 
     public string FileNameFor(int year, int month) =>
@@ -79,14 +82,17 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
         var userNames = (await _users.GetAllAsync() ?? Array.Empty<User>()).ToDictionary(u => u.Id, u => u.Name);
         var pcaNames = (await _pcas.GetAllAsync() ?? Array.Empty<PcaContact>()).ToDictionary(p => p.Id, p => p.Name);
         var holidaySet = (await _holidays.GetAllAsync() ?? Array.Empty<Holiday>()).Select(h => h.Date).ToHashSet();
+        var teamNames = _teams is null
+            ? new Dictionary<int, string>()
+            : (await _teams.GetAllAsync() ?? Array.Empty<Team>()).ToDictionary(t => t.Id, t => t.Name);
 
         var sb = new StringBuilder();
         sb.AppendLine($"# Task List — {monthKey}");
         sb.AppendLine();
 
-        await AppendSectionAsync(sb, "Members", current, loggedByBacklog, tagsById, tagLinks, userNames, pcaNames, holidaySet);
+        await AppendSectionAsync(sb, "Members", current, loggedByBacklog, tagsById, tagLinks, userNames, pcaNames, holidaySet, teamNames);
         if (movedOut.Count > 0)
-            await AppendSectionAsync(sb, "Moved to next month", movedOut, loggedByBacklog, tagsById, tagLinks, userNames, pcaNames, holidaySet);
+            await AppendSectionAsync(sb, "Moved to next month", movedOut, loggedByBacklog, tagsById, tagLinks, userNames, pcaNames, holidaySet, teamNames);
 
         var dir = ArchiveDir();
         Directory.CreateDirectory(dir);
@@ -132,7 +138,7 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
         IReadOnlyDictionary<int, decimal> loggedByBacklog, IReadOnlyDictionary<int, Tag> tagsById,
         IReadOnlyDictionary<int, IReadOnlyList<int>> tagLinks,
         IReadOnlyDictionary<int, string> userNames, IReadOnlyDictionary<int, string> pcaNames,
-        IReadOnlySet<DateOnly> holidaySet)
+        IReadOnlySet<DateOnly> holidaySet, IReadOnlyDictionary<int, string> teamNames)
     {
         sb.AppendLine($"## {title}");
         sb.AppendLine();
@@ -144,8 +150,8 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
             return;
         }
 
-        sb.AppendLine("| Code | Project | Type | PCT | PCA | Internal | External | Estimate | Logged | Progress | Tags | Schedule |");
-        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|");
+        sb.AppendLine("| Team | Code | Project | Type | PCT | PCA | Internal | External | Estimate | Logged | Progress | Tags | Schedule |");
+        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
 
         foreach (var b in backlogs.OrderBy(b => b.BacklogCode, StringComparer.OrdinalIgnoreCase))
         {
@@ -160,6 +166,7 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
 
             var pctName = b.AssigneeUserId is { } uid && userNames.TryGetValue(uid, out var un) ? un : "";
             var pcaName = b.PcaContactId is { } pid && pcaNames.TryGetValue(pid, out var pn) ? pn : "";
+            var teamName = b.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : "";
 
             var tagText = tagLinks.TryGetValue(b.Id, out var ids)
                 ? string.Join(", ", ids.Where(tagsById.ContainsKey).Select(i => tagsById[i].Text))
@@ -168,6 +175,7 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
             sb.AppendLine(string.Join(" | ", new[]
             {
                 "",
+                Esc(teamName),
                 Esc(b.BacklogCode),
                 Esc(b.Project),
                 Esc(b.Type ?? ""),

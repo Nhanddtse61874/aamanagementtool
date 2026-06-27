@@ -93,7 +93,10 @@ public class ReportsViewModelTests
         await vm.LoadMonthlyAsync();
 
         Assert.Equal(2, vm.MonthlyRows.Count);
-        var proj = Assert.Single(vm.ProjectTree);
+        // P10 (TM-08): the tree now has a Team root level; rows carry no team -> single "(no team)" root.
+        var team = Assert.Single(vm.ProjectTree);
+        Assert.Equal(6m, team.TotalHours);
+        var proj = Assert.Single(team.Projects);
         Assert.Equal("ProjX", proj.Project);
         Assert.Equal(6m, proj.TotalHours);
         repo.Verify(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), It.IsAny<IReadOnlyList<int>?>()), Times.Once);

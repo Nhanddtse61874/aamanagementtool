@@ -27,12 +27,13 @@ public sealed class StandupArchiveServiceTests : IDisposable
         public DateTimeOffset UtcNow { get; init; } = new(2026, 6, 25, 8, 0, 0, TimeSpan.Zero);
     }
 
-    private static StandupEntry Entry(int id, int userId, DateOnly date, string section, string task = "Build") =>
+    private static StandupEntry Entry(int id, int userId, DateOnly date, string section, string task = "Build", int? teamId = null) =>
         new(id, userId, date, section, null, "REQ-1", task, "did work", null, "Todo", 0,
-            new DateTimeOffset(2026, 6, 25, 8, 0, 0, TimeSpan.Zero));
+            new DateTimeOffset(2026, 6, 25, 8, 0, 0, TimeSpan.Zero), teamId);
 
     private (StandupArchiveService svc, Mock<IStandupRepository> repo) Make(
-        IReadOnlyList<StandupEntry> all, DateOnly today, IReadOnlyList<StandupIssue>? issues = null)
+        IReadOnlyList<StandupEntry> all, DateOnly today, IReadOnlyList<StandupIssue>? issues = null,
+        IReadOnlyList<Team>? teams = null)
     {
         var repo = new Mock<IStandupRepository>();
         repo.Setup(r => r.GetEntriesForRangeAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()))
@@ -45,7 +46,14 @@ public sealed class StandupArchiveServiceTests : IDisposable
         {
             new User(1, "Alice", null, true), new User(2, "Bob", null, true),
         });
-        var svc = new StandupArchiveService(repo.Object, users.Object, _config, new FakeClock { Today = today });
+        Mock<ITeamRepository>? teamRepo = null;
+        if (teams is not null)
+        {
+            teamRepo = new Mock<ITeamRepository>();
+            teamRepo.Setup(t => t.GetAllAsync()).ReturnsAsync(teams);
+        }
+        var svc = new StandupArchiveService(
+            repo.Object, users.Object, _config, new FakeClock { Today = today }, teamRepo?.Object);
         return (svc, repo);
     }
 
@@ -76,11 +84,41 @@ public sealed class StandupArchiveServiceTests : IDisposable
         Assert.EndsWith("20260622_daily.md", path);
         var md = await File.ReadAllTextAsync(path!);
         Assert.Contains("# Daily Standup — Week of 2026-06-22", md);
-        Assert.Contains("### Alice", md);
-        Assert.Contains("### Bob", md);
+        Assert.Contains("#### Alice", md);     // user now nests under team + date headings (TM-08)
+        Assert.Contains("#### Bob", md);
         Assert.Contains("implement", md);
         Assert.Contains("**Yesterday**", md);
         Assert.Contains("**Today**", md);
+    }
+
+    // TM-08: the weekly archive groups entries by team (## {team}) above the date/user levels.
+    [Fact]
+    public async Task ExportWeek_groups_by_team()
+    {
+        var all = new[]
+        {
+            Entry(1, 1, new DateOnly(2026, 6, 22), StandupSection.Today, "build", teamId: 1),
+            Entry(2, 2, new DateOnly(2026, 6, 22), StandupSection.Today, "spec",  teamId: 2),
+        };
+        var teams = new[]
+        {
+            new Team(1, "Team A", true, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
+            new Team(2, "Team B", true, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
+        };
+        var (svc, _) = Make(all, new DateOnly(2026, 6, 25), teams: teams);
+
+        var path = await svc.ExportWeekAsync(new DateOnly(2026, 6, 24));
+
+        var md = await File.ReadAllTextAsync(path!);
+        Assert.Contains("## Team A", md);
+        Assert.Contains("## Team B", md);
+        // Team A's heading precedes Team B's, and Alice nests under Team A.
+        Assert.True(md.IndexOf("## Team A", StringComparison.Ordinal)
+                    < md.IndexOf("## Team B", StringComparison.Ordinal));
+        Assert.True(md.IndexOf("## Team A", StringComparison.Ordinal)
+                    < md.IndexOf("#### Alice", StringComparison.Ordinal));
+        Assert.True(md.IndexOf("#### Alice", StringComparison.Ordinal)
+                    < md.IndexOf("## Team B", StringComparison.Ordinal));
     }
 
     [Fact]

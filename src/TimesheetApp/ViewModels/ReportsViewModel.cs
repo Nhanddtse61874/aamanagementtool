@@ -118,7 +118,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     public ObservableCollection<WeeklyDayTotal> WeeklyRows { get; } = new();
     public ObservableCollection<WeeklyDetailRow> WeeklyDetailRows { get; } = new();
     public ObservableCollection<MonthlyBacklogTaskTotal> MonthlyRows { get; } = new();
-    public ObservableCollection<ProjectNode> ProjectTree { get; } = new();
+    public ObservableCollection<TeamNode> ProjectTree { get; } = new();
     public ObservableCollection<MissingLogWarning> MissingBanner { get; } = new();
 
     [ObservableProperty] private string _bannerText = string.Empty;
@@ -179,7 +179,8 @@ public sealed partial class ReportsViewModel : ObservableObject
         if (_export is null) return null;
         var filter = new ExportFilter(
             SelectedTarget is { UserId: > 0 } t ? t.UserId : (int?)null,
-            SelectedMonth.Year, SelectedMonth.Month, ProjectFilter);
+            SelectedMonth.Year, SelectedMonth.Month, ProjectFilter,
+            TeamFilter?.CheckedTeamIds);   // P10 (TM-08): scope the export to the checked teams
         return _export.ExportExcelAsync(filter);
     }
 

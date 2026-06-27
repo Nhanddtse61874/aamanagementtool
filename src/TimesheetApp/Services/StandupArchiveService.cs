@@ -15,13 +15,17 @@ public sealed class StandupArchiveService : IStandupArchiveService
     private readonly IUserRepository _users;
     private readonly IAppConfig _config;
     private readonly IClock _clock;
+    private readonly ITeamRepository? _teams;   // v8 (P10 TM-08): resolves team names for grouping (optional for legacy tests)
 
-    public StandupArchiveService(IStandupRepository repo, IUserRepository users, IAppConfig config, IClock clock)
+    public StandupArchiveService(
+        IStandupRepository repo, IUserRepository users, IAppConfig config, IClock clock,
+        ITeamRepository? teams = null)
     {
         _repo = repo;
         _users = users;
         _config = config;
         _clock = clock;
+        _teams = teams;
     }
 
     public string FileNameFor(DateOnly anyDayInWeek) =>
@@ -39,8 +43,11 @@ public sealed class StandupArchiveService : IStandupArchiveService
             .ToLookup(i => i.EntryId);
         var names = (await _users.GetAllAsync() ?? Array.Empty<User>())
             .ToDictionary(u => u.Id, u => u.Name);
+        var teamNames = _teams is null
+            ? new Dictionary<int, string>()
+            : (await _teams.GetAllAsync() ?? Array.Empty<Team>()).ToDictionary(t => t.Id, t => t.Name);
 
-        var md = BuildMarkdown(monday, friday, entries, issues, names);
+        var md = BuildMarkdown(monday, friday, entries, issues, names, teamNames);
 
         var dir = ArchiveDir();
         Directory.CreateDirectory(dir);
@@ -74,30 +81,43 @@ public sealed class StandupArchiveService : IStandupArchiveService
         return Path.Combine(string.IsNullOrEmpty(dbDir) ? "." : dbDir, "StandupArchives");
     }
 
+    private const string NoTeamLabel = "(no team)";   // v8: entries with no team yet (pre-bootstrap)
+
     private static string BuildMarkdown(
         DateOnly monday, DateOnly friday, IReadOnlyList<StandupEntry> entries,
-        ILookup<int, StandupIssue> issues, IReadOnlyDictionary<int, string> names)
+        ILookup<int, StandupIssue> issues, IReadOnlyDictionary<int, string> names,
+        IReadOnlyDictionary<int, string> teamNames)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# Daily Standup — Week of {monday:yyyy-MM-dd}");
         sb.AppendLine();
 
-        var byDate = entries.GroupBy(e => e.WorkDate).OrderBy(g => g.Key);
-        foreach (var dateGroup in byDate)
+        // TM-08: group by team first, then date, then user.
+        var byTeam = entries
+            .GroupBy(e => e.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : NoTeamLabel)
+            .OrderBy(g => g.Key, StringComparer.Ordinal);
+        foreach (var teamGroup in byTeam)
         {
-            sb.AppendLine($"## {dateGroup.Key:yyyy-MM-dd} ({dateGroup.Key.DayOfWeek})");
+            sb.AppendLine($"## {teamGroup.Key}");
             sb.AppendLine();
 
-            var byUser = dateGroup
-                .GroupBy(e => e.UserId)
-                .OrderBy(g => names.TryGetValue(g.Key, out var n) ? n : "", StringComparer.OrdinalIgnoreCase);
-            foreach (var userGroup in byUser)
+            var byDate = teamGroup.GroupBy(e => e.WorkDate).OrderBy(g => g.Key);
+            foreach (var dateGroup in byDate)
             {
-                var name = names.TryGetValue(userGroup.Key, out var n) ? n : $"User {userGroup.Key}";
-                sb.AppendLine($"### {name}");
-                AppendSection(sb, "Yesterday", userGroup.Where(e => e.Section == StandupSection.Yesterday), issues);
-                AppendSection(sb, "Today", userGroup.Where(e => e.Section == StandupSection.Today), issues);
+                sb.AppendLine($"### {dateGroup.Key:yyyy-MM-dd} ({dateGroup.Key.DayOfWeek})");
                 sb.AppendLine();
+
+                var byUser = dateGroup
+                    .GroupBy(e => e.UserId)
+                    .OrderBy(g => names.TryGetValue(g.Key, out var n) ? n : "", StringComparer.OrdinalIgnoreCase);
+                foreach (var userGroup in byUser)
+                {
+                    var name = names.TryGetValue(userGroup.Key, out var n) ? n : $"User {userGroup.Key}";
+                    sb.AppendLine($"#### {name}");
+                    AppendSection(sb, "Yesterday", userGroup.Where(e => e.Section == StandupSection.Yesterday), issues);
+                    AppendSection(sb, "Today", userGroup.Where(e => e.Section == StandupSection.Today), issues);
+                    sb.AppendLine();
+                }
             }
         }
         return sb.ToString();

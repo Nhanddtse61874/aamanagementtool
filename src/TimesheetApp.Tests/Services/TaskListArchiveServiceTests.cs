@@ -39,11 +39,11 @@ public sealed class TaskListArchiveServiceTests : IAsyncLifetime
         public DateTimeOffset UtcNow { get; init; } = new(2026, 6, 27, 8, 0, 0, TimeSpan.Zero);
     }
 
-    private TaskListArchiveService Make(DateOnly today)
+    private TaskListArchiveService Make(DateOnly today, ITeamRepository? teams = null)
         => new(new BacklogRepository(_db), new TaskRepository(_db), new TimeLogRepository(_db),
             new TagRepository(_db), new PcaContactRepository(_db), new UserRepository(_db),
             new HolidayRepository(_db), new ScheduleStateService(), new WorkingDayCalculator(),
-            _config, new FakeClock { Today = today });
+            _config, new FakeClock { Today = today }, teams);
 
     [Fact]
     public async Task ExportMonth_with_no_data_writes_no_file()
@@ -73,6 +73,26 @@ public sealed class TaskListArchiveServiceTests : IAsyncLifetime
         Assert.Contains("## Members", md);
         Assert.Contains(@"REQ-A\|B", md);          // '|' escaped
         Assert.Contains("16", md);                  // whole-number estimate
+    }
+
+    // TM-08: the archive table carries a Team column populated from the backlog's team.
+    [Fact]
+    public async Task ExportMonth_includes_team_column()
+    {
+        var teams = new TeamRepository(_db);
+        var teamId = await teams.InsertAsync(new Team(0, "Team A", true, DateTimeOffset.UtcNow));
+
+        var backlogs = new BacklogRepository(_db);
+        await backlogs.InsertAsync(new Backlog(
+            0, "REQ-TEAM", "ARCS", DateTimeOffset.UtcNow, PeriodMonth: "2026-05", TeamId: teamId));
+
+        var svc = Make(new DateOnly(2026, 6, 27), teams);
+        var path = await svc.ExportMonthAsync(2026, 5);
+
+        Assert.NotNull(path);
+        var md = await File.ReadAllTextAsync(path!);
+        Assert.Contains("| Team | Code |", md);   // header carries the Team column
+        Assert.Contains("Team A", md);            // the backlog's team name appears in the row
     }
 
     [Fact]

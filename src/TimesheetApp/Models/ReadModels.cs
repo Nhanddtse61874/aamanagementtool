@@ -45,7 +45,10 @@ public sealed record WeekBacklogGroup(
 public readonly record struct SaveResult(bool Ok, string? Error);
 
 // Export selection (user/month/project). Shape VERBATIM from architecture spec §2. (EXP-01..04)
-public readonly record struct ExportFilter(int? UserId, int Year, int Month, string? Project);
+// v8 (P10 Multi-Team): TeamIds appended trailing (null = all teams = legacy behavior, keeps existing
+// positional ctors compiling). When set, the export is scoped to the checked teams (no cross-team leak).
+public readonly record struct ExportFilter(
+    int? UserId, int Year, int Month, string? Project, IReadOnlyList<int>? TeamIds = null);
 
 // Current-user resolution outcome (XC-07). Shapes VERBATIM from architecture spec §2.
 public enum CurrentUserOutcome { Resolved, NeedsSelection }
@@ -65,7 +68,10 @@ public sealed record WeeklyDetailRow(
 public sealed record MonthlyBacklogTaskTotal(
     string BacklogCode, string Project, string TaskName, decimal TotalHours);
 
-// RPT-03: 4-level drill-down tree (Project -> Backlog -> Task -> Date).
+// RPT-03: drill-down tree. v8 (P10) adds a Team top node above Project so a multi-team report groups
+// by team first (Team -> Project -> Backlog -> Task -> Date). When a single team is selected the tree
+// still has exactly one TeamNode root. Null team name (pre-bootstrap rows) renders as "(no team)".
+public sealed record TeamNode(string TeamName, decimal TotalHours, IReadOnlyList<ProjectNode> Projects);
 public sealed record ProjectNode(string Project, decimal TotalHours, IReadOnlyList<BacklogNode> Backlogs);
 public sealed record BacklogNode(string BacklogCode, string Project, decimal TotalHours, IReadOnlyList<TaskNode> Tasks);
 public sealed record TaskNode(int TaskId, string TaskName, decimal TotalHours, IReadOnlyList<DateEntry> Dates);

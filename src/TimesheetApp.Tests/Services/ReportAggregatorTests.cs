@@ -10,8 +10,9 @@ public class ReportAggregatorTests
 
     private static TimeLogReportRow Row(
         string project, string reqCode, int taskId, string taskName,
-        string date, decimal hours, int userId = 1, string userName = "A") =>
-        new(userId, userName, reqCode, project, taskId, taskName, DateOnly.Parse(date), hours);
+        string date, decimal hours, int userId = 1, string userName = "A",
+        int? teamId = null, string? teamName = null) =>
+        new(userId, userName, reqCode, project, taskId, taskName, DateOnly.Parse(date), hours, teamId, teamName);
 
     // RPT-01
     [Fact]
@@ -68,8 +69,10 @@ public class ReportAggregatorTests
 
         var tree = _agg.BuildProjectTree(rows);
 
-        Assert.Equal(2, tree.Count);
-        var projX = tree.Single(p => p.Project == "ProjX");
+        // Single (no-team) root collapses to one TeamNode; assert the project level beneath it.
+        var projects = Assert.Single(tree).Projects;
+        Assert.Equal(2, projects.Count);
+        var projX = projects.Single(p => p.Project == "ProjX");
         Assert.Equal(7m, projX.TotalHours);                 // 4 + 2 + 1
         var req1 = projX.Backlogs.Single();
         Assert.Equal("REQ-001", req1.BacklogCode);
@@ -80,8 +83,47 @@ public class ReportAggregatorTests
         Assert.Equal(new DateOnly(2026, 6, 16), build.Dates[0].Date);
         Assert.Equal(4m, build.Dates[0].TotalHours);
 
-        var projY = tree.Single(p => p.Project == "ProjY");
+        var projY = projects.Single(p => p.Project == "ProjY");
         Assert.Equal(3m, projY.TotalHours);
+    }
+
+    // RPT-03 / TM-08 — a multi-team report gets a Team root level above Project; single team => one root.
+    [Fact]
+    public void BuildProjectTree_adds_team_root_level()
+    {
+        var rows = new[]
+        {
+            Row("ProjX", "REQ-001", 10, "Build", "2026-06-16", 4m, teamId: 1, teamName: "Team A"),
+            Row("ProjY", "REQ-002", 20, "Spec",  "2026-06-16", 3m, teamId: 2, teamName: "Team B"),
+            Row("ProjX", "REQ-003", 30, "Audit", "2026-06-17", 1m, teamId: 1, teamName: "Team A"),
+        };
+
+        var tree = _agg.BuildProjectTree(rows);
+
+        Assert.Equal(2, tree.Count);                                  // two team roots
+        var teamA = tree.Single(t => t.TeamName == "Team A");
+        Assert.Equal(5m, teamA.TotalHours);                          // 4 + 1, both ProjX
+        Assert.Equal("ProjX", Assert.Single(teamA.Projects).Project);
+        var teamB = tree.Single(t => t.TeamName == "Team B");
+        Assert.Equal(3m, teamB.TotalHours);
+        Assert.Equal("ProjY", Assert.Single(teamB.Projects).Project);
+    }
+
+    [Fact]
+    public void BuildProjectTree_single_team_collapses_to_one_root()
+    {
+        var rows = new[]
+        {
+            Row("ProjX", "REQ-001", 10, "Build", "2026-06-16", 4m, teamId: 1, teamName: "Team A"),
+            Row("ProjY", "REQ-002", 20, "Spec",  "2026-06-16", 3m, teamId: 1, teamName: "Team A"),
+        };
+
+        var tree = _agg.BuildProjectTree(rows);
+
+        var root = Assert.Single(tree);
+        Assert.Equal("Team A", root.TeamName);
+        Assert.Equal(7m, root.TotalHours);
+        Assert.Equal(2, root.Projects.Count);
     }
 
     // RPT-03 / XC-06 — soft-deleted task NAMES still resolve, and two same-named tasks
@@ -99,7 +141,7 @@ public class ReportAggregatorTests
 
         var tree = _agg.BuildProjectTree(rows);
 
-        var defaultReq = tree.Single().Backlogs.Single();
+        var defaultReq = tree.Single().Projects.Single().Backlogs.Single();
         Assert.Equal(2, defaultReq.Tasks.Count);                       // distinct by id, not collapsed by name
         Assert.All(defaultReq.Tasks, t => Assert.Equal("Annual Leave", t.TaskName));
         Assert.Equal(new[] { 42, 99 }, defaultReq.Tasks.Select(t => t.TaskId).OrderBy(x => x));
