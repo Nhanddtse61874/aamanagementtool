@@ -13,9 +13,24 @@ public class TimeLogServiceTests
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<ITaskRepository> _tasks = new();
     private readonly Mock<IBacklogRepository> _requests = new();
+    private readonly Mock<ITeamRepository> _teams = new();
     private readonly Mock<IDbBackupHelper> _backup = new();
     private readonly Mock<IAppConfig> _config = new();
     private readonly SpyJournalWarningSink _journal = new();
+
+    // P10 (TM-06): TimeLogService scopes the Log Work grid + RPT-04 banner to the active team.
+    // ActiveTeamId defaults to 1 so the grid/group tests see a non-empty team scope.
+    private readonly FakeCurrentTeam _currentTeam = new() { ActiveTeamId = 1 };
+
+    private sealed class FakeCurrentTeam : ICurrentTeamService
+    {
+        public int ActiveTeamId { get; set; }
+        public Team? ActiveTeam => null;
+        public IReadOnlyList<Team> AvailableTeams => Array.Empty<Team>();
+        public event EventHandler? ActiveTeamChanged { add { } remove { } }
+        public Task InitializeAsync(int currentUserId) => Task.CompletedTask;
+        public Task SetActiveTeamAsync(int teamId) { ActiveTeamId = teamId; return Task.CompletedTask; }
+    }
 
     private sealed class FakeClock : IClock
     {
@@ -31,7 +46,8 @@ public class TimeLogServiceTests
     }
 
     private TimeLogService Make(DateOnly today)
-        => new(_logs.Object, _users.Object, _tasks.Object, _requests.Object, _backup.Object,
+        => new(_logs.Object, _users.Object, _tasks.Object, _requests.Object, _teams.Object,
+               _currentTeam, _backup.Object,
                new FakeClock { Today = today }, _config.Object, _journal);
 
     private static readonly DateOnly Tue = new(2026, 6, 16); // weekday
@@ -190,7 +206,7 @@ public class TimeLogServiceTests
     }
 
     [Fact]
-    public async Task GetUsersMissingLogs_flags_active_users_with_no_logs_in_window()  // RPT-04
+    public async Task GetUsersMissingLogs_flags_active_team_members_with_no_logs_in_window()  // RPT-04
     {
         var today = new DateOnly(2026, 6, 22); // Monday; LastNWorkingDays(_,3)=[Mon22,Fri19,Thu18]
         _users.Setup(r => r.GetActiveAsync()).ReturnsAsync(new[]
@@ -198,6 +214,7 @@ public class TimeLogServiceTests
             new User(1, "HasLogs", null, true),
             new User(2, "NoLogs", null, true)
         });
+        _teams.Setup(r => r.GetUserIdsForTeamAsync(1)).ReturnsAsync(new[] { 1, 2 }); // both on active team
         _logs.Setup(r => r.GetUserIdsWithLogsInRangeAsync(new DateOnly(2026, 6, 18), today))
              .ReturnsAsync(new[] { 1 });
         var svc = Make(today);
@@ -206,6 +223,39 @@ public class TimeLogServiceTests
 
         Assert.Single(missing);
         Assert.Equal(2, missing[0].Id);
+    }
+
+    [Fact]
+    public async Task GetUsersMissingLogs_excludes_users_outside_the_active_team()  // RPT-04 team scope
+    {
+        var today = new DateOnly(2026, 6, 22);
+        _users.Setup(r => r.GetActiveAsync()).ReturnsAsync(new[]
+        {
+            new User(1, "OnTeamNoLogs", null, true),
+            new User(2, "OffTeamNoLogs", null, true)
+        });
+        _teams.Setup(r => r.GetUserIdsForTeamAsync(1)).ReturnsAsync(new[] { 1 }); // only user 1 is a member
+        _logs.Setup(r => r.GetUserIdsWithLogsInRangeAsync(new DateOnly(2026, 6, 18), today))
+             .ReturnsAsync(Array.Empty<int>());
+        var svc = Make(today);
+
+        var missing = await svc.GetUsersMissingLogsAsync(3);
+
+        // Only the active-team member with no logs is flagged; the off-team user is ignored.
+        Assert.Single(missing);
+        Assert.Equal(1, missing[0].Id);
+    }
+
+    [Fact]
+    public async Task GetUsersMissingLogs_returns_empty_when_no_team_resolved()  // RPT-04 teamId 0 == empty
+    {
+        _currentTeam.ActiveTeamId = 0;
+        var svc = Make(new DateOnly(2026, 6, 22));
+
+        var missing = await svc.GetUsersMissingLogsAsync(3);
+
+        Assert.Empty(missing);
+        _users.Verify(r => r.GetActiveAsync(), Times.Never); // short-circuits before touching repos
     }
 
     [Fact]
@@ -319,5 +369,62 @@ public class TimeLogServiceTests
         var empty = Assert.Single(groups, g => g.BacklogCode == "REQ-EMPTY");
         Assert.Empty(empty.Tasks);
         Assert.Contains(groups, g => g.BacklogCode == "DEFAULT"); // DEFAULT still present
+    }
+
+    // ---- TM-06: the Log Work grid passes the ACTIVE team to the repo so only that team's tasks
+    //      + backlogs are read (a team B task is never fetched when the active team is B vs A). ----
+    [Fact]
+    public async Task GetWeekGrouped_scopes_tasks_and_backlogs_to_active_team()
+    {
+        var monday = new DateOnly(2026, 6, 15);
+        _currentTeam.ActiveTeamId = 7;
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>()))
+                 .ReturnsAsync(Array.Empty<Backlog>());
+        _tasks.Setup(t => t.GetActiveForTimesheetAsync(It.IsAny<int?>()))
+              .ReturnsAsync(Array.Empty<TaskItem>());
+        _logs.Setup(l => l.GetByUserAndRangeAsync(1, monday, monday.AddDays(4)))
+             .ReturnsAsync(Array.Empty<TimeLog>());
+        var svc = Make(monday);
+
+        await svc.GetWeekGroupedAsync(1, monday);
+
+        // Active team (7) is the only team passed to both the task and backlog reads.
+        _tasks.Verify(t => t.GetActiveForTimesheetAsync(7), Times.Once);
+        _requests.Verify(r => r.SearchAsync(null, It.Is<IReadOnlyList<int>?>(ts => ts != null && ts.Single() == 7)), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetWeek_passes_active_team_to_GetActiveForTimesheet()  // TM-06
+    {
+        var monday = new DateOnly(2026, 6, 15);
+        _currentTeam.ActiveTeamId = 7;
+        _logs.Setup(l => l.GetByUserAndRangeAsync(1, monday, monday.AddDays(4)))
+             .ReturnsAsync(Array.Empty<TimeLog>());
+        _tasks.Setup(t => t.GetActiveForTimesheetAsync(It.IsAny<int?>()))
+              .ReturnsAsync(Array.Empty<TaskItem>());
+        var svc = Make(monday);
+
+        await svc.GetWeekAsync(1, monday);
+
+        _tasks.Verify(t => t.GetActiveForTimesheetAsync(7), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetWeekGroupedAllUsers_scopes_export_rows_to_active_team()  // TM-06
+    {
+        var monday = new DateOnly(2026, 6, 15);
+        _currentTeam.ActiveTeamId = 7;
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>()))
+                 .ReturnsAsync(Array.Empty<Backlog>());
+        _tasks.Setup(t => t.GetActiveForTimesheetAsync(It.IsAny<int?>()))
+              .ReturnsAsync(Array.Empty<TaskItem>());
+        _logs.Setup(l => l.GetExportRowsAsync(monday, monday.AddDays(4), null, It.IsAny<IReadOnlyList<int>?>()))
+             .ReturnsAsync(Array.Empty<TimeLogReportRow>());
+        var svc = Make(monday);
+
+        await svc.GetWeekGroupedAllUsersAsync(monday);
+
+        _logs.Verify(l => l.GetExportRowsAsync(monday, monday.AddDays(4), null,
+            It.Is<IReadOnlyList<int>?>(ts => ts != null && ts.Single() == 7)), Times.Once);
     }
 }

@@ -16,6 +16,8 @@ public sealed class TimeLogService : ITimeLogService
     private readonly IUserRepository _users;
     private readonly ITaskRepository _tasks;
     private readonly IBacklogRepository _requests;
+    private readonly ITeamRepository _teams;
+    private readonly ICurrentTeamService _currentTeam;
     private readonly IDbBackupHelper _backup;
     private readonly IClock _clock;
     private readonly IAppConfig _config;
@@ -23,10 +25,12 @@ public sealed class TimeLogService : ITimeLogService
 
     public TimeLogService(
         ITimeLogRepository logs, IUserRepository users, ITaskRepository tasks,
-        IBacklogRepository requests, IDbBackupHelper backup, IClock clock,
+        IBacklogRepository requests, ITeamRepository teams, ICurrentTeamService currentTeam,
+        IDbBackupHelper backup, IClock clock,
         IAppConfig config, IJournalWarningSink journalWarnings)
     {
-        _logs = logs; _users = users; _tasks = tasks; _requests = requests; _backup = backup; _clock = clock;
+        _logs = logs; _users = users; _tasks = tasks; _requests = requests; _teams = teams;
+        _currentTeam = currentTeam; _backup = backup; _clock = clock;
         _config = config; _journalWarnings = journalWarnings;
     }
 
@@ -146,7 +150,8 @@ public sealed class TimeLogService : ITimeLogService
         var monday = MondayOf(mondayOfWeek);
         var friday = monday.AddDays(4);
         var logs = await _logs.GetByUserAndRangeAsync(userId, monday, friday);
-        var tasks = await _tasks.GetActiveForTimesheetAsync();
+        // P10 (TM-06): the Log Work grid shows ONLY the active team's tasks (incl. its DEFAULT).
+        var tasks = await _tasks.GetActiveForTimesheetAsync(_currentTeam.ActiveTeamId);
 
         var byKey = logs.ToLookup(l => l.TaskId);
         var rows = tasks.Select(t =>
@@ -181,7 +186,8 @@ public sealed class TimeLogService : ITimeLogService
         var friday = monday.AddDays(4);
 
         // Team view: sum hours across ALL users per (task, day). Export rows already join every user.
-        var rows = await _logs.GetExportRowsAsync(monday, friday, null);
+        // P10 (TM-06): scope to the active team so the team grid never aggregates another team's hours.
+        var rows = await _logs.GetExportRowsAsync(monday, friday, null, ActiveTeamScope());
         var summed = rows
             .GroupBy(r => (r.TaskId, r.WorkDate))
             .ToDictionary(g => g.Key, g => g.Sum(r => r.Hours));
@@ -194,8 +200,9 @@ public sealed class TimeLogService : ITimeLogService
     private async Task<IReadOnlyList<WeekBacklogGroup>> BuildGroupsAsync(
         DateOnly monday, Func<int, DateOnly, decimal?> hoursFor)
     {
-        var requests = await _requests.SearchAsync(null);   // ALL backlogs, incl. DEFAULT + empty ones
-        var tasks = await _tasks.GetActiveForTimesheetAsync();
+        // P10 (TM-06): active team's backlogs only (incl. its DEFAULT + empty ones), and its tasks.
+        var requests = await _requests.SearchAsync(null, ActiveTeamScope());
+        var tasks = await _tasks.GetActiveForTimesheetAsync(_currentTeam.ActiveTeamId);
         var tasksByBacklog = tasks.ToLookup(t => t.BacklogId);
 
         // v4: resolve assignee ids -> names (GetAll so a deactivated assignee still renders).
@@ -222,11 +229,29 @@ public sealed class TimeLogService : ITimeLogService
 
     public async Task<IReadOnlyList<User>> GetUsersMissingLogsAsync(int workdayWindowN)
     {
+        // P10 (RPT-04): the "chưa log" banner is scoped to the ACTIVE TEAM's members. teamId 0 (no
+        // team resolved yet) => empty (no rows), never all-teams (R6).
+        var activeTeamId = _currentTeam.ActiveTeamId;
+        if (activeTeamId == 0) return Array.Empty<User>();
+
         var window = LastNWorkingDays(_clock.Today, workdayWindowN); // includes today (RPT-04)
         var earliest = window.Min();
         var withLogs = (await _logs.GetUserIdsWithLogsInRangeAsync(earliest, _clock.Today)).ToHashSet();
+
+        // GetUserIdsWithLogsInRangeAsync has no team filter (W1) -> scope by team membership instead.
+        var memberIds = (await _teams.GetUserIdsForTeamAsync(activeTeamId)).ToHashSet();
         var active = await _users.GetActiveAsync();
-        return active.Where(u => !withLogs.Contains(u.Id)).ToList();
+        return active
+            .Where(u => memberIds.Contains(u.Id) && !withLogs.Contains(u.Id))
+            .ToList();
+    }
+
+    // Active-team scope for the team filter on read APIs: the active team id, or an EMPTY list when
+    // no team is resolved yet (teamId 0 == empty, R6) so a pre-setup DB never leaks all teams.
+    private IReadOnlyList<int> ActiveTeamScope()
+    {
+        var id = _currentTeam.ActiveTeamId;
+        return id == 0 ? Array.Empty<int>() : new[] { id };
     }
 
     // ---- helpers ----

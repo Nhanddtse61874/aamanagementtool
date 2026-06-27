@@ -4,6 +4,7 @@ namespace TimesheetApp.Services;
 // and reconciles DefaultTasks -> Tasks under it (DATA-03, SET-04).
 public interface IDefaultTaskSyncService
 {
-    Task<int> EnsureDefaultBacklogIdAsync();   // create/find backlog_code='DEFAULT' (DATA-03, idempotent)
-    Task SyncAsync();                           // reconcile DefaultTasks -> Tasks under DEFAULT (SET-04)
+    // P10 (TM-04): DEFAULT is unique per team. Create/find backlog_code='DEFAULT' for THIS team.
+    Task<int> EnsureDefaultBacklogIdAsync(int teamId);  // idempotent per team (DATA-03)
+    Task SyncAsync();                                    // reconcile global DefaultTasks -> Tasks under EACH active team's DEFAULT (SET-04)
 }
