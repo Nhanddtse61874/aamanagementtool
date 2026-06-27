@@ -24,18 +24,23 @@ public sealed class TaskRepository : ITaskRepository
         return rows.Select(MapTask).ToList();
     }
 
-    public async Task<IReadOnlyList<TaskItem>> GetActiveForTimesheetAsync()
+    public async Task<IReadOnlyList<TaskItem>> GetActiveForTimesheetAsync(int? teamId = null)
     {
         using var c = _factory.Create();
-        // Active tasks across all backlogs (incl. the hidden DEFAULT), ordered (TS-02).
+        // Active tasks for the team's backlogs (incl. that team's hidden DEFAULT), ordered (TS-02).
         // Backlogs have no is_active column (decision 4) so every backlog is selectable; the
         // DEFAULT backlog's tasks are included because we only filter on the task's is_active.
+        // @noTeam short-circuits the team filter when teamId is null (preserves existing behavior, R6);
+        // a teamId filters via b.team_id (teamId 0 yields no rows — empty, R6).
+        var noTeam = teamId is null;
         var rows = await c.QueryAsync<TaskRaw>(
             @"SELECT t.id, t.backlog_id, t.task_name, t.order_index, t.is_active, t.status
               FROM Tasks t
               JOIN Backlogs b ON b.id = t.backlog_id
               WHERE t.is_active = 1
-              ORDER BY b.backlog_code, t.order_index;");
+                AND (@noTeam OR b.team_id = @teamId)
+              ORDER BY b.backlog_code, t.order_index;",
+            new { noTeam, teamId = teamId ?? 0 });
         return rows.Select(MapTask).ToList();
     }
 

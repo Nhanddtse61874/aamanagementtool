@@ -57,15 +57,27 @@ public sealed class TestDb : IConnectionFactory, IDisposable
             new { name, win = windowsUsername, active = isActive ? 1 : 0 });
     }
 
-    // Inserts a request; returns its new id.
-    public async Task<int> SeedRequestAsync(string code = "REQ-001", string project = "ProjectX")
+    // Inserts a request; returns its new id. teamId (v8) is optional — null keeps the legacy
+    // team-less behavior for tests that don't care about teams (R6).
+    public async Task<int> SeedRequestAsync(string code = "REQ-001", string project = "ProjectX", int? teamId = null)
     {
         using var c = Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Backlogs(backlog_code, project, created_at)
-              VALUES(@code, @project, @now);
+            @"INSERT INTO Backlogs(backlog_code, project, created_at, team_id)
+              VALUES(@code, @project, @now, @teamId);
               SELECT last_insert_rowid();",
-            new { code, project, now = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") });
+            new { code, project, now = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"), teamId });
+    }
+
+    // Inserts an active team; returns its new id (v8).
+    public async Task<int> SeedTeamAsync(string name = "Team A", bool isActive = true)
+    {
+        using var c = Create();
+        return await c.ExecuteScalarAsync<int>(
+            @"INSERT INTO Teams(name, is_active, created_at)
+              VALUES(@name, @active, @now);
+              SELECT last_insert_rowid();",
+            new { name, active = isActive ? 1 : 0, now = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") });
     }
 
     // Inserts a task under a request; returns its new id.

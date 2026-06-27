@@ -51,7 +51,7 @@ public class ReportsViewModelTests
         var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18));
         vm.SelectedTarget = new ReportsViewModel.ReportTarget(7, "Greg");
         vm.SelectedWeekMonday = new DateOnly(2026, 6, 15);
-        repo.Setup(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19)))
+        repo.Setup(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[] { Row("P", "R1", 1, "T", "2026-06-15", 4m), Row("P", "R1", 2, "U", "2026-06-15", 2m) });
 
         await vm.LoadWeeklyAsync();
@@ -59,7 +59,7 @@ public class ReportsViewModelTests
         var day = Assert.Single(vm.WeeklyRows);
         Assert.Equal(new DateOnly(2026, 6, 15), day.Date);
         Assert.Equal(6m, day.TotalHours);
-        repo.Verify(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19)), Times.Once);
+        repo.Verify(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), It.IsAny<IReadOnlyList<int>?>()), Times.Once);
     }
 
     // RPT-02 + RPT-03
@@ -69,7 +69,7 @@ public class ReportsViewModelTests
         var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18));
         vm.SelectedTarget = new ReportsViewModel.ReportTarget(7, "Greg");
         vm.SelectedMonth = new DateOnly(2026, 6, 1);
-        repo.Setup(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30)))
+        repo.Setup(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[]
             {
                 Row("ProjX", "REQ-001", 10, "Build", "2026-06-16", 4m),
@@ -82,7 +82,7 @@ public class ReportsViewModelTests
         var proj = Assert.Single(vm.ProjectTree);
         Assert.Equal("ProjX", proj.Project);
         Assert.Equal(6m, proj.TotalHours);
-        repo.Verify(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30)), Times.Once);
+        repo.Verify(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), It.IsAny<IReadOnlyList<int>?>()), Times.Once);
     }
 
     // RPT-04 — banner shows the CONFIGURED N (not the actual gap), and passes that N to the service.
@@ -154,14 +154,14 @@ public class ReportsViewModelTests
         var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18));
         vm.SelectedTarget = new ReportsViewModel.ReportTarget(0, "Whole team (all)");
         vm.SelectedWeekMonday = new DateOnly(2026, 6, 15);
-        repo.Setup(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), null))
+        repo.Setup(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), null, It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[] { Row("P", "R1", 1, "T", "2026-06-15", 4m) });
 
         await vm.LoadWeeklyAsync();
 
         Assert.Single(vm.WeeklyRows);
-        repo.Verify(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), null), Times.Once);
-        repo.Verify(r => r.GetReportRowsAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>()), Times.Never);
+        repo.Verify(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), null, It.IsAny<IReadOnlyList<int>?>()), Times.Once);
+        repo.Verify(r => r.GetReportRowsAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()), Times.Never);
     }
 
     [Fact]
@@ -170,13 +170,13 @@ public class ReportsViewModelTests
         var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18));
         vm.SelectedTarget = new ReportsViewModel.ReportTarget(0, "Whole team (all)");
         vm.SelectedMonth = new DateOnly(2026, 6, 1);
-        repo.Setup(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), null))
+        repo.Setup(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), null, It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[] { Row("ProjX", "REQ-001", 10, "Build", "2026-06-16", 4m) });
 
         await vm.LoadMonthlyAsync();
 
         Assert.Single(vm.MonthlyRows);
-        repo.Verify(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), null), Times.Once);
-        repo.Verify(r => r.GetReportRowsAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>()), Times.Never);
+        repo.Verify(r => r.GetExportRowsAsync(new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 30), null, It.IsAny<IReadOnlyList<int>?>()), Times.Once);
+        repo.Verify(r => r.GetReportRowsAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()), Times.Never);
     }
 }

@@ -37,7 +37,7 @@ public sealed class CrossTabSyncTests
 
         var reqRepo = new Mock<IBacklogRepository>();
         reqRepo.Setup(r => r.InsertAsync(It.IsAny<Backlog>())).ReturnsAsync(10);
-        reqRepo.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(System.Array.Empty<Backlog>());
+        reqRepo.Setup(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(System.Array.Empty<Backlog>());
         var requests = new BacklogsViewModel(
             reqRepo.Object, Mock.Of<ITaskRepository>(), Mock.Of<ITaskTemplateRepository>(), bus);
         requests.Editor = BacklogEditorViewModel.ForCreate(System.Array.Empty<TaskTemplate>());

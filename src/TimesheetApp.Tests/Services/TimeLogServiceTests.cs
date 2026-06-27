@@ -269,11 +269,11 @@ public class TimeLogServiceTests
     public async Task GetWeekGrouped_returns_one_group_per_request_with_tasks_under_correct_request()
     {
         var monday = new DateOnly(2026, 6, 15);
-        _requests.Setup(r => r.SearchAsync(null)).ReturnsAsync(new[]
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(new[]
         {
             Req(1, "DEFAULT"), Req(2, "REQ-001"), Req(3, "REQ-002")
         });
-        _tasks.Setup(t => t.GetActiveForTimesheetAsync()).ReturnsAsync(new[]
+        _tasks.Setup(t => t.GetActiveForTimesheetAsync(It.IsAny<int?>())).ReturnsAsync(new[]
         {
             new TaskItem(10, 2, "Implement", 0, true),
             new TaskItem(11, 2, "Review", 1, true),
@@ -305,11 +305,11 @@ public class TimeLogServiceTests
     public async Task GetWeekGrouped_includes_request_with_no_tasks_as_empty_group()
     {
         var monday = new DateOnly(2026, 6, 15);
-        _requests.Setup(r => r.SearchAsync(null)).ReturnsAsync(new[]
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(new[]
         {
             Req(1, "DEFAULT"), Req(7, "REQ-EMPTY")
         });
-        _tasks.Setup(t => t.GetActiveForTimesheetAsync()).ReturnsAsync(Array.Empty<TaskItem>());
+        _tasks.Setup(t => t.GetActiveForTimesheetAsync(It.IsAny<int?>())).ReturnsAsync(Array.Empty<TaskItem>());
         _logs.Setup(l => l.GetByUserAndRangeAsync(1, monday, monday.AddDays(4)))
              .ReturnsAsync(Array.Empty<TimeLog>());
         var svc = Make(monday);

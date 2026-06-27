@@ -32,7 +32,7 @@ public class SmartInputPanelVmTests
     // Find request "REQ-1" -> two tasks (ids 7, 8).
     private static async Task FindTwoTasks(SmartInputPanelVm vm, Mock<IBacklogRepository> req, Mock<ITaskRepository> tasks)
     {
-        req.Setup(r => r.SearchAsync("REQ-1"))
+        req.Setup(r => r.SearchAsync("REQ-1", It.IsAny<IReadOnlyList<int>?>()))
            .ReturnsAsync(new[] { new Backlog(5, "REQ-1", "ARCS", DateTimeOffset.UtcNow) });
         tasks.Setup(t => t.GetActiveByBacklogAsync(5))
              .ReturnsAsync(new[] { new TaskItem(7, 5, "Design", 0, true), new TaskItem(8, 5, "Impl", 1, true) });
@@ -55,7 +55,7 @@ public class SmartInputPanelVmTests
     public async Task FindRequest_unknown_code_surfaces_error_and_no_tasks()
     {
         var (vm, _, req, _) = Make();
-        req.Setup(r => r.SearchAsync("NOPE")).ReturnsAsync(System.Array.Empty<Backlog>());
+        req.Setup(r => r.SearchAsync("NOPE", It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(System.Array.Empty<Backlog>());
         vm.BacklogCode = "NOPE";
 
         await vm.FindBacklogCommand.ExecuteAsync(null);

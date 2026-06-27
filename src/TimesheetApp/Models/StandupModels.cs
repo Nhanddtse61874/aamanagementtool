@@ -9,7 +9,8 @@ namespace TimesheetApp.Models;
 public sealed record StandupEntry(
     int Id, int UserId, DateOnly WorkDate, string Section,
     int? BacklogId, string BacklogCode, string TaskText, string Description,
-    DateOnly? Deadline, string Status, int OrderIndex, DateTimeOffset CreatedAt);
+    DateOnly? Deadline, string Status, int OrderIndex, DateTimeOffset CreatedAt,
+    int? TeamId = null);   // v8: owning team (null = unassigned, backfilled by bootstrap)
 
 // Zero-or-more per entry (DR-04). SolutionText null/empty = pending discussion.
 public sealed record StandupIssue(

@@ -5,6 +5,9 @@ namespace TimesheetApp.Models;
 
 public sealed record User(int Id, string Name, string? WindowsUsername, bool IsActive);
 
+// P10 Multi-Team (schema v8). A top-level org entity; soft-deletable via IsActive (mirrors User).
+public sealed record Team(int Id, string Name, bool IsActive, DateTimeOffset CreatedAt);
+
 // Extra fields (start/end/period month/status) added in schema v2. Optional with defaults so existing
 // constructors keep compiling; PeriodMonth is "yyyy-MM" (the fixed month a ticket belongs to).
 public sealed record Backlog(
@@ -16,7 +19,8 @@ public sealed record Backlog(
     DateOnly? DeadlineInternal = null, DateOnly? DeadlineExternal = null,
     decimal? RoughEstimateHours = null, decimal? OfficialEstimateHours = null,
     int? ProgressPercent = null, string? Note = null,
-    int? PcaContactId = null);    // v7: external (PCA) contact (null = unassigned)
+    int? PcaContactId = null,     // v7: external (PCA) contact (null = unassigned)
+    int? TeamId = null);          // v8: owning team (null = unassigned, backfilled by bootstrap)
 
 // Allowed ticket types (v2, formerly "status"). Order is the display order.
 public static class BacklogType

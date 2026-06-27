@@ -153,4 +153,28 @@ public class StandupRepositoryTests
         var repo = new StandupRepository(db);
         Assert.Empty(await repo.GetIssuesForEntriesAsync(Array.Empty<int>()));
     }
+
+    // P10 (TM-06/07): team_id round-trips on the entry, and GetEntriesForDayAsync filters by team.
+    [Fact]
+    public async Task TeamId_roundtrips_and_GetEntriesForDay_filters_by_team()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new StandupRepository(db);
+        var teamA = await db.SeedTeamAsync("A");
+        var teamB = await db.SeedTeamAsync("B");
+        var u = await db.SeedUserAsync();
+        await repo.InsertEntryAsync(NewEntry(u, Day) with { TeamId = teamA });
+        await repo.InsertEntryAsync(NewEntry(u, Day) with { TeamId = teamB });
+
+        // round-trip: the team id persists.
+        var mine = await repo.GetEntriesAsync(u, Day);
+        Assert.Contains(mine, e => e.TeamId == teamA);
+        Assert.Contains(mine, e => e.TeamId == teamB);
+
+        // null => all teams (existing behavior); a team filter scopes the board feed.
+        Assert.Equal(2, (await repo.GetEntriesForDayAsync(Day)).Count);
+        var onlyA = await repo.GetEntriesForDayAsync(Day, new[] { teamA });
+        var single = Assert.Single(onlyA);
+        Assert.Equal(teamA, single.TeamId);
+    }
 }

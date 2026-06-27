@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 7;
+    private const long SchemaVersion = 8;
 
     private readonly IConnectionFactory _factory;
 
@@ -143,6 +143,22 @@ CREATE TABLE IF NOT EXISTS PcaContacts (
 CREATE TABLE IF NOT EXISTS Holidays (
     holiday_date TEXT PRIMARY KEY,
     description  TEXT
+);
+
+-- P10 Multi-Team (schema v8). Team is a new top-level org entity; Users<->Teams is many-to-many via
+-- UserTeams. No inline FK on UserTeams (matches BacklogTags). team_id columns on Backlogs/StandupEntries
+-- are added by the v8 migration step in RunMigrations.
+CREATE TABLE IF NOT EXISTS Teams (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    is_active  INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS UserTeams (
+    user_id INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, team_id)
 );";
         conn.Execute(ddl, transaction: tx);
 
@@ -242,6 +258,13 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
                   ALTER TABLE Backlogs ADD COLUMN progress_percent        INTEGER;
                   ALTER TABLE Backlogs ADD COLUMN note                    TEXT;
                   ALTER TABLE Backlogs ADD COLUMN pca_contact_id          INTEGER;", transaction: t),
+            // v8 -> P10 Multi-Team. team_id on Backlogs + StandupEntries (nullable, no inline FK,
+            // mirroring assignee_user_id / pca_contact_id). Teams + UserTeams tables are created
+            // idempotently in CreateTables. The DATA MIGRATION (create "Architect Improvement",
+            // repoint existing rows) is NOT here — it runs as a post-init bootstrap (W2).
+            static (c, t) => c.Execute(
+                @"ALTER TABLE Backlogs       ADD COLUMN team_id INTEGER;
+                  ALTER TABLE StandupEntries ADD COLUMN team_id INTEGER;", transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);

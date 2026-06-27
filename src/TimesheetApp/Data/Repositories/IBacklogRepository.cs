@@ -5,9 +5,12 @@ namespace TimesheetApp.Data.Repositories;
 // Repository contract for Backlog items (formerly Request).
 public interface IBacklogRepository
 {
-    Task<IReadOnlyList<Backlog>> SearchAsync(string? term);        // null => all; matches code OR project
+    // null term => all (matches code OR project). teamIds: null => all teams (preserves existing
+    // behavior); a list filters to those teams; an EMPTY list => no teams (teamId 0 is "empty", R6).
+    Task<IReadOnlyList<Backlog>> SearchAsync(string? term, IReadOnlyList<int>? teamIds = null);
     Task<Backlog?> GetByIdAsync(int id);
     Task<Backlog?> GetByCodeAsync(string backlogCode);             // find hidden 'DEFAULT' (DATA-03)
+    Task<Backlog?> GetDefaultForTeamAsync(int teamId);             // P10: DEFAULT is unique per team (TM-04)
     Task<int> InsertAsync(Backlog backlog);
     // Edit name/project + v2 start/end/month/type. changedBy is recorded in BacklogAudit when the
     // audited fields change.

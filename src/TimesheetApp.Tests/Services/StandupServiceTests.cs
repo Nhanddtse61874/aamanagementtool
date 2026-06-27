@@ -71,7 +71,7 @@ public class StandupServiceTests
     public async Task AddEntry_stamps_current_user_and_date_and_inserts()
     {
         var ctx = new Ctx();
-        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today)).ReturnsAsync(Array.Empty<StandupEntry>());
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, It.IsAny<int?>())).ReturnsAsync(Array.Empty<StandupEntry>());
         ctx.Repo.Setup(r => r.InsertEntryAsync(It.IsAny<StandupEntry>())).ReturnsAsync(55);
         var svc = ctx.Make(Today);
 
@@ -95,7 +95,7 @@ public class StandupServiceTests
     {
         var ctx = new Ctx();
         ctx.Backlogs.Setup(r => r.GetByIdAsync(99)).ReturnsAsync((Backlog?)null);
-        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today)).ReturnsAsync(Array.Empty<StandupEntry>());
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, It.IsAny<int?>())).ReturnsAsync(Array.Empty<StandupEntry>());
         ctx.Repo.Setup(r => r.InsertEntryAsync(It.IsAny<StandupEntry>())).ReturnsAsync(1);
         var svc = ctx.Make(Today);
 
@@ -149,7 +149,7 @@ public class StandupServiceTests
         var c = Entry(12, 1, Today, StandupSection.Today) with { OrderIndex = 2 };
         ctx.Repo.Setup(r => r.GetEntryAsync(12)).ReturnsAsync(c);   // dragged
         ctx.Repo.Setup(r => r.GetEntryAsync(10)).ReturnsAsync(a);   // target (front)
-        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today)).ReturnsAsync(new[] { a, b, c });
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, It.IsAny<int?>())).ReturnsAsync(new[] { a, b, c });
         var svc = ctx.Make(Today);
 
         await svc.ReorderEntryAsync(draggedId: 12, targetId: 10);
@@ -170,7 +170,7 @@ public class StandupServiceTests
             Entry(10, 1, Today, StandupSection.Yesterday),
             Entry(11, 1, Today, StandupSection.Today),
         };
-        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today)).ReturnsAsync(entries);
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, It.IsAny<int?>())).ReturnsAsync(entries);
         ctx.Repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
             .ReturnsAsync(new[] { new StandupIssue(1, 11, "blocked", null, "open", 0, default) });
         var svc = ctx.Make(Today);
@@ -193,7 +193,7 @@ public class StandupServiceTests
         {
             new User(1, "Alice", null, true), new User(2, "Bob", null, true),
         });
-        ctx.Repo.Setup(r => r.GetEntriesForDayAsync(Today))
+        ctx.Repo.Setup(r => r.GetEntriesForDayAsync(Today, It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[] { Entry(10, 1, Today, StandupSection.Today) });
         ctx.Repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
             .ReturnsAsync(Array.Empty<StandupIssue>());

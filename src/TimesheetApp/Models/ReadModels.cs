@@ -10,7 +10,10 @@ public sealed record TimeLogReportRow(
     int UserId, string UserName,
     string BacklogCode, string Project,
     int TaskId, string TaskName,
-    DateOnly WorkDate, decimal Hours);
+    DateOnly WorkDate, decimal Hours,
+    // v8 (P10 Multi-Team): the owning team, projected trailing so existing positional ctors keep
+    // compiling (R6). Null when the backlog has no team (pre-bootstrap).
+    int? TeamId = null, string? TeamName = null);
 
 // Smart-input preview cell (pure math output; also the apply unit). (SI-01/05)
 public readonly record struct CellAssignment(DateOnly Date, decimal Hours);

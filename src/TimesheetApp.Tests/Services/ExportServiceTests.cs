@@ -26,7 +26,7 @@ public class ExportServiceTests
     {
         var logs = new Mock<ITimeLogRepository>();
         logs.Setup(r => r.GetExportRowsAsync(
-                It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<string?>()))
+                It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(rows);
         var users = new Mock<IUserRepository>();
         var reqs = new Mock<IBacklogRepository>();
@@ -171,6 +171,6 @@ public class ExportServiceTests
         logs.Verify(r => r.GetExportRowsAsync(
             new DateOnly(2026, 6, 1),
             new DateOnly(2026, 6, 30),
-            "ProjectX"), Times.Once);
+            "ProjectX", It.IsAny<IReadOnlyList<int>?>()), Times.Once);
     }
 }

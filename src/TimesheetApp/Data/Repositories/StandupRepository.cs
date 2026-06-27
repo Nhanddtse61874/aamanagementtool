@@ -9,7 +9,7 @@ namespace TimesheetApp.Data.Repositories;
 public sealed class StandupRepository : IStandupRepository
 {
     private const string EntryCols =
-        "id, user_id, work_date, section, backlog_id, backlog_code, task_text, description, deadline, status, order_index, created_at";
+        "id, user_id, work_date, section, backlog_id, backlog_code, task_text, description, deadline, status, order_index, created_at, team_id";
     private const string IssueCols =
         "id, entry_id, issue_text, solution_text, status, order_index, created_at";
 
@@ -17,36 +17,44 @@ public sealed class StandupRepository : IStandupRepository
 
     public StandupRepository(IConnectionFactory factory) => _factory = factory;
 
-    public async Task<IReadOnlyList<StandupEntry>> GetEntriesAsync(int userId, DateOnly workDate)
+    public async Task<IReadOnlyList<StandupEntry>> GetEntriesAsync(int userId, DateOnly workDate, int? teamId = null)
     {
         using var c = _factory.Create();
+        // @noTeam short-circuits the team filter when teamId is null (preserves existing tests, R6);
+        // teamId 0 yields nothing (empty).
+        var noTeam = teamId is null;
         var rows = await c.QueryAsync<EntryRaw>(
             $@"SELECT {EntryCols} FROM StandupEntries
                WHERE user_id = @uid AND work_date = @day
+                 AND (@noTeam OR team_id = @teamId)
                ORDER BY section, order_index, id;",
-            new { uid = userId, day = Day(workDate) });
+            new { uid = userId, day = Day(workDate), noTeam, teamId = teamId ?? 0 });
         return rows.Select(MapEntry).ToList();
     }
 
-    public async Task<IReadOnlyList<StandupEntry>> GetEntriesForDayAsync(DateOnly workDate)
+    public async Task<IReadOnlyList<StandupEntry>> GetEntriesForDayAsync(DateOnly workDate, IReadOnlyList<int>? teamIds = null)
     {
         using var c = _factory.Create();
+        var noTeam = teamIds is null;
         var rows = await c.QueryAsync<EntryRaw>(
             $@"SELECT {EntryCols} FROM StandupEntries
                WHERE work_date = @day
+                 AND (@noTeam OR team_id IN @teamIds)
                ORDER BY user_id, section, order_index, id;",
-            new { day = Day(workDate) });
+            new { day = Day(workDate), noTeam, teamIds = teamIds ?? Array.Empty<int>() });
         return rows.Select(MapEntry).ToList();
     }
 
-    public async Task<IReadOnlyList<StandupEntry>> GetEntriesForRangeAsync(DateOnly from, DateOnly to)
+    public async Task<IReadOnlyList<StandupEntry>> GetEntriesForRangeAsync(DateOnly from, DateOnly to, IReadOnlyList<int>? teamIds = null)
     {
         using var c = _factory.Create();
+        var noTeam = teamIds is null;
         var rows = await c.QueryAsync<EntryRaw>(
             $@"SELECT {EntryCols} FROM StandupEntries
                WHERE work_date >= @from AND work_date <= @to
+                 AND (@noTeam OR team_id IN @teamIds)
                ORDER BY work_date, user_id, section, order_index, id;",
-            new { from = Day(from), to = Day(to) });
+            new { from = Day(from), to = Day(to), noTeam, teamIds = teamIds ?? Array.Empty<int>() });
         return rows.Select(MapEntry).ToList();
     }
 
@@ -63,9 +71,9 @@ public sealed class StandupRepository : IStandupRepository
         using var c = _factory.Create();
         return await c.ExecuteScalarAsync<int>(
             @"INSERT INTO StandupEntries(user_id, work_date, section, backlog_id, backlog_code,
-                  task_text, description, deadline, status, order_index, created_at)
+                  task_text, description, deadline, status, order_index, created_at, team_id)
               VALUES(@UserId, @WorkDate, @Section, @BacklogId, @BacklogCode,
-                  @TaskText, @Description, @Deadline, @Status, @OrderIndex, @CreatedAt);
+                  @TaskText, @Description, @Deadline, @Status, @OrderIndex, @CreatedAt, @TeamId);
               SELECT last_insert_rowid();",
             new
             {
@@ -80,6 +88,7 @@ public sealed class StandupRepository : IStandupRepository
                 e.Status,
                 e.OrderIndex,
                 CreatedAt = Iso(e.CreatedAt),
+                e.TeamId,
             });
     }
 
@@ -90,7 +99,7 @@ public sealed class StandupRepository : IStandupRepository
             @"UPDATE StandupEntries SET
                   section = @Section, backlog_id = @BacklogId, backlog_code = @BacklogCode,
                   task_text = @TaskText, description = @Description, deadline = @Deadline,
-                  status = @Status, order_index = @OrderIndex
+                  status = @Status, order_index = @OrderIndex, team_id = @TeamId
               WHERE id = @Id;",
             new
             {
@@ -102,6 +111,7 @@ public sealed class StandupRepository : IStandupRepository
                 Deadline = DayN(e.Deadline),
                 e.Status,
                 e.OrderIndex,
+                e.TeamId,
                 e.Id,
             });
     }
@@ -176,7 +186,8 @@ public sealed class StandupRepository : IStandupRepository
     private static StandupEntry MapEntry(EntryRaw r) => new(
         (int)r.id, (int)r.user_id, ParseDay(r.work_date), r.section,
         r.backlog_id is { } rid ? (int)rid : null, r.backlog_code, r.task_text, r.description,
-        ParseDayN(r.deadline), r.status, (int)r.order_index, ParseIso(r.created_at));
+        ParseDayN(r.deadline), r.status, (int)r.order_index, ParseIso(r.created_at),
+        r.team_id is { } tid ? (int)tid : null);
 
     private static StandupIssue MapIssue(IssueRaw r) => new(
         (int)r.id, (int)r.entry_id, r.issue_text, r.solution_text, r.status,
@@ -197,6 +208,7 @@ public sealed class StandupRepository : IStandupRepository
         public string status { get; set; } = "";
         public long order_index { get; set; }
         public string created_at { get; set; } = "";
+        public long? team_id { get; set; }
     }
 
     private sealed class IssueRaw

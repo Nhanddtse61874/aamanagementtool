@@ -41,42 +41,53 @@ public sealed class TimeLogRepository : ITimeLogRepository
         return rows.Select(MapTimeLog).ToList();
     }
 
-    public async Task<IReadOnlyList<TimeLogReportRow>> GetReportRowsAsync(int userId, DateOnly from, DateOnly to)
+    public async Task<IReadOnlyList<TimeLogReportRow>> GetReportRowsAsync(int userId, DateOnly from, DateOnly to, IReadOnlyList<int>? teamIds = null)
     {
         using var c = _factory.Create();
         // INNER JOIN by id, NO is_active predicate (XC-06): soft-deleted task/user names still resolve.
+        // LEFT JOIN Teams so a backlog with no team still returns (team name null). @noTeam short-
+        // circuits the team filter when teamIds is null (preserves existing behavior, R6).
+        var noTeam = teamIds is null;
         var rows = await c.QueryAsync<ReportRaw>(
             @"SELECT u.id AS user_id, u.name AS user_name,
                      r.backlog_code AS backlog_code, r.project AS project,
                      t.id AS task_id, t.task_name AS task_name,
-                     l.work_date AS work_date, l.hours AS hours
+                     l.work_date AS work_date, l.hours AS hours,
+                     r.team_id AS team_id, tm.name AS team_name
               FROM TimeLogs l
               JOIN Tasks    t ON t.id = l.task_id
               JOIN Backlogs r ON r.id = t.backlog_id
               JOIN Users    u ON u.id = l.user_id
+              LEFT JOIN Teams tm ON tm.id = r.team_id
               WHERE l.user_id = @u AND l.work_date >= @from AND l.work_date <= @to
+                AND (@noTeam OR r.team_id IN @teamIds)
               ORDER BY r.project, r.backlog_code, t.order_index, l.work_date;",
-            new { u = userId, from = Iso(from), to = Iso(to) });
+            new { u = userId, from = Iso(from), to = Iso(to), noTeam, teamIds = teamIds ?? Array.Empty<int>() });
         return rows.Select(MapReportRow).ToList();
     }
 
-    public async Task<IReadOnlyList<TimeLogReportRow>> GetExportRowsAsync(DateOnly from, DateOnly to, string? projectFilter)
+    public async Task<IReadOnlyList<TimeLogReportRow>> GetExportRowsAsync(DateOnly from, DateOnly to, string? projectFilter, IReadOnlyList<int>? teamIds = null)
     {
         using var c = _factory.Create();
-        // Same INNER JOIN with NO is_active predicate (XC-06); optional project filter.
+        // Same INNER JOIN with NO is_active predicate (XC-06); optional project + team filters.
+        // R1 leak fix: without a team predicate this export would surface every team's rows.
+        var noTeam = teamIds is null;
         var rows = await c.QueryAsync<ReportRaw>(
             @"SELECT u.id AS user_id, u.name AS user_name,
                      r.backlog_code AS backlog_code, r.project AS project,
                      t.id AS task_id, t.task_name AS task_name,
-                     l.work_date AS work_date, l.hours AS hours
+                     l.work_date AS work_date, l.hours AS hours,
+                     r.team_id AS team_id, tm.name AS team_name
               FROM TimeLogs l
               JOIN Tasks    t ON t.id = l.task_id
               JOIN Backlogs r ON r.id = t.backlog_id
               JOIN Users    u ON u.id = l.user_id
+              LEFT JOIN Teams tm ON tm.id = r.team_id
               WHERE l.work_date >= @from AND l.work_date <= @to
                 AND (@proj IS NULL OR r.project = @proj)
+                AND (@noTeam OR r.team_id IN @teamIds)
               ORDER BY u.name, r.project, r.backlog_code, t.order_index, l.work_date;",
-            new { from = Iso(from), to = Iso(to), proj = projectFilter });
+            new { from = Iso(from), to = Iso(to), proj = projectFilter, noTeam, teamIds = teamIds ?? Array.Empty<int>() });
         return rows.Select(MapReportRow).ToList();
     }
 
@@ -142,7 +153,8 @@ public sealed class TimeLogRepository : ITimeLogRepository
         r.backlog_code, r.project,
         (int)r.task_id, r.task_name,
         DateOnly.ParseExact(r.work_date, "yyyy-MM-dd", CultureInfo.InvariantCulture),
-        (decimal)r.hours);
+        (decimal)r.hours,
+        r.team_id is { } team ? (int)team : null, r.team_name);
 
     // SQLite-native shapes (long/double/string) Dapper maps cleanly; converted at the boundary above.
     private sealed class TimeLogRaw
@@ -171,5 +183,7 @@ public sealed class TimeLogRepository : ITimeLogRepository
         public string task_name { get; set; } = "";
         public string work_date { get; set; } = "";
         public double hours { get; set; }
+        public long? team_id { get; set; }
+        public string? team_name { get; set; }
     }
 }

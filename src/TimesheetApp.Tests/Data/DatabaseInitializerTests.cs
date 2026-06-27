@@ -16,7 +16,8 @@ public class DatabaseInitializerTests : IDisposable
 
     private static readonly string[] ExpectedTables =
     {
-        "Users", "Backlogs", "Tasks", "TaskTemplates", "TimeLogs", "DefaultTasks", "Settings"
+        "Users", "Backlogs", "Tasks", "TaskTemplates", "TimeLogs", "DefaultTasks", "Settings",
+        "Teams", "UserTeams"   // P10 schema v8
     };
 
     public DatabaseInitializerTests()

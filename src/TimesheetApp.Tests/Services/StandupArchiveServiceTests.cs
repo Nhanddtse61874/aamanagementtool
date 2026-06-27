@@ -35,8 +35,8 @@ public sealed class StandupArchiveServiceTests : IDisposable
         IReadOnlyList<StandupEntry> all, DateOnly today, IReadOnlyList<StandupIssue>? issues = null)
     {
         var repo = new Mock<IStandupRepository>();
-        repo.Setup(r => r.GetEntriesForRangeAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>()))
-            .ReturnsAsync((DateOnly from, DateOnly to) =>
+        repo.Setup(r => r.GetEntriesForRangeAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync((DateOnly from, DateOnly to, IReadOnlyList<int>? teamIds) =>
                 all.Where(e => e.WorkDate >= from && e.WorkDate <= to).ToList());
         repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
             .ReturnsAsync(issues ?? Array.Empty<StandupIssue>());

@@ -7,7 +7,9 @@ namespace TimesheetApp.Data.Repositories;
 public interface ITaskRepository
 {
     Task<IReadOnlyList<TaskItem>> GetActiveByBacklogAsync(int backlogId);
-    Task<IReadOnlyList<TaskItem>> GetActiveForTimesheetAsync();    // active tasks across active backlogs + DEFAULT, ordered (TS-02)
+    // P10 (TM-06): the Log Work grid is active-team-scoped. teamId null => all teams (preserves
+    // existing tests); a teamId filters via the backlog's team_id; teamId 0 => no tasks (empty, R6).
+    Task<IReadOnlyList<TaskItem>> GetActiveForTimesheetAsync(int? teamId = null);    // active tasks for the team's backlogs + DEFAULT, ordered (TS-02)
     Task<TaskItem?> GetByIdAsync(int id);
     Task<TaskItem?> GetByNameInBacklogAsync(int backlogId, string taskName); // DEFAULT sync match by name (DATA-03/SET-04)
     Task<int> InsertAsync(TaskItem task);                          // REQ-02/REQ-03/SET-04

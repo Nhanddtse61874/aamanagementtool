@@ -11,8 +11,10 @@ public interface ITimeLogRepository
     Task UpsertAsync(TimeLog log);
     Task DeleteAsync(int userId, int taskId, DateOnly workDate);   // empty cell => remove row (TS-03)
     Task<IReadOnlyList<TimeLog>> GetByUserAndRangeAsync(int userId, DateOnly from, DateOnly to);  // week grid + 8h day-total read (XC-03)
-    Task<IReadOnlyList<TimeLogReportRow>> GetReportRowsAsync(int userId, DateOnly from, DateOnly to); // RPT-01..03
-    Task<IReadOnlyList<TimeLogReportRow>> GetExportRowsAsync(DateOnly from, DateOnly to, string? projectFilter); // EXP-01..04
+    // teamIds: null => all teams (preserves existing tests); a list filters via the Backlogs join;
+    // an EMPTY list => no teams (teamId 0 == empty, R6). Projects the owning team (R1 leak fix).
+    Task<IReadOnlyList<TimeLogReportRow>> GetReportRowsAsync(int userId, DateOnly from, DateOnly to, IReadOnlyList<int>? teamIds = null); // RPT-01..03
+    Task<IReadOnlyList<TimeLogReportRow>> GetExportRowsAsync(DateOnly from, DateOnly to, string? projectFilter, IReadOnlyList<int>? teamIds = null); // EXP-01..04
     Task<IReadOnlyList<int>> GetUserIdsWithLogsInRangeAsync(DateOnly from, DateOnly to);  // RPT-04 single-range scan
     // Batch upsert in one transaction for smart-input apply (SI-05 atomicity).
     Task UpsertBatchAsync(IReadOnlyList<TimeLog> logs);

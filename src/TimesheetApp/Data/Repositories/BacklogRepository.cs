@@ -10,28 +10,36 @@ namespace TimesheetApp.Data.Repositories;
 public sealed class BacklogRepository : IBacklogRepository
 {
     private const string Cols = "id, backlog_code, project, created_at, start_date, end_date, period_month, type, assignee_user_id, " +
-        "deadline_internal, deadline_external, rough_estimate_hours, official_estimate_hours, progress_percent, note, pca_contact_id";
+        "deadline_internal, deadline_external, rough_estimate_hours, official_estimate_hours, progress_percent, note, pca_contact_id, team_id";
 
     private readonly IConnectionFactory _factory;
 
     public BacklogRepository(IConnectionFactory factory) => _factory = factory;
 
-    public async Task<IReadOnlyList<Backlog>> SearchAsync(string? term)
+    public async Task<IReadOnlyList<Backlog>> SearchAsync(string? term, IReadOnlyList<int>? teamIds = null)
     {
         using var c = _factory.Create();
+        // teamIds == null => no team filter (all teams). A non-null list (incl. empty) filters via
+        // `team_id IN @teamIds`; an empty list matches nothing (teamId 0 == empty, R6). @noTeam short-
+        // circuits the predicate when null so existing callers keep returning every backlog.
+        var noTeam = teamIds is null;
         if (string.IsNullOrWhiteSpace(term))
         {
             var all = await c.QueryAsync<BacklogRaw>(
-                $"SELECT {Cols} FROM Backlogs ORDER BY backlog_code;");
+                $@"SELECT {Cols} FROM Backlogs
+                   WHERE (@noTeam OR team_id IN @teamIds)
+                   ORDER BY backlog_code;",
+                new { noTeam, teamIds = teamIds ?? Array.Empty<int>() });
             return all.Select(MapBacklog).ToList();
         }
 
         var like = "%" + term.Trim() + "%";
         var rows = await c.QueryAsync<BacklogRaw>(
             $@"SELECT {Cols} FROM Backlogs
-               WHERE backlog_code LIKE @q OR project LIKE @q
+               WHERE (backlog_code LIKE @q OR project LIKE @q)
+                 AND (@noTeam OR team_id IN @teamIds)
                ORDER BY backlog_code;",
-            new { q = like });
+            new { q = like, noTeam, teamIds = teamIds ?? Array.Empty<int>() });
         return rows.Select(MapBacklog).ToList();
     }
 
@@ -52,14 +60,23 @@ public sealed class BacklogRepository : IBacklogRepository
         return row is null ? null : MapBacklog(row);
     }
 
+    public async Task<Backlog?> GetDefaultForTeamAsync(int teamId)
+    {
+        using var c = _factory.Create();
+        var row = await c.QuerySingleOrDefaultAsync<BacklogRaw>(
+            $"SELECT {Cols} FROM Backlogs WHERE backlog_code = 'DEFAULT' AND team_id = @t;",
+            new { t = teamId });
+        return row is null ? null : MapBacklog(row);
+    }
+
     public async Task<int> InsertAsync(Backlog backlog)
     {
         using var c = _factory.Create();
         return await c.ExecuteScalarAsync<int>(
             @"INSERT INTO Backlogs(backlog_code, project, created_at, start_date, end_date, period_month, type, assignee_user_id,
-                deadline_internal, deadline_external, rough_estimate_hours, official_estimate_hours, progress_percent, note, pca_contact_id)
+                deadline_internal, deadline_external, rough_estimate_hours, official_estimate_hours, progress_percent, note, pca_contact_id, team_id)
               VALUES(@BacklogCode, @Project, @CreatedAt, @StartDate, @EndDate, @PeriodMonth, @Type, @AssigneeUserId,
-                @DeadlineInternal, @DeadlineExternal, @RoughEstimateHours, @OfficialEstimateHours, @ProgressPercent, @Note, @PcaContactId);
+                @DeadlineInternal, @DeadlineExternal, @RoughEstimateHours, @OfficialEstimateHours, @ProgressPercent, @Note, @PcaContactId, @TeamId);
               SELECT last_insert_rowid();",
             new
             {
@@ -78,6 +95,7 @@ public sealed class BacklogRepository : IBacklogRepository
                 backlog.ProgressPercent,
                 backlog.Note,
                 backlog.PcaContactId,
+                backlog.TeamId,
             });
     }
 
@@ -95,7 +113,8 @@ public sealed class BacklogRepository : IBacklogRepository
                 assignee_user_id = @AssigneeUserId,
                 deadline_internal = @DeadlineInternal, deadline_external = @DeadlineExternal,
                 rough_estimate_hours = @RoughEstimateHours, official_estimate_hours = @OfficialEstimateHours,
-                progress_percent = @ProgressPercent, note = @Note, pca_contact_id = @PcaContactId
+                progress_percent = @ProgressPercent, note = @Note, pca_contact_id = @PcaContactId,
+                team_id = @TeamId
               WHERE id = @Id;",
             new
             {
@@ -113,6 +132,7 @@ public sealed class BacklogRepository : IBacklogRepository
                 backlog.ProgressPercent,
                 backlog.Note,
                 backlog.PcaContactId,
+                backlog.TeamId,
                 backlog.Id,
             });
 
@@ -239,7 +259,8 @@ public sealed class BacklogRepository : IBacklogRepository
         r.official_estimate_hours is { } off ? (decimal)off : null,
         r.progress_percent is { } pp ? (int)pp : null,
         r.note,
-        r.pca_contact_id is { } pca ? (int)pca : null);
+        r.pca_contact_id is { } pca ? (int)pca : null,
+        r.team_id is { } team ? (int)team : null);
 
     private static DateOnly? ParseDay(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null
@@ -265,6 +286,8 @@ public sealed class BacklogRepository : IBacklogRepository
         public long? progress_percent { get; set; }
         public string? note { get; set; }
         public long? pca_contact_id { get; set; }
+        // v8
+        public long? team_id { get; set; }
     }
 
     private sealed class AuditRaw

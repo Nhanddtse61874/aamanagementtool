@@ -6,13 +6,15 @@ namespace TimesheetApp.Data.Repositories;
 public interface IStandupRepository
 {
     // All of a user's entries on a day (both sections), ordered by section then order_index (DR-07).
-    Task<IReadOnlyList<StandupEntry>> GetEntriesAsync(int userId, DateOnly workDate);
+    // P10 (TM-06): teamId null => all teams (preserves existing tests); set => active-team only.
+    Task<IReadOnlyList<StandupEntry>> GetEntriesAsync(int userId, DateOnly workDate, int? teamId = null);
 
-    // Every entry on a day across the team (board view, DR-08).
-    Task<IReadOnlyList<StandupEntry>> GetEntriesForDayAsync(DateOnly workDate);
+    // Every entry on a day across the checked teams (board view, DR-08 / TM-07).
+    // teamIds null => all teams (preserves existing tests); a list filters; empty => none (R6).
+    Task<IReadOnlyList<StandupEntry>> GetEntriesForDayAsync(DateOnly workDate, IReadOnlyList<int>? teamIds = null);
 
-    // Entries across a date range, ordered by date (weekly archive, DR-09).
-    Task<IReadOnlyList<StandupEntry>> GetEntriesForRangeAsync(DateOnly from, DateOnly to);
+    // Entries across a date range, ordered by date (weekly archive, DR-09 / TM-08).
+    Task<IReadOnlyList<StandupEntry>> GetEntriesForRangeAsync(DateOnly from, DateOnly to, IReadOnlyList<int>? teamIds = null);
 
     // One entry by id (used to gate edits by owner + work_date), or null.
     Task<StandupEntry?> GetEntryAsync(int entryId);

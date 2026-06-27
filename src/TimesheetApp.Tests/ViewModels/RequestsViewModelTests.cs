@@ -28,7 +28,7 @@ public sealed class BacklogsViewModelTests
     [Fact] // REQ-01: LoadAsync populates the list with all requests
     public async Task LoadAsync_loads_all_requests()
     {
-        _requests.Setup(r => r.SearchAsync(null))
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[] { R(1, "RQ-1", "Alpha"), R(2, "RQ-2", "Beta") });
         var vm = CreateVm();
 
@@ -40,7 +40,7 @@ public sealed class BacklogsViewModelTests
     [Fact] // REQ-01: search filters the loaded list live (in-memory), by code or project
     public async Task SearchTerm_filters_loaded_list_live()
     {
-        _requests.Setup(r => r.SearchAsync(null))
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>()))
             .ReturnsAsync(new[] { R(1, "RQ-1", "Alpha"), R(2, "RQ-2", "Beta") });
         var vm = CreateVm();
         await vm.LoadAsync();
@@ -50,13 +50,13 @@ public sealed class BacklogsViewModelTests
 
         Assert.Single(vm.Backlogs);
         Assert.Equal("RQ-1", vm.Backlogs[0].BacklogCode);
-        _requests.Verify(r => r.SearchAsync(It.IsAny<string?>()), Times.Once); // loaded once
+        _requests.Verify(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>()), Times.Once); // loaded once
     }
 
     [Fact] // Structured filters (project/status/assignee/month) combine with the search, all in-memory.
     public async Task Filters_combine_in_memory()
     {
-        _requests.Setup(r => r.SearchAsync(null)).ReturnsAsync(new[]
+        _requests.Setup(r => r.SearchAsync(null, It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(new[]
         {
             new Backlog(1, "RQ-1", "ARCS", DateTimeOffset.UtcNow, Type: "Implement"),
             new Backlog(2, "RQ-2", "ARMS", DateTimeOffset.UtcNow, Type: "Implement"),
@@ -76,7 +76,7 @@ public sealed class BacklogsViewModelTests
     public async Task SaveNewAsync_inserts_request_and_ordered_tasks()
     {
         _requests.Setup(r => r.InsertAsync(It.IsAny<Backlog>())).ReturnsAsync(42);
-        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(Array.Empty<Backlog>());
+        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(Array.Empty<Backlog>());
         var vm = CreateVm();
         await vm.BeginCreateAsync();
         vm.Editor!.BacklogCode = "RQ-9";
@@ -98,7 +98,7 @@ public sealed class BacklogsViewModelTests
     [Fact] // A new request with no tasks is rejected: editor stays open with an error, nothing inserted.
     public async Task SaveNewAsync_requires_at_least_one_task()
     {
-        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(Array.Empty<Backlog>());
+        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(Array.Empty<Backlog>());
         var vm = CreateVm();
         await vm.BeginCreateAsync();
         vm.Editor!.BacklogCode = "RQ-EMPTY";
@@ -116,7 +116,7 @@ public sealed class BacklogsViewModelTests
     public async Task SaveNewAsync_with_template_inserts_template_tasks()
     {
         _requests.Setup(r => r.InsertAsync(It.IsAny<Backlog>())).ReturnsAsync(7);
-        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(Array.Empty<Backlog>());
+        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(Array.Empty<Backlog>());
         var vm = CreateVm();
         await vm.BeginCreateAsync();
         vm.Editor!.BacklogCode = "RQ-T";
@@ -138,7 +138,7 @@ public sealed class BacklogsViewModelTests
         _requests.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(R(5, "RQ-5", "Old"));
         _tasks.Setup(t => t.GetActiveByBacklogAsync(5))
             .ReturnsAsync(new[] { new TaskItem(50, 5, "Existing", 0, true) });
-        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(Array.Empty<Backlog>());
+        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(Array.Empty<Backlog>());
         var vm = CreateVm();
         await vm.BeginEditAsync(5);
         vm.Editor!.Project = "New";
@@ -161,7 +161,7 @@ public sealed class BacklogsViewModelTests
         _requests.Setup(r => r.GetByIdAsync(5)).ReturnsAsync(R(5, "RQ-5", "Old"));
         _tasks.Setup(t => t.GetActiveByBacklogAsync(5))
             .ReturnsAsync(new[] { new TaskItem(50, 5, "Existing", 0, true) });
-        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>())).ReturnsAsync(Array.Empty<Backlog>());
+        _requests.Setup(r => r.SearchAsync(It.IsAny<string?>(), It.IsAny<IReadOnlyList<int>?>())).ReturnsAsync(Array.Empty<Backlog>());
         var vm = CreateVm();
         await vm.BeginEditAsync(5);
         vm.Editor!.RemoveTask(vm.Editor.Tasks[0]); // flag existing task removed
