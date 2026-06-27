@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Moq;
 using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
@@ -17,7 +18,7 @@ public class SettingsViewModelTests
         out Mock<ITaskTemplateRepository> templates,
         out Mock<IDefaultTaskSyncService> sync,
         string? warningDays = "3")
-        => Build(out config, out settings, out templates, out sync, out _, out _, out _, warningDays);
+        => Build(out config, out settings, out templates, out sync, out _, out _, out _, out _, out _, warningDays);
 
     private static SettingsViewModel Build(
         out Mock<IAppConfig> config,
@@ -27,6 +28,19 @@ public class SettingsViewModelTests
         out Mock<ITagRepository> tags,
         out Mock<IPcaContactRepository> pca,
         out Mock<IHolidayRepository> holidays,
+        string? warningDays = "3")
+        => Build(out config, out settings, out templates, out sync, out tags, out pca, out holidays, out _, out _, warningDays);
+
+    private static SettingsViewModel Build(
+        out Mock<IAppConfig> config,
+        out Mock<ISettingsRepository> settings,
+        out Mock<ITaskTemplateRepository> templates,
+        out Mock<IDefaultTaskSyncService> sync,
+        out Mock<ITagRepository> tags,
+        out Mock<IPcaContactRepository> pca,
+        out Mock<IHolidayRepository> holidays,
+        out Mock<ITeamRepository> teams,
+        out Mock<IUserRepository> users,
         string? warningDays = "3")
     {
         config = new Mock<IAppConfig>();
@@ -53,9 +67,15 @@ public class SettingsViewModelTests
         holidays.Setup(h => h.GetForMonthAsync(It.IsAny<int>(), It.IsAny<int>()))
                 .ReturnsAsync(Array.Empty<Holiday>());
 
+        teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Team>());
+        users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetActiveAsync()).ReturnsAsync(Array.Empty<User>());
+
         return new SettingsViewModel(
             config.Object, settings.Object, templates.Object, sync.Object,
-            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>());
+            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>(),
+            teams.Object, users.Object);
     }
 
     // ---------- SET-02: N-days default 3 + persist ----------
@@ -301,9 +321,14 @@ public class SettingsViewModelTests
         var templates = new Mock<ITaskTemplateRepository>();
         templates.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<TaskTemplate>());
         var sync = new Mock<IDefaultTaskSyncService>();
+        var teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Team>());
+        var usersRepo = new Mock<IUserRepository>();
+        usersRepo.Setup(u => u.GetActiveAsync()).ReturnsAsync(Array.Empty<User>());
 
         var vm = new SettingsViewModel(config.Object, settings.Object, templates.Object, sync.Object,
-            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>());
+            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>(),
+            teams.Object, usersRepo.Object);
         await vm.LoadAsync();
         vm.PcaContacts[0].Name = "Renamed";
 
@@ -345,6 +370,175 @@ public class SettingsViewModelTests
 
         await cal.ToggleHolidayCommand.ExecuteAsync(date);
         holidays.Verify(h => h.DeleteAsync(date), Times.Once);
+    }
+
+    // ---------- TM-03/TM-04: teams (soft-delete CRUD) + membership editor ----------
+    [Fact]
+    public async Task AddTeam_InsertsTeam_SeedsItsDefault_AndBroadcasts()
+    {
+        var teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Team>());
+        teams.Setup(t => t.InsertAsync(It.IsAny<Team>())).ReturnsAsync(42);
+        var sync = new Mock<IDefaultTaskSyncService>();
+        var bus = new CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger();
+        var vm = BuildWith(teams, new Mock<IUserRepository>(), sync, bus);
+        await vm.LoadAsync();
+        vm.NewTeamName = "  Team A  ";
+
+        var seen = false;
+        bus.Register<DataChangedMessage>(this, (_, m) => { if (m.Kind == DataKind.Teams) seen = true; });
+
+        await vm.AddTeamCommand.ExecuteAsync(null);
+
+        teams.Verify(t => t.InsertAsync(It.Is<Team>(x => x.Name == "Team A" && x.IsActive)), Times.Once);
+        // TM-04: the new team gets its DEFAULT backlog + a sync pass materializing default tasks.
+        sync.Verify(s => s.EnsureDefaultBacklogIdAsync(42), Times.Once);
+        sync.Verify(s => s.SyncAsync(), Times.Once);
+        Assert.Equal(string.Empty, vm.NewTeamName);
+        Assert.True(seen);
+    }
+
+    [Fact]
+    public async Task AddTeam_DoesNothing_WhenNameBlank()
+    {
+        var vm = Build(out _, out _, out _, out var sync, out _, out _, out _, out var teams, out _);
+        await vm.LoadAsync();
+        vm.NewTeamName = "   ";
+
+        await vm.AddTeamCommand.ExecuteAsync(null);
+
+        teams.Verify(t => t.InsertAsync(It.IsAny<Team>()), Times.Never);
+        sync.Verify(s => s.EnsureDefaultBacklogIdAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RenameTeam_UpdatesNameFromEditedRow()
+    {
+        var teams = new Mock<ITeamRepository>();
+        teams.SetupSequence(t => t.GetAllAsync())
+             .ReturnsAsync(new[] { new Team(3, "Old", true, DateTimeOffset.UtcNow) })
+             .ReturnsAsync(new[] { new Team(3, "Renamed", true, DateTimeOffset.UtcNow) });
+        var vm = BuildWith(teams, new Mock<IUserRepository>());
+        await vm.LoadAsync();
+        vm.Teams[0].Name = "Renamed";
+
+        await vm.RenameTeamCommand.ExecuteAsync(3);
+
+        teams.Verify(t => t.UpdateNameAsync(3, "Renamed"), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeactivateTeam_SoftDeletes()
+    {
+        var vm = Build(out _, out _, out _, out _, out _, out _, out _, out var teams, out _);
+        await vm.LoadAsync();
+        await vm.DeactivateTeamCommand.ExecuteAsync(4);
+        teams.Verify(t => t.SetActiveAsync(4, false), Times.Once);
+    }
+
+    [Fact]
+    public async Task BeginEditMembers_OpensEditor_PreChecksCurrentMembers()
+    {
+        var teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { new Team(7, "T", true, DateTimeOffset.UtcNow) });
+        teams.Setup(t => t.GetByIdAsync(7)).ReturnsAsync(new Team(7, "T", true, DateTimeOffset.UtcNow));
+        teams.Setup(t => t.GetUserIdsForTeamAsync(7)).ReturnsAsync(new[] { 2 });
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[]
+        {
+            new User(1, "Alice", null, true),
+            new User(2, "Bob", null, true),
+        });
+
+        var vm = BuildWith(teams, users);
+        await vm.LoadAsync();
+        await vm.BeginEditMembersCommand.ExecuteAsync(7);
+
+        Assert.NotNull(vm.MembershipEditor);
+        Assert.Equal(2, vm.MembershipEditor!.Users.Count);
+        Assert.False(vm.MembershipEditor.Users[0].IsChecked); // Alice (id 1) not a member
+        Assert.True(vm.MembershipEditor.Users[1].IsChecked);  // Bob (id 2) is a member
+    }
+
+    [Fact]
+    public async Task SaveMembers_ReplaceAll_ThenReopenReflectsNewSet()
+    {
+        var stored = new List<int> { 2 };
+        var teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { new Team(7, "T", true, DateTimeOffset.UtcNow) });
+        teams.Setup(t => t.GetByIdAsync(7)).ReturnsAsync(new Team(7, "T", true, DateTimeOffset.UtcNow));
+        teams.Setup(t => t.GetUserIdsForTeamAsync(7)).ReturnsAsync(() => stored.ToArray());
+        teams.Setup(t => t.SetMembersAsync(7, It.IsAny<IReadOnlyList<int>>()))
+             .Callback<int, IReadOnlyList<int>>((_, ids) => stored = ids.ToList())
+             .Returns(Task.CompletedTask);
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[]
+        {
+            new User(1, "Alice", null, true),
+            new User(2, "Bob", null, true),
+        });
+
+        var vm = BuildWith(teams, users);
+        await vm.LoadAsync();
+
+        // Open, check Alice (was unchecked) + uncheck Bob, then save (replace-all).
+        await vm.BeginEditMembersCommand.ExecuteAsync(7);
+        vm.MembershipEditor!.Users[0].IsChecked = true;   // Alice in
+        vm.MembershipEditor.Users[1].IsChecked = false;   // Bob out
+        await vm.SaveMembersCommand.ExecuteAsync(null);
+
+        teams.Verify(t => t.SetMembersAsync(7, It.Is<IReadOnlyList<int>>(ids =>
+            ids.Count == 1 && ids[0] == 1)), Times.Once);
+        Assert.Null(vm.MembershipEditor); // editor closes on save
+
+        // Reopen → reflects the replaced set ({1}).
+        await vm.BeginEditMembersCommand.ExecuteAsync(7);
+        Assert.True(vm.MembershipEditor!.Users[0].IsChecked);  // Alice now a member
+        Assert.False(vm.MembershipEditor.Users[1].IsChecked);  // Bob removed
+    }
+
+    [Fact]
+    public async Task CancelMembers_ClosesEditorWithoutSaving()
+    {
+        var teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { new Team(7, "T", true, DateTimeOffset.UtcNow) });
+        teams.Setup(t => t.GetByIdAsync(7)).ReturnsAsync(new Team(7, "T", true, DateTimeOffset.UtcNow));
+        teams.Setup(t => t.GetUserIdsForTeamAsync(7)).ReturnsAsync(Array.Empty<int>());
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetActiveAsync()).ReturnsAsync(Array.Empty<User>());
+        var vm = BuildWith(teams, users);
+        await vm.LoadAsync();
+        await vm.BeginEditMembersCommand.ExecuteAsync(7);
+
+        vm.CancelMembersCommand.Execute(null);
+
+        Assert.Null(vm.MembershipEditor);
+        teams.Verify(t => t.SetMembersAsync(It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>()), Times.Never);
+    }
+
+    // Helper for team-focused tests that need custom team/user mocks (other deps stubbed minimally).
+    private static SettingsViewModel BuildWith(
+        Mock<ITeamRepository> teams,
+        Mock<IUserRepository> users,
+        Mock<IDefaultTaskSyncService>? sync = null,
+        CommunityToolkit.Mvvm.Messaging.IMessenger? messenger = null)
+    {
+        var config = new Mock<IAppConfig>();
+        var settings = new Mock<ISettingsRepository>();
+        settings.Setup(s => s.GetAsync(ReportsViewModel.NDaysKey)).ReturnsAsync("3");
+        var templates = new Mock<ITaskTemplateRepository>();
+        templates.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<TaskTemplate>());
+        sync ??= new Mock<IDefaultTaskSyncService>();
+        var tags = new Mock<ITagRepository>();
+        tags.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Tag>());
+        var pca = new Mock<IPcaContactRepository>();
+        pca.Setup(p => p.GetAllAsync()).ReturnsAsync(Array.Empty<PcaContact>());
+        var holidays = new Mock<IHolidayRepository>();
+        holidays.Setup(h => h.GetForMonthAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync(Array.Empty<Holiday>());
+        return new SettingsViewModel(config.Object, settings.Object, templates.Object, sync.Object,
+            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>(),
+            teams.Object, users.Object, messenger);
     }
 
     [Fact]

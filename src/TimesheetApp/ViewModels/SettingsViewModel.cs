@@ -25,6 +25,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ITagRepository _tags;                  // P8 TAG-01
     private readonly IPcaContactRepository _pca;            // P8 TL-11
     private readonly IBackupService _backup;                // P9 BK-01..06
+    private readonly ITeamRepository _teams;                // P10 TM-03
+    private readonly IUserRepository _users;                // P10 TM-03 (membership editor)
     private readonly IMessenger _messenger;
 
     public SettingsViewModel(
@@ -36,6 +38,8 @@ public partial class SettingsViewModel : ObservableObject
         IPcaContactRepository pca,
         IHolidayRepository holidays,
         IBackupService backup,
+        ITeamRepository teams,
+        IUserRepository users,
         IMessenger? messenger = null)
     {
         _config = config;
@@ -45,6 +49,8 @@ public partial class SettingsViewModel : ObservableObject
         _tags = tags;
         _pca = pca;
         _backup = backup;
+        _teams = teams;
+        _users = users;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         HolidayCalendar = new HolidayCalendarViewModel(holidays, _messenger);
     }
@@ -77,6 +83,17 @@ public partial class SettingsViewModel : ObservableObject
 
     // Owned month-grid holiday calendar.
     public HolidayCalendarViewModel HolidayCalendar { get; }
+
+    // --- P10: Teams (TM-03) ---
+
+    // Editable row wrappers so the Name TextBox is two-way bindable (Team is an immutable record).
+    public ObservableCollection<TeamRowVm> Teams { get; } = new();
+
+    // New-team input box (mirrors NewPcaName).
+    [ObservableProperty] private string _newTeamName = string.Empty;
+
+    // The membership editor overlay; null = hidden (mirrors TemplateEditor/TagEditor).
+    [ObservableProperty] private TeamMembershipEditorViewModel? _membershipEditor;
 
     // --- P9: Backup & Restore (BK-01..07) ---
 
@@ -111,6 +128,7 @@ public partial class SettingsViewModel : ObservableObject
         await ReloadTemplatesAsync();
         await ReloadTagsAsync();
         await ReloadPcaAsync();
+        await ReloadTeamsAsync();
         await HolidayCalendar.LoadAsync();
     }
 
@@ -346,6 +364,93 @@ public partial class SettingsViewModel : ObservableObject
         PcaContacts.Clear();
         foreach (var p in rows) PcaContacts.Add(new PcaContactRowVm(p.Id, p.Name, p.IsActive));
     }
+
+    // ---------- TM-03: teams (soft-delete CRUD, mirrors PCA) + membership overlay ----------
+
+    [RelayCommand]
+    private async Task AddTeamAsync()
+    {
+        var name = NewTeamName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        var newId = await _teams.InsertAsync(new Team(0, name, true, DateTimeOffset.UtcNow));
+        // TM-04: a new team gets its own DEFAULT backlog + the global default tasks materialized under it.
+        await _sync.EnsureDefaultBacklogIdAsync(newId);
+        await _sync.SyncAsync();
+
+        NewTeamName = string.Empty;
+        await ReloadTeamsAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Teams));
+    }
+
+    [RelayCommand]
+    private async Task RenameTeamAsync(int id)
+    {
+        var team = Teams.FirstOrDefault(t => t.Id == id);
+        if (team is null) return;
+        var name = team.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        await _teams.UpdateNameAsync(id, name);
+        await ReloadTeamsAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Teams));
+    }
+
+    [RelayCommand]
+    private async Task DeactivateTeamAsync(int id)
+    {
+        await _teams.SetActiveAsync(id, false);   // soft-delete: historical backlogs/standup keep the reference
+        await ReloadTeamsAsync();
+        _messenger.Send(new DataChangedMessage(DataKind.Teams));
+    }
+
+    // Membership editor: open an overlay seeded with all active users, pre-checking current members.
+    [RelayCommand]
+    private async Task BeginEditMembersAsync(int id)
+    {
+        var team = await _teams.GetByIdAsync(id);
+        if (team is null) return;
+        var users = await _users.GetActiveAsync();
+        var members = await _teams.GetUserIdsForTeamAsync(id);
+        MembershipEditor = TeamMembershipEditorViewModel.ForTeam(team, users, members);
+    }
+
+    [RelayCommand]
+    private async Task SaveMembersAsync()
+    {
+        var editor = MembershipEditor;
+        if (editor is null) return;
+
+        await _teams.SetMembersAsync(editor.TeamId, editor.CheckedUserIds);   // replace-all in one tx
+        MembershipEditor = null;
+        _messenger.Send(new DataChangedMessage(DataKind.Teams));
+    }
+
+    [RelayCommand]
+    private void CancelMembers() => MembershipEditor = null;
+
+    private async Task ReloadTeamsAsync()
+    {
+        var rows = await _teams.GetAllAsync();   // incl. inactive (Settings list)
+        Teams.Clear();
+        foreach (var t in rows) Teams.Add(new TeamRowVm(t.Id, t.Name, t.IsActive));
+    }
+}
+
+// Editable row for the Settings Teams list (TM-03): a mutable Name TextBox + the immutable id/active flag.
+public sealed partial class TeamRowVm : ObservableObject
+{
+    public TeamRowVm(int id, string name, bool isActive)
+    {
+        Id = id;
+        _name = name;
+        IsActive = isActive;
+    }
+
+    public int Id { get; }
+    public bool IsActive { get; }
+
+    [ObservableProperty] private string _name;
 }
 
 // Editable row for the Settings PCA list (TL-11): a mutable Name TextBox + the immutable id/active flag.
