@@ -79,6 +79,14 @@ public partial class App : Application
         sc.AddSingleton<IStandupRepository, StandupRepository>();
         sc.AddSingleton<IStandupService, StandupService>();
         sc.AddSingleton<IStandupArchiveService, StandupArchiveService>();
+        // P8 Task List — new repos.
+        sc.AddSingleton<ITagRepository, TagRepository>();
+        sc.AddSingleton<IPcaContactRepository, PcaContactRepository>();
+        sc.AddSingleton<IHolidayRepository, HolidayRepository>();
+        // P8 Task List — new services.
+        sc.AddSingleton<IWorkingDayCalculator, WorkingDayCalculator>();
+        sc.AddSingleton<IScheduleStateService, ScheduleStateService>();
+        sc.AddSingleton<ITaskListArchiveService, TaskListArchiveService>();
 
         // Current-user-id provider (Func<int>) per plan/spec: TimesheetViewModel persists cells for
         // the logged-in user. Resolution defers to ICurrentUserService.Current (set by login flow);
@@ -98,6 +106,7 @@ public partial class App : Application
         sc.AddTransient<ReportsViewModel>();
         sc.AddTransient<SettingsViewModel>();
         sc.AddTransient<DailyReportViewModel>();
+        sc.AddTransient<TaskListViewModel>();
 
         Services = sc.BuildServiceProvider();
 
@@ -108,6 +117,11 @@ public partial class App : Application
         // (desktop app has no scheduler; runs lazily on each startup). Best-effort, never blocks startup.
         try { await Services.GetRequiredService<IStandupArchiveService>().BackfillMissingWeeksAsync(); }
         catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Standup archive backfill failed: {ex.Message}"); }
+
+        // TL-09: back up any completed month that has task-list data but no markdown archive yet.
+        // Best-effort, never blocks startup (mirrors standup backfill above).
+        try { await Services.GetRequiredService<ITaskListArchiveService>().BackfillMissingMonthsAsync(); }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Task list archive backfill failed: {ex.Message}"); }
 
         // FIX C1 (DATA-03/TS-02): on a fresh DB the seeded DefaultTasks have no matching Tasks row
         // under the hidden DEFAULT request, so they never appear as Timesheet rows. SyncAsync was
