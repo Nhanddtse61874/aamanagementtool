@@ -185,7 +185,7 @@ public sealed partial class BacklogsViewModel : ObservableObject
 
         Editor = null;
         await RefreshAsync();
-        _messenger.Send(new DataChangedMessage(DataKind.Tasks)); // live-sync: Timesheet reloads rows
+        _messenger.Send(new DataChangedMessage(DataKind.Backlogs)); // live-sync: Timesheet + Task List reload
     }
 
     [RelayCommand]

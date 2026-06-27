@@ -59,7 +59,7 @@ public sealed partial class TaskListViewModel : ObservableObject
         _messenger.Register<TaskListViewModel, DataChangedMessage>(this, static (r, m) =>
         {
             if (m.Kind is DataKind.Backlogs or DataKind.Tasks or DataKind.Logs
-                or DataKind.Tags or DataKind.Holidays)
+                or DataKind.Tags or DataKind.Holidays or DataKind.PcaContacts)
                 _ = r.LoadAsync();
         });
     }
