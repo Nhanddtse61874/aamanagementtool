@@ -70,3 +70,26 @@ public sealed record DateEntry(DateOnly Date, decimal TotalHours);
 
 // RPT-04: one flagged active user (banner shows the configured N, not the actual gap).
 public sealed record MissingLogWarning(string UserName);
+
+// ---- P8 Task List read-models (spec §2.4) ----
+
+// Schedule chip state for a backlog (TL-07/08). Late takes precedence over Warning.
+public enum ScheduleState { Normal, Warning, Late }
+
+// One Task List grid row per non-DEFAULT backlog in the selected month. Logged hours are all-time;
+// EstimateHours is official ?? rough; Tasks are the backlog's tasks (for the expand panel).
+public sealed record TaskListRow(
+    int BacklogId, string BacklogCode, string Project, string? Type,
+    string? PctAssigneeName, string? PcaContactName,
+    DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate,
+    int? ProgressPercent, decimal LoggedHours, decimal? EstimateHours,
+    ScheduleState ScheduleState, IReadOnlyList<Tag> Tags, IReadOnlyList<TaskItem> Tasks);
+
+// One Gantt bar: start->internal-deadline over the working-day axis. Indices are positions on
+// GanttModel.Axis; HasStart=false => faint placeholder row (no start_date).
+public sealed record GanttBar(int BacklogId, string BacklogCode,
+    DateOnly? Start, DateOnly? End, int StartDayIndex, int SpanWorkingDays,
+    int? ExternalMarkerIndex, bool HasStart, ScheduleState ScheduleState);
+
+// The Gantt chart model: a working-day axis (weekends/holidays excluded) + one bar per backlog.
+public sealed record GanttModel(IReadOnlyList<DateOnly> Axis, IReadOnlyList<GanttBar> Bars);

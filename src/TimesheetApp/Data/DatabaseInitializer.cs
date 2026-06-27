@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 6;
+    private const long SchemaVersion = 7;
 
     private readonly IConnectionFactory _factory;
 
@@ -116,7 +116,34 @@ CREATE TABLE IF NOT EXISTS StandupIssues (
     FOREIGN KEY (entry_id) REFERENCES StandupEntries(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS ix_standup_issue_entry ON StandupIssues(entry_id);";
+CREATE INDEX IF NOT EXISTS ix_standup_issue_entry ON StandupIssues(entry_id);
+
+-- P8 Task List (schema v7). Tags + N:N BacklogTags link, PCA contacts (soft-delete via is_active,
+-- mirrors Users), and a manual Holiday calendar. All additive; the v7 Backlog ALTERs live in RunMigrations.
+CREATE TABLE IF NOT EXISTS Tags (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    text       TEXT    NOT NULL,
+    icon       TEXT    NOT NULL,
+    color      TEXT    NOT NULL,
+    created_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS BacklogTags (
+    backlog_id INTEGER NOT NULL,
+    tag_id     INTEGER NOT NULL,
+    PRIMARY KEY (backlog_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS PcaContacts (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT    NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS Holidays (
+    holiday_date TEXT PRIMARY KEY,
+    description  TEXT
+);";
         conn.Execute(ddl, transaction: tx);
 
         // Requests + RequestAudit are RENAMED to Backlogs / BacklogAudit by the v6 migration. Re-creating
@@ -203,6 +230,18 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
                   ALTER TABLE StandupEntries RENAME COLUMN request_id TO backlog_id;
                   ALTER TABLE StandupEntries RENAME COLUMN request_code TO backlog_code;",
                 transaction: t),
+            // v7 -> P8 Task List tracking metadata on Backlogs (all nullable; existing rows unaffected).
+            // Dual deadlines, dual estimates, manual progress %, note, and the PCA contact id (no inline
+            // FK, mirroring assignee_user_id). The 4 supporting tables are created in CreateTables.
+            // assignee_user_id (v4) is reused as the PCT person-in-charge — no new PCT column.
+            static (c, t) => c.Execute(
+                @"ALTER TABLE Backlogs ADD COLUMN deadline_internal       TEXT;
+                  ALTER TABLE Backlogs ADD COLUMN deadline_external       TEXT;
+                  ALTER TABLE Backlogs ADD COLUMN rough_estimate_hours    REAL;
+                  ALTER TABLE Backlogs ADD COLUMN official_estimate_hours REAL;
+                  ALTER TABLE Backlogs ADD COLUMN progress_percent        INTEGER;
+                  ALTER TABLE Backlogs ADD COLUMN note                    TEXT;
+                  ALTER TABLE Backlogs ADD COLUMN pca_contact_id          INTEGER;", transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);

@@ -22,8 +22,9 @@
 | **P5** | Reports | RPT-01, RPT-02, RPT-03, RPT-04 |
 | **P6** | Settings + Export | SET-01, SET-02, SET-03, SET-04, EXP-01, EXP-02, EXP-03, EXP-04 |
 | **P7** | Daily Report (Standup) — M2 | DR-01, DR-02, DR-03, DR-04, DR-05, DR-06, DR-07, DR-08, DR-09, DR-10 |
+| **P8** | Task List (tracking, tags, holidays, Gantt) — M3 | TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07, TL-08, TL-09, TL-10, TL-11, TAG-01, TAG-02, HOL-01, HOL-02 |
 
-Total: **45 requirements (M1)** + **10 requirements (M2 / P7)**, every one mapped to exactly one phase.
+Total: **45 requirements (M1)** + **10 requirements (M2 / P7)** + **15 requirements (M3 / P8)**, every one mapped to exactly one phase.
 
 ---
 
@@ -303,6 +304,85 @@ Acceptance: Exporting a week writes a Mon–Fri markdown grouped by date→user�
 ### DR-10 — Nav + cross-tab live refresh
 Statement: The "Daily Report" sidebar item is enabled (replacing the SOON placeholder) and hosts Input + Board sub-tabs; standup edits broadcast a `DataKind.Standup` change so the board refreshes live.
 Acceptance: Clicking the nav shows the Daily Report view; saving in Input updates the Board without a manual reload; switching to the tab loads the selected day.
+
+---
+
+## Task List — tracking, tags, holidays, Gantt (P8 / M3)
+
+**Source of truth:** STEP 2 brainstorm (this session, 2026-06-27) — design decisions confirmed by user via two rounds of questions. Spec to be authored in STEP 5 (`docs/superpowers/specs/2026-06-27-task-list-design.md`).
+
+**Locked design decisions (do not re-litigate):**
+- D1 — All tracking fields live at **Backlog level** (not per-task). Tasks keep only `status`. Logged hours & progress roll up from a backlog's tasks.
+- D2 — Sidebar restructure to top-level: **Log Work · Backlog · Task List · Daily Report · Reports** (WORKSPACE) + **Users · Settings** (ADMIN). Backlog & Reports are pulled OUT of the old Timesheet sub-tab group.
+- D3 — Gantt is drawn with **native WPF (Canvas)** — no charting library/NuGet dependency.
+- D4 — `warning` and `late-deadline` are **system-computed** status chips (not editable). Custom tags (icon+color+text) are user-created in Settings and attach **many-to-many** to backlogs.
+- D5 — PCT person-in-charge = a **User** (reuse `assignee_user_id`). PCA person-in-charge = chosen from a **PcaContacts list** managed in Settings (like Users).
+- D6 — Holiday calendar = a **sub-tab in Settings**; holidays are shared in the DB.
+- D7 — Monthly markdown export = **auto-backfill completed months on startup** + a manual "Export this month" button (mirrors the standup weekly archive pattern).
+- D8 — Estimates (`rough`, `official`) are a **duration in hours**, not a number of days.
+- D9 — Schema migration target **v7**, additive + forward-only, gated on `PRAGMA user_version` (consistent with DATA-05).
+
+> Tags: `[ASSUMED]` marks any detail inferred beyond the user's literal request.
+
+### TL-01 — Schema v7: backlog tracking columns + Tags / BacklogTags / PcaContacts / Holidays (additive migration)
+Statement: Migration v6→v7 adds tracking columns to `Backlogs` and creates `Tags`, `BacklogTags`, `PcaContacts`, `Holidays` tables (forward-only, additive, gated on `PRAGMA user_version`).
+Acceptance: Opening a v6 DB adds to `Backlogs`: `deadline_internal TEXT` (yyyy-MM-dd, nullable, PCT), `deadline_external TEXT` (nullable, PCA), `rough_estimate_hours REAL` (nullable), `official_estimate_hours REAL` (nullable), `progress_percent INTEGER` (nullable, 0–100), `note TEXT` (nullable), `pca_contact_id INTEGER` (nullable, FK→PcaContacts). Creates `Tags(id, text, icon, color, created_at)`, `BacklogTags(backlog_id, tag_id, PK(backlog_id,tag_id))`, `PcaContacts(id, name, is_active DEFAULT 1)`, `Holidays(holiday_date TEXT PK, description TEXT)`. Sets `user_version=7`; idempotent on re-run; existing M1/M2 data untouched. `assignee_user_id` (v4) is reused as the PCT assignee — not re-added.
+
+### TL-02 — Sidebar restructure: Backlog / Task List / Reports as top-level items
+Statement: "Create backlog" is moved out of the Log Work (Timesheet) group to its own top-level sidebar item, at the same level as Log Work and Task List; Reports also becomes top-level; the Task List "SOON" placeholder is replaced by the real view.
+Acceptance: Sidebar WORKSPACE shows **Log Work · Backlog · Task List · Daily Report · Reports**; ADMIN shows **Users · Settings**. "Log Work" hosts only the weekly entry grid (no Backlog/Reports sub-tabs). Each top-level item activates its view and reloads its data. No timesheet/standup behavior regresses. [ASSUMED] exact label "Log Work" (was "Timesheet"/"Entry").
+
+### TL-03 — Backlog tracking fields in the editor
+Statement: The Backlog create/edit form gains: internal deadline (PCT), external deadline (PCA), rough estimate (hours), official estimate (hours), note, PCT assignee (User dropdown), PCA contact (PcaContacts dropdown), and assigned custom tags.
+Acceptance: All fields persist to `Backlogs` (and `BacklogTags` for tags) and round-trip on edit; all are optional; changes are recorded in `BacklogAudit` (existing audit mechanism); the DEFAULT backlog is exempt (no tracking UI).
+
+### TL-04 — Task List overview, scoped per month
+Statement: The Task List screen shows an overview of all backlogs (with their tasks) for a selected month: backlog code, project, status, PCT/PCA assignees, internal/external deadlines, progress %, logged hours, estimate, and tag chips.
+Acceptance: A month selector filters backlogs by `period_month`; each row shows the listed columns; tasks are viewable per backlog (expand); the DEFAULT backlog is excluded; switching month reloads. [ASSUMED] expandable task rows.
+
+### TL-05 — Logged hours on backlog + estimate as duration
+Statement: Each backlog shows total logged hours (sum across all its tasks' TimeLogs) and its estimate as an hours duration.
+Acceptance: Logged hours = `SUM(TimeLogs.hours)` over the backlog's tasks (no `is_active` filter on the join, per XC-06); displayed alongside `official_estimate_hours` (falling back to rough when official is null). Whole hours render without decimals.
+
+### TL-06 — Manual progress % input
+Statement: Progress is a user-entered percentage (0–100) on the backlog.
+Acceptance: Editing the field persists `progress_percent`; values outside 0–100 are rejected; null renders as not-set (not 0%). [ASSUMED] this manual % is independent of the auto schedule-warning (TL-07).
+
+### TL-07 — Auto "warning" (behind-schedule) status chip
+Statement: A `warning` chip is shown when a backlog is within ≤2 working days of its internal (PCT) deadline AND is behind schedule, where behind = work-done fraction < time-elapsed fraction.
+Acceptance: Behind = `loggedHours / estimateHours < workingDaysElapsed(start, today) / workingDaysTotal(start, internalDeadline)` (**standard done%<elapsed% formula — confirmed by user 2026-06-27**, supersedes the literal request which compared against the remaining-time fraction); "≤2 working days" counts working days (excludes weekends + Holidays); chip not shown when no start/deadline/estimate, when done, or when already past deadline (TL-08 takes over). Internal (PCT) deadline drives the check.
+
+### TL-08 — Auto "late deadline" red status chip
+Statement: A red `late deadline` chip is shown when today is past the internal (PCT) deadline and the backlog is not Done.
+Acceptance: `today > deadline_internal` AND backlog not in a done state → red chip; a Done backlog never shows it; takes precedence over the `warning` chip.
+
+### TL-09 — Monthly markdown overview export (auto-backfill + manual)
+Statement: A markdown overview per month is written to `…/Documents/TimesheetApp/TaskListArchives/{yyyyMM}_tasklist.md`; on startup every completed month (strictly before the current month) with backlog data but no archive file is generated; a manual "Export this month" button also exists.
+Acceptance: The file lists each backlog in that `period_month` with status, assignees, deadlines, estimate, logged hours, progress, and tags; it **also** includes backlogs that were moved out of that month to the next (read from `BacklogAudit` `period_month` changes) under a "Moved to next month" section; re-export overwrites idempotently; a month with no data produces no file. [ASSUMED] archive dir/filename pattern mirrors standup.
+
+### TL-10 — Grid ↔ Gantt view toggle with expand/collapse
+Statement: The Task List offers two views — a Grid and a Gantt timeline (start → deadline) — with an expand/collapse control for the chart area.
+Acceptance: A toggle switches Grid ↔ Gantt without losing the selected month; the Gantt is rendered in a WPF Canvas with one horizontal bar per backlog spanning start→deadline across working days (weekends + Holidays visually skipped/marked), colored by schedule state (normal / warning / late); the chart area can be collapsed and expanded.
+
+### TL-11 — Manage PCA contacts list in Settings
+Statement: Settings lets the user add/edit/deactivate PCA contacts, which populate the PCA-assignee dropdown on backlogs.
+Acceptance: PcaContacts CRUD persists; a deactivated contact is hidden from the dropdown but still resolves its name on existing backlogs (soft-delete semantics, like Users).
+
+### TAG-01 — Create/manage custom tags in Settings
+Statement: Settings has a section to create/edit/delete custom tags, each with an icon, a color, and text content.
+Acceptance: Tag CRUD persists to `Tags`; a tag carries `icon` (glyph/emoji), `color` (hex), and `text`; tags are selectable when editing a backlog (TL-03); deleting a tag removes its `BacklogTags` links. [ASSUMED] icon = an emoji/Segoe glyph picker (no image upload).
+
+### TAG-02 — Render tag chips (custom + system) on backlog & Task List
+Statement: A backlog displays its assigned custom tags plus any active system chips (`warning`, `late deadline`) as chips showing the configured icon, color, and text.
+Acceptance: Custom tags render with their `icon`+`color`+`text`; system chips render with fixed styling (amber warning, red late); chips appear on both the Backlog list and the Task List overview/Gantt.
+
+### HOL-01 — Holiday calendar sub-tab in Settings
+Statement: Settings has a calendar sub-tab showing a month where the user clicks a day to mark/unmark it as a holiday (non-working day).
+Acceptance: Marking a day inserts a `Holidays` row; unmarking deletes it; the calendar reflects current holidays and weekends; an optional description per holiday persists. Holidays are shared via the DB.
+
+### HOL-02 — Holidays excluded from all working-day calculations
+Statement: Marked holidays are excluded from working-day computations everywhere — alongside Sat/Sun.
+Acceptance: A shared working-day helper treats Sat/Sun **and** any `Holidays` date as non-working; it is used by smart-input distribution (SI-01/SI-02), the schedule-warning math (TL-07), the "≤2 working days" window, and the Gantt day axis (TL-10). [ASSUMED] smart-input now consults Holidays (extends SI-02 which previously excluded weekends only).
 
 ---
 

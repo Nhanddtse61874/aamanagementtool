@@ -16,4 +16,7 @@ public interface ITimeLogRepository
     Task<IReadOnlyList<int>> GetUserIdsWithLogsInRangeAsync(DateOnly from, DateOnly to);  // RPT-04 single-range scan
     // Batch upsert in one transaction for smart-input apply (SI-05 atomicity).
     Task UpsertBatchAsync(IReadOnlyList<TimeLog> logs);
+    // P8 (TL-05/A1): all-time SUM(hours) per backlog for the Task List roll-up. NO is_active filter on
+    // the TimeLogs->Tasks join (XC-06): hours of soft-deleted tasks still count toward the backlog.
+    Task<IReadOnlyDictionary<int, decimal>> GetLoggedHoursByBacklogAsync();
 }

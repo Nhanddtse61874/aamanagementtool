@@ -11,7 +11,12 @@ public sealed record Backlog(
     int Id, string BacklogCode, string Project, DateTimeOffset CreatedAt,
     DateOnly? StartDate = null, DateOnly? EndDate = null,
     string? PeriodMonth = null, string? Type = null,
-    int? AssigneeUserId = null);   // v4: the user responsible for this ticket (null = unassigned)
+    int? AssigneeUserId = null,   // v4: the PCT person-in-charge / user responsible (null = unassigned)
+    // v7 (Task List tracking). All nullable-defaulted so existing ctors keep compiling.
+    DateOnly? DeadlineInternal = null, DateOnly? DeadlineExternal = null,
+    decimal? RoughEstimateHours = null, decimal? OfficialEstimateHours = null,
+    int? ProgressPercent = null, string? Note = null,
+    int? PcaContactId = null);    // v7: external (PCA) contact (null = unassigned)
 
 // Allowed ticket types (v2, formerly "status"). Order is the display order.
 public static class BacklogType
@@ -47,3 +52,14 @@ public sealed record TimeLog(
 public sealed record TaskTemplate(int Id, string TemplateName, string TaskName, int OrderIndex);
 
 public sealed record DefaultTask(int Id, string TaskName, int OrderIndex, bool IsActive);
+
+// --- P8 Task List entities (schema v7) ---
+
+// User-defined tag (TAG-01): free-text label with an icon glyph/emoji and a hex color. Hard-deletable.
+public sealed record Tag(int Id, string Text, string Icon, string Color, DateTimeOffset CreatedAt);
+
+// External (PCA) contact (TL-11). Soft-deletable via IsActive, mirroring User.
+public sealed record PcaContact(int Id, string Name, bool IsActive);
+
+// A manually-marked non-working day (HOL-01). Date is the natural key.
+public sealed record Holiday(DateOnly Date, string? Description);

@@ -102,6 +102,19 @@ public sealed class TimeLogRepository : ITimeLogRepository
         tx.Commit();
     }
 
+    public async Task<IReadOnlyDictionary<int, decimal>> GetLoggedHoursByBacklogAsync()
+    {
+        using var c = _factory.Create();
+        // All-time roll-up: JOIN Tasks only (NO is_active predicate, XC-06) so soft-deleted tasks' hours
+        // still count. hours is REAL -> read as double, narrow to decimal at the boundary.
+        var rows = await c.QueryAsync<HoursByBacklogRaw>(
+            @"SELECT t.backlog_id AS backlog_id, SUM(l.hours) AS hours
+              FROM TimeLogs l
+              JOIN Tasks    t ON t.id = l.task_id
+              GROUP BY t.backlog_id;");
+        return rows.ToDictionary(r => (int)r.backlog_id, r => (decimal)r.hours);
+    }
+
     private const string UpsertSql =
         @"INSERT INTO TimeLogs(user_id, task_id, work_date, hours, created_at)
           VALUES(@UserId, @TaskId, @WorkDate, @Hours, @CreatedAt)
@@ -140,6 +153,12 @@ public sealed class TimeLogRepository : ITimeLogRepository
         public string work_date { get; set; } = "";
         public double hours { get; set; }
         public string created_at { get; set; } = "";
+    }
+
+    private sealed class HoursByBacklogRaw
+    {
+        public long backlog_id { get; set; }
+        public double hours { get; set; }
     }
 
     private sealed class ReportRaw
