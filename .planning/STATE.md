@@ -1,11 +1,26 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-27 — feature branch `feature/daily-report-2026-06-25` MERGED into `main`
-(Backlog refactor + Daily Report + Smart-fill/Reports redesign + drag&drop). **228 tests green**, build clean.
+**Last updated:** 2026-06-27 — **M3 Task List [P8] implemented on branch `feature/task-list-2026-06-27`**
+(schema v7, 314 tests green, build clean, QA-passed, goal-backward VERIFIED). **AWAITING USER UAT before merge** —
+see `.planning/P8-Task-List-UAT.md`. Prior: M2 Daily Report merged into `main`.
 
 ## How to resume
 Open a session in `E:\Learning\AAM 2nd\aamanagementtool` and say *"đọc .planning/STATE.md để tiếp tục"*.
-Branch is now `main`. Run `git log origin/main..main` to see if it still needs pushing.
+Current branch `feature/task-list-2026-06-27` (NOT yet merged). If UAT passed → finish STEP 10/11 (merge to main).
+If UAT found issues → loop fixes via STEP 7. Run `dotnet test src/TimesheetApp.sln` (expect 314 green).
+
+## M3 Task List [P8] — what was built (2026-06-27, this session)
+Per-month backlog tracking overview. Schema **v7** (additive v6→v7): Backlogs +deadline_internal/external,
++rough/official_estimate_hours, +progress_percent, +note, +pca_contact_id (no inline FK; assignee_user_id reused
+as PCT). New tables Tags/BacklogTags/PcaContacts/Holidays. New symbols: `IWorkingDayCalculator` (pure, holiday-aware),
+`IScheduleStateService` (warning/late, never throws), `ITaskListArchiveService` (monthly md, mirrors standup),
+`ITagRepository`/`IPcaContactRepository`/`IHolidayRepository`, `TaskListViewModel`/`TaskListTab`, `HexToBrushConverter`,
+`ScheduleState` enum + `TaskListRow`/`GanttBar`/`GanttModel`. `ITimeLogRepository.GetLoggedHoursByBacklogAsync`
+(all-time SUM, NO is_active — XC-06). Sidebar restructured: Backlog/Task List/Reports now TOP-LEVEL (string-keyed
+`ActiveView`; sub-tab TabControl removed). New `DataKind`s Tags/PcaContacts/Holidays. Docs: spec
+`docs/superpowers/specs/2026-06-27-task-list-design.md`, plan `docs/superpowers/plans/2026-06-27-P8-task-list.md`,
+research `.planning/research/P8-*.md`, SUMMARY/UAT/VERIFICATION in `.planning/`. Commits d6deb8d→d2abd4e (9).
+**Config changed this session:** model_profile `quality`, defaults {haiku,sonnet,opus} (→ effective sonnet/opus, no haiku).
 
 ## What this is
 WPF Desktop Timesheet Tool (.NET 8 / WPF MVVM / SQLite+Dapper / ClosedXML / CommunityToolkit.Mvvm).
@@ -22,7 +37,10 @@ GitHub: **Nhanddtse61874/aamanagementtool** (private). Local perms in `.claude/s
   auto-selects it), 4 backlogs (ARCS-1001/PLUS-2002/ARMS-3003/OTHER-404) + tasks + a week of timesheet +
   standup with an unresolved (amber) and a resolved (green) issue.
 
-## Schema — user_version **6**
+## Schema — user_version **7** (v7 = P8 Task List, on feature branch; `main` is still v6)
+v7 (P8): Backlogs +deadline_internal/external +rough/official_estimate_hours +progress_percent +note +pca_contact_id;
+new tables Tags/BacklogTags/PcaContacts/Holidays. Migration appended at array index 7, const bumped 6→7, additive-only.
+## Schema — user_version **6** (history)
 v2 ticket lifecycle cols + RequestAudit; v3 project normalization; v4 `assignee_user_id`; v5 Daily Report
 (StandupEntries/StandupIssues); **v6 = Request→Backlog rename** (tables `Requests`→`Backlogs`,
 `RequestAudit`→`BacklogAudit`; cols `request_code`→`backlog_code`, ticket `status`→`type`,

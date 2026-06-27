@@ -14,7 +14,17 @@
   - See `.planning/M1-SUMMARY.md`.
 
 ## In review (awaiting UAT)
-- **M2 — Daily Report (Standup) [P7]** — branch `feature/daily-report-2026-06-25`, 225 tests green, app launches clean.
+- **M3 — Task List [P8]** — branch `feature/task-list-2026-06-27`, schema v7, **314 tests green**, build clean, QA-passed, goal-backward VERIFIED.
+  - [x] TL-01 schema v7 (Backlog tracking cols + Tags/BacklogTags/PcaContacts/Holidays, additive)
+  - [x] TL-02 sidebar restructure (Backlog/Task List/Reports top-level)
+  - [x] TL-03 backlog tracking fields (dual deadline/estimate, assignees, note, tags)
+  - [x] TL-04/05/06 Task List month grid + logged hours + manual progress %
+  - [x] TL-07/08 auto warning (done%<elapsed%, ≤2 working days) + late-deadline chips
+  - [x] TL-09 monthly markdown export (auto-backfill + manual, with moved-out section)
+  - [x] TL-10 Grid↔Gantt (native Canvas) + collapse · TL-11 PCA contacts in Settings
+  - [x] TAG-01/02 custom tags (icon+color+text) + chips · HOL-01/02 holiday calendar + working-day math
+  - UAT: `.planning/P8-Task-List-UAT.md`. Spec: `docs/superpowers/specs/2026-06-27-task-list-design.md`. Plan: `docs/superpowers/plans/2026-06-27-P8-task-list.md`. Summary: `.planning/P8-Task-List-SUMMARY.md`.
+- **M2 — Daily Report (Standup) [P7]** — MERGED to `main` (2026-06-27). branch `feature/daily-report-2026-06-25`, 228 tests green, app launches clean.
   - [x] DR-01 schema v5 (StandupEntries + StandupIssues, additive migration)
   - [x] DR-02..04 entries (ad-hoc codes, nullable deadline) + multi-issue (status open/pending/resolved)
   - [x] DR-05 status set Todo/In-process/Done/Pending · DR-06 edit-lock (today+yesterday)
