@@ -1,0 +1,238 @@
+<UserControl x:Class="TimesheetApp.Views.Tabs.TaskListTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:TimesheetApp.ViewModels">
+  <UserControl.Resources>
+    <!-- Local style helpers: show-when-true / show-when-false / collapse-when-true, keyed off a bool
+         binding, so this tab needs no new IValueConverter (W3 owns the converter set). -->
+    <Style x:Key="ShowWhenTrue" TargetType="FrameworkElement">
+      <Setter Property="Visibility" Value="Collapsed"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsGantt}" Value="True">
+          <Setter Property="Visibility" Value="Visible"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="ShowWhenGrid" TargetType="FrameworkElement">
+      <Setter Property="Visibility" Value="Visible"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsGantt}" Value="True">
+          <Setter Property="Visibility" Value="Collapsed"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- Chip template shared by the grid. System chips use fixed amber/red theme brushes; custom tags
+         use HexToBrush over the tag's hex color + its icon glyph. -->
+    <DataTemplate x:Key="ChipTemplate" DataType="{x:Type vm:TaskListChipVm}">
+      <Border CornerRadius="10" Padding="9,2" Margin="0,0,5,0" VerticalAlignment="Center">
+        <Border.Style>
+          <Style TargetType="Border">
+            <!-- default = custom tag: HexToBrush background -->
+            <Setter Property="Background" Value="{Binding Color, Converter={StaticResource HexToBrush}}"/>
+            <Style.Triggers>
+              <!-- system Warning chip = amber -->
+              <DataTrigger Binding="{Binding IsSystem}" Value="True">
+                <Setter Property="Background" Value="{StaticResource AmberBg}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource AmberBorder}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+              </DataTrigger>
+              <!-- system Late chip = red -->
+              <DataTrigger Binding="{Binding IsLate}" Value="True">
+                <Setter Property="Background" Value="{StaticResource Danger}"/>
+                <Setter Property="BorderThickness" Value="0"/>
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="{Binding Icon}" Margin="0,0,5,0" VerticalAlignment="Center"
+                     Visibility="{Binding Icon, Converter={StaticResource NullToCollapsedConverter}}"/>
+          <TextBlock Text="{Binding Text}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <!-- custom tag text = white on the tag color -->
+                <Setter Property="Foreground" Value="White"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsSystem}" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource AmberFg}"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding IsLate}" Value="True">
+                    <Setter Property="Foreground" Value="White"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <DockPanel Margin="12">
+
+    <!-- Controls: month selector + Grid/Gantt toggle + collapse-chart toggle + Export this month. -->
+    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <TextBlock Text="Month:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <ComboBox Width="70" ItemsSource="{Binding Months}" SelectedItem="{Binding SelectedMonth}"/>
+        <ComboBox Width="86" Margin="6,0,0,0" ItemsSource="{Binding Years}" SelectedItem="{Binding SelectedYear}"/>
+      </StackPanel>
+
+      <!-- Grid↔Gantt toggle (two ToggleButtons; clicks set IsGantt in code-behind, IsChecked reflects it) -->
+      <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+        <ToggleButton x:Name="GridToggle" Content="Grid" IsChecked="True" Click="OnSelectGrid" Padding="14,4"/>
+        <ToggleButton x:Name="GanttToggle" Content="Gantt" Click="OnSelectGantt" Padding="14,4" Margin="6,0,0,0"/>
+      </StackPanel>
+
+      <ToggleButton IsChecked="{Binding IsChartCollapsed}" Padding="14,4" Margin="0,0,16,6"
+                    ToolTip="Show / hide the chart area">
+        <ToggleButton.Style>
+          <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Content" Value="Hide chart"/>
+            <Style.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter Property="Content" Value="Show chart"/>
+              </Trigger>
+            </Style.Triggers>
+          </Style>
+        </ToggleButton.Style>
+      </ToggleButton>
+
+      <Button Content="&#11015; Export this month" Command="{Binding ExportThisMonthCommand}"
+              Style="{StaticResource ToolbarButton}" Margin="0,0,12,6"
+              ToolTip="Write this month's Task List overview to a markdown file"/>
+      <TextBlock Text="{Binding ExportStatus}" Foreground="{StaticResource TextSecondary}"
+                 VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,0,6"/>
+    </WrapPanel>
+
+    <!-- Collapsible chart area (Gantt placeholder for Wave 6). Collapses via IsChartCollapsed. -->
+    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}"
+            BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8"
+            MinHeight="120" Margin="0,0,0,10" Padding="12">
+      <Border.Style>
+        <Style TargetType="Border">
+          <Setter Property="Visibility" Value="Visible"/>
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding IsChartCollapsed}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <!-- Wave 6 fills this with the Gantt Canvas (driven by IsGantt). For now a placeholder. -->
+      <Grid>
+        <TextBlock Text="Gantt (Wave 6)" Foreground="{StaticResource TextSecondary}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource ShowWhenTrue}"/>
+        <TextBlock Text="Chart area" Foreground="{StaticResource TextSecondary}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource ShowWhenGrid}"/>
+      </Grid>
+    </Border>
+
+    <!-- GRID view: one row per non-DEFAULT backlog in the selected month, expandable to its tasks. -->
+    <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
+              SelectionMode="Single" RowDetailsVisibilityMode="Collapsed"
+              Style="{StaticResource ShowWhenGrid}">
+      <DataGrid.Columns>
+        <!-- expand toggle for the row-detail (tasks + status) -->
+        <DataGridTemplateColumn Header="" Width="34">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <ToggleButton Content="&#9660;" IsChecked="{Binding IsExpanded}"
+                            Style="{StaticResource MiniGhostButton}" Padding="2" Width="24"
+                            ToolTip="Show tasks"/>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.4*"/>
+        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="1.1*"/>
+
+        <!-- Type as a teal pill (mirrors the Backlog tab's type badge) -->
+        <DataGridTemplateColumn Header="TYPE" Width="110">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
+                      HorizontalAlignment="Left" VerticalAlignment="Center"
+                      Visibility="{Binding Type, Converter={StaticResource NullToCollapsedConverter}}">
+                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource Accent}"/>
+              </Border>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTextColumn Header="PCT" Binding="{Binding PctAssigneeName}" Width="1.1*"/>
+        <DataGridTextColumn Header="PCA" Binding="{Binding PcaContactName}" Width="1.1*"/>
+        <DataGridTextColumn Header="INTERNAL" Binding="{Binding DeadlineInternal, StringFormat=dd/MM/yyyy}" Width="Auto"/>
+        <DataGridTextColumn Header="EXTERNAL" Binding="{Binding DeadlineExternal, StringFormat=dd/MM/yyyy}" Width="Auto"/>
+
+        <!-- Progress: a small bar + number; "—" when null -->
+        <DataGridTemplateColumn Header="PROGRESS" Width="120">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <ProgressBar Width="60" Height="8" Minimum="0" Maximum="100"
+                             Value="{Binding ProgressPercent, FallbackValue=0, TargetNullValue=0}"
+                             Foreground="{StaticResource Accent}"
+                             Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
+                <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+              </StackPanel>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto"/>
+        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto"/>
+
+        <!-- Chips: system (late/warning) first, then custom tags -->
+        <DataGridTemplateColumn Header="" Width="2*">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}"
+                            VerticalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+              </ItemsControl>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+
+      <!-- Row detail: the backlog's tasks + their status (shown when the row is expanded). -->
+      <DataGrid.RowDetailsTemplate>
+        <DataTemplate>
+          <Border Background="{StaticResource HeaderBg}" Padding="10,6" Margin="34,0,0,0">
+            <ItemsControl ItemsSource="{Binding Tasks}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <DockPanel Margin="0,2">
+                    <Border DockPanel.Dock="Right" Background="{StaticResource AccentSoft}" CornerRadius="8"
+                            Padding="7,1" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
+                                 Foreground="{StaticResource Accent}"/>
+                    </Border>
+                    <TextBlock Text="{Binding TaskName}" VerticalAlignment="Center"/>
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </DataTemplate>
+      </DataGrid.RowDetailsTemplate>
+
+      <!-- Bind each row's detail visibility to its own IsExpanded flag. -->
+      <DataGrid.RowStyle>
+        <Style TargetType="DataGridRow">
+          <Setter Property="DetailsVisibility" Value="Collapsed"/>
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+              <Setter Property="DetailsVisibility" Value="Visible"/>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </DataGrid.RowStyle>
+    </DataGrid>
+  </DockPanel>
+</UserControl>
