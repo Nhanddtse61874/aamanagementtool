@@ -1,9 +1,9 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-28 — branch `feature/task-list-2026-06-27` now holds **FOUR stacked features**:
-**M3 Task List [P8]** + **M5 Local Backup [P9]** + **M4 Multi-Team [P10]** + **M6 Export Restructure [P11]** — schema **v8**,
-**458 tests green**, build clean, all QA-passed. **AWAITING USER UAT before merge** (see `.planning/P8/P9/P10/P11 *-UAT.md`).
-Prior: M2 Daily Report merged into `main`. **Queued next: P12 Retention** (3-month prune — DESTRUCTIVE; PAUSES at plan for approval).
+**Last updated:** 2026-06-28 — branch `feature/task-list-2026-06-27` now holds **FIVE stacked features**:
+**M3 Task List [P8]** + **M5 Local Backup [P9]** + **M4 Multi-Team [P10]** + **M6 Export Restructure [P11]** + **M7 Retention [P12]** —
+schema **v8**, **493 tests green**, build clean, ALL QA-passed + goal-backward VERIFIED. **AWAITING USER UAT before merge**
+(see `.planning/P8/P9/P10/P11/P12 *-UAT.md`). Prior: M2 Daily Report merged into `main`. **All planned features complete** — next is UAT → merge the whole branch to `main`. (Optional follow-ups noted in each UAT/SUMMARY, e.g. P12 grace-month buffer.)
 
 ## How to resume
 Open a session in `E:\Learning\AAM 2nd\aamanagementtool` and say *"đọc .planning/STATE.md để tiếp tục"*.
