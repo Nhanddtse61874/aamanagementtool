@@ -623,4 +623,156 @@ public class SettingsViewModelTests
 
         Assert.Equal("Export now is not available.", vm.ExportStatus);
     }
+
+    // ---------- RT-01..07: Data retention ----------
+
+    // Build with an injected retention service (and a stubbed config carrying the retention values).
+    private static SettingsViewModel BuildWithRetention(
+        Mock<IRetentionService> retention, Mock<IAppConfig>? config = null)
+    {
+        config ??= new Mock<IAppConfig>();
+        config.Setup(c => c.DbPath).Returns(@"C:\old\timesheet.db");
+        var settings = new Mock<ISettingsRepository>();
+        settings.Setup(s => s.GetAsync(ReportsViewModel.NDaysKey)).ReturnsAsync("3");
+        var templates = new Mock<ITaskTemplateRepository>();
+        templates.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<TaskTemplate>());
+        var tags = new Mock<ITagRepository>();
+        tags.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Tag>());
+        var pca = new Mock<IPcaContactRepository>();
+        pca.Setup(p => p.GetAllAsync()).ReturnsAsync(Array.Empty<PcaContact>());
+        var holidays = new Mock<IHolidayRepository>();
+        holidays.Setup(h => h.GetForMonthAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync(Array.Empty<Holiday>());
+        var teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Team>());
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetActiveAsync()).ReturnsAsync(Array.Empty<User>());
+
+        return new SettingsViewModel(
+            config.Object, settings.Object, templates.Object, Mock.Of<IDefaultTaskSyncService>(),
+            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>(),
+            teams.Object, users.Object, messenger: null, exportHub: null, retention: retention.Object);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LoadsRetentionFromConfig()
+    {
+        var config = new Mock<IAppConfig>();
+        config.Setup(c => c.DbPath).Returns(@"C:\old\timesheet.db");
+        config.Setup(c => c.RetentionEnabled).Returns(true);
+        config.Setup(c => c.RetentionMonths).Returns(6);
+        var vm = BuildWithRetention(new Mock<IRetentionService>(), config);
+
+        await vm.LoadAsync();
+
+        Assert.True(vm.RetentionEnabled);
+        Assert.Equal(6, vm.RetentionMonths);
+    }
+
+    [Fact]
+    public async Task ApplyRetentionSettings_PersistsToAppConfig()
+    {
+        var config = new Mock<IAppConfig>();
+        config.Setup(c => c.DbPath).Returns(@"C:\old\timesheet.db");
+        var vm = BuildWithRetention(new Mock<IRetentionService>(), config);
+        await vm.LoadAsync();
+
+        vm.RetentionEnabled = true;
+        vm.RetentionMonths = 4;
+        vm.ApplyRetentionSettingsCommand.Execute(null);
+
+        config.Verify(c => c.SetRetentionEnabled(true), Times.Once);
+        config.Verify(c => c.SetRetentionMonths(4), Times.Once);
+    }
+
+    [Fact]
+    public async Task ApplyRetentionSettings_ClampsMonthsToAtLeastOne()
+    {
+        var config = new Mock<IAppConfig>();
+        config.Setup(c => c.DbPath).Returns(@"C:\old\timesheet.db");
+        var vm = BuildWithRetention(new Mock<IRetentionService>(), config);
+        await vm.LoadAsync();
+
+        vm.RetentionMonths = 0;
+        vm.ApplyRetentionSettingsCommand.Execute(null);
+
+        Assert.Equal(1, vm.RetentionMonths);
+        config.Verify(c => c.SetRetentionMonths(1), Times.Once);
+    }
+
+    [Fact]
+    public async Task PreviewRetention_CallsPreviewAsync_AndDoesNotRun()
+    {
+        var retention = new Mock<IRetentionService>();
+        retention.Setup(r => r.PreviewAsync()).ReturnsAsync(new RetentionPreview(
+            "2026-03",
+            new[] { new RetentionMonthPreview("2026-01", 2, 5, 9, 3, 1) }));
+        var vm = BuildWithRetention(retention);
+        await vm.LoadAsync();
+
+        await vm.PreviewRetentionCommand.ExecuteAsync(null);
+
+        retention.Verify(r => r.PreviewAsync(), Times.Once);
+        // SUGGESTION-4: Preview must be write-free — EnsureRetentionAsync is never invoked.
+        retention.Verify(r => r.EnsureRetentionAsync(), Times.Never);
+        Assert.Contains("2026-01", vm.RetentionPreviewText);
+        Assert.Contains("2026-03", vm.RetentionPreviewText);   // cutoff surfaced
+        Assert.Contains("9 time logs", vm.RetentionPreviewText);
+    }
+
+    [Fact]
+    public async Task PreviewRetention_WhenNothingToPrune_ReportsEmpty()
+    {
+        var retention = new Mock<IRetentionService>();
+        retention.Setup(r => r.PreviewAsync()).ReturnsAsync(new RetentionPreview(
+            "2026-03", Array.Empty<RetentionMonthPreview>()));
+        var vm = BuildWithRetention(retention);
+        await vm.LoadAsync();
+
+        await vm.PreviewRetentionCommand.ExecuteAsync(null);
+
+        retention.Verify(r => r.EnsureRetentionAsync(), Times.Never);
+        Assert.Contains("Nothing to prune", vm.RetentionPreviewText);
+    }
+
+    [Fact]
+    public async Task RunRetention_CallsEnsureRetention_AndSurfacesStatus()
+    {
+        var retention = new Mock<IRetentionService>();
+        retention.Setup(r => r.EnsureRetentionAsync()).ReturnsAsync("Pruned 2 month(s).");
+        var vm = BuildWithRetention(retention);
+        await vm.LoadAsync();
+
+        await vm.RunRetentionCommand.ExecuteAsync(null);
+
+        retention.Verify(r => r.EnsureRetentionAsync(), Times.Once);
+        Assert.Equal("Pruned 2 month(s).", vm.RetentionStatus);
+    }
+
+    [Fact]
+    public async Task RunRetention_WhenServiceFails_SurfacesFailureStatus()
+    {
+        var retention = new Mock<IRetentionService>();
+        retention.Setup(r => r.EnsureRetentionAsync()).ThrowsAsync(new System.IO.IOException("locked"));
+        var vm = BuildWithRetention(retention);
+        await vm.LoadAsync();
+
+        await vm.RunRetentionCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("Retention failed", vm.RetentionStatus);
+        Assert.Contains("locked", vm.RetentionStatus);
+    }
+
+    [Fact]
+    public async Task RetentionCommands_WithoutService_ReportUnavailable()
+    {
+        var vm = Build(out _, out _, out _, out _);   // no retention injected (legacy ctor path)
+        await vm.LoadAsync();
+
+        await vm.PreviewRetentionCommand.ExecuteAsync(null);
+        Assert.Equal("Retention is not available.", vm.RetentionStatus);
+
+        await vm.RunRetentionCommand.ExecuteAsync(null);
+        Assert.Equal("Retention is not available.", vm.RetentionStatus);
+    }
 }

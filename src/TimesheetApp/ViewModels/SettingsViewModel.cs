@@ -28,6 +28,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ITeamRepository _teams;                // P10 TM-03
     private readonly IUserRepository _users;                // P10 TM-03 (membership editor)
     private readonly IExportHubService? _exportHub;         // P11 EX-06 (manual "Export now"; null in tests)
+    private readonly IRetentionService? _retention;         // P12 RT-01..07 (Preview/Run now; null in tests)
     private readonly IMessenger _messenger;
 
     public SettingsViewModel(
@@ -42,7 +43,8 @@ public partial class SettingsViewModel : ObservableObject
         ITeamRepository teams,
         IUserRepository users,
         IMessenger? messenger = null,
-        IExportHubService? exportHub = null)
+        IExportHubService? exportHub = null,
+        IRetentionService? retention = null)
     {
         _config = config;
         _settings = settings;
@@ -54,6 +56,7 @@ public partial class SettingsViewModel : ObservableObject
         _teams = teams;
         _users = users;
         _exportHub = exportHub;
+        _retention = retention;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         HolidayCalendar = new HolidayCalendarViewModel(holidays, _messenger);
     }
@@ -118,6 +121,15 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnBackupFolderChanged(string value) => OnPropertyChanged(nameof(HasBackupFolder));
 
+    // --- P12: Data retention (RT-01..07) — off by default; manual run + dry-run preview ---
+
+    [ObservableProperty] private bool _retentionEnabled;
+    [ObservableProperty] private int _retentionMonths = 3;
+    [ObservableProperty] private string _retentionStatus = "";
+
+    // Human-readable dry-run result (cutoff + per-month counts) from the last Preview.
+    [ObservableProperty] private string _retentionPreviewText = "";
+
     public async Task LoadAsync()
     {
         DbPath = _config.DbPath;
@@ -134,6 +146,9 @@ public partial class SettingsViewModel : ObservableObject
         AutoBackupEnabled = _config.AutoBackupEnabled;
         BackupKeepCount = _config.BackupKeepCount;
         RefreshBackups();
+
+        RetentionEnabled = _config.RetentionEnabled;
+        RetentionMonths = _config.RetentionMonths;
 
         await ReloadTemplatesAsync();
         await ReloadTagsAsync();
@@ -243,6 +258,80 @@ public partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             BackupStatus = $"Restore failed: {ex.Message}";
+        }
+    }
+
+    // ---------- P12: Data retention (RT-01..07) ----------
+
+    // Persist enable + months app-local (mirrors ApplyBackupSettings). Months are clamped to >= 1.
+    [RelayCommand]
+    private void ApplyRetentionSettings()
+    {
+        var months = RetentionMonths < 1 ? 1 : RetentionMonths;
+        RetentionMonths = months;
+        _config.SetRetentionEnabled(RetentionEnabled);
+        _config.SetRetentionMonths(months);
+        RetentionStatus = "Retention settings saved.";
+    }
+
+    // Dry-run (SUGGESTION-4): calls ONLY PreviewAsync (write-free) and formats cutoff + per-month
+    // counts. Never invokes EnsureRetentionAsync. _retention is null only in tests that don't inject it.
+    [RelayCommand]
+    private async Task PreviewRetentionAsync()
+    {
+        if (_retention is null)
+        {
+            RetentionStatus = "Retention is not available.";
+            return;
+        }
+
+        RetentionStatus = "Previewing...";
+        try
+        {
+            var preview = await _retention.PreviewAsync();
+            if (preview.Months.Count == 0)
+            {
+                RetentionPreviewText = $"Nothing to prune (cutoff {preview.Cutoff}).";
+                RetentionStatus = "Preview: nothing older than the live window.";
+                return;
+            }
+
+            var lines = new System.Text.StringBuilder();
+            lines.AppendLine($"Cutoff {preview.Cutoff} — months at or before this would be pruned:");
+            foreach (var m in preview.Months)
+                lines.AppendLine(
+                    $"  {m.Month}: {m.StandupIssues} standup issues, {m.StandupEntries} standup entries, " +
+                    $"{m.TimeLogs} time logs, {m.Tasks} tasks, {m.Backlogs} backlogs");
+
+            RetentionPreviewText = lines.ToString().TrimEnd();
+            RetentionStatus = $"Preview: {preview.Months.Count} month(s) would be pruned.";
+        }
+        catch (Exception ex)
+        {
+            RetentionPreviewText = "";
+            RetentionStatus = $"Preview failed: {ex.Message}";
+        }
+    }
+
+    // Destructive run. Confirmation is owned by the View (WPF dialog, mirrors Restore); this method
+    // archives→verifies→deletes via the service and surfaces its status string.
+    [RelayCommand]
+    private async Task RunRetentionAsync()
+    {
+        if (_retention is null)
+        {
+            RetentionStatus = "Retention is not available.";
+            return;
+        }
+
+        RetentionStatus = "Running retention...";
+        try
+        {
+            RetentionStatus = await _retention.EnsureRetentionAsync();
+        }
+        catch (Exception ex)
+        {
+            RetentionStatus = $"Retention failed: {ex.Message}";
         }
     }
 

@@ -133,6 +133,24 @@ public partial class SettingsTab : UserControl
             Application.Current.Shutdown();
     }
 
+    // RT: confirm before the destructive run, then invoke the service. Confirmation is a View concern
+    // (mirrors OnRestoreBackup). The service archives + verifies a snapshot before any delete.
+    private async void OnRunRetention(object sender, RoutedEventArgs e)
+    {
+        if (Vm is null) return;
+
+        var confirm = MessageBox.Show(
+            $"Run data retention now?\n\n" +
+            $"This permanently DELETES business data older than {Vm.RetentionMonths} month(s) " +
+            "from the live database.\n\n" +
+            "Each pruned month is first archived (per-team markdown + a verified database snapshot) " +
+            "so it can be recovered. This cannot be undone in-app.",
+            "Run retention", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK) return;
+
+        await Vm.RunRetentionCommand.ExecuteAsync(null);
+    }
+
     // "Add task" opens a dedicated input dialog instead of an inline text box.
     private void AddTaskFromBox()
     {

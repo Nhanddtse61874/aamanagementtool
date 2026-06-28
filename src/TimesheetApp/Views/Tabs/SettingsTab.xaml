@@ -103,6 +103,33 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- RT-01..07: Data retention (DESTRUCTIVE) — off by default; manual run + dry-run -->
+                <TextBlock Text="Data retention" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="When enabled, business data older than the recent N-month window is archived (per-team markdown + a verified database snapshot) and then deleted from the live database. Needs an export root configured. Default off. Preview is read-only; Run now permanently deletes data."
+                           Style="{StaticResource FieldHint}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                    <CheckBox Content="Enable retention" VerticalAlignment="Center"
+                              IsChecked="{Binding RetentionEnabled}"/>
+                    <TextBlock Text="Keep last" VerticalAlignment="Center" Margin="20,0,6,0"
+                               Foreground="{StaticResource TextSecondary}"/>
+                    <TextBox Width="56" Height="32" VerticalContentAlignment="Center"
+                             Text="{Binding RetentionMonths, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="months" VerticalAlignment="Center" Margin="6,0,0,0"
+                               Foreground="{StaticResource TextSecondary}"/>
+                    <Button Content="Apply" Height="32" Margin="20,0,0,0"
+                            Command="{Binding ApplyRetentionSettingsCommand}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="Preview" Height="32" Style="{StaticResource GhostButton}"
+                            Command="{Binding PreviewRetentionCommand}"/>
+                    <Button Content="Run retention now" Height="32" Margin="8,0,0,0"
+                            Style="{StaticResource DangerGhostButton}" Click="OnRunRetention"/>
+                </StackPanel>
+                <TextBlock Text="{Binding RetentionStatus}" Foreground="{StaticResource TextSecondary}"
+                           Margin="0,0,0,6" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding RetentionPreviewText}" Foreground="{StaticResource TextSecondary}"
+                           FontFamily="Consolas" FontSize="12" Margin="0,0,0,16" TextWrapping="Wrap"/>
+
                 <!-- SET-02: N-days warning (default 3) -->
                 <TextBlock Text="&quot;Not logged&quot; warning window" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Warn if no hours are logged within this many recent working days."
