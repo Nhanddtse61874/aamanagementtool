@@ -164,8 +164,8 @@
                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding Name}"/>
                                     <TextBlock VerticalAlignment="Center">
-                                        <Run Text="{Binding Name}" FontWeight="SemiBold"/>
-                                        <Run Text="("/><Run Text="{Binding TaskCount}"/><Run Text=" task)"/>
+                                        <Run Text="{Binding Name, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text="("/><Run Text="{Binding TaskCount, Mode=OneWay}"/><Run Text=" task)"/>
                                     </TextBlock>
                                 </DockPanel>
                             </Border>

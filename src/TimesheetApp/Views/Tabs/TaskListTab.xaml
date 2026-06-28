@@ -168,7 +168,7 @@
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ToggleButton Content="&#9660;" IsChecked="{Binding IsExpanded}"
-                            Style="{StaticResource MiniGhostButton}" Padding="2" Width="24"
+                            Style="{StaticResource MiniGhostToggle}" Padding="2" Width="24"
                             ToolTip="Show tasks"/>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
@@ -216,7 +216,7 @@
             <DataTemplate>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <ProgressBar Width="60" Height="8" Minimum="0" Maximum="100"
-                             Value="{Binding ProgressPercent, FallbackValue=0, TargetNullValue=0}"
+                             Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"
                              Foreground="{StaticResource Accent}"
                              Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
                 <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="12"/>

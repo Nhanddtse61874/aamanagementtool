@@ -634,6 +634,42 @@
     </Setter>
   </Style>
 
+  <!-- ToggleButton twin of MiniGhostButton — a Button-typed style cannot be applied to a ToggleButton
+       (XamlParseException "TargetType does not match"), so toggles (e.g. a grid row's expand chevron)
+       use this. AccentSoft fill when checked to read the open state. -->
+  <Style x:Key="MiniGhostToggle" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+    <Setter Property="Background" Value="{StaticResource Surface}"/>
+    <Setter Property="Padding" Value="12,4"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Margin" Value="0"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ToggleButton">
+          <Border x:Name="bd" Background="{TemplateBinding Background}"
+                  BorderBrush="{StaticResource MiniGhostBorder}" BorderThickness="1"
+                  CornerRadius="5" Padding="{TemplateBinding Padding}">
+            <TextBlock Text="{TemplateBinding Content}"
+                       Foreground="{TemplateBinding Foreground}"
+                       FontSize="{TemplateBinding FontSize}" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- Compact toolbar buttons (Timesheet Entry week-nav bar) — smaller than the default action button -->
   <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
     <Setter Property="Padding" Value="9,4"/>
