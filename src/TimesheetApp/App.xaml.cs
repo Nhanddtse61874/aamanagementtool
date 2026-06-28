@@ -54,18 +54,8 @@ public partial class App : Application
         // InitializeAsync does (via DispatcherUnhandledException) rather than launching a team-less shell.
         await Services.GetRequiredService<ITeamBootstrapService>().EnsureBootstrappedAsync();
 
-        // DR-09: back up any completed week that has standup data but no markdown archive yet
-        // (desktop app has no scheduler; runs lazily on each startup). Best-effort, never blocks startup.
-        try { await Services.GetRequiredService<IStandupArchiveService>().BackfillMissingWeeksAsync(); }
-        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Standup archive backfill failed: {ex.Message}"); }
-
-        // TL-09: back up any completed month that has task-list data but no markdown archive yet.
-        // Best-effort, never blocks startup (mirrors standup backfill above).
-        try { await Services.GetRequiredService<ITaskListArchiveService>().BackfillMissingMonthsAsync(); }
-        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Task list archive backfill failed: {ex.Message}"); }
-
         // BK-03: once-per-day local DB backup on startup when auto-backup is enabled. Best-effort,
-        // never blocks startup (mirrors the archive backfills above).
+        // never blocks startup.
         try { await Services.GetRequiredService<IBackupService>().AutoBackupIfDueAsync(); }
         catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Auto-backup failed: {ex.Message}"); }
 
@@ -75,6 +65,30 @@ public partial class App : Application
         // commits — SyncAsync opens its own connections/transactions, so App-level placement is
         // correct (it must not run inside the initializer's open transaction).
         await Services.GetRequiredService<IDefaultTaskSyncService>().SyncAsync();
+
+        // P11 (EX-06): backfill completed weeks/months on startup (desktop app has no scheduler; runs
+        // lazily on each startup). Best-effort, never blocks startup. Runs AFTER EnsureBootstrappedAsync
+        // + DefaultTaskSync so teams and their synced default tasks exist before any export is built.
+        // When an export root is configured the structured per-team hub supersedes the legacy flat
+        // archives (EX-06); with no root set we keep the legacy flat backfills so behavior is unchanged
+        // for users who haven't opted in.
+        var config = Services.GetRequiredService<IAppConfig>();
+        if (!string.IsNullOrWhiteSpace(config.ExportRoot1Path) ||
+            !string.IsNullOrWhiteSpace(config.ExportRoot2Path))
+        {
+            try { await Services.GetRequiredService<IExportHubService>().BackfillAsync(); }
+            catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Structured export backfill failed: {ex.Message}"); }
+        }
+        else
+        {
+            // DR-09: back up any completed week that has standup data but no markdown archive yet.
+            try { await Services.GetRequiredService<IStandupArchiveService>().BackfillMissingWeeksAsync(); }
+            catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Standup archive backfill failed: {ex.Message}"); }
+
+            // TL-09: back up any completed month that has task-list data but no markdown archive yet.
+            try { await Services.GetRequiredService<ITaskListArchiveService>().BackfillMissingMonthsAsync(); }
+            catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Task list archive backfill failed: {ex.Message}"); }
+        }
 
         // Shell startup: resolve MainViewModel and run its InitializeAsync (current-user resolution +
         // XC-08 conflict scan + best-effort tab loads). The SelectUserDialog is shown from this View/App
@@ -136,6 +150,9 @@ public partial class App : Application
         sc.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
         sc.AddSingleton<IReportAggregator, ReportAggregator>(); // pure roll-up, stateless
         sc.AddSingleton<IExportService, ExportService>();       // headless export (EXP-01..04)
+        // P11 (EX-02/05/06/07): structured per-team export hub + path sanitizer.
+        sc.AddSingleton<IPathSanitizer, PathSanitizer>();
+        sc.AddSingleton<IExportHubService, ExportHubService>();
         // P7 Daily Report (standup) — repo + orchestration + weekly markdown archive.
         sc.AddSingleton<IStandupRepository, StandupRepository>();
         sc.AddSingleton<IStandupService, StandupService>();

@@ -78,6 +78,33 @@ public class SettingsViewModelTests
             teams.Object, users.Object);
     }
 
+    // EX-06: build with an injected export hub so the "Export now" command can be exercised.
+    private static SettingsViewModel BuildWithHub(IExportHubService exportHub)
+    {
+        var config = new Mock<IAppConfig>();
+        config.Setup(c => c.DbPath).Returns(@"C:\old\timesheet.db");
+        var settings = new Mock<ISettingsRepository>();
+        settings.Setup(s => s.GetAsync(ReportsViewModel.NDaysKey)).ReturnsAsync("3");
+        var templates = new Mock<ITaskTemplateRepository>();
+        templates.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<TaskTemplate>());
+        var tags = new Mock<ITagRepository>();
+        tags.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Tag>());
+        var pca = new Mock<IPcaContactRepository>();
+        pca.Setup(p => p.GetAllAsync()).ReturnsAsync(Array.Empty<PcaContact>());
+        var holidays = new Mock<IHolidayRepository>();
+        holidays.Setup(h => h.GetForMonthAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync(Array.Empty<Holiday>());
+        var teams = new Mock<ITeamRepository>();
+        teams.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Team>());
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetActiveAsync()).ReturnsAsync(Array.Empty<User>());
+
+        return new SettingsViewModel(
+            config.Object, settings.Object, templates.Object, Mock.Of<IDefaultTaskSyncService>(),
+            tags.Object, pca.Object, holidays.Object, Mock.Of<IBackupService>(),
+            teams.Object, users.Object, messenger: null, exportHub: exportHub);
+    }
+
     // ---------- SET-02: N-days default 3 + persist ----------
     [Fact]
     public async Task WarningDays_DefaultsTo3_WhenSettingMissing()
@@ -557,5 +584,43 @@ public class SettingsViewModelTests
         Assert.All(cal.Days.Where(d => d.IsWeekend),
             d => Assert.True(d.Date.DayOfWeek is System.DayOfWeek.Saturday or System.DayOfWeek.Sunday));
         Assert.Contains(cal.Days, d => d.IsInMonth && d.DayNumber == 1);
+    }
+
+    // ---------- EX-06: manual "Export now" ----------
+
+    [Fact]
+    public async Task ExportNow_CallsHub_AndSurfacesItsStatus()
+    {
+        var hub = new Mock<IExportHubService>();
+        hub.Setup(h => h.ExportNowAsync()).ReturnsAsync("ok: C:\\root1\nok: C:\\root2");
+        var vm = BuildWithHub(hub.Object);
+
+        await vm.ExportNowCommand.ExecuteAsync(null);
+
+        hub.Verify(h => h.ExportNowAsync(), Times.Once);
+        Assert.Equal("ok: C:\\root1\nok: C:\\root2", vm.ExportStatus);
+    }
+
+    [Fact]
+    public async Task ExportNow_WhenHubFails_SurfacesFailureStatus()
+    {
+        var hub = new Mock<IExportHubService>();
+        hub.Setup(h => h.ExportNowAsync()).ThrowsAsync(new System.IO.IOException("disk full"));
+        var vm = BuildWithHub(hub.Object);
+
+        await vm.ExportNowCommand.ExecuteAsync(null);
+
+        Assert.Contains("disk full", vm.ExportStatus);
+        Assert.StartsWith("Export failed", vm.ExportStatus);
+    }
+
+    [Fact]
+    public async Task ExportNow_WithoutHub_ReportsUnavailable()
+    {
+        var vm = Build(out _, out _, out _, out _);   // no hub injected (legacy ctor path)
+
+        await vm.ExportNowCommand.ExecuteAsync(null);
+
+        Assert.Equal("Export now is not available.", vm.ExportStatus);
     }
 }

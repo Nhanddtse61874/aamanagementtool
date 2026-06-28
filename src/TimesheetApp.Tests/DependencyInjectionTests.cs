@@ -68,6 +68,8 @@ public sealed class DependencyInjectionTests
     [InlineData(typeof(ITaskListArchiveService))]
     [InlineData(typeof(IStandupArchiveService))]
     [InlineData(typeof(IDatabaseInitializer))]
+    [InlineData(typeof(IPathSanitizer))]      // P11 (EX-07)
+    [InlineData(typeof(IExportHubService))]   // P11 (EX-02/05/06) — walks its full 8-dep ctor graph
     public void P10_services_resolve(Type serviceType)
     {
         using var sp = BuildProvider();

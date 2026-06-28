@@ -27,6 +27,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IBackupService _backup;                // P9 BK-01..06
     private readonly ITeamRepository _teams;                // P10 TM-03
     private readonly IUserRepository _users;                // P10 TM-03 (membership editor)
+    private readonly IExportHubService? _exportHub;         // P11 EX-06 (manual "Export now"; null in tests)
     private readonly IMessenger _messenger;
 
     public SettingsViewModel(
@@ -40,7 +41,8 @@ public partial class SettingsViewModel : ObservableObject
         IBackupService backup,
         ITeamRepository teams,
         IUserRepository users,
-        IMessenger? messenger = null)
+        IMessenger? messenger = null,
+        IExportHubService? exportHub = null)
     {
         _config = config;
         _settings = settings;
@@ -51,6 +53,7 @@ public partial class SettingsViewModel : ObservableObject
         _backup = backup;
         _teams = teams;
         _users = users;
+        _exportHub = exportHub;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         HolidayCalendar = new HolidayCalendarViewModel(holidays, _messenger);
     }
@@ -170,13 +173,26 @@ public partial class SettingsViewModel : ObservableObject
         return Task.CompletedTask;
     }
 
-    // EX-06: manual "Export now". STUB for W1 — W3 injects IExportHubService and wires this body to
-    // ExportHubService.ExportNowAsync() + status. Kept as a [RelayCommand] so the button binds today.
+    // EX-06: manual "Export now" — regenerate the structured per-team export into every configured root
+    // via the hub (W3 wiring). _exportHub is null only in unit tests that don't inject it.
     [RelayCommand]
-    private Task ExportNowAsync()
+    private async Task ExportNowAsync()
     {
-        ExportStatus = "Export now will be available once an export root is configured.";
-        return Task.CompletedTask;
+        if (_exportHub is null)
+        {
+            ExportStatus = "Export now is not available.";
+            return;
+        }
+
+        ExportStatus = "Exporting...";
+        try
+        {
+            ExportStatus = await _exportHub.ExportNowAsync();
+        }
+        catch (Exception ex)
+        {
+            ExportStatus = $"Export failed: {ex.Message}";
+        }
     }
 
     // ---------- P9: Backup & Restore (BK-01..06) ----------
