@@ -55,8 +55,20 @@ public sealed partial class TeamFilterViewModel : ObservableObject
     public event EventHandler? SelectionChanged;
 
     /// The checked team ids. Empty list = no teams (teamId 0 == empty, R6 — never "all").
-    public IReadOnlyList<int> CheckedTeamIds =>
-        Teams.Where(t => t.IsChecked).Select(t => t.Team.Id).ToList();
+    public IReadOnlyList<int> CheckedTeamIds
+    {
+        get
+        {
+            // Lazy one-time seed: this filter is constructed in the owner VM's ctor — BEFORE
+            // ICurrentTeamService.InitializeAsync resolves the user's teams (AvailableTeams was empty
+            // then). On the first read after resolution, rebuild + default to {active team}. Once seeded
+            // (Teams non-empty) the user's checkbox selections are preserved. (We seed here, lazily,
+            // rather than off an ActiveTeamChanged raised during InitializeAsync — that fires inside the
+            // startup WPF layout pass and re-enters Measure → stack overflow.)
+            if (Teams.Count == 0 && _currentTeam.AvailableTeams.Count > 0) Reload();
+            return Teams.Where(t => t.IsChecked).Select(t => t.Team.Id).ToList();
+        }
+    }
 
     /// True when >1 team is checked — owners show a per-team chip/column only then.
     public bool ShowTeamColumn => CheckedTeamIds.Count > 1;

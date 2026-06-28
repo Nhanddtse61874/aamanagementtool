@@ -63,6 +63,24 @@ public sealed class TeamFilterViewModelTests
         Assert.Equal(1, raised);                          // owner gets one reload signal
     }
 
+    [Fact] // built before the service resolves (AvailableTeams empty) → lazy-seeds on first CheckedTeamIds read
+    public void Lazy_seeds_to_active_team_when_service_resolves_after_construction()
+    {
+        // The owner VM builds the filter in its ctor, BEFORE ICurrentTeamService.InitializeAsync resolves.
+        var svc = Team(Array.Empty<Team>(), activeId: 0);
+        var vm = new TeamFilterViewModel(svc.Object);
+        Assert.Empty(vm.Teams);                      // nothing to seed yet
+        Assert.Empty(vm.CheckedTeamIds);
+
+        // Service resolves the user's teams + active team (post-startup).
+        svc.SetupGet(s => s.AvailableTeams).Returns(new[] { T(10, "A"), T(20, "B") });
+        svc.SetupGet(s => s.ActiveTeamId).Returns(20);
+
+        // First read after resolution lazy-seeds the list, defaulting to the active team only.
+        Assert.Equal(new[] { 20 }, vm.CheckedTeamIds);
+        Assert.Equal(2, vm.Teams.Count);
+    }
+
     [Fact] // hidden for single-team users (nothing to filter)
     public void ShowFilter_false_for_single_team_user()
     {

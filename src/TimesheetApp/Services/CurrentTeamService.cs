@@ -55,11 +55,11 @@ public sealed class CurrentTeamService : ICurrentTeamService
             ? persisted
             : (_available.Count > 0 ? _available[0].Id : 0);
 
-        // The per-screen TeamFilters + the sidebar switcher were constructed BEFORE this async resolve
-        // (AvailableTeams was empty then), so announce the now-resolved context so they rebuild and
-        // default to {active team}. Without this they stay seeded from the empty set → "Teams (0)" →
-        // every team-filtered grid (Task List, Backlog list, …) renders empty.
-        ActiveTeamChanged?.Invoke(this, EventArgs.Empty);
+        // NOTE: do NOT raise ActiveTeamChanged here. InitializeAsync runs inside the startup layout pass,
+        // and a synchronous notify → TeamFilter rebuild → owner reload re-enters WPF Measure and blows the
+        // stack. The pre-built TeamFilters instead lazy-seed the first time CheckedTeamIds is read after
+        // this resolve (TeamFilterViewModel.CheckedTeamIds), and the sidebar switcher is refreshed
+        // explicitly by MainViewModel.RefreshTeamsFromService after InitializeAsync (W9 wiring).
     }
 
     public async Task SetActiveTeamAsync(int teamId)
