@@ -26,6 +26,7 @@
 | **P9** | Local DB Backup + Restore — M5 | BK-01, BK-02, BK-03, BK-04, BK-05, BK-06, BK-07 |
 | **P10** | Multi-Team (team scoping, membership, active team, multi-team view) — M4 | TM-01, TM-02, TM-03, TM-04, TM-05, TM-06, TM-07, TM-08, TM-09, TM-10 |
 | **P11** | Export Restructure (per-team folders, 2-root mirror) — M6 | EX-01, EX-02, EX-03, EX-04, EX-05, EX-06, EX-07 |
+| **P12** | 3-Month Data Retention / Prune (DESTRUCTIVE) — M7 | RT-01, RT-02, RT-03, RT-04, RT-05, RT-06, RT-07 |
 
 Total: **45 (M1)** + **10 (M2/P7)** + **15 (M3/P8)** + **7 (M5/P9)** + **10 (M4/P10)** requirements. (P11 Export / P12 Retention authored when those phases start — see `.planning/UPCOMING-FEATURES.md`.)
 
@@ -506,6 +507,42 @@ Acceptance: On startup, completed periods with data but no structured file are g
 ### EX-07 — Path-segment sanitizer
 Statement: A shared helper converts a team name to a safe folder segment.
 Acceptance: Invalid filename chars are stripped/replaced; empty/whitespace → a fallback (e.g. team id); used by the export structure (and available to other features). Unit-tested.
+
+---
+
+## 3-Month Data Retention / Prune (P12 / M7) — DESTRUCTIVE
+
+**Source:** brainstorm decisions in `.planning/UPCOMING-FEATURES.md` (P12). Builds on P10 (team) + P11 (export structure). **High risk — deletes business data. Execution PAUSES for user plan approval.** `[ASSUMED]` marks inferred detail; **OPEN** marks a design decision to resolve in research/spec.
+
+**Locked decisions:** DB keeps only the most recent **3 months** of business data; entering the 4th month → the oldest month's business data is **archived to markdown** (into `{root}/{Team}/db/` per P11, both roots) **then DELETED** from the live DB. Delete ONLY business/history (backlogs, tasks, timelogs, standup); **NEVER delete settings** (Users, Teams, Tags, PcaContacts, Holidays, Templates, DefaultTasks). Preserved as markdown ("không lo bị mất").
+
+### RT-01 — Retention config (opt-in)
+Statement: A setting enables auto archive-and-prune of business data older than N months (default 3); off by default; requires at least one export root configured (so pruned data is preserved before deletion).
+Acceptance: `RetentionEnabled` (default false) + `RetentionMonths` (default 3) persist app-local; prune is a no-op when disabled or when no export root is configured (with a surfaced reason).
+
+### RT-02 — Prune trigger (startup + manual)
+Statement: On startup (and via a manual action), the app detects months strictly older than the N-month live window that still hold business data, and runs archive→prune for each.
+Acceptance: With current month M and N=3, months ≤ M-3 with business data are processed oldest-first; the live window {M, M-1, M-2} is never touched; idempotent (a month already pruned is skipped).
+
+### RT-03 — Archive-before-prune (safety ordering)
+Statement: A month's per-team markdown is written to the export structure's `{root}/{Team}/db/` (both roots) and an XC-10 `.db` backup is taken BEFORE any deletion; a month is never pruned unless its archive succeeded to ≥1 root.
+Acceptance: If archiving fails for all roots, the month is NOT pruned (data retained, warning surfaced); the markdown snapshot contains that month's full business data; a backup `.db` exists from immediately before the prune.
+
+### RT-04 — Prune scope (business only, never settings)
+Statement: Deletion removes only the month's business/history rows; all settings/reference tables are untouched.
+Acceptance: After a prune of month M: `TimeLogs`/`StandupEntries`/`StandupIssues` with `work_date` in M are gone; pruned `Backlogs`/`Tasks` per the RT-05 rule are gone; `Users`, `Teams`, `UserTeams`, `Tags`, `BacklogTags`, `PcaContacts`, `Holidays`, `TaskTemplates`, `DefaultTasks`, `Settings` are byte-for-byte unchanged; each team's hidden DEFAULT backlog survives.
+
+### RT-05 — FK-safe deletion rule (the crux) — **OPEN (resolve in research/spec)**
+Statement: Define exactly which rows are deleted so that (a) no FK is violated, and (b) NO data inside the live 3-month window is lost — in particular, a long-lived backlog from an old month whose tasks still have time logs within the window must NOT lose those recent logs.
+Candidate rules (research to recommend one): **(R5a)** prune on the TIME axis only — delete `TimeLogs`/`Standup` by `work_date` month; delete a `Backlog`+`Tasks` only if ALL its time logs fall in pruned months (no in-window logs) AND its `period_month` is pruned; otherwise keep the backlog/tasks and only drop the old logs. **(R5b)** prune by `period_month` and reassign/keep in-window logs. Acceptance: the chosen rule never deletes an in-window TimeLog/Standup row and never leaves an orphaned `task_id`/`backlog_id`; covered by tests with a spanning backlog.
+
+### RT-06 — In-app behavior after prune
+Statement: Month-scoped views and reports handle pruned (now-empty) months gracefully; the live data reflects the retained window.
+Acceptance: Selecting a pruned month in Task List/Reports/Daily shows empty (no crash); the only record of pruned months is the markdown; the DEFAULT/settings-driven UI is unaffected.
+
+### RT-07 — Backup + idempotency + tests + dry-run
+Statement: Prune is transactional, backed up first (XC-10), idempotent via a persisted retention marker (last-pruned-through month), and fully unit-tested incl. a dry-run/verify path.
+Acceptance: A retention marker (Settings key or table) records progress so re-runs skip done months; a crash mid-prune leaves a consistent DB (transaction); tests cover month selection, archive-before-delete ordering, FK safety (spanning backlog), settings-not-deleted, idempotency, and disabled/no-root no-op.
 
 ---
 
