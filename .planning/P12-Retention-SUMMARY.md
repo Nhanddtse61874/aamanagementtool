@@ -24,7 +24,7 @@ Opt-in retention that archives then deletes business data older than N (default 
 ## Deviations (accepted)
 - BacklogAudit for pruned backlogs is deleted (FK forces it) — captured in the snapshot.
 - All-months-archived-then-single-delete (contiguous archived prefix) instead of strict per-month tx — equivalent/safer.
-- No grace-month buffer (prunes ≤ M-N exactly) — multi-machine risk mitigated by conflict-copy abort + off-by-default; UAT may opt into a buffer.
+- No grace-month buffer (prunes ≤ M-N exactly) — **user confirmed 2026-06-28: keep 3 months, no buffer** (do not re-raise). Multi-machine risk mitigated by conflict-copy abort + off-by-default.
 
 ## UAT-pending
 Preview/Run on a real >3-month DB; on-disk snapshot+markdown; settings survival; pruned months render empty. See UAT doc.
