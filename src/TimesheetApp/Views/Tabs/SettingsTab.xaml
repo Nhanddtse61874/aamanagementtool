@@ -208,6 +208,7 @@
                                             Background="{Binding Color, Converter={StaticResource HexToBrush}}">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Icon}" Margin="0,0,5,0"
+                                                       FontFamily="Segoe UI Emoji"
                                                        VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding Text}" FontWeight="SemiBold"
                                                        Foreground="White" VerticalAlignment="Center"/>
@@ -539,7 +540,8 @@
                             <Border CornerRadius="10" Padding="10,3" HorizontalAlignment="Left" Margin="0,0,0,14"
                                     Background="{Binding Color, Converter={StaticResource HexToBrush}}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"
+                                               FontFamily="Segoe UI Emoji"/>
                                     <TextBlock Text="{Binding Text}" FontWeight="SemiBold" Foreground="White"
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
@@ -557,6 +559,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Button Content="{Binding}" Width="34" Height="30" Margin="0,0,4,4"
+                                                FontFamily="Segoe UI Emoji"
                                                 Style="{StaticResource GhostButton}"
                                                 Command="{Binding DataContext.PickIconCommand,
                                                     RelativeSource={RelativeSource AncestorType=UserControl}}"
