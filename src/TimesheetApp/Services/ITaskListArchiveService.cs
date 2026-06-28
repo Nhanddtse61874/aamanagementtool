@@ -8,6 +8,10 @@ public interface ITaskListArchiveService
     // "{yyyyMM}_tasklist.md" for the given month.
     string FileNameFor(int year, int month);
 
+    // P11 (EX-04): builds the month's markdown scoped to teamIds (null => all teams). Returns null when
+    // the scoped month has no current members and no moved-out members. Content only — hub supplies path.
+    Task<string?> BuildMonthMarkdownAsync(IReadOnlyList<int>? teamIds, int year, int month);
+
     // Writes the month's markdown overview; returns the full path, or null when the month has no data
     // (no current members and no moved-out members → no file written). Overwrites idempotently.
     Task<string?> ExportMonthAsync(int year, int month);

@@ -51,9 +51,25 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
 
     public async Task<string?> ExportMonthAsync(int year, int month)
     {
+        var md = await BuildMonthMarkdownAsync(null, year, month);
+        if (md is null) return null; // no data -> no file (TL-09)
+
+        var dir = ArchiveDir();
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, FileNameFor(year, month));
+        await File.WriteAllTextAsync(path, md, Encoding.UTF8);
+        return path;
+    }
+
+    // P11 (EX-04): per-team (or all-teams when teamIds==null) month markdown builder. Relocates the
+    // inline build from ExportMonthAsync, scoping SearchAsync to teamIds. Returns null when the scoped
+    // month has no current members and no moved-out members. ExportMonthAsync delegates with teamIds=null
+    // (byte-identical legacy file).
+    public async Task<string?> BuildMonthMarkdownAsync(IReadOnlyList<int>? teamIds, int year, int month)
+    {
         var monthKey = MonthKey(year, month);
 
-        var all = (await _backlogs.SearchAsync(null) ?? Array.Empty<Backlog>())
+        var all = (await _backlogs.SearchAsync(null, teamIds) ?? Array.Empty<Backlog>())
             .Where(b => !string.Equals(b.BacklogCode, "DEFAULT", StringComparison.Ordinal))
             .ToList();
 
@@ -94,11 +110,7 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
         if (movedOut.Count > 0)
             await AppendSectionAsync(sb, "Moved to next month", movedOut, loggedByBacklog, tagsById, tagLinks, userNames, pcaNames, holidaySet, teamNames);
 
-        var dir = ArchiveDir();
-        Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, FileNameFor(year, month));
-        await File.WriteAllTextAsync(path, sb.ToString(), Encoding.UTF8);
-        return path;
+        return sb.ToString();
     }
 
     public async Task BackfillMissingMonthsAsync()

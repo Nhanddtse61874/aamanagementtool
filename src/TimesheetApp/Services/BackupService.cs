@@ -26,9 +26,13 @@ public sealed class BackupService : IBackupService
         _clock = clock;
     }
 
-    public Task<string?> BackupNowAsync()
+    public Task<string?> BackupNowAsync() =>
+        BackupToFolderAsync(_config.BackupFolderPath, _config.BackupKeepCount);
+
+    // P11 (EX-05): copy the live .db into an arbitrary folder (the structured export's {root}/db), pruning
+    // to `keep` newest. Same copy + stamp + pattern as BackupNowAsync (which now delegates here).
+    public Task<string?> BackupToFolderAsync(string folder, int keep)
     {
-        var folder = _config.BackupFolderPath;
         var dbPath = _config.DbPath;
         if (string.IsNullOrWhiteSpace(folder) || string.IsNullOrWhiteSpace(dbPath) || !File.Exists(dbPath))
             return Task.FromResult<string?>(null);
@@ -37,7 +41,7 @@ public sealed class BackupService : IBackupService
         var stamp = _clock.UtcNow.LocalDateTime.ToString(Stamp, CultureInfo.InvariantCulture);
         var backupPath = Path.Combine(folder, $"{Prefix}{stamp}{Extension}");
         File.Copy(dbPath, backupPath, overwrite: true);
-        Prune(folder);
+        Prune(folder, keep);
         return Task.FromResult<string?>(backupPath);
     }
 
@@ -97,9 +101,8 @@ public sealed class BackupService : IBackupService
 
     // BK-06: keep only the newest BackupKeepCount "timesheet_*.db" files in the folder. Best-effort:
     // matches only this app's pattern (never unrelated files) and never fails the backup that succeeded.
-    private void Prune(string folder)
+    private static void Prune(string folder, int keep)
     {
-        var keep = _config.BackupKeepCount;
         if (keep <= 0) return;
         try
         {

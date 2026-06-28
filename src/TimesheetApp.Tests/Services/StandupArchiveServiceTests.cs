@@ -178,6 +178,55 @@ public sealed class StandupArchiveServiceTests : IDisposable
         Assert.Equal("PRE-EXISTING", await File.ReadAllTextAsync(existing)); // untouched
     }
 
+    // P11 (EX-04): BuildWeekMarkdownAsync scoped to one team contains only that team's rows.
+    [Fact]
+    public async Task BuildWeekMarkdown_scoped_to_one_team_excludes_other_teams()
+    {
+        var all = new[]
+        {
+            Entry(1, 1, new DateOnly(2026, 6, 22), StandupSection.Today, "alpha-work", teamId: 1),
+            Entry(2, 2, new DateOnly(2026, 6, 22), StandupSection.Today, "beta-work",  teamId: 2),
+        };
+        var teams = new[]
+        {
+            new Team(1, "Team A", true, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
+            new Team(2, "Team B", true, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
+        };
+
+        // A mock that HONORS the teamIds filter (the real repo does the SQL filtering).
+        var repo = new Mock<IStandupRepository>();
+        repo.Setup(r => r.GetEntriesForRangeAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync((DateOnly from, DateOnly to, IReadOnlyList<int>? teamIds) =>
+                all.Where(e => e.WorkDate >= from && e.WorkDate <= to
+                               && (teamIds == null || (e.TeamId is { } t && teamIds.Contains(t)))).ToList());
+        repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
+            .ReturnsAsync(Array.Empty<StandupIssue>());
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetAllAsync()).ReturnsAsync(new[]
+        {
+            new User(1, "Alice", null, true), new User(2, "Bob", null, true),
+        });
+        var teamRepo = new Mock<ITeamRepository>();
+        teamRepo.Setup(t => t.GetAllAsync()).ReturnsAsync(teams);
+        var svc = new StandupArchiveService(
+            repo.Object, users.Object, _config, new FakeClock { Today = new DateOnly(2026, 6, 25) }, teamRepo.Object);
+
+        var md = await svc.BuildWeekMarkdownAsync(new[] { 1 }, new DateOnly(2026, 6, 22));
+
+        Assert.NotNull(md);
+        Assert.Contains("alpha-work", md);
+        Assert.DoesNotContain("beta-work", md);
+        Assert.Contains("## Team A", md);
+        Assert.DoesNotContain("## Team B", md);
+    }
+
+    [Fact]
+    public async Task BuildWeekMarkdown_returns_null_when_no_entries_for_team()
+    {
+        var (svc, _) = Make(Array.Empty<StandupEntry>(), new DateOnly(2026, 6, 25));
+        Assert.Null(await svc.BuildWeekMarkdownAsync(new[] { 99 }, new DateOnly(2026, 6, 22)));
+    }
+
     public void Dispose()
     {
         try { if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true); }

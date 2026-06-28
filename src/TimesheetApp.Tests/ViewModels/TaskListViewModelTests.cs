@@ -79,6 +79,7 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
     {
         public string FileNameFor(int year, int month) => $"{year:0000}{month:00}_tasklist.md";
         public Task<string?> ExportMonthAsync(int year, int month) => Task.FromResult<string?>(null);
+        public Task<string?> BuildMonthMarkdownAsync(IReadOnlyList<int>? teamIds, int year, int month) => Task.FromResult<string?>(null);
         public Task BackfillMissingMonthsAsync() => Task.CompletedTask;
     }
 

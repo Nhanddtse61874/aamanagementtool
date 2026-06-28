@@ -142,6 +142,39 @@ public sealed class TaskListArchiveServiceTests : IAsyncLifetime
         Assert.False(File.Exists(Path.Combine(_dir, "202606_tasklist.md")));  // current month skipped
     }
 
+    // P11 (EX-04): BuildMonthMarkdownAsync scoped to one team excludes other teams' backlogs.
+    [Fact]
+    public async Task BuildMonthMarkdown_scoped_to_one_team_excludes_other_teams()
+    {
+        var teams = new TeamRepository(_db);
+        var teamA = await teams.InsertAsync(new Team(0, "Team A", true, DateTimeOffset.UtcNow));
+        var teamB = await teams.InsertAsync(new Team(0, "Team B", true, DateTimeOffset.UtcNow));
+
+        var backlogs = new BacklogRepository(_db);
+        await backlogs.InsertAsync(new Backlog(0, "REQ-AAA", "ARCS", DateTimeOffset.UtcNow, PeriodMonth: "2026-05", TeamId: teamA));
+        await backlogs.InsertAsync(new Backlog(0, "REQ-BBB", "ARCS", DateTimeOffset.UtcNow, PeriodMonth: "2026-05", TeamId: teamB));
+
+        var svc = Make(new DateOnly(2026, 6, 27), teams);
+        var md = await svc.BuildMonthMarkdownAsync(new[] { teamA }, 2026, 5);
+
+        Assert.NotNull(md);
+        Assert.Contains("REQ-AAA", md);
+        Assert.DoesNotContain("REQ-BBB", md);
+    }
+
+    [Fact]
+    public async Task BuildMonthMarkdown_returns_null_when_team_has_no_data()
+    {
+        var teams = new TeamRepository(_db);
+        var teamA = await teams.InsertAsync(new Team(0, "Team A", true, DateTimeOffset.UtcNow));
+        var backlogs = new BacklogRepository(_db);
+        await backlogs.InsertAsync(new Backlog(0, "REQ-AAA", "ARCS", DateTimeOffset.UtcNow, PeriodMonth: "2026-05", TeamId: teamA));
+
+        var svc = Make(new DateOnly(2026, 6, 27), teams);
+        // A different (non-existent) team id => no current members, no moved-out => null.
+        Assert.Null(await svc.BuildMonthMarkdownAsync(new[] { 9999 }, 2026, 5));
+    }
+
     [Fact]
     public async Task Backfill_skips_month_that_already_has_a_file()
     {

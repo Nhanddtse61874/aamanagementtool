@@ -219,6 +219,34 @@ public class BackupServiceTests : IDisposable
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(_dbPath)!, "*.pre-restore_*.bak")); // no safety copy made
     }
 
+    // P11 (EX-05): BackupToFolderAsync copies the live .db into an arbitrary folder + prunes to keep.
+    [Fact]
+    public async Task BackupToFolder_copies_db_into_given_folder_and_prunes()
+    {
+        File.WriteAllText(_dbPath, "LIVE-DB");
+        var target = Path.Combine(_root, "exportroot", "db");
+
+        // 4 copies into the target with keep=2; only the newest 2 survive.
+        for (var i = 0; i < 4; i++)
+        {
+            var (svc, _) = Make(Local(2026, 6, 27, 14, 0, i));
+            var path = await svc.BackupToFolderAsync(target, keep: 2);
+            Assert.NotNull(path);
+            Assert.Equal(target, Path.GetDirectoryName(path!));
+        }
+
+        var files = Directory.GetFiles(target, "timesheet_*.db");
+        Assert.Equal(2, files.Length);
+        Assert.Equal("LIVE-DB", File.ReadAllText(files[0]));
+    }
+
+    [Fact]
+    public async Task BackupToFolder_returns_null_when_db_missing()
+    {
+        var (svc, _) = Make(Local(2026, 6, 27, 9, 0, 0)); // no db file written
+        Assert.Null(await svc.BackupToFolderAsync(Path.Combine(_root, "x", "db"), keep: 5));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);

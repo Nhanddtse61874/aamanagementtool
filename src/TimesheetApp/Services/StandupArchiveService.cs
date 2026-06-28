@@ -31,12 +31,15 @@ public sealed class StandupArchiveService : IStandupArchiveService
     public string FileNameFor(DateOnly anyDayInWeek) =>
         MondayOf(anyDayInWeek).ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "_daily.md";
 
-    public async Task<string?> ExportWeekAsync(DateOnly anyDayInWeek)
+    // P11 (EX-04): per-team (or all-teams when teamIds==null) week markdown builder. Returns null when
+    // the scoped range has no entries (no-data -> no file). The fetch lives here so the structured export
+    // can scope it to [teamId]; ExportWeekAsync delegates with teamIds=null (byte-identical legacy file).
+    public async Task<string?> BuildWeekMarkdownAsync(IReadOnlyList<int>? teamIds, DateOnly weekMonday)
     {
-        var monday = MondayOf(anyDayInWeek);
+        var monday = MondayOf(weekMonday);
         var friday = monday.AddDays(4);
 
-        var entries = await _repo.GetEntriesForRangeAsync(monday, friday);
+        var entries = await _repo.GetEntriesForRangeAsync(monday, friday, teamIds);
         if (entries.Count == 0) return null; // no data -> no file (DR-09)
 
         var issues = (await _repo.GetIssuesForEntriesAsync(entries.Select(e => e.Id).ToList()))
@@ -47,7 +50,14 @@ public sealed class StandupArchiveService : IStandupArchiveService
             ? new Dictionary<int, string>()
             : (await _teams.GetAllAsync() ?? Array.Empty<Team>()).ToDictionary(t => t.Id, t => t.Name);
 
-        var md = BuildMarkdown(monday, friday, entries, issues, names, teamNames);
+        return BuildMarkdown(monday, friday, entries, issues, names, teamNames);
+    }
+
+    public async Task<string?> ExportWeekAsync(DateOnly anyDayInWeek)
+    {
+        var monday = MondayOf(anyDayInWeek);
+        var md = await BuildWeekMarkdownAsync(null, monday);
+        if (md is null) return null; // no data -> no file (DR-09)
 
         var dir = ArchiveDir();
         Directory.CreateDirectory(dir);
