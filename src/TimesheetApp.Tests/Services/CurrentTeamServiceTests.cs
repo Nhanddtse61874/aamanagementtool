@@ -46,6 +46,23 @@ public class CurrentTeamServiceTests
     }
 
     [Fact]
+    public async Task InitializeAsync_raises_ActiveTeamChanged_so_filters_built_before_init_rebuild()
+    {
+        // Regression: TeamFilters/switcher are constructed BEFORE the async InitializeAsync (AvailableTeams
+        // empty then). If InitializeAsync doesn't announce the resolved context, every team-filtered grid
+        // renders empty ("Teams (0)"). InitializeAsync MUST raise ActiveTeamChanged after resolving.
+        var (svc, _, _, _) = Build(1, new[] { 10, 20 }, new[] { T(10), T(20) }, persistedActiveTeamId: 10);
+        var raised = 0;
+        svc.ActiveTeamChanged += (_, _) => raised++;
+
+        await svc.InitializeAsync(1);
+
+        Assert.True(raised >= 1, "InitializeAsync must raise ActiveTeamChanged so pre-built filters rebuild.");
+        Assert.Equal(10, svc.ActiveTeamId);
+        Assert.Equal(2, svc.AvailableTeams.Count);
+    }
+
+    [Fact]
     public async Task Falls_back_to_first_available_when_persisted_id_is_stale()
     {
         // Persisted 99 is no longer a membership -> fall back to first available (10). Never throws (R5).

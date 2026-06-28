@@ -54,6 +54,12 @@ public sealed class CurrentTeamService : ICurrentTeamService
         ActiveTeamId = _available.Any(t => t.Id == persisted)
             ? persisted
             : (_available.Count > 0 ? _available[0].Id : 0);
+
+        // The per-screen TeamFilters + the sidebar switcher were constructed BEFORE this async resolve
+        // (AvailableTeams was empty then), so announce the now-resolved context so they rebuild and
+        // default to {active team}. Without this they stay seeded from the empty set → "Teams (0)" →
+        // every team-filtered grid (Task List, Backlog list, …) renders empty.
+        ActiveTeamChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task SetActiveTeamAsync(int teamId)
