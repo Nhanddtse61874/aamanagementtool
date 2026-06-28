@@ -29,6 +29,30 @@
                     <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyArchivePathCommand}"/>
                 </StackPanel>
 
+                <!-- EX-01/06: Export logs — two mirrored export roots + manual "Export now" -->
+                <TextBlock Text="Export logs" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="Two folders the structured per-team export mirrors to (a shared/SharePoint folder and a local folder). Leave a folder empty to skip it; both empty falls back to the legacy flat archive."
+                           Style="{StaticResource FieldHint}"/>
+                <TextBlock Text="Shared/SharePoint folder" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBox Width="420" Height="32" Text="{Binding ExportRoot1Path, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Browse…" Height="32" Margin="8,0,0,0" Click="OnBrowseExportRoot1"
+                            Style="{StaticResource GhostButton}"/>
+                    <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyExportRoot1Command}"/>
+                </StackPanel>
+                <TextBlock Text="Local folder" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBox Width="420" Height="32" Text="{Binding ExportRoot2Path, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Browse…" Height="32" Margin="8,0,0,0" Click="OnBrowseExportRoot2"
+                            Style="{StaticResource GhostButton}"/>
+                    <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyExportRoot2Command}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="Export now" Height="32" Command="{Binding ExportNowCommand}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding ExportStatus}" Foreground="{StaticResource TextSecondary}"
+                           Margin="0,0,0,16" TextWrapping="Wrap"/>
+
                 <!-- BK-01..07: Backup & Restore -->
                 <TextBlock Text="Backup &amp; Restore" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Back up the full database to a local folder (ideally outside OneDrive). Restore replaces the current database — restart the app afterwards."

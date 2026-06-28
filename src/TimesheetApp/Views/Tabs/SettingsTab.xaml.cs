@@ -78,6 +78,28 @@ public partial class SettingsTab : UserControl
             vm.ArchivePath = dlg.FolderName;
     }
 
+    // EX-01: pick the shared/SharePoint export root (View concern — service stays WPF-free).
+    private void OnBrowseExportRoot1(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        var dlg = new OpenFolderDialog { Title = "Select shared/SharePoint export folder" };
+        if (!string.IsNullOrWhiteSpace(vm.ExportRoot1Path) && System.IO.Directory.Exists(vm.ExportRoot1Path))
+            dlg.InitialDirectory = vm.ExportRoot1Path;
+        if (dlg.ShowDialog() == true)
+            vm.ExportRoot1Path = dlg.FolderName;
+    }
+
+    // EX-01: pick the local export root.
+    private void OnBrowseExportRoot2(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        var dlg = new OpenFolderDialog { Title = "Select local export folder" };
+        if (!string.IsNullOrWhiteSpace(vm.ExportRoot2Path) && System.IO.Directory.Exists(vm.ExportRoot2Path))
+            dlg.InitialDirectory = vm.ExportRoot2Path;
+        if (dlg.ShowDialog() == true)
+            vm.ExportRoot2Path = dlg.FolderName;
+    }
+
     // BK-01: pick the backup folder (View concern — service stays WPF-free).
     private void OnBrowseBackupFolder(object sender, RoutedEventArgs e)
     {

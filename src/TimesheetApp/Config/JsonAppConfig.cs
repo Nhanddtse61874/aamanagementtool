@@ -14,7 +14,9 @@ public sealed class JsonAppConfig : IAppConfig
         string? BackupFolderPath = null,
         bool? AutoBackupEnabled = null,
         int? BackupKeepCount = null,
-        int? ActiveTeamId = null);
+        int? ActiveTeamId = null,
+        string? ExportRoot1Path = null,
+        string? ExportRoot2Path = null);
 
     // P9 (BK-06): default retention when no value persisted yet.
     private const int DefaultBackupKeepCount = 30;
@@ -26,6 +28,8 @@ public sealed class JsonAppConfig : IAppConfig
     private bool _autoBackupEnabled;
     private int _backupKeepCount;
     private int _activeTeamId;
+    private string _exportRoot1Path;
+    private string _exportRoot2Path;
 
     public JsonAppConfig()
         : this(DefaultConfigPath(), DefaultDbPath())
@@ -42,6 +46,8 @@ public sealed class JsonAppConfig : IAppConfig
         _autoBackupEnabled = model?.AutoBackupEnabled ?? false;
         _backupKeepCount = model?.BackupKeepCount ?? DefaultBackupKeepCount;
         _activeTeamId = model?.ActiveTeamId ?? 0;
+        _exportRoot1Path = model?.ExportRoot1Path ?? "";
+        _exportRoot2Path = model?.ExportRoot2Path ?? "";
     }
 
     public string DbPath => _dbPath;
@@ -50,6 +56,8 @@ public sealed class JsonAppConfig : IAppConfig
     public bool AutoBackupEnabled => _autoBackupEnabled;
     public int BackupKeepCount => _backupKeepCount;
     public int ActiveTeamId => _activeTeamId;
+    public string ExportRoot1Path => _exportRoot1Path;
+    public string ExportRoot2Path => _exportRoot2Path;
 
     public void SetDbPath(string dbPath)
     {
@@ -87,6 +95,18 @@ public sealed class JsonAppConfig : IAppConfig
         Save();
     }
 
+    public void SetExportRoot1Path(string path)
+    {
+        _exportRoot1Path = path;
+        Save();
+    }
+
+    public void SetExportRoot2Path(string path)
+    {
+        _exportRoot2Path = path;
+        Save();
+    }
+
     private void Save()
     {
         var dir = Path.GetDirectoryName(_configPath);
@@ -97,7 +117,9 @@ public sealed class JsonAppConfig : IAppConfig
             string.IsNullOrWhiteSpace(_backupFolderPath) ? null : _backupFolderPath,
             _autoBackupEnabled,
             _backupKeepCount,
-            _activeTeamId);
+            _activeTeamId,
+            string.IsNullOrWhiteSpace(_exportRoot1Path) ? null : _exportRoot1Path,
+            string.IsNullOrWhiteSpace(_exportRoot2Path) ? null : _exportRoot2Path);
         var json = JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
     }

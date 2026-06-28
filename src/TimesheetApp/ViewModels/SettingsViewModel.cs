@@ -59,6 +59,11 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _archivePath = "";
     [ObservableProperty] private int _warningDays = DefaultWarningDays;
 
+    // --- P11 (EX-01): structured-export roots (shared/SharePoint + local) + manual "Export now" ---
+    [ObservableProperty] private string _exportRoot1Path = "";
+    [ObservableProperty] private string _exportRoot2Path = "";
+    [ObservableProperty] private string _exportStatus = "";
+
     // The template editor overlay; null = hidden (mirrors BacklogsViewModel.Editor).
     [ObservableProperty] private TemplateEditorViewModel? _templateEditor;
 
@@ -114,6 +119,8 @@ public partial class SettingsViewModel : ObservableObject
     {
         DbPath = _config.DbPath;
         ArchivePath = _config.ArchivePath;
+        ExportRoot1Path = _config.ExportRoot1Path;
+        ExportRoot2Path = _config.ExportRoot2Path;
 
         var raw = await _settings.GetAsync(WarningDaysKey);
         WarningDays = int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
@@ -145,6 +152,30 @@ public partial class SettingsViewModel : ObservableObject
     private Task ApplyArchivePathAsync()
     {
         _config.SetArchivePath(ArchivePath);
+        return Task.CompletedTask;
+    }
+
+    // EX-01: persist the two structured-export roots app-local (mirror ArchivePath).
+    [RelayCommand]
+    private Task ApplyExportRoot1Async()
+    {
+        _config.SetExportRoot1Path(ExportRoot1Path);
+        return Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private Task ApplyExportRoot2Async()
+    {
+        _config.SetExportRoot2Path(ExportRoot2Path);
+        return Task.CompletedTask;
+    }
+
+    // EX-06: manual "Export now". STUB for W1 — W3 injects IExportHubService and wires this body to
+    // ExportHubService.ExportNowAsync() + status. Kept as a [RelayCommand] so the button binds today.
+    [RelayCommand]
+    private Task ExportNowAsync()
+    {
+        ExportStatus = "Export now will be available once an export root is configured.";
         return Task.CompletedTask;
     }
 

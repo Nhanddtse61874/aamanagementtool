@@ -84,6 +84,30 @@ public class JsonAppConfigTests : IDisposable
         Assert.Equal(15, reloaded.BackupKeepCount);
     }
 
+    // P11 (EX-01): export roots persist app-local and survive a reload.
+    [Fact]
+    public void ExportRoots_Persist_And_Survive_Reload()
+    {
+        var cfg = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+        cfg.SetExportRoot1Path(@"D:\SharePoint\TimesheetApp");
+        cfg.SetExportRoot2Path(@"E:\Local\TimesheetApp");
+
+        var reloaded = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+        Assert.Equal(@"D:\SharePoint\TimesheetApp", reloaded.ExportRoot1Path);
+        Assert.Equal(@"E:\Local\TimesheetApp", reloaded.ExportRoot2Path);
+    }
+
+    // P11 (EX-01): an old config file lacking the export-root keys loads with "" defaults (backward-compat).
+    [Fact]
+    public void ExportRoots_Default_To_Empty_When_Missing_From_Existing_Config()
+    {
+        File.WriteAllText(_configPath, "{\"DbPath\":\"C:\\\\x\\\\timesheet.db\"}");
+        var cfg = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+
+        Assert.Equal("", cfg.ExportRoot1Path);
+        Assert.Equal("", cfg.ExportRoot2Path);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);

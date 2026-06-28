@@ -27,4 +27,14 @@ public interface IAppConfig
     // missing the key default to 0.
     int ActiveTeamId { get; }
     void SetActiveTeamId(int teamId);
+
+    // P11 (EX-01): two structured-export roots — a shared/SharePoint folder + a local folder.
+    // Persisted app-locally (DATA-07) alongside DbPath/ArchivePath; default "" = that root is
+    // skipped. Both empty = legacy flat archive fallback. Old config files missing the keys default
+    // to "".
+    string ExportRoot1Path { get; }
+    void SetExportRoot1Path(string path);
+
+    string ExportRoot2Path { get; }
+    void SetExportRoot2Path(string path);
 }
