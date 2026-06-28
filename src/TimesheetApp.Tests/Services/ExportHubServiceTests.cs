@@ -243,6 +243,28 @@ public sealed class ExportHubServiceTests : IDisposable
         Assert.True(File.Exists(Path.Combine(daily, "20260615_daily.md")));
     }
 
+    // I-1: two team names that sanitize to the SAME folder segment must each get a distinct folder
+    // (the collision gets a -{id} suffix), so neither overwrites the other.
+    [Fact]
+    public async Task ExportNow_distinct_teams_with_colliding_sanitized_names_get_separate_folders()
+    {
+        // "Team:A" -> "Team_A" (':' invalid); "Team_A" -> "Team_A" (already valid) => same segment.
+        var (hub, _, _) = MakeAllData(new[] { Team(1, "Team:A"), Team(2, "Team_A") });
+
+        await hub.ExportNowAsync();
+
+        var clean = Path.Combine(_root1, "Team_A", "tasklist");
+        var suffixed = Path.Combine(_root1, "Team_A-2", "tasklist");
+        Assert.True(Directory.Exists(clean));     // first team keeps the clean segment
+        Assert.True(Directory.Exists(suffixed));  // colliding team gets the -{id} suffix
+        // Exactly two team folders under the root (db is separate) — no silent merge.
+        var teamFolders = Directory.GetDirectories(_root1)
+            .Select(Path.GetFileName)
+            .Where(n => n != "db")
+            .ToList();
+        Assert.Equal(2, teamFolders.Count);
+    }
+
     public void Dispose()
     {
         try { if (Directory.Exists(_base)) Directory.Delete(_base, recursive: true); }

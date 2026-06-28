@@ -74,9 +74,21 @@ public sealed class ExportHubService : IExportHubService
         string root, IReadOnlyList<Team> teams, IReadOnlyList<(int Year, int Month)> months,
         IReadOnlyList<DateOnly> weekMondays, bool backfillOnly)
     {
+        // I-1: distinct team names can sanitize to the SAME folder segment (e.g. "Team:A" / "Team_A"),
+        // and per-team files share identical names — the second team would silently overwrite the first.
+        // Dedupe per root: keep the clean segment when unique; on collision append the stable team id.
+        // GetAllAsync order (is_active DESC, name) + fixed ids make this deterministic across runs.
+        var usedSegments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var team in teams)
         {
-            var teamDir = Path.Combine(root, _sanitizer.SanitizeSegment(team.Name, team.Id));
+            var segment = _sanitizer.SanitizeSegment(team.Name, team.Id);
+            if (!usedSegments.Add(segment))
+            {
+                segment = $"{segment}-{team.Id}";
+                usedSegments.Add(segment);
+            }
+            var teamDir = Path.Combine(root, segment);
             var teamIds = new[] { team.Id };
 
             // tasklist (monthly)
