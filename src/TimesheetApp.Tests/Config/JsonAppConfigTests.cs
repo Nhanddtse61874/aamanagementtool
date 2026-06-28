@@ -108,6 +108,33 @@ public class JsonAppConfigTests : IDisposable
         Assert.Equal("", cfg.ExportRoot2Path);
     }
 
+    // P12 (RT-01): retention keys persist app-local and survive a reload.
+    [Fact]
+    public void Retention_Settings_Persist_And_Survive_Reload()
+    {
+        var cfg = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+        Assert.False(cfg.RetentionEnabled); // default OFF (destructive)
+        Assert.Equal(3, cfg.RetentionMonths); // default 3-month window
+
+        cfg.SetRetentionEnabled(true);
+        cfg.SetRetentionMonths(6);
+
+        var reloaded = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+        Assert.True(reloaded.RetentionEnabled);
+        Assert.Equal(6, reloaded.RetentionMonths);
+    }
+
+    // P12 (RT-01): an old config file lacking the retention keys loads with off / 3 (backward-compat).
+    [Fact]
+    public void Retention_Keys_Default_When_Missing_From_Existing_Config()
+    {
+        File.WriteAllText(_configPath, "{\"DbPath\":\"C:\\\\x\\\\timesheet.db\"}");
+        var cfg = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
+
+        Assert.False(cfg.RetentionEnabled);
+        Assert.Equal(3, cfg.RetentionMonths);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);

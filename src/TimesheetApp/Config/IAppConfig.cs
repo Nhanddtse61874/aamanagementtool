@@ -37,4 +37,13 @@ public interface IAppConfig
 
     string ExportRoot2Path { get; }
     void SetExportRoot2Path(string path);
+
+    // P12 (RT-01): 3-month retention/prune. App-local (DATA-07) — a per-machine opt-in, NOT a
+    // shared DB setting (the shared marker retention.pruned_through lives in the DB). DESTRUCTIVE,
+    // so default OFF. Old config files missing the keys default to off / 3 months (backward-compat).
+    bool RetentionEnabled { get; }
+    void SetRetentionEnabled(bool enabled);
+
+    int RetentionMonths { get; }
+    void SetRetentionMonths(int months);
 }

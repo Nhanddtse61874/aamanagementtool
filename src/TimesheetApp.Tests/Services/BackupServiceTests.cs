@@ -31,6 +31,8 @@ public class BackupServiceTests : IDisposable
         public int ActiveTeamId { get; set; }
         public string ExportRoot1Path { get; set; } = "";
         public string ExportRoot2Path { get; set; } = "";
+        public bool RetentionEnabled { get; set; }
+        public int RetentionMonths { get; set; } = 3;
 
         public void SetDbPath(string v) => DbPath = v;
         public void SetArchivePath(string v) => ArchivePath = v;
@@ -40,6 +42,8 @@ public class BackupServiceTests : IDisposable
         public void SetActiveTeamId(int v) => ActiveTeamId = v;
         public void SetExportRoot1Path(string v) => ExportRoot1Path = v;
         public void SetExportRoot2Path(string v) => ExportRoot2Path = v;
+        public void SetRetentionEnabled(bool v) => RetentionEnabled = v;
+        public void SetRetentionMonths(int v) => RetentionMonths = v;
     }
 
     private (BackupService svc, FakeConfig cfg) Make(DateTimeOffset utcNow, bool setFolder = true, int keep = 30)

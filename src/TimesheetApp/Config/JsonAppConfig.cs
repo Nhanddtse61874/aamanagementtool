@@ -16,10 +16,15 @@ public sealed class JsonAppConfig : IAppConfig
         int? BackupKeepCount = null,
         int? ActiveTeamId = null,
         string? ExportRoot1Path = null,
-        string? ExportRoot2Path = null);
+        string? ExportRoot2Path = null,
+        bool? RetentionEnabled = null,
+        int? RetentionMonths = null);
 
     // P9 (BK-06): default retention when no value persisted yet.
     private const int DefaultBackupKeepCount = 30;
+
+    // P12 (RT-01): default retention window when no value persisted yet.
+    private const int DefaultRetentionMonths = 3;
 
     private readonly string _configPath;
     private string _dbPath;
@@ -30,6 +35,8 @@ public sealed class JsonAppConfig : IAppConfig
     private int _activeTeamId;
     private string _exportRoot1Path;
     private string _exportRoot2Path;
+    private bool _retentionEnabled;
+    private int _retentionMonths;
 
     public JsonAppConfig()
         : this(DefaultConfigPath(), DefaultDbPath())
@@ -48,6 +55,8 @@ public sealed class JsonAppConfig : IAppConfig
         _activeTeamId = model?.ActiveTeamId ?? 0;
         _exportRoot1Path = model?.ExportRoot1Path ?? "";
         _exportRoot2Path = model?.ExportRoot2Path ?? "";
+        _retentionEnabled = model?.RetentionEnabled ?? false;
+        _retentionMonths = model?.RetentionMonths ?? DefaultRetentionMonths;
     }
 
     public string DbPath => _dbPath;
@@ -58,6 +67,8 @@ public sealed class JsonAppConfig : IAppConfig
     public int ActiveTeamId => _activeTeamId;
     public string ExportRoot1Path => _exportRoot1Path;
     public string ExportRoot2Path => _exportRoot2Path;
+    public bool RetentionEnabled => _retentionEnabled;
+    public int RetentionMonths => _retentionMonths;
 
     public void SetDbPath(string dbPath)
     {
@@ -107,6 +118,18 @@ public sealed class JsonAppConfig : IAppConfig
         Save();
     }
 
+    public void SetRetentionEnabled(bool enabled)
+    {
+        _retentionEnabled = enabled;
+        Save();
+    }
+
+    public void SetRetentionMonths(int months)
+    {
+        _retentionMonths = months;
+        Save();
+    }
+
     private void Save()
     {
         var dir = Path.GetDirectoryName(_configPath);
@@ -119,7 +142,9 @@ public sealed class JsonAppConfig : IAppConfig
             _backupKeepCount,
             _activeTeamId,
             string.IsNullOrWhiteSpace(_exportRoot1Path) ? null : _exportRoot1Path,
-            string.IsNullOrWhiteSpace(_exportRoot2Path) ? null : _exportRoot2Path);
+            string.IsNullOrWhiteSpace(_exportRoot2Path) ? null : _exportRoot2Path,
+            _retentionEnabled,
+            _retentionMonths);
         var json = JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
     }
