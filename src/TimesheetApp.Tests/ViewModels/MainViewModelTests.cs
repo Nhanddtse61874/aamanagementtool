@@ -253,21 +253,29 @@ public sealed class MainViewModelTests
         _currentTeam.Verify(s => s.SetActiveTeamAsync(It.IsAny<int>()), Times.Never);
     }
 
-    [Fact] // ShowTeamSwitcher reflects team count (hidden for single-team users)
+    [Fact] // ShowTeamSwitcher reflects team count (visible whenever the user has >=1 team)
     public void ShowTeamSwitcher_reflects_team_count()
     {
         var vm = CreateVm();
 
+        // ISSUE 2: a single-team user (common post-migration state) must still see the switcher so the
+        // current team is visible — it's a harmless no-op selector until a 2nd team exists.
         _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "Only") });
         _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(1);
         vm.RefreshTeamsFromService();
-        Assert.False(vm.ShowTeamSwitcher);
+        Assert.True(vm.ShowTeamSwitcher);
         Assert.Single(vm.AvailableTeams);
 
         _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "A"), T(2, "B") });
         vm.RefreshTeamsFromService();
         Assert.True(vm.ShowTeamSwitcher);
         Assert.Equal(2, vm.AvailableTeams.Count);
+
+        // No teams (edge case) → hidden.
+        _currentTeam.SetupGet(s => s.AvailableTeams).Returns(Array.Empty<Team>());
+        vm.RefreshTeamsFromService();
+        Assert.False(vm.ShowTeamSwitcher);
+        Assert.Empty(vm.AvailableTeams);
     }
 
     [Fact] // RefreshTeamsFromService picks the service's active team as the selection

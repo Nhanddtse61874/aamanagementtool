@@ -22,16 +22,17 @@ public sealed class TimeLogService : ITimeLogService
     private readonly IClock _clock;
     private readonly IAppConfig _config;
     private readonly IJournalWarningSink _journalWarnings;
+    private readonly IHolidayRepository _holidays;   // HOL-02: a marked holiday is a non-working day
 
     public TimeLogService(
         ITimeLogRepository logs, IUserRepository users, ITaskRepository tasks,
         IBacklogRepository requests, ITeamRepository teams, ICurrentTeamService currentTeam,
         IDbBackupHelper backup, IClock clock,
-        IAppConfig config, IJournalWarningSink journalWarnings)
+        IAppConfig config, IJournalWarningSink journalWarnings, IHolidayRepository holidays)
     {
         _logs = logs; _users = users; _tasks = tasks; _requests = requests; _teams = teams;
         _currentTeam = currentTeam; _backup = backup; _clock = clock;
-        _config = config; _journalWarnings = journalWarnings;
+        _config = config; _journalWarnings = journalWarnings; _holidays = holidays;
     }
 
     public async Task<SaveResult> SaveCellAsync(int userId, int taskId, DateOnly date, decimal hours)
@@ -39,6 +40,7 @@ public sealed class TimeLogService : ITimeLogService
         if (hours <= 0m) return Err("Hours must be greater than 0.");
         if (HasMoreThanOneDecimal(hours)) return Err("Hours may have at most 1 decimal place.");
         if (IsWeekend(date)) return Err("Time can only be logged Monday–Friday.");
+        if (await IsHolidayAsync(date)) return Err($"{date:yyyy-MM-dd} is a holiday."); // HOL-02
 
         var rounded = Round1(hours);
         if (rounded > DayCap) return Err($"A single cell cannot exceed {DayCap}h."); // XC-02
@@ -255,6 +257,10 @@ public sealed class TimeLogService : ITimeLogService
     }
 
     // ---- helpers ----
+    // HOL-02: a day manually marked as a holiday is a non-working day (entry grid mirrors the weekend rule).
+    private async Task<bool> IsHolidayAsync(DateOnly date) =>
+        (await _holidays.GetAllAsync()).Any(h => h.Date == date);
+
     private static bool IsWeekend(DateOnly d) => d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
     private static decimal Round1(decimal v) => Math.Round(v, 1, MidpointRounding.AwayFromZero);
     private static bool HasMoreThanOneDecimal(decimal v) => v != Round1(v);

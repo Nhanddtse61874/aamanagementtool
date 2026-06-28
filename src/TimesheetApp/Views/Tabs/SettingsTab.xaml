@@ -608,7 +608,7 @@
                     <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
                             Padding="20,15" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
                         <TextBlock FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}">
-                            <Run Text="Members —"/><Run Text="{Binding TeamName}"/>
+                            <Run Text="Members —"/><Run Text="{Binding TeamName, Mode=OneWay}"/>
                         </TextBlock>
                     </Border>
 

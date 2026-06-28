@@ -128,6 +128,38 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
         Assert.Equal(new[] { "JUL-1" }, vm.Rows.Select(r => r.BacklogCode).ToArray());
     }
 
+    [Fact] // ISSUE 3: "All months" (SelectedMonth == 0) lists every backlog across months incl. null-period.
+    public async Task AllMonths_lists_every_backlog_including_null_period()
+    {
+        await SeedBacklogAsync("JUN-1", "2026-06");
+        await SeedBacklogAsync("JUL-1", "2026-07");
+        // A null-period backlog (visible in the Backlog tab) must not be silently lost in Task List.
+        await _backlogs.InsertAsync(new Backlog(
+            0, "NOPER", "ARCS", DateTimeOffset.UtcNow, PeriodMonth: null));
+
+        var vm = CreateVm(new DateOnly(2026, 6, 15));
+        vm.SelectedMonth = TaskListViewModel.AllMonths;
+        await vm.LoadAsync();
+
+        Assert.Equal(new[] { "JUL-1", "JUN-1", "NOPER" },
+            vm.Rows.Select(r => r.BacklogCode).OrderBy(c => c).ToArray());
+        Assert.DoesNotContain(vm.Rows, r => r.BacklogCode == "DEFAULT");   // DEFAULT still excluded
+    }
+
+    [Fact] // ISSUE 3: a specific month still filters (null-period + other months excluded).
+    public async Task SpecificMonth_filters_and_excludes_null_period()
+    {
+        await SeedBacklogAsync("JUN-1", "2026-06");
+        await SeedBacklogAsync("JUL-1", "2026-07");
+        await _backlogs.InsertAsync(new Backlog(
+            0, "NOPER", "ARCS", DateTimeOffset.UtcNow, PeriodMonth: null));
+
+        var vm = CreateVm(new DateOnly(2026, 6, 15));   // defaults to month 6
+        await vm.LoadAsync();
+
+        Assert.Equal(new[] { "JUN-1" }, vm.Rows.Select(r => r.BacklogCode).ToArray());
+    }
+
     [Fact] // Logged hours are all-time per backlog (XC-06/A1) and include soft-deleted-task hours.
     public async Task Logged_hours_are_alltime_including_softdeleted_tasks()
     {

@@ -23,7 +23,12 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private readonly IBacklogRepository? _backlogs;  // v2: move-ticket-to-month
     private readonly ICurrentUserService? _currentUser; // v2: audit changed-by for move-month
     private readonly ISettingsRepository? _settings; // persists the collapse-all preference across restarts
+    private readonly IHolidayRepository? _holidays;  // HOL-02: holiday day-columns are non-working (ISSUE 5)
     private bool _suppressTotals;
+
+    // The holidays inside the currently shown Mon–Fri week (loaded each ReloadAsync). Drives the per-day
+    // read-only + visual flags so a holiday column behaves like a weekend in the entry grid (ISSUE 5).
+    private readonly HashSet<DateOnly> _weekHolidays = new();
 
     // Settings key for the Entry "Collapse all" toggle (remembered between app sessions).
     private const string CollapseAllKey = "entry.collapseAll";
@@ -32,7 +37,8 @@ public sealed partial class TimesheetViewModel : ObservableObject
         ITimeLogService timeLogs, ITaskRepository tasks, ISmartInputService smartInput, IClock clock,
         Func<int> currentUserId, IMessenger? messenger = null,
         IUserRepository? users = null, IBacklogRepository? backlogs = null,
-        ICurrentUserService? currentUser = null, ISettingsRepository? settings = null)
+        ICurrentUserService? currentUser = null, ISettingsRepository? settings = null,
+        IHolidayRepository? holidays = null)
     {
         _timeLogs = timeLogs;
         _tasks = tasks;
@@ -43,6 +49,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _backlogs = backlogs;
         _currentUser = currentUser;
         _settings = settings;
+        _holidays = holidays;
 
         // Smart-fill targets whichever user the Entry filter is viewing (defaults to the login user).
         // It looks up a backlog by code + lists its tasks, so it needs the backlog/task repositories.
@@ -60,7 +67,8 @@ public sealed partial class TimesheetViewModel : ObservableObject
         // (e.g. a task created in the Backlog tab). static lambda + recipient arg keeps the weak ref.
         _messenger.Register<TimesheetViewModel, DataChangedMessage>(this, static (r, m) =>
         {
-            if (m.Kind is DataKind.Tasks or DataKind.Templates or DataKind.DefaultTasks or DataKind.Backlogs)
+            if (m.Kind is DataKind.Tasks or DataKind.Templates or DataKind.DefaultTasks
+                or DataKind.Backlogs or DataKind.Holidays)
                 _ = r.ReloadAsync();
         });
 
@@ -112,11 +120,37 @@ public sealed partial class TimesheetViewModel : ObservableObject
     public bool IsReadOnly => IsTeamView;               // team aggregate cannot be edited
     public bool CanEdit => !IsReadOnly;
 
+    // ISSUE 5 (HOL-02): per-day-column holiday flags for the visible week + the combined read-only flag
+    // each day cell binds to (team-view read-only OR the day is a holiday). A holiday column is shown
+    // distinct and is not editable, mirroring how weekends are excluded from the Mon–Fri grid (XC-05).
+    private bool DayIsHoliday(int offset) => _weekHolidays.Contains(CurrentWeek.AddDays(offset));
+    public bool MonIsHoliday => DayIsHoliday(0);
+    public bool TueIsHoliday => DayIsHoliday(1);
+    public bool WedIsHoliday => DayIsHoliday(2);
+    public bool ThuIsHoliday => DayIsHoliday(3);
+    public bool FriIsHoliday => DayIsHoliday(4);
+    public bool MonReadOnly => IsReadOnly || MonIsHoliday;
+    public bool TueReadOnly => IsReadOnly || TueIsHoliday;
+    public bool WedReadOnly => IsReadOnly || WedIsHoliday;
+    public bool ThuReadOnly => IsReadOnly || ThuIsHoliday;
+    public bool FriReadOnly => IsReadOnly || FriIsHoliday;
+
+    private void NotifyDayFlags()
+    {
+        OnPropertyChanged(nameof(MonIsHoliday)); OnPropertyChanged(nameof(TueIsHoliday));
+        OnPropertyChanged(nameof(WedIsHoliday)); OnPropertyChanged(nameof(ThuIsHoliday));
+        OnPropertyChanged(nameof(FriIsHoliday));
+        OnPropertyChanged(nameof(MonReadOnly)); OnPropertyChanged(nameof(TueReadOnly));
+        OnPropertyChanged(nameof(WedReadOnly)); OnPropertyChanged(nameof(ThuReadOnly));
+        OnPropertyChanged(nameof(FriReadOnly));
+    }
+
     partial void OnSelectedTargetChanged(EntryTarget? value)
     {
         OnPropertyChanged(nameof(IsTeamView));
         OnPropertyChanged(nameof(IsReadOnly));
         OnPropertyChanged(nameof(CanEdit));
+        NotifyDayFlags();   // IsReadOnly feeds the per-day read-only flags (ISSUE 5)
         _ = ReloadAsync();
     }
 
@@ -181,6 +215,21 @@ public sealed partial class TimesheetViewModel : ObservableObject
         await ReloadAsync();
     }
 
+    // ISSUE 5: refresh the holiday set for the currently shown Mon–Fri week, then re-raise the per-day
+    // flags so the cells' read-only state + holiday styling update.
+    private async Task LoadWeekHolidaysAsync()
+    {
+        _weekHolidays.Clear();
+        if (_holidays is not null)
+        {
+            var friday = CurrentWeek.AddDays(4);
+            foreach (var h in await _holidays.GetAllAsync())
+                if (h.Date >= CurrentWeek && h.Date <= friday)
+                    _weekHolidays.Add(h.Date);
+        }
+        NotifyDayFlags();
+    }
+
     // Restore the saved "Collapse all" preference before the first reload applies it to the groups.
     private async Task LoadCollapsePreferenceAsync()
     {
@@ -219,6 +268,10 @@ public sealed partial class TimesheetViewModel : ObservableObject
 
     private async Task ReloadAsync()
     {
+        // ISSUE 5 (HOL-02): load the visible week's holidays so holiday day-columns render distinct and
+        // non-editable (the service also rejects a holiday save defensively).
+        await LoadWeekHolidaysAsync();
+
         // Team view = read-only aggregate across all users; otherwise the selected/login user's week.
         var grouped = IsTeamView
             ? await _timeLogs.GetWeekGroupedAllUsersAsync(CurrentWeek)

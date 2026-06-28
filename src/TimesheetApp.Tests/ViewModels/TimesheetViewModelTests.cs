@@ -51,6 +51,34 @@ public class TimesheetViewModelTests
         return (vm, tl, si);
     }
 
+    [Fact] // ISSUE 5 (HOL-02): a day marked as a holiday makes that day-column read-only in the entry grid.
+    public async Task Holiday_makes_that_day_column_readonly()
+    {
+        var tl = new Mock<ITimeLogService>();
+        tl.Setup(t => t.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
+          .ReturnsAsync(System.Array.Empty<WeekBacklogGroup>());
+        var clock = new Mock<IClock>();
+        clock.SetupGet(c => c.Today).Returns(Wed); // week of Mon 2026-06-15
+
+        // Mark Wednesday (2026-06-17) of the visible week as a holiday.
+        var holidays = new Mock<IHolidayRepository>();
+        holidays.Setup(h => h.GetAllAsync())
+                .ReturnsAsync(new[] { new Holiday(Wed, "Company holiday") });
+
+        var vm = new TimesheetViewModel(
+            tl.Object, Mock.Of<ITaskRepository>(), Mock.Of<ISmartInputService>(), clock.Object,
+            () => 1, new WeakReferenceMessenger(),
+            users: null, backlogs: null, currentUser: null, settings: null, holidays: holidays.Object);
+
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        Assert.True(vm.WedIsHoliday);
+        Assert.True(vm.WedReadOnly);     // holiday column is not editable
+        Assert.False(vm.MonIsHoliday);   // other weekdays unaffected
+        Assert.False(vm.MonReadOnly);
+        Assert.False(vm.TueReadOnly);
+    }
+
     [Fact] // v2: "Move ▶" bumps the ticket's period_month to the NEXT month, audited as the current user.
     public async Task MoveMonth_advances_ticket_to_next_month_and_audits_current_user()
     {

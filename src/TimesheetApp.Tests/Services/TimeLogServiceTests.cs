@@ -17,6 +17,7 @@ public class TimeLogServiceTests
     private readonly Mock<IDbBackupHelper> _backup = new();
     private readonly Mock<IAppConfig> _config = new();
     private readonly SpyJournalWarningSink _journal = new();
+    private readonly Mock<IHolidayRepository> _holidays = new();
 
     // P10 (TM-06): TimeLogService scopes the Log Work grid + RPT-04 banner to the active team.
     // ActiveTeamId defaults to 1 so the grid/group tests see a non-empty team scope.
@@ -45,10 +46,16 @@ public class TimeLogServiceTests
         public void Warn(string message) => Warnings.Add(message);
     }
 
+    public TimeLogServiceTests()
+    {
+        // Default: no holidays. A test that needs a holiday re-sets _holidays.GetAllAsync (last wins).
+        _holidays.Setup(h => h.GetAllAsync()).ReturnsAsync(Array.Empty<Holiday>());
+    }
+
     private TimeLogService Make(DateOnly today)
         => new(_logs.Object, _users.Object, _tasks.Object, _requests.Object, _teams.Object,
                _currentTeam, _backup.Object,
-               new FakeClock { Today = today }, _config.Object, _journal);
+               new FakeClock { Today = today }, _config.Object, _journal, _holidays.Object);
 
     private static readonly DateOnly Tue = new(2026, 6, 16); // weekday
     private static readonly DateOnly Sat = new(2026, 6, 20); // weekend
@@ -75,6 +82,20 @@ public class TimeLogServiceTests
     {
         var svc = Make(Tue);
         Assert.False((await svc.SaveCellAsync(1, 1, Sat, 4m)).Ok);
+        _logs.Verify(r => r.UpsertAsync(It.IsAny<TimeLog>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SaveCell_rejects_holiday_date()  // HOL-02 (ISSUE 5): a marked holiday is non-working
+    {
+        // Tue is a weekday but marked as a holiday → must be rejected like a weekend.
+        _holidays.Setup(h => h.GetAllAsync()).ReturnsAsync(new[] { new Holiday(Tue, "Company holiday") });
+        var svc = Make(Tue);
+
+        var result = await svc.SaveCellAsync(1, 1, Tue, 4m);
+
+        Assert.False(result.Ok);
+        Assert.Contains("holiday", result.Error, StringComparison.OrdinalIgnoreCase);
         _logs.Verify(r => r.UpsertAsync(It.IsAny<TimeLog>()), Times.Never);
     }
 

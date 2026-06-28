@@ -76,22 +76,43 @@
     <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
       <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
         <TextBlock Text="Month:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-        <ComboBox Width="70" ItemsSource="{Binding Months}" SelectedItem="{Binding SelectedMonth}"/>
+        <!-- ISSUE 3: month 0 = "All months" (lists every backlog like the Backlog tab); 1-12 filter. -->
+        <ComboBox Width="86" ItemsSource="{Binding Months}" SelectedItem="{Binding SelectedMonth}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock>
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Text" Value="{Binding}"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding}" Value="0">
+                        <Setter Property="Text" Value="All months"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
         <ComboBox Width="86" Margin="6,0,0,0" ItemsSource="{Binding Years}" SelectedItem="{Binding SelectedYear}"/>
         <!-- P10 (TM-07): multi-team checkbox filter (hidden for single-team users). -->
         <ctrl:TeamFilter DataContext="{Binding TeamFilter}" Margin="14,0,0,0" VerticalAlignment="Center"/>
       </StackPanel>
 
-      <!-- Grid↔Gantt toggle (two ToggleButtons; clicks set IsGantt in code-behind, IsChecked reflects it) -->
+      <!-- Grid↔Gantt segmented control (two themed ToggleButtons; clicks set IsGantt in code-behind,
+           IsChecked reflects it — ToolbarGhostToggle gives a clear accent on the active one). -->
       <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
-        <ToggleButton x:Name="GridToggle" Content="Grid" IsChecked="True" Click="OnSelectGrid" Padding="14,4"/>
-        <ToggleButton x:Name="GanttToggle" Content="Gantt" Click="OnSelectGantt" Padding="14,4" Margin="6,0,0,0"/>
+        <ToggleButton x:Name="GridToggle" Content="Grid" IsChecked="True" Click="OnSelectGrid"
+                      Padding="14,4" Style="{StaticResource ToolbarGhostToggle}"/>
+        <ToggleButton x:Name="GanttToggle" Content="Gantt" Click="OnSelectGantt"
+                      Padding="14,4" Style="{StaticResource ToolbarGhostToggle}"/>
       </StackPanel>
 
       <ToggleButton IsChecked="{Binding IsChartCollapsed}" Padding="14,4" Margin="0,0,16,6"
                     ToolTip="Show / hide the chart area">
         <ToggleButton.Style>
-          <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+          <Style TargetType="ToggleButton" BasedOn="{StaticResource ToolbarGhostToggle}">
             <Setter Property="Content" Value="Hide chart"/>
             <Style.Triggers>
               <Trigger Property="IsChecked" Value="True">

@@ -79,10 +79,15 @@ public sealed partial class TaskListViewModel : ObservableObject
     // P10: the shared multi-team filter (null when no current-team service is wired — legacy ctor / tests).
     public TeamFilterViewModel? TeamFilter { get; }
 
+    // ISSUE 3: sentinel month meaning "All months" — shows every backlog (any period_month, incl. null),
+    // matching the Backlog tab. 0 sorts before 1-12 so it heads the combo.
+    public const int AllMonths = 0;
+
     // Month selector (year + month combos, mirrors the Timesheet/editor month pickers).
     [ObservableProperty] private int _selectedYear;
     [ObservableProperty] private int _selectedMonth;
-    public IReadOnlyList<int> Months { get; } = Enumerable.Range(1, 12).ToList();
+    // 0 = "All months" (ISSUE 3), then the 12 calendar months.
+    public IReadOnlyList<int> Months { get; } = Enumerable.Range(0, 13).ToList();
     public IReadOnlyList<int> Years { get; } = Enumerable.Range(DateTime.Today.Year - 2, 6).ToList();
 
     partial void OnSelectedYearChanged(int value) => _ = LoadAsync();
@@ -99,12 +104,16 @@ public sealed partial class TaskListViewModel : ObservableObject
     // "Export this month" status line (success path / failure path).
     [ObservableProperty] private string _exportStatus = "";
 
-    public string SelectedMonthText => $"{SelectedMonth:00}/{SelectedYear}";
+    public string SelectedMonthText =>
+        SelectedMonth == AllMonths ? "All months" : $"{SelectedMonth:00}/{SelectedYear}";
 
     [RelayCommand]
     public async Task LoadAsync()
     {
-        var monthKey = new DateOnly(SelectedYear, SelectedMonth, 1).ToString("yyyy-MM");
+        // ISSUE 3: "All months" (SelectedMonth == AllMonths) lists every backlog regardless of period
+        // (incl. null period_month), like the Backlog tab; otherwise filter to the selected yyyy-MM.
+        var allMonths = SelectedMonth == AllMonths;
+        var monthKey = allMonths ? null : new DateOnly(SelectedYear, SelectedMonth, 1).ToString("yyyy-MM");
         var today = _clock.Today;
 
         // Load the lookups once per reload (A2: holiday set is built once and passed into the pure calc).
@@ -130,7 +139,7 @@ public sealed partial class TaskListViewModel : ObservableObject
         var ganttSource = new List<(Backlog Backlog, ScheduleState State)>();
         foreach (var b in allBacklogs
                      .Where(b => !string.Equals(b.BacklogCode, DefaultBacklogCode, StringComparison.Ordinal))
-                     .Where(b => b.PeriodMonth == monthKey))
+                     .Where(b => allMonths || b.PeriodMonth == monthKey))
         {
             var tasks = await _tasks.GetActiveByBacklogAsync(b.Id);
 
@@ -255,6 +264,13 @@ public sealed partial class TaskListViewModel : ObservableObject
     [RelayCommand]
     private async Task ExportThisMonthAsync()
     {
+        if (SelectedMonth == AllMonths)
+        {
+            // Export is per-month; pick a concrete month first (the markdown overview is month-scoped).
+            ExportStatus = "Pick a specific month to export.";
+            return;
+        }
+
         try
         {
             var path = await _archive.ExportMonthAsync(SelectedYear, SelectedMonth);

@@ -24,6 +24,17 @@
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
+    <!-- ISSUE 5 (HOL-02): a day-column cell whose date is a marked holiday gets a muted grey fill (read as
+         a non-working day, like a weekend); Tag carries the per-day holiday flag. -->
+    <Style x:Key="HolidayCellBorder" TargetType="Border">
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
+          <Setter Property="Background" Value="{StaticResource HeaderBg}"/>
+          <Setter Property="ToolTip" Value="Holiday — not a working day"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <!-- Borderless in-grid editable day cell (LostFocus -> per-cell auto-save; red on invalid). -->
     <Style x:Key="GridDayBox" TargetType="TextBox">
       <Setter Property="BorderThickness" Value="0"/>
@@ -308,29 +319,39 @@
                                      FontSize="13" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
 
-                        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                                Style="{StaticResource HolidayCellBorder}"
+                                Tag="{Binding DataContext.MonIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
-                                   IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   IsReadOnly="{Binding DataContext.MonReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Mon, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                        <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                                Style="{StaticResource HolidayCellBorder}"
+                                Tag="{Binding DataContext.TueIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
-                                   IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   IsReadOnly="{Binding DataContext.TueReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Tue, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="3" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                        <Border Grid.Column="3" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                                Style="{StaticResource HolidayCellBorder}"
+                                Tag="{Binding DataContext.WedIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
-                                   IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   IsReadOnly="{Binding DataContext.WedReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Wed, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="4" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                        <Border Grid.Column="4" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                                Style="{StaticResource HolidayCellBorder}"
+                                Tag="{Binding DataContext.ThuIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
-                                   IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   IsReadOnly="{Binding DataContext.ThuReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Thu, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="5" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                        <Border Grid.Column="5" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                                Style="{StaticResource HolidayCellBorder}"
+                                Tag="{Binding DataContext.FriIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
-                                   IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   IsReadOnly="{Binding DataContext.FriReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Fri, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
                         <Border Grid.Column="6" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">

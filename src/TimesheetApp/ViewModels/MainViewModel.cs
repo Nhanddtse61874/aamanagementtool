@@ -118,8 +118,10 @@ public sealed partial class MainViewModel : ObservableObject
     // The active team. The two-way bound ComboBox SelectedItem; setting it persists via the service.
     [ObservableProperty] private Team? _activeTeam;
 
-    // Hide the switcher for single-team users (nothing to switch).
-    public bool ShowTeamSwitcher => AvailableTeams.Count > 1;
+    // Show the switcher whenever the user has any team, so the current team is always visible. With a
+    // single team it's a read-only indicator (selecting the only team is a harmless no-op); it becomes a
+    // real switcher once a 2nd team exists.
+    public bool ShowTeamSwitcher => AvailableTeams.Count >= 1;
 
     // ComboBox SelectedItem change → persist the active team. Guarded against re-entrancy (the
     // service-driven refresh sets ActiveTeam directly), null, and same-id no-ops.
