@@ -25,6 +25,7 @@
 | **P8** | Task List (tracking, tags, holidays, Gantt) — M3 | TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07, TL-08, TL-09, TL-10, TL-11, TAG-01, TAG-02, HOL-01, HOL-02 |
 | **P9** | Local DB Backup + Restore — M5 | BK-01, BK-02, BK-03, BK-04, BK-05, BK-06, BK-07 |
 | **P10** | Multi-Team (team scoping, membership, active team, multi-team view) — M4 | TM-01, TM-02, TM-03, TM-04, TM-05, TM-06, TM-07, TM-08, TM-09, TM-10 |
+| **P11** | Export Restructure (per-team folders, 2-root mirror) — M6 | EX-01, EX-02, EX-03, EX-04, EX-05, EX-06, EX-07 |
 
 Total: **45 (M1)** + **10 (M2/P7)** + **15 (M3/P8)** + **7 (M5/P9)** + **10 (M4/P10)** requirements. (P11 Export / P12 Retention authored when those phases start — see `.planning/UPCOMING-FEATURES.md`.)
 
@@ -469,6 +470,42 @@ Acceptance: A brand-new DB ends with exactly one active team, a working DEFAULT,
 ### TM-10 — No regression to team-agnostic features
 Statement: Existing M1/M2/M3 behavior continues to work under the team model.
 Acceptance: Smart-fill, validation, Daily Report, Task List chips/Gantt, backup all function; all prior tests pass; queries that gained a team dimension still return correct results for the active/checked teams.
+
+---
+
+## Export Restructure (P11 / M6)
+
+**Source of truth:** STEP 2 brainstorm (2026-06-27/28), decisions in `.planning/UPCOMING-FEATURES.md` (P11) + the two clarifications below. Builds on P10 (team-aware). No DB schema change (file-level). Autonomous run.
+
+**Locked decisions:** two export roots (SharePoint/shared + local), **mirror both** every export; structure `{root}/{Team}/{timesheet,daily,tasklist}/` + `{root}/db/`; **per-team content** (each team folder = that team's data only); **one whole-`.db` copy at `{root}/db/`** (not per team — the per-team `db/` folder is reserved for P12 pruned-month markdown); structured export **replaces the flat archives** (auto-backfill completed periods on startup + a manual "Export now"); when no root is configured, fall back to the legacy flat archive (backward-compat).
+
+### EX-01 — Two export-root settings
+Statement: Settings lets the user pick two export roots — a SharePoint/shared folder and a local folder — via Browse, persisted app-local.
+Acceptance: `ExportRoot1Path` (shared) + `ExportRoot2Path` (local) persist to `appsettings.json` (mirror ArchivePath/BackupFolder); empty = that root is skipped; both empty = fall back to legacy flat archive.
+
+### EX-02 — Per-team folder structure
+Statement: Under each configured root the export builds `{root}/{TeamName}/timesheet/`, `/daily/`, `/tasklist/`, `/db/`, plus a root-level `{root}/db/`.
+Acceptance: Folders are created idempotently; team names are sanitized to safe folder names (a shared path-segment sanitizer — none exists today); inactive teams with data still export under their name.
+
+### EX-03 — Mirror to both roots
+Statement: Every export writes the same content to both configured roots.
+Acceptance: An export produces identical structure/files under ExportRoot1 and ExportRoot2; if one root is unset/unwritable, the other still succeeds (best-effort per root, surfaced in status).
+
+### EX-04 — Per-team markdown content
+Statement: Each team's `timesheet`/`daily`/`tasklist` folder contains markdown for **that team only** (not the all-teams grouped file).
+Acceptance: A team's `{yyyyMM}_timesheet.md` / `{yyyyMMdd}_daily.md` / `{yyyyMM}_tasklist.md` contains only that team's rows; reuses the existing markdown builders scoped to a single team (no logic duplication); '|' escaped; no-data period → no file.
+
+### EX-05 — Whole-DB copy at root/db
+Statement: Each export writes one copy of the full `.db` to `{root}/db/`.
+Acceptance: `{root}/db/timesheet_{yyyyMMddHHmmssfff}.db` is written per root (reuses the BackupService copy mechanism); retention prunes old copies to a sensible keep-count. [ASSUMED] reuse BackupKeepCount.
+
+### EX-06 — Triggers + supersede flat archives
+Statement: Structured export runs on startup (backfill completed weeks/months missing files in the structure) and via a manual "Export now"; it supersedes the flat StandupArchives/TaskListArchives when an export root is configured.
+Acceptance: On startup, completed periods with data but no structured file are generated for each team/root; "Export now" regenerates current + completed periods; when no export root is set, the legacy flat archive behavior is used unchanged. Idempotent overwrite.
+
+### EX-07 — Path-segment sanitizer
+Statement: A shared helper converts a team name to a safe folder segment.
+Acceptance: Invalid filename chars are stripped/replaced; empty/whitespace → a fallback (e.g. team id); used by the export structure (and available to other features). Unit-tested.
 
 ---
 
