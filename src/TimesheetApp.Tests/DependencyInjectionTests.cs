@@ -70,6 +70,8 @@ public sealed class DependencyInjectionTests
     [InlineData(typeof(IDatabaseInitializer))]
     [InlineData(typeof(IPathSanitizer))]      // P11 (EX-07)
     [InlineData(typeof(IExportHubService))]   // P11 (EX-02/05/06) — walks its full 8-dep ctor graph
+    [InlineData(typeof(IPruneArchiver))]      // P12 (RT-03) — the archive-before-prune seam
+    [InlineData(typeof(IRetentionService))]   // P12 (RT-05) — walks its full archiver+backup+settings ctor graph
     public void P10_services_resolve(Type serviceType)
     {
         using var sp = BuildProvider();

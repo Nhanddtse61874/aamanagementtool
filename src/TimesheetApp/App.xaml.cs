@@ -78,6 +78,17 @@ public partial class App : Application
         {
             try { await Services.GetRequiredService<IExportHubService>().BackfillAsync(); }
             catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Structured export backfill failed: {ex.Message}"); }
+
+            // P12 (BLOCKER-3): retention runs LAST, only inside the root-configured block (a no-root
+            // machine never prunes), AFTER the export backfill (so the just-written markdown is current)
+            // and therefore after EnsureBootstrapped + DefaultTaskSync. Opt-in (RetentionEnabled) and
+            // best-effort — a failed/aborted run must never block startup. The conflict-copy abort and
+            // the archive→verify-snapshot→delete guards live inside EnsureRetentionAsync.
+            if (config.RetentionEnabled)
+            {
+                try { await Services.GetRequiredService<IRetentionService>().EnsureRetentionAsync(); }
+                catch (Exception ex) { System.Diagnostics.Trace.TraceWarning($"Retention run failed: {ex.Message}"); }
+            }
         }
         else
         {
@@ -153,6 +164,11 @@ public partial class App : Application
         // P11 (EX-02/05/06/07): structured per-team export hub + path sanitizer.
         sc.AddSingleton<IPathSanitizer, PathSanitizer>();
         sc.AddSingleton<IExportHubService, ExportHubService>();
+        // P12 (RT-03/RT-05): retention/prune core + the archive-before-prune seam. Singletons next to
+        // the export services. PruneArchiver writes the per-team markdown + the never-auto-pruned .db
+        // snapshot; RetentionService re-verifies that snapshot before any delete.
+        sc.AddSingleton<IPruneArchiver, PruneArchiver>();
+        sc.AddSingleton<IRetentionService, RetentionService>();
         // P7 Daily Report (standup) — repo + orchestration + weekly markdown archive.
         sc.AddSingleton<IStandupRepository, StandupRepository>();
         sc.AddSingleton<IStandupService, StandupService>();
