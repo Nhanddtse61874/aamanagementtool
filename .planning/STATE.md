@@ -1,15 +1,26 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-28 — branch `feature/task-list-2026-06-27` now holds **FIVE stacked features**:
+**Last updated:** 2026-06-29 — branch `feature/task-list-2026-06-27` holds **FIVE stacked features**:
 **M3 Task List [P8]** + **M5 Local Backup [P9]** + **M4 Multi-Team [P10]** + **M6 Export Restructure [P11]** + **M7 Retention [P12]** —
-schema **v8**, **493 tests green**, build clean, ALL QA-passed + goal-backward VERIFIED. **AWAITING USER UAT before merge**
-(see `.planning/P8/P9/P10/P11/P12 *-UAT.md`). Prior: M2 Daily Report merged into `main`. **All planned features complete** — next is UAT → merge the whole branch to `main`. (Optional follow-ups noted in each UAT/SUMMARY, e.g. P12 grace-month buffer.)
+schema **v8**, **500 tests green**, build clean, all QA-passed + goal-backward VERIFIED. **IN LIVE UAT** (user running the app);
+several runtime-crash fixes already landed (see "UAT crash fixes" below). Prior: M2 Daily Report merged into `main`.
+**Next: finish UAT of all tabs → merge the whole branch to `main`** (NOT pushed/merged yet).
 
-## How to resume
-Open a session in `E:\Learning\AAM 2nd\aamanagementtool` and say *"đọc .planning/STATE.md để tiếp tục"*.
-Branch `feature/task-list-2026-06-27` (NOT merged). UAT passed → STEP 10/11 (merge the whole branch to main).
-UAT issues → loop fixes via STEP 7. `dotnet test src/TimesheetApp.sln` → expect **430 green**.
-Config: model_profile `quality`, defaults {haiku,sonnet,opus} → effective sonnet/opus (no haiku); autonomous run, PAUSE at plan for schema/destructive phases (P12).
+## How to resume (READ FIRST)
+Open a session in `E:\Learning\AAM 2nd\aamanagementtool`, say *"đọc .planning/STATE.md để tiếp tục"*.
+- Branch `feature/task-list-2026-06-27` (NOT merged, NOT pushed). HEAD = `93d5dd1`. `dotnet test src/TimesheetApp.sln` → expect **500 green**.
+- Run the app: `dotnet run --project src/TimesheetApp` (or the built exe `src/TimesheetApp/bin/Debug/net8.0-windows/TimesheetApp.exe`). First launch already migrated the real DB to v8.
+- **Real DB has demo data** seeded this session: 2 teams (Architect Improvement #1, Plus Team #2), 8 members (An/Binh/Chi/Dung/Em[50-50]/Phuc/Giang/Huy), 10 tasks across 5 backlogs (ARCS-2001/ARMS-2002/OTHER-2005/PLUS-2003/PLUS-2004, period_month 2026-06, varied schedule chips). Current user **Nhan** is in BOTH teams. DB backups exist: `…/Documents/TimesheetApp/timesheet.db.pre-v8-*.bak` and `.pre-seed-*.bak`.
+- Config: model_profile `quality`; autonomous run, PAUSE at plan for schema/destructive phases.
+- **What's left:** user confirms remaining tabs (Backlog/Reports/Daily/Settings/Holiday/Backup/Export/Retention) work with data → then merge branch to `main` (user must OK push/merge).
+
+## UAT crash fixes (2026-06-28/29) — all committed, 500 green
+Live UAT surfaced runtime crashes that unit/XAML-compile tests can't catch (the team filter defaulted to 0 teams, so every team-filtered grid was EMPTY and **latent render bugs were masked until rows appeared**):
+1. `217f507` — 5 UAT issues: **add-member crash** (`<Run Text="{Binding TeamName}"/>` binds TwoWay-by-default on a read-only prop → `Mode=OneWay`); team switcher shown for single-team (`Count>=1`); Task List toggles → `ToolbarGhostToggle`; **holiday blocks Log Work entry** (TimeLogService rejects holiday dates + cells read-only); Task List "All months" option.
+2. `04790b5`→`62fe66c` — **"Teams (0)" empty grids**: TeamFilters built in VM ctor before `ICurrentTeamService` resolved. Final fix = **lazy-seed** `TeamFilterViewModel.CheckedTeamIds` on first read (NOT raising `ActiveTeamChanged` during `InitializeAsync` — that runs inside the startup WPF layout pass → re-enters Measure → **stack overflow**).
+3. `89fce98` — tag/chip icon TextBlocks use `FontFamily="Segoe UI Emoji"` (innocent re the SO, kept for emoji icons).
+4. `93d5dd1` — **Task List render crash** (the real "click→crash"): row-expand `<ToggleButton Style="MiniGhostButton">` (MiniGhostButton is `TargetType=Button`) → added `MiniGhostToggle`; `<ProgressBar Value="{Binding ProgressPercent}">` (RangeBase.Value is TwoWay-by-default) on read-only prop → `Mode=OneWay`; hardened template `<Run Text>` with `Mode=OneWay`.
+**LEARNING — recurring WPF bug class:** TwoWay-by-default DPs (`Run.Text`, `RangeBase.Value`, `ToggleButton.IsChecked`, `Selector.SelectedItem`) bound to **read-only** VM props throw at render; and **Button-typed Styles on a ToggleButton** throw "TargetType does not match". All views grepped + fixed for both patterns. A throwaway **STA render harness** (scratchpad `…/seeder/Program.cs`) reproduces a populated tab and was the tool that caught these — recreate it to diagnose any further render crash.
 
 ## M3 Task List [P8] — what was built (2026-06-27, this session)
 Per-month backlog tracking overview. Schema **v7** (additive v6→v7): Backlogs +deadline_internal/external,
