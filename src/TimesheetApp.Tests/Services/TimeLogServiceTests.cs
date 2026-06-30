@@ -48,8 +48,9 @@ public class TimeLogServiceTests
 
     public TimeLogServiceTests()
     {
-        // Default: no holidays. A test that needs a holiday re-sets _holidays.GetAllAsync (last wins).
+        // Default: no holidays. A test that needs a holiday re-sets the relevant method (last wins).
         _holidays.Setup(h => h.GetAllAsync()).ReturnsAsync(Array.Empty<Holiday>());
+        _holidays.Setup(h => h.IsHolidayAsync(It.IsAny<DateOnly>())).ReturnsAsync(false);
     }
 
     private TimeLogService Make(DateOnly today)
@@ -89,7 +90,8 @@ public class TimeLogServiceTests
     public async Task SaveCell_rejects_holiday_date()  // HOL-02 (ISSUE 5): a marked holiday is non-working
     {
         // Tue is a weekday but marked as a holiday → must be rejected like a weekend.
-        _holidays.Setup(h => h.GetAllAsync()).ReturnsAsync(new[] { new Holiday(Tue, "Company holiday") });
+        // SaveCellAsync checks the date via the single-row IsHolidayAsync (N+1 fix), not GetAllAsync.
+        _holidays.Setup(h => h.IsHolidayAsync(Tue)).ReturnsAsync(true);
         var svc = Make(Tue);
 
         var result = await svc.SaveCellAsync(1, 1, Tue, 4m);

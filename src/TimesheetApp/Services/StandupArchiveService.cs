@@ -29,14 +29,14 @@ public sealed class StandupArchiveService : IStandupArchiveService
     }
 
     public string FileNameFor(DateOnly anyDayInWeek) =>
-        MondayOf(anyDayInWeek).ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "_daily.md";
+        DateHelpers.MondayOf(anyDayInWeek).ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "_daily.md";
 
     // P11 (EX-04): per-team (or all-teams when teamIds==null) week markdown builder. Returns null when
     // the scoped range has no entries (no-data -> no file). The fetch lives here so the structured export
     // can scope it to [teamId]; ExportWeekAsync delegates with teamIds=null (byte-identical legacy file).
     public async Task<string?> BuildWeekMarkdownAsync(IReadOnlyList<int>? teamIds, DateOnly weekMonday)
     {
-        var monday = MondayOf(weekMonday);
+        var monday = DateHelpers.MondayOf(weekMonday);
         var friday = monday.AddDays(4);
 
         var entries = await _repo.GetEntriesForRangeAsync(monday, friday, teamIds);
@@ -55,7 +55,7 @@ public sealed class StandupArchiveService : IStandupArchiveService
 
     public async Task<string?> ExportWeekAsync(DateOnly anyDayInWeek)
     {
-        var monday = MondayOf(anyDayInWeek);
+        var monday = DateHelpers.MondayOf(anyDayInWeek);
         var md = await BuildWeekMarkdownAsync(null, monday);
         if (md is null) return null; // no data -> no file (DR-09)
 
@@ -68,12 +68,12 @@ public sealed class StandupArchiveService : IStandupArchiveService
 
     public async Task BackfillMissingWeeksAsync()
     {
-        var currentMonday = MondayOf(_clock.Today);
+        var currentMonday = DateHelpers.MondayOf(_clock.Today);
         // Everything strictly before the current week is a "completed" week.
         var entries = await _repo.GetEntriesForRangeAsync(new DateOnly(2000, 1, 1), currentMonday.AddDays(-1));
         if (entries.Count == 0) return;
 
-        var weekMondays = entries.Select(e => MondayOf(e.WorkDate)).Distinct().ToList();
+        var weekMondays = entries.Select(e => DateHelpers.MondayOf(e.WorkDate)).Distinct().ToList();
         var dir = ArchiveDir();
         foreach (var monday in weekMondays)
         {
@@ -160,7 +160,4 @@ public sealed class StandupArchiveService : IStandupArchiveService
     }
 
     private static string Esc(string s) => s.Replace("|", "\\|");
-
-    // Monday-start, culture-independent (matches the app's week convention).
-    private static DateOnly MondayOf(DateOnly date) => date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
 }

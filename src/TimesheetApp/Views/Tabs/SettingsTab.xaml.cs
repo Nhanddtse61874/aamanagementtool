@@ -124,7 +124,17 @@ public partial class SettingsTab : UserControl
             "Restore database", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.OK) return;
 
-        await Vm.RestoreCommand.ExecuteAsync(backup);
+        // async void event handler: keep its exceptions from reaching the dispatcher as unhandled.
+        try
+        {
+            await Vm.RestoreCommand.ExecuteAsync(backup);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Restore failed:\n\n{ex.Message}", "Restore database",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
 
         var restart = MessageBox.Show(
             Vm.BackupStatus + "\n\nClose the app now?",
@@ -148,7 +158,16 @@ public partial class SettingsTab : UserControl
             "Run retention", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.OK) return;
 
-        await Vm.RunRetentionCommand.ExecuteAsync(null);
+        // async void event handler: surface a failure instead of letting it escape unhandled.
+        try
+        {
+            await Vm.RunRetentionCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Retention failed:\n\n{ex.Message}", "Run retention",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     // "Add task" opens a dedicated input dialog instead of an inline text box.

@@ -131,7 +131,7 @@ public sealed class PruneArchiver : IPruneArchiver
 
             // Timesheet (monthly). ExportService always emits a header; only include when it has data rows.
             var timesheetMd = await _export.ExportMarkdownAsync(new ExportFilter(null, year, month, null, teamIds));
-            if (HasTimesheetData(timesheetMd))
+            if (FormatHelpers.HasTimesheetData(timesheetMd))
             {
                 sb.AppendLine("# Timesheet");
                 sb.AppendLine();
@@ -172,7 +172,7 @@ public sealed class PruneArchiver : IPruneArchiver
     {
         var first = new DateOnly(year, month, 1);
         var last = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
-        var monday = MondayOf(first);
+        var monday = DateHelpers.MondayOf(first);
         var result = new List<DateOnly>();
         while (monday <= last)
         {
@@ -182,9 +182,4 @@ public sealed class PruneArchiver : IPruneArchiver
         return result;
     }
 
-    private static DateOnly MondayOf(DateOnly date) => date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
-
-    // Same has-data marker ExportHubService uses: the per-row table header only appears when there are logs.
-    private static bool HasTimesheetData(string md) =>
-        md.Contains("| Date | Task | Hours |", StringComparison.Ordinal);
 }

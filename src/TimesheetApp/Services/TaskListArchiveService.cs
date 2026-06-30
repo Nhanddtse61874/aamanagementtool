@@ -79,11 +79,13 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
 
         // Moved-out members: had a period_month audit row with old_value == M, and are not currently in M.
         // Dedup current-wins; the latest audit row decides (GetAuditAsync returns DESC by id).
+        var nonCurrentIds = all.Where(b => !currentIds.Contains(b.Id)).Select(b => b.Id).ToList();
+        var auditByBacklog = await _backlogs.GetAuditForBacklogsAsync(nonCurrentIds);
         var movedOut = new List<Backlog>();
         foreach (var b in all)
         {
             if (currentIds.Contains(b.Id)) continue;
-            var audit = await _backlogs.GetAuditAsync(b.Id);
+            var audit = auditByBacklog.TryGetValue(b.Id, out var a) ? a : Array.Empty<BacklogAuditEntry>();
             var latestPeriodMove = audit.FirstOrDefault(a => a.Field == "period_month");
             if (latestPeriodMove is { } move && string.Equals(move.OldValue, monthKey, StringComparison.Ordinal))
                 movedOut.Add(b);
@@ -123,14 +125,16 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
             .ToList();
 
         // Every month that has data: current period_month values + period_month audit old_values.
+        var allIds = all.Select(b => b.Id).ToList();
+        var auditByBacklog = await _backlogs.GetAuditForBacklogsAsync(allIds);
         var months = new HashSet<string>();
         foreach (var b in all)
         {
             if (!string.IsNullOrWhiteSpace(b.PeriodMonth)) months.Add(b.PeriodMonth!);
-            var audit = await _backlogs.GetAuditAsync(b.Id);
-            foreach (var a in audit)
-                if (a.Field == "period_month" && !string.IsNullOrWhiteSpace(a.OldValue))
-                    months.Add(a.OldValue!);
+            var audit = auditByBacklog.TryGetValue(b.Id, out var a) ? a : Array.Empty<BacklogAuditEntry>();
+            foreach (var entry in audit)
+                if (entry.Field == "period_month" && !string.IsNullOrWhiteSpace(entry.OldValue))
+                    months.Add(entry.OldValue!);
         }
 
         var dir = ArchiveDir();
@@ -195,8 +199,8 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
                 Esc(pcaName),
                 Day(b.DeadlineInternal),
                 Day(b.DeadlineExternal),
-                Hours(estimate),
-                Hours(logged),
+                FormatHelpers.FormatHoursNullable(estimate),
+                FormatHelpers.FormatHoursNullable(logged),
                 b.ProgressPercent is { } p ? $"{p}%" : "—",
                 Esc(tagText),
                 state.ToString(),
@@ -236,15 +240,6 @@ public sealed class TaskListArchiveService : ITaskListArchiveService
 
     private static string Day(DateOnly? d) =>
         d?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—";
-
-    // Estimate/logged hours render whole numbers without decimals (TL-05/§7).
-    private static string Hours(decimal? v)
-    {
-        if (v is not { } h) return "—";
-        return h == Math.Truncate(h)
-            ? ((long)h).ToString(CultureInfo.InvariantCulture)
-            : h.ToString("0.#", CultureInfo.InvariantCulture);
-    }
 
     private static string Esc(string s) => s.Replace("|", "\\|");
 }

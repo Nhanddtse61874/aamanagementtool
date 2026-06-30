@@ -1,3 +1,4 @@
+using Dapper;
 using Xunit;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
@@ -93,5 +94,136 @@ public class RepositoryCrudTests : IAsyncLifetime
         await repo.SetAsync("n_days", "5");                 // replace, not duplicate
         Assert.Equal("5", await repo.GetAsync("n_days"));
         Assert.Null(await repo.GetAsync("missing_key"));
+    }
+
+    // v9 (B2): auditNote is stored in BacklogAudit.note for deadline fields, null for all others.
+    [Fact]
+    public async Task UpdateAsync_auditNote_written_only_for_deadline_fields()
+    {
+        var repo = new BacklogRepository(_db);
+        var id = await repo.InsertAsync(new Backlog(
+            0, "REQ-AUDIT-NOTE", "NoteTest", DateTimeOffset.UtcNow,
+            DeadlineInternal: new DateOnly(2026, 7, 1),
+            Type: "Estimate"));
+
+        var loaded = await repo.GetByIdAsync(id);
+
+        // Change both a deadline field (deadline_internal) and a non-deadline field (type)
+        // in the same UpdateAsync call, passing an auditNote.
+        await repo.UpdateAsync(loaded! with
+        {
+            DeadlineInternal = new DateOnly(2026, 8, 1),
+            Type = "Implement",
+        }, changedByUserId: 1, changedByName: "Tester", auditNote: "Pushed due to scope change");
+
+        // Read raw BacklogAudit rows to check the note column directly.
+        using var c = _db.Create();
+        var auditRows = (await c.QueryAsync<(string field, string? note)>(
+            "SELECT field, note FROM BacklogAudit WHERE backlog_id = @bid ORDER BY id;",
+            new { bid = id })).ToList();
+
+        // deadline_internal changed → note must be "Pushed due to scope change"
+        var deadlineRow = auditRows.Single(r => r.field == "deadline_internal");
+        Assert.Equal("Pushed due to scope change", deadlineRow.note);
+
+        // type changed → note must be NULL (non-deadline field)
+        var typeRow = auditRows.Single(r => r.field == "type");
+        Assert.Null(typeRow.note);
+
+        // v9 (B-6): the note must also round-trip through GetAuditAsync (BacklogAuditEntry.Note),
+        // so the editor's change-history panel can surface the deadline-change reason.
+        var entries = await repo.GetAuditAsync(id);
+        Assert.Equal("Pushed due to scope change", entries.Single(e => e.Field == "deadline_internal").Note);
+        Assert.Null(entries.Single(e => e.Field == "type").Note);
+    }
+
+    // v9 (B2): when only a non-deadline field changes and auditNote is supplied, note stays null.
+    [Fact]
+    public async Task UpdateAsync_auditNote_is_null_when_no_deadline_changed()
+    {
+        var repo = new BacklogRepository(_db);
+        var id = await repo.InsertAsync(new Backlog(
+            0, "REQ-AUDIT-NODEADLINE", "NoteNullTest", DateTimeOffset.UtcNow,
+            Type: "Estimate"));
+
+        var loaded = await repo.GetByIdAsync(id);
+
+        // Change only a non-deadline field; supply a note anyway — must NOT appear in audit.
+        await repo.UpdateAsync(loaded! with { Type = "Implement" },
+            changedByUserId: 1, changedByName: "Tester", auditNote: "should not appear");
+
+        using var c = _db.Create();
+        var auditRows = (await c.QueryAsync<(string field, string? note)>(
+            "SELECT field, note FROM BacklogAudit WHERE backlog_id = @bid ORDER BY id;",
+            new { bid = id })).ToList();
+
+        // Only the type row should exist; its note must be null.
+        var typeRow = auditRows.Single(r => r.field == "type");
+        Assert.Null(typeRow.note);
+    }
+
+    // v9 (B1): SetTagsAsync writes exactly one 'tags' audit row when the tag set changes.
+    [Fact]
+    public async Task SetTagsAsync_writes_one_tags_audit_row_on_change()
+    {
+        var repo = new BacklogRepository(_db);
+        var bid = await repo.InsertAsync(new Backlog(0, "REQ-TAGS-AUDIT", "TagAuditTest", DateTimeOffset.UtcNow));
+
+        // Seed two tags directly (mirrors RetentionServiceTests pattern).
+        using var c = _db.Create();
+        var tag1 = await c.ExecuteScalarAsync<int>(
+            "INSERT INTO Tags(text, icon, color, created_at) VALUES('Alpha','🔥','#FF0000','2026-01-01T00:00:00Z'); SELECT last_insert_rowid();");
+        var tag2 = await c.ExecuteScalarAsync<int>(
+            "INSERT INTO Tags(text, icon, color, created_at) VALUES('Beta','⚡','#FFAA00','2026-01-01T00:00:00Z'); SELECT last_insert_rowid();");
+
+        // Set initial tags (tag1 only) — changedBy supplied so an audit row is written.
+        await repo.SetTagsAsync(bid, new[] { tag1 }, changedByUserId: 5, changedByName: "Editor");
+
+        var auditAfterFirst = (await c.QueryAsync<(string field, string? old, string? @new)>(
+            "SELECT field, old_value, new_value FROM BacklogAudit WHERE backlog_id = @bid ORDER BY id;",
+            new { bid })).ToList();
+
+        Assert.Single(auditAfterFirst);
+        Assert.Equal("tags", auditAfterFirst[0].field);
+        // old set was empty → old_value is empty string (no ids)
+        Assert.Equal("", auditAfterFirst[0].old);
+        Assert.Equal(tag1.ToString(), auditAfterFirst[0].@new);
+
+        // Change to tag2 — must produce a second 'tags' audit row.
+        await repo.SetTagsAsync(bid, new[] { tag2 }, changedByUserId: 5, changedByName: "Editor");
+
+        var auditAfterSecond = (await c.QueryAsync<(string field, string? old, string? @new)>(
+            "SELECT field, old_value, new_value FROM BacklogAudit WHERE backlog_id = @bid ORDER BY id;",
+            new { bid })).ToList();
+
+        Assert.Equal(2, auditAfterSecond.Count);
+        var secondRow = auditAfterSecond[1];
+        Assert.Equal("tags", secondRow.field);
+        Assert.Equal(tag1.ToString(), secondRow.old);
+        Assert.Equal(tag2.ToString(), secondRow.@new);
+    }
+
+    // v9 (B1): SetTagsAsync writes NO audit row when the tag set is unchanged.
+    [Fact]
+    public async Task SetTagsAsync_writes_no_audit_row_when_set_unchanged()
+    {
+        var repo = new BacklogRepository(_db);
+        var bid = await repo.InsertAsync(new Backlog(0, "REQ-TAGS-SAME", "TagNoAuditTest", DateTimeOffset.UtcNow));
+
+        using var c = _db.Create();
+        var tag1 = await c.ExecuteScalarAsync<int>(
+            "INSERT INTO Tags(text, icon, color, created_at) VALUES('Gamma','✅','#00FF00','2026-01-01T00:00:00Z'); SELECT last_insert_rowid();");
+
+        // Set {tag1}.
+        await repo.SetTagsAsync(bid, new[] { tag1 }, changedByUserId: 5, changedByName: "Editor");
+
+        // Set the same {tag1} again — must not write a second audit row.
+        await repo.SetTagsAsync(bid, new[] { tag1 }, changedByUserId: 5, changedByName: "Editor");
+
+        var auditRows = (await c.QueryAsync<string>(
+            "SELECT field FROM BacklogAudit WHERE backlog_id = @bid AND field = 'tags';",
+            new { bid })).ToList();
+
+        Assert.Single(auditRows);  // only the first call (empty→tag1) produced an audit row
     }
 }

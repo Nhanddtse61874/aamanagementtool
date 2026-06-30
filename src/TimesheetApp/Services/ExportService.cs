@@ -67,7 +67,7 @@ public sealed class ExportService : IExportService
                           .Append(" | ")
                           .Append(EscapePipe(row.TaskName))
                           .Append(" | ")
-                          .Append(FormatHours(row.Hours))
+                          .Append(FormatHelpers.FormatHours(row.Hours))
                           .AppendLine(" |");
                     }
                     sb.AppendLine();
@@ -130,12 +130,6 @@ public sealed class ExportService : IExportService
         r.BacklogCode == DefaultCode
             ? ($"{r.BacklogCode}|{r.TaskName}", $"{r.BacklogCode} — {r.TaskName}")   // EXP-03
             : ($"{r.BacklogCode}|{r.Project}", $"{r.BacklogCode} — {r.Project}");   // EXP-02
-
-    // "4" not "4.0"; "3.5" stays "3.5" (EXP-04).
-    internal static string FormatHours(decimal h) =>
-        h == Math.Truncate(h)
-            ? ((long)h).ToString(CultureInfo.InvariantCulture)
-            : h.ToString("0.#", CultureInfo.InvariantCulture);
 
     // Escape table-breaking pipe in task names (EXP-04).
     internal static string EscapePipe(string s) => s.Replace("|", @"\|");

@@ -102,7 +102,7 @@ public class TimesheetViewModelTests
         await vm.MoveMonthCommand.ExecuteAsync(5);
 
         requests.Verify(r => r.UpdateAsync(
-            It.Is<Backlog>(x => x.Id == 5 && x.PeriodMonth == "2026-07"), 7, "Nhan"), Times.Once);
+            It.Is<Backlog>(x => x.Id == 5 && x.PeriodMonth == "2026-07"), 7, "Nhan", It.IsAny<string?>()), Times.Once);
     }
 
     [Fact]

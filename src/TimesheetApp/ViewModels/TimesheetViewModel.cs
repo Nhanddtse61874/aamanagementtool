@@ -72,7 +72,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
                 _ = r.ReloadAsync();
         });
 
-        CurrentWeek = MondayOf(_clock.Today);
+        CurrentWeek = DateHelpers.MondayOf(_clock.Today);
     }
 
     public SmartInputPanelVm SmartInput { get; }
@@ -88,7 +88,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
     partial void OnJumpDateChanged(DateTime? value)
     {
         if (value is null) return;
-        var monday = MondayOf(DateOnly.FromDateTime(value.Value));
+        var monday = DateHelpers.MondayOf(DateOnly.FromDateTime(value.Value));
         if (monday == CurrentWeek) return; // already on that week (also breaks the sync feedback loop)
         CurrentWeek = monday;
         _ = ReloadAsync();
@@ -203,9 +203,6 @@ public sealed partial class TimesheetViewModel : ObservableObject
         var dow = d.DayOfWeek.ToString()[..3].ToUpperInvariant(); // MON/TUE/... (matches the design)
         return $"{dow} {d:dd/MM}";
     }
-
-    /// Hard-coded Monday week start (NOT culture-derived) — spec §7.2.
-    public static DateOnly MondayOf(DateOnly date) => date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
 
     [RelayCommand]
     private async Task LoadAsync()

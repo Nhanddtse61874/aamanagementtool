@@ -13,13 +13,19 @@ public interface IBacklogRepository
     Task<Backlog?> GetDefaultForTeamAsync(int teamId);             // P10: DEFAULT is unique per team (TM-04)
     Task<int> InsertAsync(Backlog backlog);
     // Edit name/project + v2 start/end/month/type. changedBy is recorded in BacklogAudit when the
-    // audited fields change.
-    Task UpdateAsync(Backlog backlog, int? changedByUserId = null, string? changedByName = null);
+    // audited fields change. v9 (B2): auditNote is stored in BacklogAudit.note for deadline fields only.
+    Task UpdateAsync(Backlog backlog, int? changedByUserId = null, string? changedByName = null,
+        string? auditNote = null);
     Task<IReadOnlyList<BacklogAuditEntry>> GetAuditAsync(int backlogId);   // v2 change history
+    // Batch form of GetAuditAsync: one IN-query across many backlogs, grouped by backlog_id (avoids
+    // N+1). Each group is ordered id DESC like the single-backlog query; absent ids are missing keys.
+    Task<IReadOnlyDictionary<int, IReadOnlyList<BacklogAuditEntry>>> GetAuditForBacklogsAsync(IReadOnlyList<int> backlogIds);
     // No SetActiveAsync — Backlogs are NOT soft-deletable (decision 4).
 
     // v7 tag links (TAG-02). SetTagsAsync replaces the whole set for one backlog in a single tx.
+    // v9 (B1): changedBy params added (optional, defaults null) — write one 'tags' audit row on change.
     Task<IReadOnlyList<int>> GetTagIdsAsync(int backlogId);
-    Task SetTagsAsync(int backlogId, IReadOnlyList<int> tagIds);
+    Task SetTagsAsync(int backlogId, IReadOnlyList<int> tagIds,
+        int? changedByUserId = null, string? changedByName = null);
     Task<IReadOnlyDictionary<int, IReadOnlyList<int>>> GetTagIdsForAllAsync();  // bulk, avoids N+1
 }

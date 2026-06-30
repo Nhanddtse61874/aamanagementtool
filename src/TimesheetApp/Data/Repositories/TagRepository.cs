@@ -40,10 +40,12 @@ public sealed class TagRepository : ITagRepository
 
     public async Task DeleteAsync(int tagId)
     {
-        // Hard-delete: drop the N:N links first so no orphan BacklogTags remain, then the tag (one tx).
+        // Hard-delete: drop both N:N links first so no orphan BacklogTags/TaskTags (v9) remain, then the
+        // tag (one tx). Neither link table declares an FK, so the cascade is manual.
         using var c = _factory.Create();
         using var tx = c.BeginTransaction();
         await c.ExecuteAsync("DELETE FROM BacklogTags WHERE tag_id = @id;", new { id = tagId }, tx);
+        await c.ExecuteAsync("DELETE FROM TaskTags WHERE tag_id = @id;", new { id = tagId }, tx);
         await c.ExecuteAsync("DELETE FROM Tags WHERE id = @id;", new { id = tagId }, tx);
         tx.Commit();
     }

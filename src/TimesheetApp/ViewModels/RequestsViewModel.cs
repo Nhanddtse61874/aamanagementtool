@@ -101,10 +101,13 @@ public sealed partial class BacklogsViewModel : ObservableObject
                         ?? new Dictionary<int, string>();
         var showTeam = TeamFilter?.ShowTeamColumn ?? false;
 
+        var backlogIds = rows.Select(r => r.Id).ToList();
+        var tasksByBacklog = await _tasks.GetActiveByBacklogsAsync(backlogIds);
+
         var items = new List<BacklogListItem>();
         foreach (var r in rows)
         {
-            var tasks = await _tasks.GetActiveByBacklogAsync(r.Id);
+            tasksByBacklog.TryGetValue(r.Id, out var tasks);
             var assignee = r.AssigneeUserId is { } uid && names.TryGetValue(uid, out var n) ? n : null;
             var teamName = r.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : null;
             items.Add(new BacklogListItem(

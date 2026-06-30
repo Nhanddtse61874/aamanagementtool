@@ -320,9 +320,11 @@ public sealed partial class MainViewModel : ObservableObject
         {
             await load();
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort: a tab failing to preload must not prevent the shell from showing.
+            // Best-effort: a tab failing to preload must not prevent the shell from showing — but don't
+            // swallow it silently (that masked past startup bugs). Surface to the debug output.
+            System.Diagnostics.Debug.WriteLine($"[LoadTabs] preload failed: {ex}");
         }
     }
 }

@@ -69,6 +69,10 @@
         </StackPanel>
       </Border>
     </DataTemplate>
+
+    <!-- Proxy so the TEAM DataGridColumn (outside the visual tree) can bind to the VM's TeamFilter and
+         hide itself when only one team is selected (the cell would otherwise be empty dead space). -->
+    <ctrl:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
   </UserControl.Resources>
 
   <DockPanel Margin="12">
@@ -160,25 +164,59 @@
 
     <!-- GRID view: one row per non-DEFAULT backlog in the selected month, expandable to its tasks. -->
     <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
-              SelectionMode="Single" RowDetailsVisibilityMode="Collapsed"
-              Style="{StaticResource ShowWhenGrid}">
+              SelectionMode="Single"
+              ColumnHeaderHeight="40"
+              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+      <!-- BasedOn the theme DataGrid style so it KEEPS RowHeight=36 + alternating rows + gridlines
+           (a plain ShowWhenGrid style would replace the theme, dropping RowHeight → rows auto-size and
+           balloon vertically on resize). The IsGantt trigger reproduces ShowWhenGrid's hide behavior. -->
+      <DataGrid.Style>
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
+          <Setter Property="Visibility" Value="Visible"/>
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding IsGantt}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </DataGrid.Style>
       <DataGrid.Columns>
-        <!-- expand toggle for the row-detail (tasks + status) -->
-        <DataGridTemplateColumn Header="" Width="34">
+        <!-- expand toggle for the row-detail (tasks + status). A Button bound to the VM's ToggleExpandCommand
+             (the same reliable command pattern as the Backlog tab's Edit button) — the previous in-cell
+             ToggleButton's IsChecked write to IsExpanded never reached the row, so nothing ever expanded.
+             Chevron points right when collapsed, down when expanded. -->
+        <DataGridTemplateColumn Header="" Width="30">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
-              <ToggleButton Content="&#9660;" IsChecked="{Binding IsExpanded}"
-                            Style="{StaticResource MiniGhostToggle}" Padding="2" Width="24"
-                            ToolTip="Show tasks"/>
+              <Button Command="{Binding DataContext.ToggleExpandCommand,
+                                RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                      CommandParameter="{Binding}" Padding="2" Width="24"
+                      ToolTip="Hiện / ẩn danh sách task của backlog này">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource MiniGhostButton}">
+                    <Setter Property="Content" Value="&#9654;"/>  <!-- ▶ collapsed -->
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                        <Setter Property="Content" Value="&#9660;"/>  <!-- ▼ expanded -->
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.4*"/>
-        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="1.1*"/>
+        <!-- Star-width + MinWidth = responsive: columns grow to fill a wide window, clamp to MinWidth and
+             trigger horizontal scroll when narrow. Text stays a fixed readable size (no font scaling). -->
+        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.3*" MinWidth="112"/>
+        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="*" MinWidth="90"/>
 
-        <!-- P10 (TM-07): team chip, shown only when >1 team is checked (ShowTeam). -->
-        <DataGridTemplateColumn Header="TEAM" Width="110">
+        <!-- P10 (TM-07): team chip, shown only when >1 team is checked (ShowTeam). The whole column hides
+             for single-team users (via VmProxy) so it doesn't leave an empty 110px gap. -->
+        <DataGridTemplateColumn Header="TEAM" Width="110"
+            Visibility="{Binding Data.TeamFilter.ShowTeamColumn, Source={StaticResource VmProxy},
+                         Converter={StaticResource BoolToVisibleConverter}}">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
@@ -205,10 +243,10 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <DataGridTextColumn Header="PCT" Binding="{Binding PctAssigneeName}" Width="1.1*"/>
-        <DataGridTextColumn Header="PCA" Binding="{Binding PcaContactName}" Width="1.1*"/>
-        <DataGridTextColumn Header="INTERNAL" Binding="{Binding DeadlineInternal, StringFormat=dd/MM/yyyy}" Width="Auto"/>
-        <DataGridTextColumn Header="EXTERNAL" Binding="{Binding DeadlineExternal, StringFormat=dd/MM/yyyy}" Width="Auto"/>
+        <DataGridTextColumn Header="PCT" Binding="{Binding PctAssigneeName}" Width="*" MinWidth="92"/>
+        <DataGridTextColumn Header="PCA" Binding="{Binding PcaContactName}" Width="*" MinWidth="92"/>
+        <DataGridTextColumn Header="INTERNAL" Binding="{Binding DeadlineInternal, StringFormat=dd/MM/yyyy}" Width="Auto" MinWidth="96"/>
+        <DataGridTextColumn Header="EXTERNAL" Binding="{Binding DeadlineExternal, StringFormat=dd/MM/yyyy}" Width="Auto" MinWidth="96"/>
 
         <!-- Progress: a small bar + number; "—" when null -->
         <DataGridTemplateColumn Header="PROGRESS" Width="120">
@@ -225,11 +263,12 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto"/>
-        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto"/>
+        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto" MinWidth="84"/>
+        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto" MinWidth="98"/>
 
-        <!-- Chips: system (late/warning) first, then custom tags -->
-        <DataGridTemplateColumn Header="" Width="2*">
+        <!-- Chips: system (late/warning) first, then custom tags. Star-sized so it soaks up the slack on a
+             wide window, but MinWidth keeps the tag labels readable (never crushed to icon stubs). -->
+        <DataGridTemplateColumn Header="TAGS" Width="1.5*" MinWidth="150">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}"
@@ -247,6 +286,11 @@
       <DataGrid.RowDetailsTemplate>
         <DataTemplate>
           <Border Background="{StaticResource HeaderBg}" Padding="10,6" Margin="34,0,0,0">
+           <StackPanel>
+            <!-- Empty-state: a backlog with no active tasks expands to this hint instead of a blank strip. -->
+            <TextBlock Text="Chưa có task nào trong backlog này."
+                       Foreground="{StaticResource TextSecondary}" FontStyle="Italic" FontSize="12"
+                       Visibility="{Binding HasNoTasks, Converter={StaticResource BoolToVisibleConverter}}"/>
             <ItemsControl ItemsSource="{Binding Tasks}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
@@ -261,19 +305,18 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+           </StackPanel>
           </Border>
         </DataTemplate>
       </DataGrid.RowDetailsTemplate>
 
-      <!-- Bind each row's detail visibility to its own IsExpanded flag. -->
+      <!-- Bind each row's detail visibility directly to its IsExpanded flag (a direct binding updates
+           reliably whenever the command flips IsExpanded; the prior DataTrigger never fired because the
+           old toggle wasn't writing IsExpanded). -->
       <DataGrid.RowStyle>
         <Style TargetType="DataGridRow">
-          <Setter Property="DetailsVisibility" Value="Collapsed"/>
-          <Style.Triggers>
-            <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-              <Setter Property="DetailsVisibility" Value="Visible"/>
-            </DataTrigger>
-          </Style.Triggers>
+          <Setter Property="DetailsVisibility"
+                  Value="{Binding IsExpanded, Converter={StaticResource BoolToVisibleConverter}}"/>
         </Style>
       </DataGrid.RowStyle>
     </DataGrid>

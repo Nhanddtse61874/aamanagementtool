@@ -49,6 +49,16 @@ CREATE TABLE Backlogs (
     note                    TEXT,
     pca_contact_id          INTEGER
 );
+CREATE TABLE BacklogAudit (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    backlog_id         INTEGER NOT NULL,
+    field              TEXT    NOT NULL,
+    old_value          TEXT,
+    new_value          TEXT,
+    changed_by_user_id INTEGER,
+    changed_by_name    TEXT,
+    changed_at         TEXT    NOT NULL
+);
 CREATE TABLE StandupEntries (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id      INTEGER NOT NULL,
@@ -95,7 +105,9 @@ PRAGMA user_version = 7;");
 
         using (var c = _factory.Create())
         {
-            Assert.Equal(8, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            // A v7 DB now upgrades all the way to the latest schema (v9) — the v8 step still runs
+            // (adds the team columns/tables below) and the v9 step runs after it.
+            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
 
             // team_id columns added (nullable) to both tables.
             Assert.Contains("team_id", Columns(c, "Backlogs"));
@@ -124,7 +136,7 @@ PRAGMA user_version = 7;");
 
         using (var c = _factory.Create())
         {
-            Assert.Equal(8, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
             Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM Backlogs WHERE backlog_code='REQ-OLD';"));
             Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM StandupEntries WHERE backlog_code='REQ-OLD';"));
         }

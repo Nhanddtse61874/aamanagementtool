@@ -110,7 +110,7 @@ public sealed class ExportHubService : IExportHubService
                 var path = Path.Combine(dir, $"{y:D4}{m:D2}_timesheet.md");
                 if (backfillOnly && File.Exists(path)) continue;
                 var md = await _export.ExportMarkdownAsync(new ExportFilter(null, y, m, null, teamIds));
-                if (!HasTimesheetData(md)) continue; // no-data -> no file
+                if (!FormatHelpers.HasTimesheetData(md)) continue; // no-data -> no file
                 Directory.CreateDirectory(dir);
                 await File.WriteAllTextAsync(path, md, Encoding.UTF8);
             }
@@ -131,11 +131,6 @@ public sealed class ExportHubService : IExportHubService
         // One whole-DB copy per root (EX-05), not per team.
         await _backup.BackupToFolderAsync(Path.Combine(root, "db"), _config.BackupKeepCount);
     }
-
-    // ExportService.ExportMarkdownAsync always emits the "# Timesheet — yyyy/MM" header; a team with no
-    // logs that month produces no "| Date | Task | Hours |" table. Use that table header as the has-data marker.
-    private static bool HasTimesheetData(string md) =>
-        md.Contains("| Date | Task | Hours |", StringComparison.Ordinal);
 
     // ExportNow = current + previous month; Backfill = the last BackfillMonths completed months
     // (strictly before the current month). Bounded; no-data months produce no file.
@@ -160,7 +155,7 @@ public sealed class ExportHubService : IExportHubService
     // (strictly before the current week). Stamp = each week's Monday.
     private IReadOnlyList<DateOnly> WeekMondaysFor(bool backfillOnly)
     {
-        var currentMonday = MondayOf(_clock.Today);
+        var currentMonday = DateHelpers.MondayOf(_clock.Today);
         var list = new List<DateOnly>();
         if (backfillOnly)
         {
@@ -180,6 +175,4 @@ public sealed class ExportHubService : IExportHubService
         var dt = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Unspecified).AddMonths(delta);
         return (dt.Year, dt.Month);
     }
-
-    private static DateOnly MondayOf(DateOnly date) => date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
 }

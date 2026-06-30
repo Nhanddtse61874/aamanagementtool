@@ -33,6 +33,16 @@ public sealed class HolidayRepository : IHolidayRepository
         return rows.Select(MapHoliday).ToList();
     }
 
+    public async Task<bool> IsHolidayAsync(DateOnly date)
+    {
+        using var c = _factory.Create();
+        // Single-row existence probe (avoids loading the whole calendar just to test one date).
+        // Same yyyy-MM-dd TEXT key format as every other query in this repo.
+        return await c.ExecuteScalarAsync<long>(
+            "SELECT EXISTS(SELECT 1 FROM Holidays WHERE holiday_date = @d);",
+            new { d = Day(date) }) != 0;
+    }
+
     public async Task UpsertAsync(DateOnly date, string? description)
     {
         using var c = _factory.Create();

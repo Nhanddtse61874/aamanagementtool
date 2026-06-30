@@ -171,6 +171,103 @@ public class TaskListRepositoryTests : IAsyncLifetime
         Assert.Equal(8m, byBacklog[backlogId]);
     }
 
+    [Fact]
+    public async Task UpdateExtendedAsync_audits_one_row_per_changed_field()
+    {
+        var tasks = new TaskRepository(_db);
+        var bid = await _db.SeedRequestAsync("REQ-EXT", "ARCS");
+        var taskId = await _db.SeedTaskAsync(bid, "Build");
+        var userId = await _db.SeedUserAsync("Mai");
+
+        // type NULL -> "Bug" and assignee NULL -> Mai: exactly two audit rows (type + assignee-by-name).
+        await tasks.UpdateExtendedAsync(taskId, "Bug", userId,
+            changedByUserId: 3, changedByName: "Ed");
+
+        var loaded = await tasks.GetByIdAsync(taskId);
+        Assert.Equal("Bug", loaded!.Type);
+        Assert.Equal(userId, loaded.AssigneeUserId);
+
+        var audit = await tasks.GetAuditAsync(taskId);
+        Assert.Equal(2, audit.Count);
+        Assert.Contains(audit, a => a.Field == "type" && a.OldValue == null && a.NewValue == "Bug");
+        Assert.Contains(audit, a => a.Field == "assignee" && a.OldValue == null && a.NewValue == "Mai");
+        Assert.All(audit, a => Assert.Equal("Ed", a.ChangedByName));
+    }
+
+    [Fact]
+    public async Task UpdateExtendedAsync_writes_no_audit_when_unchanged()
+    {
+        var tasks = new TaskRepository(_db);
+        var bid = await _db.SeedRequestAsync("REQ-NOOP", "ARCS");
+        var taskId = await _db.SeedTaskAsync(bid, "Build");
+
+        // First set a value, then re-apply the SAME value -> the second call must add no audit rows.
+        await tasks.UpdateExtendedAsync(taskId, "Task", null, changedByUserId: 1, changedByName: "A");
+        var afterFirst = (await tasks.GetAuditAsync(taskId)).Count;
+
+        await tasks.UpdateExtendedAsync(taskId, "Task", null, changedByUserId: 1, changedByName: "A");
+        Assert.Equal(afterFirst, (await tasks.GetAuditAsync(taskId)).Count);
+    }
+
+    [Fact]
+    public async Task SetTaskTagsAsync_replaces_links_and_audits_once_on_change()
+    {
+        var tags = new TagRepository(_db);
+        var tasks = new TaskRepository(_db);
+        var t1 = await tags.InsertAsync(new Tag(0, "A", "a", "#111111", DateTimeOffset.UtcNow));
+        var t2 = await tags.InsertAsync(new Tag(0, "B", "b", "#222222", DateTimeOffset.UtcNow));
+        var t3 = await tags.InsertAsync(new Tag(0, "C", "c", "#333333", DateTimeOffset.UtcNow));
+        var bid = await _db.SeedRequestAsync("REQ-TTAG", "ARCS");
+        var taskId = await _db.SeedTaskAsync(bid, "Build");
+
+        await tasks.SetTaskTagsAsync(taskId, new[] { t1, t2 }, changedByUserId: 1, changedByName: "A");
+        Assert.Equal(new[] { t1, t2 }, (await tasks.GetTagIdsAsync(taskId)).OrderBy(x => x).ToArray());
+
+        // Replace-all {t1,t2} -> {t3}: links replaced, plus exactly one more 'tags' audit row.
+        await tasks.SetTaskTagsAsync(taskId, new[] { t3 }, changedByUserId: 1, changedByName: "A");
+        Assert.Equal(new[] { t3 }, await tasks.GetTagIdsAsync(taskId));
+
+        var tagAudit = (await tasks.GetAuditAsync(taskId)).Where(a => a.Field == "tags").ToList();
+        Assert.Equal(2, tagAudit.Count);   // one per change (NULL->{t1,t2}, {t1,t2}->{t3})
+
+        // Re-applying the same set writes no further 'tags' audit row.
+        await tasks.SetTaskTagsAsync(taskId, new[] { t3 }, changedByUserId: 1, changedByName: "A");
+        Assert.Equal(2, (await tasks.GetAuditAsync(taskId)).Count(a => a.Field == "tags"));
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_audits_status_change_and_skips_when_unchanged()
+    {
+        var tasks = new TaskRepository(_db);
+        var bid = await _db.SeedRequestAsync("REQ-ST", "ARCS");
+        var taskId = await _db.SeedTaskAsync(bid, "Build");   // seeded status defaults to 'Todo'
+
+        await tasks.UpdateStatusAsync(taskId, "Done", changedByUserId: 1, changedByName: "A");
+        var statusAudit = (await tasks.GetAuditAsync(taskId)).Where(a => a.Field == "status").ToList();
+        Assert.Single(statusAudit);
+        Assert.Equal("Done", statusAudit[0].NewValue);
+
+        // Re-applying the same status writes no further audit row.
+        await tasks.UpdateStatusAsync(taskId, "Done", changedByUserId: 1, changedByName: "A");
+        Assert.Single(await tasks.GetAuditAsync(taskId), a => a.Field == "status");
+    }
+
+    [Fact]
+    public async Task Tag_delete_removes_task_tag_links()   // v9 B-5: cascade must also clear TaskTags
+    {
+        var tags = new TagRepository(_db);
+        var tasks = new TaskRepository(_db);
+        var tagId = await tags.InsertAsync(new Tag(0, "X", "x", "#abcdef", DateTimeOffset.UtcNow));
+        var bid = await _db.SeedRequestAsync("REQ-TTDEL", "ARCS");
+        var taskId = await _db.SeedTaskAsync(bid, "Build");
+
+        await tasks.SetTaskTagsAsync(taskId, new[] { tagId });
+        Assert.Contains(tagId, await tasks.GetTagIdsAsync(taskId));
+
+        await tags.DeleteAsync(tagId);
+        Assert.Empty(await tasks.GetTagIdsAsync(taskId));   // TaskTags link cascaded away (not just BacklogTags)
+    }
+
     private async Task<int> GetBacklogIdForTaskAsync(int taskId)
     {
         using var c = _db.Create();

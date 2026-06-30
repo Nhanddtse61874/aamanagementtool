@@ -37,9 +37,11 @@ public static class BacklogProjects
 }
 
 // One audit-history row for a Backlog field change (v2): who changed what, old -> new, when.
+// v9 (B2): Note carries the reason captured by the deadline-change popup (null for other fields).
 public sealed record BacklogAuditEntry(
     int Id, int BacklogId, string Field, string? OldValue, string? NewValue,
-    int? ChangedByUserId, string? ChangedByName, DateTimeOffset ChangedAt);
+    int? ChangedByUserId, string? ChangedByName, DateTimeOffset ChangedAt,
+    string? Note = null);
 
 // Allowed task statuses. Backlog status is derived from its tasks at runtime.
 public static class TaskStatus
@@ -48,7 +50,16 @@ public static class TaskStatus
         new[] { "Todo", "In-process", "Done", "Pending" };
 }
 
-public sealed record TaskItem(int Id, int BacklogId, string TaskName, int OrderIndex, bool IsActive, string Status = "Todo");
+public sealed record TaskItem(
+    int Id, int BacklogId, string TaskName, int OrderIndex, bool IsActive,
+    string Status = "Todo",
+    string? Type = null,            // v9: task-level type (mirrors Backlog.Type)
+    int? AssigneeUserId = null);    // v9: task-level PCT (mirrors Backlog.AssigneeUserId)
+
+// One audit-history row for a Task field change (v9); mirrors BacklogAuditEntry.
+public sealed record TaskAuditEntry(
+    int Id, int TaskId, string Field, string? OldValue, string? NewValue,
+    int? ChangedByUserId, string? ChangedByName, DateTimeOffset ChangedAt);
 
 public sealed record TimeLog(
     int Id, int UserId, int TaskId, DateOnly WorkDate, decimal Hours, DateTimeOffset CreatedAt);

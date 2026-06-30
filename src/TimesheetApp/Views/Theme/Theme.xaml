@@ -29,6 +29,10 @@
   <SolidColorBrush x:Key="DangerSoft" Color="#FEE2E2"/>
   <SolidColorBrush x:Key="DangerBorder" Color="#FECACA"/>
   <SolidColorBrush x:Key="Disabled" Color="#94A3B8"/>
+  <!-- P13-C1: holiday cell background — clearly darker than HeaderBg (#F1F5F9) but lighter than
+       text/strong borders; sits between BorderStrong (#D4DAE2) and Border (#E3E8EE) on the gray scale
+       so a holiday cell reads as distinct from the normal header row without being oppressive. -->
+  <SolidColorBrush x:Key="HolidayBg" Color="#D5DAE1"/>
 
   <sys:Double x:Key="FontBase">14</sys:Double>
 
@@ -772,6 +776,16 @@
     <Setter Property="FontSize" Value="12"/>
     <Setter Property="Margin" Value="0,0,0,6"/>
     <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+
+  <!-- P13-W1-T4: compact inline ComboBox for DataGrid cells and task sub-row dropdowns.
+       BasedOn the implicit ComboBox style so the full custom template is inherited;
+       only density overrides are applied here (smaller font + tighter padding + fixed height). -->
+  <Style x:Key="CompactComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Height" Value="26"/>
+    <Setter Property="Padding" Value="6,0"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
 
 </ResourceDictionary>

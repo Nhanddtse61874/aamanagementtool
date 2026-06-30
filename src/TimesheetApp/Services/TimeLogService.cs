@@ -40,7 +40,7 @@ public sealed class TimeLogService : ITimeLogService
         if (hours <= 0m) return Err("Hours must be greater than 0.");
         if (HasMoreThanOneDecimal(hours)) return Err("Hours may have at most 1 decimal place.");
         if (IsWeekend(date)) return Err("Time can only be logged Monday–Friday.");
-        if (await IsHolidayAsync(date)) return Err($"{date:yyyy-MM-dd} is a holiday."); // HOL-02
+        if (await _holidays.IsHolidayAsync(date)) return Err($"{date:yyyy-MM-dd} is a holiday."); // HOL-02
 
         var rounded = Round1(hours);
         if (rounded > DayCap) return Err($"A single cell cannot exceed {DayCap}h."); // XC-02
@@ -149,7 +149,7 @@ public sealed class TimeLogService : ITimeLogService
 
     public async Task<WeekGrid> GetWeekAsync(int userId, DateOnly mondayOfWeek)
     {
-        var monday = MondayOf(mondayOfWeek);
+        var monday = DateHelpers.MondayOf(mondayOfWeek);
         var friday = monday.AddDays(4);
         var logs = await _logs.GetByUserAndRangeAsync(userId, monday, friday);
         // P10 (TM-06): the Log Work grid shows ONLY the active team's tasks (incl. its DEFAULT).
@@ -173,7 +173,7 @@ public sealed class TimeLogService : ITimeLogService
 
     public async Task<IReadOnlyList<WeekBacklogGroup>> GetWeekGroupedAsync(int userId, DateOnly mondayOfWeek)
     {
-        var monday = MondayOf(mondayOfWeek);
+        var monday = DateHelpers.MondayOf(mondayOfWeek);
         var friday = monday.AddDays(4);
 
         var logs = await _logs.GetByUserAndRangeAsync(userId, monday, friday);
@@ -184,7 +184,7 @@ public sealed class TimeLogService : ITimeLogService
 
     public async Task<IReadOnlyList<WeekBacklogGroup>> GetWeekGroupedAllUsersAsync(DateOnly mondayOfWeek)
     {
-        var monday = MondayOf(mondayOfWeek);
+        var monday = DateHelpers.MondayOf(mondayOfWeek);
         var friday = monday.AddDays(4);
 
         // Team view: sum hours across ALL users per (task, day). Export rows already join every user.
@@ -257,14 +257,9 @@ public sealed class TimeLogService : ITimeLogService
     }
 
     // ---- helpers ----
-    // HOL-02: a day manually marked as a holiday is a non-working day (entry grid mirrors the weekend rule).
-    private async Task<bool> IsHolidayAsync(DateOnly date) =>
-        (await _holidays.GetAllAsync()).Any(h => h.Date == date);
-
     private static bool IsWeekend(DateOnly d) => d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
     private static decimal Round1(decimal v) => Math.Round(v, 1, MidpointRounding.AwayFromZero);
     private static bool HasMoreThanOneDecimal(decimal v) => v != Round1(v);
-    private static DateOnly MondayOf(DateOnly d) => d.AddDays(-(((int)d.DayOfWeek + 6) % 7));
 
     private static List<DateOnly> LastNWorkingDays(DateOnly today, int n)
     {

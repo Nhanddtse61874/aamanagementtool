@@ -89,9 +89,9 @@ PRAGMA user_version = 6;");
 
         using (var c = _factory.Create())
         {
-            // A v6 DB now upgrades all the way to the latest schema (v8) — the v7 step still runs
-            // (adds the columns/tables below) and the v8 step runs after it.
-            Assert.Equal(8, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            // A v6 DB now upgrades all the way to the latest schema (v9) — the v7 step still runs
+            // (adds the columns/tables below) and the later v8/v9 steps run after it.
+            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
 
             var cols = Columns(c, "Backlogs");
             foreach (var col in new[]
@@ -120,7 +120,7 @@ PRAGMA user_version = 6;");
 
         using (var c = _factory.Create())
         {
-            Assert.Equal(8, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
             Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM Backlogs WHERE backlog_code='REQ-OLD';"));
         }
     }

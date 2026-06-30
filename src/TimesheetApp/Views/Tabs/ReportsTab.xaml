@@ -108,20 +108,20 @@
         <DataGrid DockPanel.Dock="Top" Height="200" ItemsSource="{Binding WeeklyDetailRows}"
                   AutoGenerateColumns="False" IsReadOnly="True">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=ddd dd/MM}" Width="Auto"/>
-            <DataGridTextColumn Header="Ticket" Binding="{Binding BacklogCode}" Width="*"/>
-            <DataGridTextColumn Header="Task" Binding="{Binding TaskName}" Width="*"/>
-            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}" Width="Auto"/>
+            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=ddd dd/MM}" Width="Auto" MinWidth="84"/>
+            <DataGridTextColumn Header="Ticket" Binding="{Binding BacklogCode}" Width="*" MinWidth="100"/>
+            <DataGridTextColumn Header="Task" Binding="{Binding TaskName}" Width="*" MinWidth="120"/>
+            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}" Width="Auto" MinWidth="60"/>
           </DataGrid.Columns>
         </DataGrid>
         <TextBlock DockPanel.Dock="Top" Text="Monthly (by backlog / task)" FontWeight="Bold" Margin="0,8,0,0"/>
         <!-- RPT-02: one row per (RequestCode, Project, TaskName) with summed hours -->
         <DataGrid ItemsSource="{Binding MonthlyRows}" AutoGenerateColumns="False" IsReadOnly="True">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Backlog" Binding="{Binding BacklogCode}"/>
-            <DataGridTextColumn Header="Project" Binding="{Binding Project}"/>
-            <DataGridTextColumn Header="Task" Binding="{Binding TaskName}"/>
-            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}"/>
+            <DataGridTextColumn Header="Backlog" Binding="{Binding BacklogCode}" Width="Auto" MinWidth="110"/>
+            <DataGridTextColumn Header="Project" Binding="{Binding Project}" Width="Auto" MinWidth="90"/>
+            <DataGridTextColumn Header="Task" Binding="{Binding TaskName}" Width="*" MinWidth="120"/>
+            <DataGridTextColumn Header="Hours" Binding="{Binding TotalHours, StringFormat=N1}" Width="Auto" MinWidth="60"/>
           </DataGrid.Columns>
         </DataGrid>
       </DockPanel>

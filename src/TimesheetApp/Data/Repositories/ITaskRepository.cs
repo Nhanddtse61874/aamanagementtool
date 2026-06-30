@@ -7,6 +7,9 @@ namespace TimesheetApp.Data.Repositories;
 public interface ITaskRepository
 {
     Task<IReadOnlyList<TaskItem>> GetActiveByBacklogAsync(int backlogId);
+    // Batch form of GetActiveByBacklogAsync: one IN-query for many backlogs, grouped by backlog_id
+    // (avoids N+1). Absent backlog ids are simply missing keys (callers index via TryGetValue).
+    Task<IReadOnlyDictionary<int, IReadOnlyList<TaskItem>>> GetActiveByBacklogsAsync(IReadOnlyList<int> backlogIds);
     // P10 (TM-06): the Log Work grid is active-team-scoped. teamId null => all teams (preserves
     // existing tests); a teamId filters via the backlog's team_id; teamId 0 => no tasks (empty, R6).
     Task<IReadOnlyList<TaskItem>> GetActiveForTimesheetAsync(int? teamId = null);    // active tasks for the team's backlogs + DEFAULT, ordered (TS-02)
@@ -16,4 +19,16 @@ public interface ITaskRepository
     Task UpdateAsync(TaskItem task);                               // name + order_index
     Task SetActiveAsync(int taskId, bool isActive);                // soft delete (REQ-04/SET-04)
     Task SetOrderAsync(int taskId, int orderIndex);                // drag-reorder within a backlog group
+
+    // v9 (P13-B3): task-level type/assignee update + diff-audit (assignee audited by NAME).
+    Task UpdateExtendedAsync(int taskId, string? type, int? assigneeUserId,
+        int? changedByUserId = null, string? changedByName = null);
+    // v9: task status change + audit (the sub-row Status dropdown path).
+    Task UpdateStatusAsync(int taskId, string status,
+        int? changedByUserId = null, string? changedByName = null);
+    // v9 task tag links (mirror the BacklogRepository tag methods).
+    Task<IReadOnlyList<int>> GetTagIdsAsync(int taskId);
+    Task SetTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds,
+        int? changedByUserId = null, string? changedByName = null);   // audited (B3)
+    Task<IReadOnlyList<TaskAuditEntry>> GetAuditAsync(int taskId);
 }

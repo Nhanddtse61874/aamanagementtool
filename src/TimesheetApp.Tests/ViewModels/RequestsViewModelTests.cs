@@ -42,6 +42,9 @@ public sealed class BacklogsViewModelTests
     {
         _templates.Setup(t => t.GetAllAsync())
             .ReturnsAsync(new[] { new TaskTemplate(1, "Web", "Setup", 0) });
+        // LoadAsync batch-loads task counts in one query (N+1 fix) — default to an empty map.
+        _tasks.Setup(t => t.GetActiveByBacklogsAsync(It.IsAny<IReadOnlyList<int>>()))
+            .ReturnsAsync(new Dictionary<int, IReadOnlyList<TaskItem>>());
     }
 
     [Fact] // REQ-01: LoadAsync populates the list with all requests
@@ -167,7 +170,7 @@ public sealed class BacklogsViewModelTests
 
         _requests.Verify(r => r.UpdateAsync(
             It.Is<Backlog>(x => x.Id == 5 && x.Project == "New"),
-            It.IsAny<int?>(), It.IsAny<string?>()), Times.Once);
+            It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Once);
         _tasks.Verify(t => t.InsertAsync(
             It.Is<TaskItem>(x => x.BacklogId == 5 && x.TaskName == "Added")), Times.Once);
         // existing task NOT re-inserted

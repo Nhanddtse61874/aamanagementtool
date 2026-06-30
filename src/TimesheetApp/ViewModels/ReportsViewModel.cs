@@ -53,7 +53,7 @@ public sealed partial class ReportsViewModel : ObservableObject
 
         // default selection = the week / month containing "today"
         var today = _clock.Today;
-        SelectedWeekMonday = MondayOf(today);
+        SelectedWeekMonday = DateHelpers.MondayOf(today);
         SelectedMonth = new DateOnly(today.Year, today.Month, 1);
 
         // default report target = whole team until users are loaded
@@ -137,9 +137,6 @@ public sealed partial class ReportsViewModel : ObservableObject
         AvgPerDayText = $"{(logged == 0 ? 0m : total / logged):N1}h";
         DaysLoggedText = $"{logged} / {span}";
     }
-
-    internal static DateOnly MondayOf(DateOnly date) =>
-        date.AddDays(-(((int)date.DayOfWeek + 6) % 7)); // Monday-start, culture-independent (spec §7.2)
 
     /// <summary>
     /// Rebuild the report-target dropdown: a leading "whole team" option followed by one option per

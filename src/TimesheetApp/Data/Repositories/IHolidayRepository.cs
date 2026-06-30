@@ -7,6 +7,7 @@ public interface IHolidayRepository
 {
     Task<IReadOnlyList<Holiday>> GetAllAsync();              // whole calendar (for the working-day set)
     Task<IReadOnlyList<Holiday>> GetForMonthAsync(int year, int month);
+    Task<bool> IsHolidayAsync(DateOnly date);               // single-date existence check (avoids loading the whole calendar)
     Task UpsertAsync(DateOnly date, string? description);   // mark / re-describe a holiday
     Task DeleteAsync(DateOnly date);                         // unmark a holiday
 }

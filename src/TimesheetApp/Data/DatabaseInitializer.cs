@@ -11,7 +11,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 8;
+    private const long SchemaVersion = 9;
 
     private readonly IConnectionFactory _factory;
 
@@ -159,6 +159,26 @@ CREATE TABLE IF NOT EXISTS UserTeams (
     user_id INTEGER NOT NULL,
     team_id INTEGER NOT NULL,
     PRIMARY KEY (user_id, team_id)
+);
+
+-- P13 Task List Operations & History (schema v9). TaskTags is the N:N task<->tag link (no inline FK,
+-- mirrors BacklogTags). TaskAudit is the per-task field history (mirrors BacklogAudit). The v9 Backlog/
+-- Tasks ALTERs (type, assignee_user_id, BacklogAudit.note) live in the v9 migration step in RunMigrations.
+CREATE TABLE IF NOT EXISTS TaskTags (
+    task_id INTEGER NOT NULL,
+    tag_id  INTEGER NOT NULL,
+    PRIMARY KEY (task_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS TaskAudit (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id            INTEGER NOT NULL,
+    field              TEXT    NOT NULL,
+    old_value          TEXT,
+    new_value          TEXT,
+    changed_by_user_id INTEGER,
+    changed_by_name    TEXT,
+    changed_at         TEXT    NOT NULL
 );";
         conn.Execute(ddl, transaction: tx);
 
@@ -265,6 +285,13 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
             static (c, t) => c.Execute(
                 @"ALTER TABLE Backlogs       ADD COLUMN team_id INTEGER;
                   ALTER TABLE StandupEntries ADD COLUMN team_id INTEGER;", transaction: t),
+            // v9 -> P13 Task List Operations & History. task-level type/assignee on Tasks (nullable, no
+            // inline FK, mirroring the Backlog columns) + note on BacklogAudit (deadline-change reason from
+            // the B2 Note popup). TaskTags + TaskAudit tables are created idempotently in CreateTables.
+            static (c, t) => c.Execute(
+                @"ALTER TABLE Tasks        ADD COLUMN type             TEXT;
+                  ALTER TABLE Tasks        ADD COLUMN assignee_user_id INTEGER;
+                  ALTER TABLE BacklogAudit ADD COLUMN note             TEXT;", transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);

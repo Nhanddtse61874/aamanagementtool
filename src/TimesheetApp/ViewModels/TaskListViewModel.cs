@@ -133,20 +133,26 @@ public sealed partial class TaskListViewModel : ObservableObject
                         ?? new Dictionary<int, string>();
         var showTeam = TeamFilter?.ShowTeamColumn ?? false;
 
+        var filteredBacklogs = allBacklogs
+            .Where(b => !string.Equals(b.BacklogCode, DefaultBacklogCode, StringComparison.Ordinal))
+            .Where(b => allMonths || b.PeriodMonth == monthKey)
+            .ToList();
+        var filteredIds = filteredBacklogs.Select(b => b.Id).ToList();
+        var tasksByBacklog = await _tasks.GetActiveByBacklogsAsync(filteredIds);
+
         var rows = new List<TaskListRowVm>();
         // Gantt source: the backlog + its computed schedule state, captured while we build the grid rows
         // so the Gantt axis/bars derive from the exact same data (R5 — bars and chips agree).
         var ganttSource = new List<(Backlog Backlog, ScheduleState State)>();
-        foreach (var b in allBacklogs
-                     .Where(b => !string.Equals(b.BacklogCode, DefaultBacklogCode, StringComparison.Ordinal))
-                     .Where(b => allMonths || b.PeriodMonth == monthKey))
+        foreach (var b in filteredBacklogs)
         {
-            var tasks = await _tasks.GetActiveByBacklogAsync(b.Id);
+            tasksByBacklog.TryGetValue(b.Id, out var tasks);
+            var taskList = tasks ?? Array.Empty<TaskItem>();
 
             var logged = loggedByBacklog.TryGetValue(b.Id, out var h) ? h : 0m;   // absent → 0
             var estimate = b.OfficialEstimateHours ?? b.RoughEstimateHours;        // §7 precedence
             // Done = ≥1 active task AND every active task Status=="Done" (§6.2). Zero tasks → not Done.
-            var isDone = tasks.Count > 0 && tasks.All(t => t.Status == "Done");
+            var isDone = taskList.Count > 0 && taskList.All(t => t.Status == "Done");
 
             var state = _schedule.Evaluate(
                 today, b.StartDate, b.DeadlineInternal, estimate, logged, isDone, holidaySet, _calc);
@@ -162,7 +168,7 @@ public sealed partial class TaskListViewModel : ObservableObject
             var row = new TaskListRow(
                 b.Id, b.BacklogCode, b.Project, b.Type, pctName, pcaName,
                 b.DeadlineInternal, b.DeadlineExternal, b.StartDate,
-                b.ProgressPercent, logged, estimate, state, tags, tasks);
+                b.ProgressPercent, logged, estimate, state, tags, taskList);
 
             var teamName = b.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : null;
             rows.Add(new TaskListRowVm(row, teamName, showTeam));
@@ -319,6 +325,8 @@ public sealed partial class TaskListRowVm : ObservableObject
     public string LoggedHoursText => $"{Row.LoggedHours:0}";
     public string EstimateText => Row.EstimateHours is { } e ? $"{e:0}" : "—";
     public IReadOnlyList<TaskItem> Tasks => Row.Tasks;
+    // Drives the expand row-detail empty-state hint (a backlog with no active tasks).
+    public bool HasNoTasks => Row.Tasks.Count == 0;
 
     [ObservableProperty] private bool _isExpanded;
 
