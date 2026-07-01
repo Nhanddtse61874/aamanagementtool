@@ -17,6 +17,7 @@
             <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="15" Cursor="SizeAll" Margin="0,0,9,0"
                        VerticalAlignment="Top" Foreground="{StaticResource TextSecondary}"
                        ToolTip="Drag to reorder, or drop on the trash to delete"
+                       Visibility="{Binding DataContext.CanEditSelectedDay, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibleConverter}}"
                        PreviewMouseLeftButtonDown="OnEntryDragHandleDown" PreviewMouseMove="OnEntryDragHandleMove"/>
             <Border DockPanel.Dock="Right" Background="{StaticResource BadgeGrayBg}" CornerRadius="10"
                     Padding="9,2" VerticalAlignment="Top">

@@ -183,6 +183,21 @@ public class TimesheetViewModelTests
     }
 
     [Fact]
+    public async Task AreInSameGroup_TrueWithinGroup_FalseAcrossGroupsOrUnknown()  // reorder cursor honesty
+    {
+        var groups = Groups(
+            new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null),
+            new WeekRow(8, "REQ-001", "Review", 1, null, null, null, null, null),
+            new WeekRow(9, "DEFAULT", "Annual Leave", 0, null, null, null, null, null));
+        var (vm, _, _) = Make(groups);
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        Assert.True(vm.AreInSameGroup(7, 8));    // both under REQ-001 → reorder allowed
+        Assert.False(vm.AreInSameGroup(7, 9));   // REQ-001 vs DEFAULT → cross-group, no reorder
+        Assert.False(vm.AreInSameGroup(7, 404)); // unknown target id
+    }
+
+    [Fact]
     public async Task EmptyRequest_RendersAsGroupWithNoTasks()
     {
         // One request that has NO tasks -> a group with an empty Tasks list still shows.

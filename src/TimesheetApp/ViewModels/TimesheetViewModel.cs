@@ -397,6 +397,12 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _messenger.Send(new DataChangedMessage(DataKind.Tasks));
     }
 
+    /// True when both task ids live in the same backlog group — reorder is only allowed within a group,
+    /// so the view uses this to show an honest (Move vs None) drag cursor before the drop (not a Move
+    /// cursor that then silently no-ops on a cross-group drop).
+    public bool AreInSameGroup(int taskIdA, int taskIdB) =>
+        Groups.Any(g => g.Tasks.Any(t => t.TaskId == taskIdA) && g.Tasks.Any(t => t.TaskId == taskIdB));
+
     /// Drag-reorder a task within its backlog group (same group only), persist order_index, then reload.
     public async Task ReorderTaskAsync(int draggedTaskId, int targetTaskId)
     {
