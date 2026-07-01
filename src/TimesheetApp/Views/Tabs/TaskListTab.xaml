@@ -229,37 +229,46 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <!-- TYPE: inline-editable ComboBox (TypeOptions) bound to EditType. Setting it commits via the row. -->
+        <!-- TYPE: inline ComboBox (TypeOptions). Bound OneWay for display; the write goes through
+             OnRowTypeChanged (a CellTemplate combo's TwoWay write never reaches the row VM — see the code-behind). -->
         <DataGridTemplateColumn Header="TYPE" Width="120" MinWidth="110">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                        Tag="{Binding}"
                         ItemsSource="{Binding TypeOptions}"
-                        SelectedItem="{Binding EditType, Mode=TwoWay}"/>
+                        SelectedItem="{Binding EditType, Mode=OneWay}"
+                        SelectionChanged="OnRowTypeChanged"/>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <!-- PCT: ComboBox(AssigneeOptions); SelectedValue=user id (null = "—" sentinel) bound to EditPctUserId. -->
+        <!-- PCT: ComboBox(AssigneeOptions); SelectedValue=user id (null = "—" sentinel). OneWay display +
+             OnRowPctChanged commit (same CellTemplate write-back reason as TYPE). -->
         <DataGridTemplateColumn Header="PCT" Width="*" MinWidth="110">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                        Tag="{Binding}"
                         ItemsSource="{Binding AssigneeOptions}"
                         SelectedValuePath="Id" DisplayMemberPath="Name"
-                        SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"/>
+                        SelectedValue="{Binding EditPctUserId, Mode=OneWay}"
+                        SelectionChanged="OnRowPctChanged"/>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <!-- PCA: ComboBox(PcaOptions); SelectedValue=contact id (null = "—" sentinel) bound to EditPcaId. -->
+        <!-- PCA: ComboBox(PcaOptions); SelectedValue=contact id (null = "—" sentinel). OneWay display +
+             OnRowPcaChanged commit. -->
         <DataGridTemplateColumn Header="PCA" Width="*" MinWidth="110">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                        Tag="{Binding}"
                         ItemsSource="{Binding PcaOptions}"
                         SelectedValuePath="Id" DisplayMemberPath="Name"
-                        SelectedValue="{Binding EditPcaId, Mode=TwoWay}"/>
+                        SelectedValue="{Binding EditPcaId, Mode=OneWay}"
+                        SelectionChanged="OnRowPcaChanged"/>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>

@@ -1,8 +1,30 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-07-01 (PM #2) — **P14 SharePoint Export CODE-COMPLETE** on branch `feature/sharepoint-export-2026-07-01`
-(from `main`). SP-01/02/03 done; build clean (0 warnings); **536 tests green** (was 522; +13 SP-01 validator + 1 SP-03 guard).
-**Awaiting user UAT** (Verify button colors + Export-now guard) before ship. Also added CLAUDE.md rule: `sonnet` tier → `claude-sonnet-5`.
+**Last updated:** 2026-07-01 (PM #3) — **BUGFIX: Task List parent-row inline combos now persist** (Type/PCT/PCA).
+Plus P14 SharePoint Export CODE-COMPLETE (SP-01/02/03) on branch `feature/sharepoint-export-2026-07-01`. Build clean;
+**536 tests green**. Also added CLAUDE.md rule: `sonnet` tier → `claude-sonnet-5`.
+
+### BUGFIX (2026-07-01 PM #3) — Task List parent-row Type/PCT/PCA dropdowns didn't save
+- **Symptom (user):** changing the Type/PCT/PCA dropdown on a Task List **backlog row** didn't reach the DB.
+- **Diagnosis (DB + file-log evidence):** the row VM commit path, repo SQL, and audit were all correct AND unit-tested;
+  **sub-row (task) combos in the expand panel persisted fine** (`TaskAudit` grew), but **parent-row combos never fired their
+  setter**. Root cause: a `ComboBox` in a **`DataGridTemplateColumn.CellTemplate`** does NOT push its `SelectedItem`/`SelectedValue`
+  TwoWay write back to the row VM — the **same** reason the deadline `DatePicker`s in this grid are driven from code-behind
+  (and the old expand `ToggleButton`'s `IsChecked` "never reached the row"). The 3 combos were left as TwoWay bindings → silent no-op.
+  Prior P13 UAT "#1 cell format" only checked visuals (28px), never the persist round-trip; VM unit tests pass with a mock repo,
+  so nothing caught it.
+- **Fix (3 files, mirrors the DatePicker pattern):** `TaskListTab.xaml` — Type/PCT/PCA combos now bind **OneWay** (display) + carry
+  `Tag="{Binding}"` + `SelectionChanged` handlers. `TaskListTab.xaml.cs` — `OnRowTypeChanged/OnRowPctChanged/OnRowPcaChanged`
+  set the VM edit prop on a genuine user pick (guards: `picked == current` skips seeds/reloads; `!IsKeyboardFocusWithin` skips
+  non-user changes) → the VM `OnXxxChanged` → Commit → persist + audit. `TaskListViewModel.cs` — comment only.
+- **Verified:** PLUS-2004 Type Estimate→Implement, PCT→Chi, PCA→Hino all landed in `Backlogs` + `BacklogAudit` (live-DB check).
+  Sub-rows still fine. 536 tests green.
+- **Not yet checked (follow-up):** the parent-row **Progress** click-to-edit textbox uses a similar in-cell TwoWay LostFocus
+  binding — TextBox-in-cell usually commits on LostFocus, but should be UAT-spot-checked. Reported bug was dropdowns only.
+- **No automated test:** this is a WPF view-binding defect (CellTemplate write-back); the VM/repo layers were already correct and
+  tested. Consistent with the DatePicker fix, no unit test added — relies on UAT.
+
+### P14 — SharePoint Export (file-sync) — what was built (this session)
 
 ### P14 — SharePoint Export (file-sync) — what was built (this session)
 - **Approach (locked at brainstorm):** file-based — write into a OneDrive-synced / mapped SharePoint folder (WebDAV UNC or mapped

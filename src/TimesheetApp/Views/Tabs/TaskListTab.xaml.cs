@@ -115,6 +115,41 @@ public partial class TaskListTab : UserControl
         }
     }
 
+    // ---- P13 W3 (bugfix): inline TYPE / PCT / PCA combo edit. A ComboBox in a DataGrid CellTemplate does
+    //      NOT push its SelectedItem/SelectedValue back to the row VM (the same reason the deadline
+    //      DatePickers above are driven from code-behind, not a TwoWay binding). So these combos bind
+    //      OneWay for display and commit here on a genuine user pick. Guards mirror HandleDeadlineChanged:
+    //      skip programmatic seeds/reloads (picked == the row's current value) and non-user changes (the
+    //      initial OneWay bind fires before the control is ever focused). Setting the VM property fires its
+    //      OnXxxChanged partial -> Commit -> persist. ----
+
+    private void OnRowTypeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
+        var picked = combo.SelectedItem as string;
+        if (Equals(picked, row.EditType)) return;       // programmatic seed / grid reload
+        if (!combo.IsKeyboardFocusWithin) return;        // user-initiated gate
+        row.EditType = picked;
+    }
+
+    private void OnRowPctChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
+        var picked = combo.SelectedValue as int?;
+        if (picked == row.EditPctUserId) return;
+        if (!combo.IsKeyboardFocusWithin) return;
+        row.EditPctUserId = picked;
+    }
+
+    private void OnRowPcaChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
+        var picked = combo.SelectedValue as int?;
+        if (picked == row.EditPcaId) return;
+        if (!combo.IsKeyboardFocusWithin) return;
+        row.EditPcaId = picked;
+    }
+
     // ---- P13 (QA): Progress cell inline edit. Click the % bar -> IsEditingProgress=true swaps in a 0-100
     //      number input (auto-focused). Enter or click-away commits (through the EditProgressText LostFocus
     //      binding) and swaps the bar back in; Escape cancels, restoring the committed value. ----

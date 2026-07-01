@@ -566,7 +566,9 @@ public sealed partial class TaskListRowVm : ObservableObject
         _suppressProgressCommit = false;
     }
 
-    // Persist Type/PCT/PCA/Progress via the owner (skips while seeding / on the legacy ctor).
+    // Persist Type/PCT/PCA/Progress via the owner (skips while seeding / on the legacy ctor). The genuine
+    // user edit arrives by a code-behind combo handler setting the edit prop (a CellTemplate combo's own
+    // TwoWay write never reaches the row — see TaskListTab.xaml.cs).
     private void Commit()
     {
         if (_suppressCommit || _owner is null) return;
