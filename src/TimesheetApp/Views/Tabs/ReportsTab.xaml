@@ -25,7 +25,21 @@
           </Style.Triggers>
         </Style>
       </Border.Style>
-      <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="{StaticResource AmberFg}"/>
+      <!-- D1: one line PER USER (not the flattened BannerText), capped height + scroll when the list is long. -->
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="&#9888; Missing time logs" FontWeight="SemiBold"
+                   Foreground="{StaticResource AmberFg}" Margin="0,0,0,4"/>
+        <ScrollViewer MaxHeight="96" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding MissingBanner}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding UserName}" TextWrapping="Wrap"
+                           Foreground="{StaticResource AmberFg}" Margin="0,1"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
     </Border>
 
     <!-- Controls: report target + week + month + project filter (grids auto-load on any change) + Export.
@@ -88,9 +102,9 @@
               BorderBrush="{StaticResource AmberBorder}" BorderThickness="1" CornerRadius="8" Padding="14,11">
         <StackPanel>
           <TextBlock Style="{StaticResource StatLabel}" Text="&#9888; NOT LOGGED" Foreground="{StaticResource AmberFg}"/>
-          <TextBlock Text="{Binding BannerText, TargetNullValue='None', FallbackValue='None'}"
-                     FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource AmberFg}"
-                     TextTrimming="CharacterEllipsis" Margin="0,6,0,0"/>
+          <!-- Count of users with missing logs (the per-user detail lives in the banner above — no dup). -->
+          <TextBlock Style="{StaticResource StatValue}" Text="{Binding MissingBanner.Count}"
+                     Foreground="{StaticResource AmberFg}"/>
         </StackPanel>
       </Border>
     </Grid>

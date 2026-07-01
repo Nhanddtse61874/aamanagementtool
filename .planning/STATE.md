@@ -1,111 +1,55 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-06-29 — branch `feature/task-list-2026-06-27` holds **FIVE stacked features**:
-**M3 Task List [P8]** + **M5 Local Backup [P9]** + **M4 Multi-Team [P10]** + **M6 Export Restructure [P11]** + **M7 Retention [P12]** —
-schema **v8**, **500 tests green**, build clean, all QA-passed + goal-backward VERIFIED. **IN LIVE UAT** (user running the app);
-several runtime-crash fixes already landed (see "UAT crash fixes" below). Prior: M2 Daily Report merged into `main`.
-**Next: finish UAT of all tabs → merge the whole branch to `main`** (NOT pushed/merged yet).
+**Last updated:** 2026-07-01 — branch `feature/task-list-2026-06-27`. **P13 "Task List Operations & History"
+is CODE-COMPLETE across all 4 waves + a quality refactor + several UAT fixes.** Schema **v9**, **514 tests
+green**, build clean (0 warnings), app boots + Task List render-guarded. **IN LIVE UAT** (user testing).
+Prior stacked features (M3 Task List, M5 Backup, M4 Multi-Team, M6 Export, M7 Retention) already on this branch.
 
 ## How to resume (READ FIRST)
 Open a session in `E:\Learning\AAM 2nd\aamanagementtool`, say *"đọc .planning/STATE.md để tiếp tục"*.
-- Branch `feature/task-list-2026-06-27` (NOT merged, NOT pushed). HEAD = `93d5dd1`. `dotnet test src/TimesheetApp.sln` → expect **500 green**.
-- Run the app: `dotnet run --project src/TimesheetApp` (or the built exe `src/TimesheetApp/bin/Debug/net8.0-windows/TimesheetApp.exe`). First launch already migrated the real DB to v8.
-- **Real DB has demo data** seeded this session: 2 teams (Architect Improvement #1, Plus Team #2), 8 members (An/Binh/Chi/Dung/Em[50-50]/Phuc/Giang/Huy), 10 tasks across 5 backlogs (ARCS-2001/ARMS-2002/OTHER-2005/PLUS-2003/PLUS-2004, period_month 2026-06, varied schedule chips). Current user **Nhan** is in BOTH teams. DB backups exist: `…/Documents/TimesheetApp/timesheet.db.pre-v8-*.bak` and `.pre-seed-*.bak`.
-- Config: model_profile `quality`; autonomous run, PAUSE at plan for schema/destructive phases.
-- **What's left:** user confirms remaining tabs (Backlog/Reports/Daily/Settings/Holiday/Backup/Export/Retention) work with data → then merge branch to `main` (user must OK push/merge).
+- Branch `feature/task-list-2026-06-27` (NOT pushed). `dotnet test src/TimesheetApp.sln` → expect **514 green**.
+- Run: `dotnet run --project src/TimesheetApp`. First launch migrated the real DB to **v9** (additive).
+- **Commits on branch:** `68e168d` (P13 Wave 1 schema v9 + audit-driven quality refactor) + the P13 Wave 2-4 + UAT-fix checkpoint (this save). NOT pushed/merged.
+- **Planning docs:** `.planning/P13-REQUIREMENTS.md` (resolved decisions + field mapping), `P13-PLAN.md` (4-wave plan), `P13-QUALITY-AUDIT.md` + `P13-AUDIT-SLICES.md` (audit), `P13-DESIGN-NOTES.md`, `P13-PLANCHECK.md`.
+- Config: model_profile `quality`; Mode **B** (team) for P13; autonomous, PAUSE at plan for schema.
 
-## UAT crash fixes (2026-06-28/29) — all committed, 500 green
-Live UAT surfaced runtime crashes that unit/XAML-compile tests can't catch (the team filter defaulted to 0 teams, so every team-filtered grid was EMPTY and **latent render bugs were masked until rows appeared**):
-1. `217f507` — 5 UAT issues: **add-member crash** (`<Run Text="{Binding TeamName}"/>` binds TwoWay-by-default on a read-only prop → `Mode=OneWay`); team switcher shown for single-team (`Count>=1`); Task List toggles → `ToolbarGhostToggle`; **holiday blocks Log Work entry** (TimeLogService rejects holiday dates + cells read-only); Task List "All months" option.
-2. `04790b5`→`62fe66c` — **"Teams (0)" empty grids**: TeamFilters built in VM ctor before `ICurrentTeamService` resolved. Final fix = **lazy-seed** `TeamFilterViewModel.CheckedTeamIds` on first read (NOT raising `ActiveTeamChanged` during `InitializeAsync` — that runs inside the startup WPF layout pass → re-enters Measure → **stack overflow**).
-3. `89fce98` — tag/chip icon TextBlocks use `FontFamily="Segoe UI Emoji"` (innocent re the SO, kept for emoji icons).
-4. `93d5dd1` — **Task List render crash** (the real "click→crash"): row-expand `<ToggleButton Style="MiniGhostButton">` (MiniGhostButton is `TargetType=Button`) → added `MiniGhostToggle`; `<ProgressBar Value="{Binding ProgressPercent}">` (RangeBase.Value is TwoWay-by-default) on read-only prop → `Mode=OneWay`; hardened template `<Run Text>` with `Mode=OneWay`.
-**LEARNING — recurring WPF bug class:** TwoWay-by-default DPs (`Run.Text`, `RangeBase.Value`, `ToggleButton.IsChecked`, `Selector.SelectedItem`) bound to **read-only** VM props throw at render; and **Button-typed Styles on a ToggleButton** throw "TargetType does not match". All views grepped + fixed for both patterns. A throwaway **STA render harness** (scratchpad `…/seeder/Program.cs`) reproduces a populated tab and was the tool that caught these — recreate it to diagnose any further render crash.
+## ⏳ NEXT: finish UAT with the user, then commit-squash + merge
+Pending the user's confirmation (re-test in app):
+- **#1 Task List cell format** — unified editable controls to 28px (`CompactComboBox` 26→28 + new `CompactDatePicker`). Ask if rows look even now; if not, get a screenshot (mixed control vs static-text cells has limits).
+- **#2 Settings "can't create tags"** — **no code bug found** (SaveTagAsync/TagEditorViewModel correct). Most likely a side-effect of #3 (created tags were invisible in the picker). Re-test: Settings → New tag → Save → appears in Settings list + the backlog TagPicker?
+- **#3 TagPicker empty (FIXED)** — `TagPicker.xaml.cs` ctor captured `_cvs.View` while `_cvs.Source` was null; `RebuildView` set Source but never re-pointed the ItemsControl → picker always empty. Fixed (re-assign view in RebuildView). Confirm tags now show in backlog Create/Edit.
+- **Wave 2/3/4 behavior** — editor gating (create disables Progress / edit hides operational); Task List inline edits persist + audit; deadline change → note popup; task sub-row edits; holiday cells; Reports per-user list.
 
-## M3 Task List [P8] — what was built (2026-06-27, this session)
-Per-month backlog tracking overview. Schema **v7** (additive v6→v7): Backlogs +deadline_internal/external,
-+rough/official_estimate_hours, +progress_percent, +note, +pca_contact_id (no inline FK; assignee_user_id reused
-as PCT). New tables Tags/BacklogTags/PcaContacts/Holidays. New symbols: `IWorkingDayCalculator` (pure, holiday-aware),
-`IScheduleStateService` (warning/late, never throws), `ITaskListArchiveService` (monthly md, mirrors standup),
-`ITagRepository`/`IPcaContactRepository`/`IHolidayRepository`, `TaskListViewModel`/`TaskListTab`, `HexToBrushConverter`,
-`ScheduleState` enum + `TaskListRow`/`GanttBar`/`GanttModel`. `ITimeLogRepository.GetLoggedHoursByBacklogAsync`
-(all-time SUM, NO is_active — XC-06). Sidebar restructured: Backlog/Task List/Reports now TOP-LEVEL (string-keyed
-`ActiveView`; sub-tab TabControl removed). New `DataKind`s Tags/PcaContacts/Holidays. Docs: spec
-`docs/superpowers/specs/2026-06-27-task-list-design.md`, plan `docs/superpowers/plans/2026-06-27-P8-task-list.md`,
-research `.planning/research/P8-*.md`, SUMMARY/UAT/VERIFICATION in `.planning/`. Commits d6deb8d→d2abd4e (9).
-**Config changed this session:** model_profile `quality`, defaults {haiku,sonnet,opus} (→ effective sonnet/opus, no haiku).
+## P13 — what was built (this session)
+**Schema v9** (additive; `DatabaseInitializer.cs` SchemaVersion 8→9; `SchemaV9UpgradeTests`): Tasks `+type,+assignee_user_id`; new `TaskTags`/`TaskAudit` (in CreateTables); `BacklogAudit +note`. `SchemaV7/V8UpgradeTests` version-asserts bumped to 9 (V8 seed gained BacklogAudit).
+**Wave 1** — repos: `TaskRepository` `UpdateExtendedAsync/UpdateStatusAsync/SetTaskTagsAsync/GetTagIdsAsync/GetAuditAsync` (TaskAudit); `BacklogRepository.UpdateAsync(+auditNote→BacklogAudit.note)` + `SetTagsAsync` tag-audit; `BacklogAuditEntry +Note` read-back. `TaskItem +Type,+AssigneeUserId`; `TaskAuditEntry`. Theme `HolidayBg`(#D5DAE1)+`CompactComboBox`.
+**Quality refactor** (audit verdict 0 Critical): bug fixes B-5 (`TagRepository.DeleteAsync` cleans TaskTags), B-6 (note read-back), B-3 (`MainViewModel.SafeLoad` logs not swallows), B-4 (`SettingsTab` async-void try/catch), async hygiene; dedup `DateHelpers.MondayOf`+`FormatHelpers`; **N+1 fixes** via `GetActiveByBacklogsAsync` (VM task counts), `IHolidayRepository.IsHolidayAsync` (hot path), `GetAuditForBacklogsAsync` (archive). +`BatchQueryTests`.
+**Wave 2** (Backlog editor, `RequestEditorViewModel`/`RequestsTab.xaml`): CREATE disables only Progress; EDIT hides operational (Progress/Internal/External/PCA) via `IsEditMode` DataTriggers; Progress layout fixed; Tags → new **`TagPicker`** control (multi-select dropdown, mirrors TeamFilter).
+**Wave 3** (Task List inline, `TaskListViewModel`+`TaskListTab.xaml`+`DeadlineNoteDialog`): grid cells Type/PCT/PCA (combos), Internal/External (DatePicker→note popup), Progress (bar OneWay + edit box), Tags (TagPicker) inline-edit → persist+audit. Expand sub-rows edit PCT/TYPE/TAG/Status → TaskAudit. `EditOption` sentinel, `_suppressCommit` guard, `ICurrentUserService` ctor param. **`TaskListTabRenderTests`** STA render-guard.
+**Wave 4** (`TimesheetTab`/`ReportsTab`): holiday cells `HolidayBg` (darker) + "Holiday" placeholder in `GridDayBox` template; Reports NOT-LOGGED banner → per-user list (`MissingBanner`) with MaxHeight+scroll, stat card → count (fixed the "2 Not Logged" dup).
+**UAT fixes**: theme `TextBox` Padding 8,6→**8,4** (fixed descender-clipping in fixed-Height inputs app-wide); the #1/#2/#3 above.
 
 ## What this is
 WPF Desktop Timesheet Tool (.NET 8 / WPF MVVM / SQLite+Dapper / ClosedXML / CommunityToolkit.Mvvm).
-Brand shown in-app = **"Worklog"** (DB/internal names unchanged). App project: `src/TimesheetApp`; tests `src/TimesheetApp.Tests`.
-GitHub: **Nhanddtse61874/aamanagementtool** (private). Local perms in `.claude/settings.local.json` (gitignored).
+Brand in-app = **"Worklog"**. App: `src/TimesheetApp`; tests `src/TimesheetApp.Tests`.
+GitHub: **Nhanddtse61874/aamanagementtool** (private). **Stack skill: load `dotnet` skill for .NET work** (was missed early-session; now standard).
 
 ## Commands
-- Build: `dotnet build src/TimesheetApp.sln`   ·  Test: `dotnet test src/TimesheetApp.sln`
-- Run: `dotnet run --project src/TimesheetApp` (or `bin/Debug/net8.0-windows/TimesheetApp.exe`)
-- DB: `%USERPROFILE%\Documents\TimesheetApp\timesheet.db` (path in `%APPDATA%\TimesheetApp\appsettings.json`).
-- **Seed clean sample data**: scratchpad seeder at `…\3375b5db-…\scratchpad\seeder\` —
-  `dotnet run --project Seeder.csproj` (delete the db first to reset); `-- check` prints DB contents,
-  `-- repro` exercises the add-issue path. Seeds 4 users (Nhan mapped to the Windows account so the app
-  auto-selects it), 4 backlogs (ARCS-1001/PLUS-2002/ARMS-3003/OTHER-404) + tasks + a week of timesheet +
-  standup with an unresolved (amber) and a resolved (green) issue.
+- Build: `dotnet build src/TimesheetApp.sln`  ·  Test: `dotnet test src/TimesheetApp.sln` (514)
+- Run: `dotnet run --project src/TimesheetApp`. DB: `%USERPROFILE%\Documents\TimesheetApp\timesheet.db` (v9).
+- **Build/run gotcha:** kill the running app (`Get-Process TimesheetApp | Stop-Process -Force`) before building — it locks the exe. Agents that edit code must NOT build (orchestrator builds once after).
 
-## Schema — user_version **8** (v7=P8 Task List, v8=P10 Multi-Team; on feature branch; `main` still v6)
-v8 (P10): new tables Teams/UserTeams; nullable team_id on Backlogs + StandupEntries (no inline FK). Data migration is a
-POST-INIT bootstrap (TeamBootstrapService) — not in the init tx — assigning existing data to "Architect Improvement".
-v7 (P8): Backlogs +deadline_internal/external +rough/official_estimate_hours +progress_percent +note +pca_contact_id;
-new tables Tags/BacklogTags/PcaContacts/Holidays. Both additive, const-bumped, gated on user_version.
-P9 (backup) = file-level, no schema change.
-## Schema — user_version **6** (history)
-v2 ticket lifecycle cols + RequestAudit; v3 project normalization; v4 `assignee_user_id`; v5 Daily Report
-(StandupEntries/StandupIssues); **v6 = Request→Backlog rename** (tables `Requests`→`Backlogs`,
-`RequestAudit`→`BacklogAudit`; cols `request_code`→`backlog_code`, ticket `status`→`type`,
-`request_id`→`backlog_id` on Backlogs/Tasks/BacklogAudit/StandupEntries; Tasks gains `status` default 'Todo').
-DDL still creates the legacy `Requests`/`RequestAudit` (gated on `user_version < 6`) so historical migrations
-apply, then v6 renames them. App has a global `DispatcherUnhandledException` handler (UAT-friendly error dialog).
-
-## Done this session (2026-06-26/27) — all on `main` now
-1. **Backlog refactor (`Request`→`Backlog`) COMPLETED** — a prior session left it half-done (app compiled, test
-   project broken). Finished the test migration + fixed a real `TimeLogRepository` SQL bug (still queried
-   `Requests` → would crash Reports live) + guarded the stray-`Requests`-table-on-relaunch. Symbols:
-   `Backlog`/`BacklogCode`/`IBacklogRepository`/`BacklogRepository`/`BacklogsViewModel`/`BacklogEditorViewModel`/
-   `WeekBacklogGroup`/`BacklogAuditEntry`/`MonthlyBacklogTaskTotal`/`BacklogNode`; ticket `Status`→`Type`
-   (`BacklogType`); new per-task `TaskItem.Status` (+`TaskStatus.All` Todo/In-process/Done/Pending).
-2. **DEFAULT backlog never gets a month** — `MoveMonthAsync` guards it (UI already hides Move); it holds the
-   recurring default tasks and shows in EVERY month (Entry month-filter exempts null period_month).
-3. **Daily Report issue UX redesign** — issue card: ⚠ amber "warning" until a solution is saved, then flips to
-   green "✓ resolved". No-solution shows "No solution yet" + "Add solution" button (no empty input). Applied to
-   BOTH Input tab and Team Board (`StandupIssue.HasSolution`). Input tab relaid out to a single stacked column
-   (mirrors Board). Standup VM actions wrapped in try/catch → inline StatusMessage.
-4. **Daily Report Add-entry** — ONE pinned "Add entry" button (was 2); section (Yesterday/Today) picked inside
-   the dialog via radios (`StandupDraftVm.Section` settable, two-way via StringMatchConverter).
-5. **Smart fill** — contains search (`SearchAsync` LIKE, not exact `GetByCodeAsync`; multi-match prefixes the
-   code); two-column dialog (form left, preview right full-height, scrolls); Preview button pinned; Total hours
-   greyed for Full 8h; themed to app dialog convention.
-6. **Reports drill-down** — every level shows rolled-up hours (Project/Backlog/Task) and the Date leaf shows
-   weekday + hours logged that day.
-7. **Drag & drop (both big features)**:
-   - **Daily Report**: ⠿ grip drag-reorders entries within/across Yesterday/Today; drop on the pinned
-     "🗑 Drop an entry here to delete" zone deletes. `StandupService.ReorderEntryAsync` (owner+lock gated).
-   - **Timesheet Entry**: ⠿ grip drag-reorders task rows within a backlog; drop-on-trash soft-deletes the task
-     (time logs preserved). `ITaskRepository.SetOrderAsync`; `TimesheetViewModel.ReorderTaskAsync/DeleteTaskAsync`
-     (no-op in read-only team view).
-
-## Open / not yet verified
-- **Drag & drop is mouse interaction — NOT auto-tested.** UAT needed: grips draggable, drop reorders, trash
-  deletes, highlight on drag-over. Handlers live in `DailyInputTab.xaml.cs` / `TimesheetTab.xaml.cs`.
-- The merge took the **feature** side for `RequestsTab.xaml` / `ReportsTab.xaml` / `SmartInputPreviewDialog.xaml`
-  conflicts (origin/main's design-tweak commits `960b570`/`1792a75` were superseded by the feature branch's own
-  design work). If a Users/tables/buttons tweak looks missing, recover it from commit `960b570`.
+## Schema — user_version **9**
+v9 (P13): Tasks `+type,+assignee_user_id`; `TaskTags(task_id,tag_id)`+`TaskAudit(...)` in CreateTables; BacklogAudit `+note`. v8=Multi-Team; v7=Task List tracking; v6=Request→Backlog rename. Migrations are additive, gated on user_version, with a pre-vN .bak backup.
 
 ## Decisions locked (don't re-litigate)
-- Brand "Worklog" display-only; DB path `timesheet.db`. Requests/Reports are sub-tabs of Timesheet; Users/Settings
-  under sidebar ADMIN. Entry "whole team" view = read-only aggregate. "Move ▶" advances ticket to next month (audited).
-- Projects = fixed enum ARCS/PlusArcs/ARMS/Other. Smart-fill total = grand total split across checked tasks × days.
-- DESIGN SOURCE OF TRUTH = `E:\Learning\AAM\Design Old\Designfromclaude\Timesheet Tool.dc.html` (teal #0F766E,
-  page #E6EAEF, surface #fff, 'Segoe UI' 13px). Read it before UI changes.
+- P13 field split: CREATE grays only Progress; EDIT = non-operational fields; operational (Progress/Internal/External/PCA) managed inline in Task List with history; Tags editable both places. Task-level history = YES (TaskAudit). Reports "note logged" = the NOT-LOGGED warning (display-only).
+- Mode B team-orchestration via the Workflow tool: design/audit/plan + implementation done by parallel agent waves, **but the main agent build+tests+verifies every wave** (agents don't build — caught real compile/mock breakages each time).
+- DESIGN SOURCE OF TRUTH = `E:\Learning\AAM\Design Old\Designfromclaude\Timesheet Tool.dc.html` (teal #0F766E, 'Segoe UI' 13px). Read before UI changes.
+- Brand "Worklog" display-only. Projects = fixed enum ARCS/PlusArcs/ARMS/Other.
 
 ## Working style (this user)
 - Iterative UAT: focused change → run the app → user tests → next. Mirror the user's language (VN↔EN).
-- When a feature "doesn't work", get DB/runtime evidence first (several issues were UX traps / not-wired, not logic).
-- Commit + push each accepted change. Surgical changes; don't "improve" working code unasked.
+- When a feature "doesn't work", get DB/runtime evidence first (several were UX traps / null-view bugs, not logic).
+- Commit + push each accepted change (push only when the user OKs). Surgical; don't "improve" working code unasked.
+- WPF render-crash class (recurring): TwoWay-by-default DPs (Run.Text, RangeBase.Value, ToggleButton.IsChecked) on read-only props throw at render; Button-style on ToggleButton throws. STA render harness (`TaskListTabRenderTests`/`SettingsMembershipOverlayLoadTests`) catches these in CI.

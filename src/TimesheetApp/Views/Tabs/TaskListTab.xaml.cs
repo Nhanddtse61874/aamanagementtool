@@ -8,9 +8,15 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using TimesheetApp.Models;
 using TimesheetApp.ViewModels;
+using TimesheetApp.Views.Controls;
 
 public partial class TaskListTab : UserControl
 {
+    // P13 W3 inline deadline edit: guard so the programmatic SelectedDate write we do when REVERTING a
+    // cancelled change does not re-enter the change handler (the user-initiated gate is IsKeyboardFocusWithin
+    // + a value-vs-source echo check; this flag covers the revert write unconditionally).
+    private bool _suppressDeadlineChange;
+
     // Fixed per-working-day column width (px). The canvas grows to Axis.Count*dayWidth and scrolls when
     // it would overflow; if the viewport is wider, columns stretch to fill it (see ResolveDayWidth).
     private const double MinDayWidth = 26d;
@@ -66,6 +72,46 @@ public partial class TaskListTab : UserControl
 
     // The canvas reports its real width only after layout — redraw so dayWidth uses the live viewport (R5).
     private void OnGanttCanvasSizeChanged(object sender, SizeChangedEventArgs e) => DrawGantt();
+
+    // ---- P13 W3: inline deadline edit (DatePicker SelectedDateChanged -> reason popup -> commit) ----------
+
+    private void OnInternalDeadlineChanged(object sender, SelectionChangedEventArgs e)
+        => HandleDeadlineChanged(sender as DatePicker, isInternal: true);
+
+    private void OnExternalDeadlineChanged(object sender, SelectionChangedEventArgs e)
+        => HandleDeadlineChanged(sender as DatePicker, isInternal: false);
+
+    // Shared deadline-change flow. Only a genuine user pick (focus is within this DatePicker, and the new
+    // value actually differs from the row's current deadline) opens the reason popup. On OK -> commit with
+    // the note; on Cancel -> revert the DatePicker to the prior value (guarded so the revert doesn't re-enter).
+    private void HandleDeadlineChanged(DatePicker? picker, bool isInternal)
+    {
+        if (_suppressDeadlineChange) return;                       // ignore the revert write
+        if (picker?.Tag is not TaskListRowVm row) return;
+        if (DataContext is not TaskListViewModel vm) return;
+
+        // The bound source value (current deadline on the row) — used as the "prior" value + echo check.
+        var current = isInternal ? row.DeadlineInternal : row.DeadlineExternal;
+        var picked = picker.SelectedDate is { } dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+
+        // Programmatic set (initial bind / grid reload / revert-to-same) — not a user edit.
+        if (picked == current) return;
+        // User-initiated gate: the initial OneWay bind happens before the control is ever focused.
+        if (!picker.IsKeyboardFocusWithin) return;
+
+        var dlg = new DeadlineNoteDialog { Owner = Application.Current.MainWindow };
+        if (dlg.ShowDialog() == true)
+        {
+            _ = vm.CommitDeadlineAsync(row.BacklogId, isInternal, picked, dlg.Reason);
+        }
+        else
+        {
+            // Cancelled — put the DatePicker back to the prior value without re-triggering this handler.
+            _suppressDeadlineChange = true;
+            picker.SelectedDate = current is { } c ? c.ToDateTime(TimeOnly.MinValue) : (DateTime?)null;
+            _suppressDeadlineChange = false;
+        }
+    }
 
     private static Brush Res(string key, Brush fallback) =>
         Application.Current?.TryFindResource(key) as Brush ?? fallback;

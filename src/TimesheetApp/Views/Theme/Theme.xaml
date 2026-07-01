@@ -160,7 +160,9 @@
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     <Setter Property="FontFamily" Value="Segoe UI"/>
     <Setter Property="FontSize" Value="13"/>
-    <Setter Property="Padding" Value="8,6"/>
+    <!-- 4px vertical (not 6) so a fixed Height=32 box still has ~22px content room — at 6 the descenders
+         (g/p/y) of path text were clipped in the Settings/dialog fixed-height inputs. -->
+    <Setter Property="Padding" Value="8,4"/>
     <Setter Property="Margin" Value="0,0,0,0"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}"/>
     <Setter Property="BorderThickness" Value="1"/>
@@ -783,9 +785,16 @@
        only density overrides are applied here (smaller font + tighter padding + fixed height). -->
   <Style x:Key="CompactComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
     <Setter Property="FontSize" Value="12"/>
-    <Setter Property="Height" Value="26"/>
+    <Setter Property="Height" Value="28"/>
     <Setter Property="Padding" Value="6,0"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <!-- Compact DatePicker matching CompactComboBox height, so inline grid editors line up evenly. -->
+  <Style x:Key="CompactDatePicker" TargetType="DatePicker" BasedOn="{StaticResource {x:Type DatePicker}}">
+    <Setter Property="Height" Value="28"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="FontSize" Value="12"/>
   </Style>
 
 </ResourceDictionary>

@@ -5,6 +5,8 @@ using CommunityToolkit.Mvvm.Messaging;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
+// Disambiguate from System.Threading.Tasks.TaskStatus (in scope via async Task usage).
+using TaskStatus = TimesheetApp.Models.TaskStatus;
 
 namespace TimesheetApp.ViewModels;
 
@@ -28,13 +30,14 @@ public sealed partial class TaskListViewModel : ObservableObject
     private readonly IClock _clock;
     private readonly IMessenger _messenger;
     private readonly ICurrentTeamService? _currentTeam;   // v8 (P10): active team + multi-team filter
+    private readonly ICurrentUserService? _currentUser;   // v9 (P13-W3): audit who-changed on inline edits
 
     public TaskListViewModel(
         IBacklogRepository backlogs, ITaskRepository tasks, ITimeLogRepository timeLogs,
         ITagRepository tagsRepo, IPcaContactRepository pcaContacts, IUserRepository users,
         IHolidayRepository holidays, IWorkingDayCalculator calc, IScheduleStateService schedule,
         ITaskListArchiveService archive, IClock clock, IMessenger? messenger = null,
-        ICurrentTeamService? currentTeam = null)
+        ICurrentTeamService? currentTeam = null, ICurrentUserService? currentUser = null)
     {
         _backlogs = backlogs;
         _tasks = tasks;
@@ -49,6 +52,7 @@ public sealed partial class TaskListViewModel : ObservableObject
         _clock = clock;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _currentTeam = currentTeam;
+        _currentUser = currentUser;
 
         // P10 (TM-07): the multi-team checkbox filter; reload the grid on a selection/active-team change.
         if (_currentTeam is not null)
@@ -78,6 +82,22 @@ public sealed partial class TaskListViewModel : ObservableObject
 
     // P10: the shared multi-team filter (null when no current-team service is wired — legacy ctor / tests).
     public TeamFilterViewModel? TeamFilter { get; }
+
+    // v9 (P13-W3): the current user for audit (null on the legacy ctor / tests → audit uid/name pass null).
+    internal int? CurrentUserId => _currentUser?.Current?.Id;
+    internal string? CurrentUserName => _currentUser?.Current?.Name;
+
+    // ---- v9 (P13-W3) inline-edit option lists (populated in LoadAsync so cells can bind) -----------
+    // Backlog/task TYPE choices (BacklogType.All; tasks reuse the same list).
+    public IReadOnlyList<string> TypeOptions { get; private set; } = BacklogType.All;
+    // Task STATUS choices (the four TaskStatus values).
+    public IReadOnlyList<string> StatusOptions { get; private set; } = TaskStatus.All;
+    // PCT (assignee) choices: a "—" unassigned sentinel (Id = null) + every user.
+    public IReadOnlyList<EditOption> AssigneeOptions { get; private set; } = Array.Empty<EditOption>();
+    // PCA (external contact) choices: a "—" none sentinel (Id = null) + every PCA contact.
+    public IReadOnlyList<EditOption> PcaOptions { get; private set; } = Array.Empty<EditOption>();
+    // Every custom tag (ordered by Id) — seeds the per-row/per-task checkable tag pickers.
+    public IReadOnlyList<Tag> AllTags { get; private set; } = Array.Empty<Tag>();
 
     // ISSUE 3: sentinel month meaning "All months" — shows every backlog (any period_month, incl. null),
     // matching the Backlog tab. 0 sorts before 1-12 so it heads the combo.
@@ -122,11 +142,24 @@ public sealed partial class TaskListViewModel : ObservableObject
         var allBacklogs = await _backlogs.SearchAsync(null, teamIds);
         var loggedByBacklog = await _timeLogs.GetLoggedHoursByBacklogAsync();
         var tagIdsByBacklog = await _backlogs.GetTagIdsForAllAsync();
-        var tagsById = (await _tagsRepo.GetAllAsync()).ToDictionary(t => t.Id);
+        var allTags = (await _tagsRepo.GetAllAsync()).OrderBy(t => t.Id).ToList();
+        var tagsById = allTags.ToDictionary(t => t.Id);
         // GetAll (not GetActive) so a deactivated PCA/PCT still resolves on historical rows (XC-06 spirit).
-        var userNames = (await _users.GetAllAsync()).ToDictionary(u => u.Id, u => u.Name);
-        var pcaNames = (await _pcaContacts.GetAllAsync()).ToDictionary(p => p.Id, p => p.Name);
+        var allUsers = (await _users.GetAllAsync()).ToList();
+        var allPca = (await _pcaContacts.GetAllAsync()).ToList();
+        var userNames = allUsers.ToDictionary(u => u.Id, u => u.Name);
+        var pcaNames = allPca.ToDictionary(p => p.Id, p => p.Name);
         var holidaySet = (await _holidays.GetAllAsync()).Select(h => h.Date).ToHashSet();
+
+        // v9 (P13-W3): build the inline-edit option lists from the data already fetched above (no N+1).
+        // PCT/PCA lists lead with a null-id "—" sentinel meaning unassigned/none.
+        AllTags = allTags;
+        TypeOptions = BacklogType.All;
+        StatusOptions = TaskStatus.All;
+        AssigneeOptions = new[] { EditOption.None }
+            .Concat(allUsers.Select(u => new EditOption(u.Id, u.Name))).ToList();
+        PcaOptions = new[] { EditOption.None }
+            .Concat(allPca.Select(p => new EditOption(p.Id, p.Name))).ToList();
 
         // P10: id -> team name (from the user's available teams) + label visibility when >1 team is checked.
         var teamNames = _currentTeam?.AvailableTeams.ToDictionary(t => t.Id, t => t.Name)
@@ -170,8 +203,22 @@ public sealed partial class TaskListViewModel : ObservableObject
                 b.DeadlineInternal, b.DeadlineExternal, b.StartDate,
                 b.ProgressPercent, logged, estimate, state, tags, taskList);
 
+            // v9 (P13-W3): editable task sub-rows — each carries its own current type/assignee/tags so the
+            // expand panel can edit them inline. Tag ids are loaded per task via the existing single fetch
+            // (TaskItem carries no tags); the set is small (active tasks of the visible backlogs).
+            var taskRows = new List<TaskRowVm>(taskList.Count);
+            foreach (var t in taskList)
+            {
+                var tTagIds = await _tasks.GetTagIdsAsync(t.Id);
+                taskRows.Add(new TaskRowVm(this, t, tTagIds));
+            }
+
             var teamName = b.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : null;
-            rows.Add(new TaskListRowVm(row, teamName, showTeam));
+            // Pass the owning VM + the backlog's current ids/tag-id set so the row's edit props seed correctly.
+            rows.Add(new TaskListRowVm(
+                this, row, b.AssigneeUserId, b.PcaContactId,
+                tagIdsByBacklog.TryGetValue(b.Id, out var bIds) ? bIds : Array.Empty<int>(),
+                taskRows, teamName, showTeam));
             ganttSource.Add((b, state));
         }
 
@@ -289,21 +336,145 @@ public sealed partial class TaskListViewModel : ObservableObject
             ExportStatus = $"Export failed: {ex.Message}";
         }
     }
+
+    // ---- v9 (P13-W3) inline backlog edits (called from TaskListRowVm setters / the deadline popup) ----
+
+    /// <summary>
+    /// Commit one row's inline backlog edits (Type / PCT / PCA / Progress) — load the backlog, copy the
+    /// row's current edit values onto it, persist with field-diff audit (note = null, these are NOT
+    /// deadline fields), then refresh the grid. Tags + deadlines have their own commit paths.
+    /// </summary>
+    internal async Task CommitBacklogEditAsync(TaskListRowVm row)
+    {
+        var backlog = await _backlogs.GetByIdAsync(row.BacklogId);
+        if (backlog is null) return;
+
+        var updated = backlog with
+        {
+            Type = row.EditType,
+            AssigneeUserId = row.EditPctUserId,
+            PcaContactId = row.EditPcaId,
+            ProgressPercent = row.EditProgress,
+        };
+        await _backlogs.UpdateAsync(updated, CurrentUserId, CurrentUserName);
+        _messenger.Send(new DataChangedMessage(DataKind.Backlogs));
+    }
+
+    /// <summary>
+    /// Commit a row's checked-tag set (the TagPicker replace-set) — SetTagsAsync diff-audits internally.
+    /// </summary>
+    internal async Task CommitBacklogTagsAsync(int backlogId, IReadOnlyList<int> tagIds)
+    {
+        await _backlogs.SetTagsAsync(backlogId, tagIds, CurrentUserId, CurrentUserName);
+        _messenger.Send(new DataChangedMessage(DataKind.Tags));
+    }
+
+    /// <summary>
+    /// Commit a deadline change (internal or external) with the reason note captured by the View's popup.
+    /// Loads the backlog, sets the chosen deadline field, persists with the note on the audit row, refreshes.
+    /// Not driven by a setter (the View shows its note popup first, then calls this).
+    /// </summary>
+    public async Task CommitDeadlineAsync(int backlogId, bool isInternal, DateOnly? newDate, string? note)
+    {
+        var backlog = await _backlogs.GetByIdAsync(backlogId);
+        if (backlog is null) return;
+
+        var updated = isInternal
+            ? backlog with { DeadlineInternal = newDate }
+            : backlog with { DeadlineExternal = newDate };
+        await _backlogs.UpdateAsync(updated, CurrentUserId, CurrentUserName, auditNote: note);
+        _messenger.Send(new DataChangedMessage(DataKind.Backlogs));
+    }
+
+    // ---- v9 (P13-W3) inline task edits (called from TaskRowVm setters) -------------------------------
+
+    /// <summary>Commit a task's type + assignee (one row UPDATE) with field-diff audit, then refresh.</summary>
+    internal async Task UpdateTaskExtendedAsync(int taskId, string? type, int? assigneeUserId)
+    {
+        await _tasks.UpdateExtendedAsync(taskId, type, assigneeUserId, CurrentUserId, CurrentUserName);
+        _messenger.Send(new DataChangedMessage(DataKind.Tasks));
+    }
+
+    /// <summary>Commit a task's status with audit, then refresh.</summary>
+    internal async Task UpdateTaskStatusAsync(int taskId, string status)
+    {
+        await _tasks.UpdateStatusAsync(taskId, status, CurrentUserId, CurrentUserName);
+        _messenger.Send(new DataChangedMessage(DataKind.Tasks));
+    }
+
+    /// <summary>Commit a task's checked-tag set (SetTaskTagsAsync diff-audits internally), then refresh.</summary>
+    internal async Task UpdateTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds)
+    {
+        await _tasks.SetTaskTagsAsync(taskId, tagIds, CurrentUserId, CurrentUserName);
+        _messenger.Send(new DataChangedMessage(DataKind.Tags));
+    }
+}
+
+/// v9 (P13-W3): one choice in a PCT/PCA inline ComboBox. Id is null for the "—" unassigned/none sentinel,
+/// otherwise the user/contact id. Bound via SelectedValuePath="Id" so null ⇄ the sentinel row directly.
+public sealed record EditOption(int? Id, string Name)
+{
+    public static readonly EditOption None = new(null, "—");
 }
 
 /// One Task List grid row: wraps the immutable TaskListRow read-model and adds the view-only state
 /// (expand flag + the ordered chip list bound by the chips cell). Wave 6 reads Row for the Gantt shape.
 public sealed partial class TaskListRowVm : ObservableObject
 {
+    // v9 (P13-W3): back-ref to the owning VM (option lists + commit methods + current-user for audit).
+    private readonly TaskListViewModel? _owner;
+    // COMMIT-ON-LOAD GUARD: true while the row is being built so seeding the edit props from current
+    // values does NOT fire a save. Genuine user edits (after construction) flip the guard off and commit.
+    private readonly bool _suppressCommit;
+
     public TaskListRowVm(TaskListRow row, string? teamName = null, bool showTeam = false)
     {
+        // Legacy ctor (kept so existing tests/constructors compile) — no owner ⇒ read-only, edits no-op.
         Row = row;
         Chips = BuildChips(row);
         TeamName = teamName;
         ShowTeam = showTeam;
+        TaskRows = Array.Empty<TaskRowVm>();
+        EditTagPicks = new ObservableCollection<TagPickVm>();
+    }
+
+    // v9 (P13-W3): full ctor — owner + the backlog's current ids/tag-id set + its editable task sub-rows.
+    public TaskListRowVm(
+        TaskListViewModel owner, TaskListRow row,
+        int? pctUserId, int? pcaId, IReadOnlyList<int> tagIds,
+        IReadOnlyList<TaskRowVm> taskRows, string? teamName = null, bool showTeam = false)
+    {
+        _suppressCommit = true;   // seeding initial values must not commit
+
+        _owner = owner;
+        Row = row;
+        Chips = BuildChips(row);
+        TeamName = teamName;
+        ShowTeam = showTeam;
+        TaskRows = taskRows;
+
+        // Seed the inline-edit props from the row's current values (write backing fields / the auto-prop
+        // setter directly so no OnXxxChanged fires during construction — belt-and-braces with _suppressCommit).
+        _editType = row.Type;
+        _editPctUserId = pctUserId;
+        _editPcaId = pcaId;
+        EditProgress = row.ProgressPercent;
+        _editProgressText = row.ProgressPercent?.ToString() ?? string.Empty;
+
+        // Tag multi-select (TagPicker shape): every tag, checked when currently linked to this backlog.
+        var checkedSet = new HashSet<int>(tagIds);
+        EditTagPicks = new ObservableCollection<TagPickVm>(
+            owner.AllTags.Select(t => new TagPickVm(t, checkedSet.Contains(t.Id))));
+        // After the initial seed, a CheckBox toggle is a genuine edit → commit the whole set.
+        foreach (var pick in EditTagPicks)
+            pick.PropertyChanged += OnTagPickChanged;
+
+        _suppressCommit = false;  // construction done — subsequent setters commit
     }
 
     public TaskListRow Row { get; }
+
+    public int BacklogId => Row.BacklogId;
 
     // P10 (TM-07): the owning team's name + whether to show it (only when >1 team is checked).
     public string? TeamName { get; }
@@ -332,6 +503,67 @@ public sealed partial class TaskListRowVm : ObservableObject
 
     public IReadOnlyList<TaskListChipVm> Chips { get; }
 
+    // ---- v9 (P13-W3) inline-edit option lists (forwarded from the owner so cells bind on the row) ----
+    public IReadOnlyList<string> TypeOptions => _owner?.TypeOptions ?? BacklogType.All;
+    public IReadOnlyList<EditOption> AssigneeOptions => _owner?.AssigneeOptions ?? Array.Empty<EditOption>();
+    public IReadOnlyList<EditOption> PcaOptions => _owner?.PcaOptions ?? Array.Empty<EditOption>();
+
+    // Editable task sub-rows shown when the row is expanded (replaces the raw Tasks pass-through).
+    public IReadOnlyList<TaskRowVm> TaskRows { get; }
+
+    // TagPicker-bound checkable set (items: settable IsChecked + Tag); committing replaces the link set.
+    public ObservableCollection<TagPickVm> EditTagPicks { get; }
+
+    // ---- v9 (P13-W3) inline-edit properties (TwoWay-settable; commit on genuine user edits) ----------
+    // TYPE (BacklogType string, null clears).
+    [ObservableProperty] private string? _editType;
+    // PCT assignee user id (null = unassigned sentinel).
+    [ObservableProperty] private int? _editPctUserId;
+    // PCA contact id (null = none sentinel).
+    [ObservableProperty] private int? _editPcaId;
+    // Parsed progress 0-100 (null = cleared); kept in sync with EditProgressText.
+    public int? EditProgress { get; private set; }
+    // Progress edit as text — parses to EditProgress (0-100), commits on a valid/cleared change.
+    [ObservableProperty] private string _editProgressText = string.Empty;
+
+    partial void OnEditTypeChanged(string? value) => Commit();
+    partial void OnEditPctUserIdChanged(int? value) => Commit();
+    partial void OnEditPcaIdChanged(int? value) => Commit();
+
+    partial void OnEditProgressTextChanged(string value)
+    {
+        // Empty → cleared (null). Whole number 0-100 → that value. Anything else is invalid → no commit.
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            EditProgress = null;
+        }
+        else if (int.TryParse(value.Trim(), out var p) && p is >= 0 and <= 100)
+        {
+            EditProgress = p;
+        }
+        else
+        {
+            return;   // invalid input — leave EditProgress as-is and do not commit
+        }
+        Commit();
+    }
+
+    // Persist Type/PCT/PCA/Progress via the owner (skips while seeding / on the legacy ctor).
+    private void Commit()
+    {
+        if (_suppressCommit || _owner is null) return;
+        _ = _owner.CommitBacklogEditAsync(this);
+    }
+
+    // A tag CheckBox toggled (after seeding) → replace the whole link set with the now-checked tags.
+    private void OnTagPickChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_suppressCommit || _owner is null) return;
+        if (e.PropertyName != nameof(TagPickVm.IsChecked)) return;
+        var ids = EditTagPicks.Where(t => t.IsChecked).Select(t => t.Tag.Id).ToList();
+        _ = _owner.CommitBacklogTagsAsync(BacklogId, ids);
+    }
+
     // Chip order (TAG-02 / Q4): the single system chip first (Late before Warning — only one ever shows),
     // then custom tags already ordered by Tag.Id.
     private static IReadOnlyList<TaskListChipVm> BuildChips(TaskListRow row)
@@ -345,6 +577,79 @@ public sealed partial class TaskListRowVm : ObservableObject
         foreach (var t in row.Tags)
             chips.Add(TaskListChipVm.Custom(t));
         return chips;
+    }
+}
+
+/// v9 (P13-W3): one editable task sub-row in the expand panel. Wraps a TaskItem and adds TwoWay-settable
+/// inline edits (Type / PCT assignee / Status + a checkable tag set) that commit to TaskRepository with
+/// who-changed audit via the owning VM. Same COMMIT-ON-LOAD guard as TaskListRowVm.
+public sealed partial class TaskRowVm : ObservableObject
+{
+    private readonly TaskListViewModel _owner;
+    private readonly bool _suppressCommit;
+
+    public TaskRowVm(TaskListViewModel owner, TaskItem task, IReadOnlyList<int> tagIds)
+    {
+        _suppressCommit = true;   // seeding initial values must not commit
+
+        _owner = owner;
+        TaskId = task.Id;
+        TaskName = task.TaskName;
+
+        _editType = task.Type;
+        _editPctUserId = task.AssigneeUserId;
+        _editStatus = task.Status;
+
+        var checkedSet = new HashSet<int>(tagIds);
+        EditTagPicks = new ObservableCollection<TagPickVm>(
+            owner.AllTags.Select(t => new TagPickVm(t, checkedSet.Contains(t.Id))));
+        foreach (var pick in EditTagPicks)
+            pick.PropertyChanged += OnTagPickChanged;
+
+        _suppressCommit = false;
+    }
+
+    public int TaskId { get; }
+    public string TaskName { get; }
+
+    // Option lists forwarded from the owner (no per-row copies).
+    public IReadOnlyList<string> TypeOptions => _owner.TypeOptions;
+    public IReadOnlyList<EditOption> AssigneeOptions => _owner.AssigneeOptions;
+    public IReadOnlyList<string> StatusOptions => _owner.StatusOptions;
+
+    // TagPicker-bound checkable set (settable IsChecked + Tag) — committing replaces the task's link set.
+    public ObservableCollection<TagPickVm> EditTagPicks { get; }
+
+    // TYPE (mirrors Backlog.Type; null clears) → UpdateExtendedAsync(type, assignee).
+    [ObservableProperty] private string? _editType;
+    // PCT assignee user id (null = unassigned) → UpdateExtendedAsync(type, assignee).
+    [ObservableProperty] private int? _editPctUserId;
+    // STATUS (one of TaskStatus.All) → UpdateStatusAsync.
+    [ObservableProperty] private string _editStatus = "Todo";
+
+    partial void OnEditTypeChanged(string? value) => CommitExtended();
+    partial void OnEditPctUserIdChanged(int? value) => CommitExtended();
+    partial void OnEditStatusChanged(string value) => CommitStatus();
+
+    // type + assignee live on the same row UPDATE (UpdateExtendedAsync), so both setters route here.
+    private void CommitExtended()
+    {
+        if (_suppressCommit) return;
+        _ = _owner.UpdateTaskExtendedAsync(TaskId, EditType, EditPctUserId);
+    }
+
+    private void CommitStatus()
+    {
+        if (_suppressCommit) return;
+        _ = _owner.UpdateTaskStatusAsync(TaskId, EditStatus);
+    }
+
+    private void OnTagPickChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_suppressCommit) return;
+        if (e.PropertyName != nameof(TagPickVm.IsChecked)) return;
+        var ids = EditTagPicks.Where(t => t.IsChecked).Select(t => t.Tag.Id).ToList();
+        _ = _owner.UpdateTaskTagsAsync(TaskId, ids);
     }
 }
 

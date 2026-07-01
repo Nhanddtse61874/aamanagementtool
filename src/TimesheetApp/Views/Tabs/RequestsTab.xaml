@@ -223,8 +223,18 @@
                                     <TextBlock Text="Tracking" Style="{StaticResource FieldLabel}"
                                                FontWeight="Bold" Margin="0,0,0,8"/>
 
-                                    <!-- dual deadlines -->
+                                    <!-- dual deadlines — operational fields: hidden on EDIT, shown on create -->
                                     <Grid Margin="0,0,0,10">
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsEditMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="16"/>
@@ -257,19 +267,45 @@
                                         </StackPanel>
                                     </Grid>
 
-                                    <!-- manual progress % + PCA contact -->
+                                    <!-- manual progress % + PCA contact. Columns symmetric (* | 16 | *) to
+                                         match the deadline/estimate rows above; Progress box width-capped so
+                                         it reads as a normal field, not an outlier. Both are operational:
+                                         on CREATE Progress shows but is disabled; PCA shows + is fillable.
+                                         On EDIT both collapse. -->
                                     <Grid Margin="0,0,0,10">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsEditMode}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
                                             <TextBlock Text="Progress %" Style="{StaticResource FieldLabel}"/>
-                                            <TextBox Width="70" HorizontalAlignment="Left"
+                                            <!-- Progress is read-only data (computed elsewhere): disabled on the
+                                                 create form so it can't be filled. -->
+                                            <TextBox MaxWidth="120" HorizontalAlignment="Left" IsEnabled="False"
                                                      Text="{Binding ProgressText, UpdateSourceTrigger=PropertyChanged}"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsEditMode}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
                                             <TextBlock Text="PCA contact" Style="{StaticResource FieldLabel}"/>
                                             <!-- Type-to-filter PCA picker (beh:ComboBoxSearch). -->
                                             <ComboBox ItemsSource="{Binding PcaContacts}"
@@ -286,28 +322,10 @@
                                              AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
                                              VerticalScrollBarVisibility="Auto" Margin="0,0,0,10"/>
 
-                                    <!-- tag multi-select: a checkbox per tag with a live chip preview -->
+                                    <!-- tag multi-select: dropdown ("Tags (N) ▾") of checkable chips.
+                                         Same TagPicks data as before, so CheckedTagIds / save path is unchanged. -->
                                     <TextBlock Text="Tags" Style="{StaticResource FieldLabel}"/>
-                                    <ItemsControl ItemsSource="{Binding TagPicks}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <CheckBox IsChecked="{Binding IsChecked}" Margin="0,2"
-                                                          VerticalContentAlignment="Center">
-                                                    <Border CornerRadius="10" Padding="9,2" Margin="2,0,0,0"
-                                                            HorizontalAlignment="Left" VerticalAlignment="Center"
-                                                            Background="{Binding Tag.Color, Converter={StaticResource HexToBrush}}">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="{Binding Tag.Icon}" Margin="0,0,5,0"
-                                                                       FontFamily="Segoe UI Emoji"
-                                                                       VerticalAlignment="Center"/>
-                                                            <TextBlock Text="{Binding Tag.Text}" FontWeight="SemiBold"
-                                                                       Foreground="White" VerticalAlignment="Center"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </CheckBox>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                    <ctrl:TagPicker ItemsSource="{Binding TagPicks}" HorizontalAlignment="Left"/>
                                 </StackPanel>
                             </Border>
 

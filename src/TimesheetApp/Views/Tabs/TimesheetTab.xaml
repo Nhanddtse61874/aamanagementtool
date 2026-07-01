@@ -29,7 +29,7 @@
     <Style x:Key="HolidayCellBorder" TargetType="Border">
       <Style.Triggers>
         <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
-          <Setter Property="Background" Value="{StaticResource HeaderBg}"/>
+          <Setter Property="Background" Value="{StaticResource HolidayBg}"/>
           <Setter Property="ToolTip" Value="Holiday — not a working day"/>
         </DataTrigger>
       </Style.Triggers>
@@ -43,6 +43,26 @@
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Padding" Value="0,5"/>
+      <!-- Shows a "Holiday" watermark when the owning cell Border is a holiday (Tag=True). Holiday cells
+           are read-only + always empty, so the watermark reads as "no work expected" over the empty box.
+           Keeps PART_ContentHost so editing/validation on non-holiday cells is unchanged. -->
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Grid Background="{TemplateBinding Background}">
+              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+              <TextBlock x:Name="holidayHint" Text="Holiday" Visibility="Collapsed" IsHitTestVisible="False"
+                         FontSize="11" Foreground="{StaticResource TextSecondary}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                <Setter TargetName="holidayHint" Property="Visibility" Value="Visible"/>
+              </DataTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <!-- Backlog "section" row: a full-width clickable band that collapses/expands its tasks. -->
