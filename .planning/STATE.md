@@ -1,8 +1,14 @@
 # STATE — TimesheetApp (resume doc)
 
 **Last updated:** 2026-07-01 (PM) — **QA hardening pass on branch `feature/qa-fixes-2026-07-01`** (from `main` @ `af9f683`).
-Agent-team audit (5 dims × verify) → **6 atomic commits**, **521 tests green** (was 514; +7), build clean (0 warnings),
+Agent-team audit (5 dims × verify) → **8 atomic commits**, **522 tests green** (was 514; +8), build clean (0 warnings),
 app boots + DI resolves. **NOT yet merged to main; not pushed** — awaiting user review of the batch.
+
+### Follow-up feature (same branch, after the audit batches)
+- **Task List Progress cell — click-to-edit:** display mode shows only the % bar; click → swaps in a 0-100
+  number input (auto-focused); Enter / click-away commits (via the existing `EditProgressText` LostFocus
+  binding → reload → bar reflects new %); Escape cancels. `TaskListRowVm.IsEditingProgress` + `ResetProgressEdit`,
+  `BoolToVisibilityConverter` gained a `ConverterParameter=Invert`. (commit `7b59c4a`)
 
 ### This QA pass — what was fixed (branch `feature/qa-fixes-2026-07-01`, 6 commits)
 - **Baseline fix:** the "514 green" was actually 513/1 — `TeamFilterLoadTests` flaked on a cross-collection
