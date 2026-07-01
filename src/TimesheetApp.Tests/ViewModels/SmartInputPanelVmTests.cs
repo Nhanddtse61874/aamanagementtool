@@ -52,6 +52,26 @@ public class SmartInputPanelVmTests
     }
 
     [Fact]
+    public async Task FindBacklog_scopes_search_to_active_team()  // TM-06: no cross-team leak into smart-fill
+    {
+        var tl = new Mock<ITimeLogService>();
+        var req = new Mock<IBacklogRepository>();
+        var tasks = new Mock<ITaskRepository>();
+        req.Setup(r => r.SearchAsync("REQ-1", It.IsAny<IReadOnlyList<int>?>()))
+           .ReturnsAsync(new[] { new Backlog(5, "REQ-1", "ARCS", DateTimeOffset.UtcNow) });
+        tasks.Setup(t => t.GetActiveByBacklogAsync(5))
+             .ReturnsAsync(new[] { new TaskItem(7, 5, "Design", 0, true) });
+        var vm = new SmartInputPanelVm(tl.Object, req.Object, tasks.Object, () => 1, currentTeamId: () => 42);
+        vm.BacklogCode = "REQ-1";
+
+        await vm.FindBacklogCommand.ExecuteAsync(null);
+
+        // The active team (42) — not null (all teams) — is the scope passed to the backlog search.
+        req.Verify(r => r.SearchAsync("REQ-1",
+            It.Is<IReadOnlyList<int>?>(ts => ts != null && ts.Single() == 42)), Times.Once);
+    }
+
+    [Fact]
     public async Task FindRequest_unknown_code_surfaces_error_and_no_tasks()
     {
         var (vm, _, req, _) = Make();

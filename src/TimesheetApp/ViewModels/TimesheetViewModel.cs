@@ -24,6 +24,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
     private readonly ICurrentUserService? _currentUser; // v2: audit changed-by for move-month
     private readonly ISettingsRepository? _settings; // persists the collapse-all preference across restarts
     private readonly IHolidayRepository? _holidays;  // HOL-02: holiday day-columns are non-working (ISSUE 5)
+    private readonly ICurrentTeamService? _currentTeam; // TM-06: scope Smart Fill search to the active team
     private bool _suppressTotals;
 
     // The holidays inside the currently shown Mon–Fri week (loaded each ReloadAsync). Drives the per-day
@@ -38,7 +39,7 @@ public sealed partial class TimesheetViewModel : ObservableObject
         Func<int> currentUserId, IMessenger? messenger = null,
         IUserRepository? users = null, IBacklogRepository? backlogs = null,
         ICurrentUserService? currentUser = null, ISettingsRepository? settings = null,
-        IHolidayRepository? holidays = null)
+        IHolidayRepository? holidays = null, ICurrentTeamService? currentTeam = null)
     {
         _timeLogs = timeLogs;
         _tasks = tasks;
@@ -50,11 +51,18 @@ public sealed partial class TimesheetViewModel : ObservableObject
         _currentUser = currentUser;
         _settings = settings;
         _holidays = holidays;
+        _currentTeam = currentTeam;
 
         // Smart-fill targets whichever user the Entry filter is viewing (defaults to the login user).
         // It looks up a backlog by code + lists its tasks, so it needs the backlog/task repositories.
-        SmartInput = new SmartInputPanelVm(timeLogs, backlogs, tasks, () => EffectiveUserId);
-        SmartInput.Applied += async () => await ReloadAsync();
+        // TM-06: pass the active-team id so the search is scoped to the current team (0 => matches none).
+        SmartInput = new SmartInputPanelVm(
+            timeLogs, backlogs, tasks, () => EffectiveUserId, () => _currentTeam?.ActiveTeamId ?? 0);
+        SmartInput.Applied += async () =>
+        {
+            await ReloadAsync();
+            _messenger.Send(new DataChangedMessage(DataKind.Logs)); // live-sync: Reports/Task List refresh
+        };
 
         // Assign the backing fields directly so the change handlers (which reload) do NOT fire
         // during construction — the first load is driven by LoadCommand.
@@ -364,6 +372,8 @@ public sealed partial class TimesheetViewModel : ObservableObject
         SetStatus("Saving…", isError: false);
         var result = await SaveCellAsync(row, col);
         SetStatus(result.Ok ? "✓ Saved" : $"⚠ {result.Error}", isError: !result.Ok);
+        if (result.Ok)
+            _messenger.Send(new DataChangedMessage(DataKind.Logs)); // live-sync: Reports "missing logs" banner
     }
 
     private void RecomputeTotals()

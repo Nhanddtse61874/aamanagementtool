@@ -176,6 +176,45 @@ public class TimeLogServiceTests
     }
 
     [Fact]
+    public async Task ValidateDayTotals_rejects_holiday_date()  // HOL-02: bulk path matches SaveCell's guard
+    {
+        _holidays.Setup(h => h.IsHolidayAsync(Tue)).ReturnsAsync(true);   // weekday marked as holiday
+        var svc = Make(Tue);
+
+        var result = await svc.ValidateDayTotalsAsync(1, new[] { new CellAssignment(Tue, 3m) }, taskId: 5);
+
+        Assert.False(result.Ok);
+        Assert.Contains("holiday", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ValidateSmartFill_rejects_holiday_date()  // HOL-02: multi-task fill path
+    {
+        _holidays.Setup(h => h.IsHolidayAsync(Tue)).ReturnsAsync(true);
+        var svc = Make(Tue);
+        var tasks = new[] { new SmartFillTask(5, new[] { new CellAssignment(Tue, 3m) }) };
+
+        var result = await svc.ValidateSmartFillAsync(1, tasks);
+
+        Assert.False(result.Ok);
+        Assert.Contains("holiday", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ApplySmartFill_rejects_holiday_without_backup_or_write()  // HOL-02 end-to-end
+    {
+        _holidays.Setup(h => h.IsHolidayAsync(Tue)).ReturnsAsync(true);
+        var svc = Make(Tue);
+        var tasks = new[] { new SmartFillTask(5, new[] { new CellAssignment(Tue, 3m) }) };
+
+        var result = await svc.ApplySmartFillAsync(1, tasks);
+
+        Assert.False(result.Ok);
+        _backup.Verify(b => b.BackupAsync(), Times.Never);
+        _logs.Verify(r => r.UpsertBatchAsync(It.IsAny<IReadOnlyList<TimeLog>>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ApplySmartInput_backs_up_then_batch_upserts_when_valid()  // XC-10 + SI-05
     {
         _logs.Setup(r => r.GetByUserAndRangeAsync(1, It.IsAny<DateOnly>(), It.IsAny<DateOnly>()))

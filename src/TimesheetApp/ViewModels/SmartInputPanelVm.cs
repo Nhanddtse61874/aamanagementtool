@@ -32,16 +32,19 @@ public sealed partial class SmartInputPanelVm : ObservableObject
     private readonly IBacklogRepository? _backlogs;
     private readonly ITaskRepository _tasks;
     private readonly Func<int> _currentUserId;
+    private readonly Func<int>? _currentTeamId;   // TM-06: scope the backlog search to the active team
 
     private List<SmartFillTask> _planned = new();
 
     public SmartInputPanelVm(
-        ITimeLogService timeLogs, IBacklogRepository? backlogs, ITaskRepository tasks, Func<int> currentUserId)
+        ITimeLogService timeLogs, IBacklogRepository? backlogs, ITaskRepository tasks,
+        Func<int> currentUserId, Func<int>? currentTeamId = null)
     {
         _timeLogs = timeLogs;
         _backlogs = backlogs;
         _tasks = tasks;
         _currentUserId = currentUserId;
+        _currentTeamId = currentTeamId;
     }
 
     [ObservableProperty] private string _backlogCode = string.Empty;
@@ -87,7 +90,9 @@ public sealed partial class SmartInputPanelVm : ObservableObject
         if (_backlogs is null) { LoadError = "Backlog lookup is unavailable."; return; }
 
         // Contains search (LIKE %term%) on backlog_code OR project; hide the internal DEFAULT backlog.
-        var matches = (await _backlogs.SearchAsync(term))
+        // TM-06: scope to the active team so Smart Fill never surfaces (or writes to) another team's tasks.
+        var teamIds = _currentTeamId is null ? null : new[] { _currentTeamId() };
+        var matches = (await _backlogs.SearchAsync(term, teamIds))
             .Where(b => !string.Equals(b.BacklogCode, "DEFAULT", StringComparison.Ordinal))
             .ToList();
         if (matches.Count == 0) { LoadError = $"No backlog matches '{term}'."; return; }
