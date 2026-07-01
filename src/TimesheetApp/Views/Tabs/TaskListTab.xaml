@@ -243,6 +243,7 @@
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                        Margin="0,4,8,4"
                         ItemsSource="{Binding TypeOptions}"
                         SelectedItem="{Binding EditType, Mode=TwoWay}"
                         SelectionChanged="OnRowInlineComboChanged"/>
@@ -255,6 +256,7 @@
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                        Margin="0,4,8,4"
                         ItemsSource="{Binding AssigneeOptions}"
                         SelectedValuePath="Id" DisplayMemberPath="Name"
                         SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"
@@ -268,6 +270,7 @@
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                        Margin="0,4,8,4"
                         ItemsSource="{Binding PcaOptions}"
                         SelectedValuePath="Id" DisplayMemberPath="Name"
                         SelectedValue="{Binding EditPcaId, Mode=TwoWay}"
@@ -282,7 +285,8 @@
         <DataGridTemplateColumn Header="INTERNAL" Width="Auto" MinWidth="128">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
-              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center"
+                          Margin="0,4,8,4" Tag="{Binding}"
                           SelectedDate="{Binding DeadlineInternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
                           SelectedDateChanged="OnInternalDeadlineChanged"/>
             </DataTemplate>
@@ -291,7 +295,8 @@
         <DataGridTemplateColumn Header="EXTERNAL" Width="Auto" MinWidth="128">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
-              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center"
+                          Margin="0,4,8,4" Tag="{Binding}"
                           SelectedDate="{Binding DeadlineExternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
                           SelectedDateChanged="OnExternalDeadlineChanged"/>
             </DataTemplate>
