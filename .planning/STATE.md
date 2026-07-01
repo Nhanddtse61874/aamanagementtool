@@ -1,8 +1,30 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-07-01 (PM #3) — **BUGFIX: Task List parent-row inline combos now persist** (Type/PCT/PCA).
-Plus P14 SharePoint Export CODE-COMPLETE (SP-01/02/03) on branch `feature/sharepoint-export-2026-07-01`. Build clean;
-**536 tests green**. Also added CLAUDE.md rule: `sonnet` tier → `claude-sonnet-5`.
+**Last updated:** 2026-07-01 (PM #4) — **Task List inline-edit UX overhaul + operational-field relocation**, merged to `main` + pushed.
+Branch `feature/sharepoint-export-2026-07-01` (P14 export + dropdown-persist fix + this UX pass) → `main`. Build clean, **536 tests green**.
+
+### Task List UX pass (2026-07-01 PM #4) — user-driven, verified via live DB + screenshots
+- **Inline-edit reliability (DataGrid CellTemplate class of bug — TwoWay writes don't reach the row VM):**
+  parent Type/PCT/PCA combos already fixed (prior commit); this pass fixed **Progress** (click-away now commits via
+  code-behind, not the unreliable LostFocus binding; input widened + not clipped) and confirmed the DatePicker/combo
+  code-behind pattern is the house rule for grid-cell editors.
+- **Expand no longer collapses on sub-row edit:** `LoadAsync` preserves expanded BacklogIds across the reload that
+  every inline commit triggers.
+- **Operational fields moved to the Task List (business rule: Backlog editor = default fields only):**
+  - **Start/End date** — new inline START/END DatePicker columns (`TaskListRow` gained `EndDate`; `CommitStartEndAsync`);
+    hidden in the Backlog editor on EDIT.
+  - **Tags** — hidden in the Backlog editor on EDIT; edited in the Task List via a **modal `TagSelectDialog`**
+    (an in-grid Popup — cell OR row-details — closes before a checkbox can be ticked; a Window + an in-cell "✎ Tags"
+    Button is reliable). Chips are display-only in the grid; the dialog's checkboxes mutate the same `TagPickVm` the row
+    VM is subscribed to (commits per toggle), and the grid refreshes on dialog close.
+- **Visual (referenced Log Work's clean look, no risky DataGrid→ItemsControl rewrite):** subtle vertical gridlines
+  (`VerticalGridLinesBrush`), flat rounded `FlatProgressBar`, cleaner ▸/▾ expand caret, text columns inset+centered to
+  line up with the boxed editors.
+- **Not done (noted):** full grouped-section rewrite like Log Work (would risk the just-fixed inline edits; offered as a
+  separate pass if wanted).
+
+### Prior (2026-07-01 PM #3) — BUGFIX: Task List parent-row inline combos persist (Type/PCT/PCA)
+Plus P14 SharePoint Export CODE-COMPLETE (SP-01/02/03). Also added CLAUDE.md rule: `sonnet` tier → `claude-sonnet-5`.
 
 ### BUGFIX (2026-07-01 PM #3) — Task List parent-row Type/PCT/PCA dropdowns didn't save
 - **Symptom (user):** changing the Type/PCT/PCA dropdown on a Task List **backlog row** didn't reach the DB.

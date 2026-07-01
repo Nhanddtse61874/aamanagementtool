@@ -23,6 +23,15 @@
       </Style.Triggers>
     </Style>
 
+    <!-- Text-column cell: vertically centred + a small left inset so plain text lines up with the text
+         INSIDE the boxed editors (combos/date inputs) in the neighbouring columns, instead of hugging the
+         left gridline (which read as "misaligned" against the boxed columns). -->
+    <Style x:Key="GridTextCell" TargetType="TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="6,0,0,0"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+
     <!-- Chip template shared by the grid. System chips use fixed amber/red theme brushes; custom tags
          use HexToBrush over the tag's hex color + its icon glyph. -->
     <DataTemplate x:Key="ChipTemplate" DataType="{x:Type vm:TaskListChipVm}">
@@ -166,6 +175,7 @@
     <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
               SelectionMode="Single"
               ColumnHeaderHeight="40"
+              GridLinesVisibility="All" VerticalGridLinesBrush="#EDEFF3"
               HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
       <!-- BasedOn the theme DataGrid style so it KEEPS RowHeight=36 + alternating rows + gridlines
            (a plain ShowWhenGrid style would replace the theme, dropping RowHeight → rows auto-size and
@@ -194,10 +204,14 @@
                       ToolTip="Hiện / ẩn danh sách task của backlog này">
                 <Button.Style>
                   <Style TargetType="Button" BasedOn="{StaticResource MiniGhostButton}">
-                    <Setter Property="Content" Value="&#9654;"/>  <!-- ▶ collapsed -->
+                    <!-- clean caret: subtle grey ▸ when collapsed, accent ▾ when expanded -->
+                    <Setter Property="Content" Value="&#9656;"/>  <!-- ▸ collapsed -->
+                    <Setter Property="FontSize" Value="11"/>
+                    <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
                     <Style.Triggers>
                       <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-                        <Setter Property="Content" Value="&#9660;"/>  <!-- ▼ expanded -->
+                        <Setter Property="Content" Value="&#9662;"/>  <!-- ▾ expanded -->
+                        <Setter Property="Foreground" Value="{StaticResource Accent}"/>
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
@@ -209,8 +223,10 @@
 
         <!-- Star-width + MinWidth = responsive: columns grow to fill a wide window, clamp to MinWidth and
              trigger horizontal scroll when narrow. Text stays a fixed readable size (no font scaling). -->
-        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.3*" MinWidth="112"/>
-        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="*" MinWidth="90"/>
+        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.3*" MinWidth="112"
+                            ElementStyle="{StaticResource GridTextCell}"/>
+        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="*" MinWidth="90"
+                            ElementStyle="{StaticResource GridTextCell}"/>
 
         <!-- P10 (TM-07): team chip, shown only when >1 team is checked (ShowTeam). The whole column hides
              for single-team users (via VmProxy) so it doesn't leave an empty 110px gap. -->
@@ -295,6 +311,27 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
+        <!-- START / END: operational project dates, edited inline here (moved out of the Backlog editor).
+             OneWay display + code-behind commit (a CellTemplate DatePicker's own write never reaches the row). -->
+        <DataGridTemplateColumn Header="START" Width="Auto" MinWidth="128">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+                          SelectedDate="{Binding StartDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
+                          SelectedDateChanged="OnStartDateChanged"/>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTemplateColumn Header="END" Width="Auto" MinWidth="128">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate>
+              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+                          SelectedDate="{Binding EndDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
+                          SelectedDateChanged="OnEndDateChanged"/>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
         <!-- Progress: DISPLAY mode = % bar (click to edit); EDIT mode = a 0-100 number input. Click the
              bar → IsEditingProgress=true swaps in the TextBox (auto-focused); Enter or click-away commits
              (via EditProgressText, LostFocus) and swaps back to the bar. Bar stays OneWay (NEVER TwoWay to
@@ -309,19 +346,20 @@
                             MouseLeftButtonUp="OnProgressDisplayClick"
                             Visibility="{Binding IsEditingProgress, ConverterParameter=Invert,
                                          Converter={StaticResource BoolToVisibleConverter}}">
-                  <ProgressBar Width="60" Height="8" Minimum="0" Maximum="100"
+                  <ProgressBar Style="{StaticResource FlatProgressBar}" Width="64" VerticalAlignment="Center"
+                               Minimum="0" Maximum="100"
                                Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"
-                               Foreground="{StaticResource Accent}"
                                Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
                   <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center"
                              FontSize="12" Foreground="{StaticResource TextSecondary}"/>
                 </StackPanel>
                 <!-- Edit: number input, auto-focused; Enter / lost-focus commits, Escape cancels. -->
-                <TextBox Width="46" HorizontalAlignment="Left" FontSize="12" MaxLength="3"
-                         VerticalContentAlignment="Center" TextAlignment="Right"
+                <TextBox Width="54" Height="26" HorizontalAlignment="Left" VerticalAlignment="Center"
+                         Padding="6,2" FontSize="12" MaxLength="3"
+                         VerticalContentAlignment="Center" TextAlignment="Center"
                          ToolTip="Enter 0-100, then press Enter or click away (blank to clear)"
                          Visibility="{Binding IsEditingProgress, Converter={StaticResource BoolToVisibleConverter}}"
-                         Text="{Binding EditProgressText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         Text="{Binding EditProgressText, Mode=OneWay}"
                          IsVisibleChanged="OnProgressEditVisibleChanged"
                          PreviewKeyDown="OnProgressEditKeyDown"
                          LostFocus="OnProgressEditLostFocus"/>
@@ -330,12 +368,16 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto" MinWidth="84"/>
-        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto" MinWidth="98"/>
+        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto" MinWidth="84"
+                            ElementStyle="{StaticResource GridTextCell}"/>
+        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto" MinWidth="98"
+                            ElementStyle="{StaticResource GridTextCell}"/>
 
         <!-- TAGS: the live chips (system late/warning + current custom tags) stay for display, plus the
              inline TagPicker to edit the custom-tag set (toggling a tag commits the whole set via the row).
              Star-sized so it soaks up slack on a wide window; MinWidth keeps labels readable. -->
+        <!-- TAGS: chips (read-only at-a-glance). Editing the backlog's tag set happens in the expand panel
+             (a Popup opened from inside a DataGrid cell closes before you can tick anything). -->
         <DataGridTemplateColumn Header="TAGS" Width="1.5*" MinWidth="200">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
@@ -346,7 +388,9 @@
                     <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
                   </ItemsControl.ItemsPanel>
                 </ItemsControl>
-                <ctrl:TagPicker ItemsSource="{Binding EditTagPicks}" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                <Button Content="✎ Tags" Style="{StaticResource MiniGhostButton}" Padding="8,2" Margin="6,0,0,0"
+                        VerticalAlignment="Center" Click="OnEditBacklogTagsClick"
+                        ToolTip="Sửa tag của backlog"/>
               </StackPanel>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
@@ -393,9 +437,11 @@
                               Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
                               ItemsSource="{Binding StatusOptions}"
                               SelectedItem="{Binding EditStatus, Mode=TwoWay}"/>
-                    <!-- TAGS -> the task's checkable tag set (toggling commits via SetTaskTagsAsync). -->
-                    <ctrl:TagPicker Grid.Column="4" VerticalAlignment="Center"
-                                    ItemsSource="{Binding EditTagPicks}"/>
+                    <!-- TAGS -> the task's checkable tag set. Opens the modal picker (a Popup inside the grid
+                         closes before you can tick anything); toggles commit via SetTaskTagsAsync. -->
+                    <Button Grid.Column="4" Content="✎ Tags" Style="{StaticResource MiniGhostButton}"
+                            Padding="8,2" VerticalAlignment="Center" Click="OnEditTaskTagsClick"
+                            ToolTip="Sửa tag của task"/>
                   </Grid>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>

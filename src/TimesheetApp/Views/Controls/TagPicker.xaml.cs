@@ -58,11 +58,18 @@ public partial class TagPicker : UserControl
 
     private readonly CollectionViewSource _cvs = new();
 
+    /// <summary>
+    /// Raised when the dropdown closes after the user finished (de)selecting tags. Hosts (e.g. the Task
+    /// List) use it to refresh the row's chips once, after a multi-tag edit, without disrupting the popup.
+    /// </summary>
+    public event EventHandler? TagsCommitted;
+
     public TagPicker()
     {
         InitializeComponent();
         // Wire the ItemsControl to our own CVS view — never to a shared default view.
         TagItemsControl.ItemsSource = _cvs.View;
+        PickerPopup.Closed += (_, _) => TagsCommitted?.Invoke(this, EventArgs.Empty);
     }
 
     private void RebuildView()

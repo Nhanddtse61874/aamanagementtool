@@ -8,7 +8,7 @@
         <ToggleButton x:Name="TagsToggle" Style="{StaticResource ToolbarGhostToggle}"
                       Content="{Binding HeaderText, RelativeSource={RelativeSource AncestorType=UserControl}}"
                       Padding="10,4"/>
-        <Popup IsOpen="{Binding IsChecked, ElementName=TagsToggle}" StaysOpen="False"
+        <Popup x:Name="PickerPopup" IsOpen="{Binding IsChecked, ElementName=TagsToggle}" StaysOpen="False"
                PlacementTarget="{Binding ElementName=TagsToggle}" Placement="Bottom"
                AllowsTransparency="True" PopupAnimation="Fade">
             <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
