@@ -1,9 +1,11 @@
 namespace TimesheetApp.Views.Tabs;
 
+using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using TimesheetApp.Models;
@@ -111,6 +113,48 @@ public partial class TaskListTab : UserControl
             picker.SelectedDate = current is { } c ? c.ToDateTime(TimeOnly.MinValue) : (DateTime?)null;
             _suppressDeadlineChange = false;
         }
+    }
+
+    // ---- P13 (QA): Progress cell inline edit. Click the % bar -> IsEditingProgress=true swaps in a 0-100
+    //      number input (auto-focused). Enter or click-away commits (through the EditProgressText LostFocus
+    //      binding) and swaps the bar back in; Escape cancels, restoring the committed value. ----
+
+    private void OnProgressDisplayClick(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is TaskListRowVm row)
+            row.IsEditingProgress = true;   // IsVisibleChanged then focuses the input
+    }
+
+    // Focus + select the input the moment it becomes visible so the user can type immediately.
+    private void OnProgressEditVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is TextBox tb && tb.IsVisible)
+            tb.Dispatcher.BeginInvoke(new Action(() => { tb.Focus(); tb.SelectAll(); }),
+                System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    private void OnProgressEditKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: TaskListRowVm row }) return;
+        if (e.Key == Key.Enter)
+        {
+            // Collapsing the box drops focus → the LostFocus-triggered binding commits EditProgressText.
+            row.IsEditingProgress = false;
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            row.ResetProgressEdit();          // restore the committed value (no persist)
+            row.IsEditingProgress = false;
+            e.Handled = true;
+        }
+    }
+
+    private void OnProgressEditLostFocus(object sender, RoutedEventArgs e)
+    {
+        // Click-away: the LostFocus-triggered binding already pushed the value; swap the bar back in.
+        if ((sender as FrameworkElement)?.DataContext is TaskListRowVm row)
+            row.IsEditingProgress = false;
     }
 
     private static Brush Res(string key, Brush fallback) =>

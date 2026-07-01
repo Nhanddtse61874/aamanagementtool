@@ -501,6 +501,11 @@ public sealed partial class TaskListRowVm : ObservableObject
 
     [ObservableProperty] private bool _isExpanded;
 
+    // Progress cell edit-mode toggle: false shows the % bar; true swaps in the 0-100 number input.
+    // The View flips this true on click and back to false on Enter / lost-focus (the actual persist still
+    // happens through EditProgressText → Commit, unchanged).
+    [ObservableProperty] private bool _isEditingProgress;
+
     public IReadOnlyList<TaskListChipVm> Chips { get; }
 
     // ---- v9 (P13-W3) inline-edit option lists (forwarded from the owner so cells bind on the row) ----
@@ -530,6 +535,9 @@ public sealed partial class TaskListRowVm : ObservableObject
     partial void OnEditPctUserIdChanged(int? value) => Commit();
     partial void OnEditPcaIdChanged(int? value) => Commit();
 
+    // Set true only during ResetProgressEdit so restoring the committed value doesn't persist it back.
+    private bool _suppressProgressCommit;
+
     partial void OnEditProgressTextChanged(string value)
     {
         // Empty → cleared (null). Whole number 0-100 → that value. Anything else is invalid → no commit.
@@ -545,7 +553,17 @@ public sealed partial class TaskListRowVm : ObservableObject
         {
             return;   // invalid input — leave EditProgress as-is and do not commit
         }
+        if (_suppressProgressCommit) return;   // Escape-restore: update the value, don't persist
         Commit();
+    }
+
+    // Escape from the progress input: restore the last committed value without persisting it back, so a
+    // half-typed / cancelled edit leaves the stored percent untouched.
+    public void ResetProgressEdit()
+    {
+        _suppressProgressCommit = true;
+        EditProgressText = Row.ProgressPercent?.ToString() ?? string.Empty;   // re-parses into EditProgress
+        _suppressProgressCommit = false;
     }
 
     // Persist Type/PCT/PCA/Progress via the owner (skips while seeding / on the legacy ctor).

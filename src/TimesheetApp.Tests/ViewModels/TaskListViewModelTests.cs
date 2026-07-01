@@ -146,6 +146,26 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
         Assert.DoesNotContain(vm.Rows, r => r.BacklogCode == "DEFAULT");   // DEFAULT still excluded
     }
 
+    [Fact] // QA: the progress cell inline-edit — text is seeded from the stored %, and Escape (ResetProgressEdit)
+           // restores that committed value even after invalid input, without persisting a bad value.
+    public async Task ProgressEdit_seeds_from_percent_and_ResetProgressEdit_recovers_invalid_input()
+    {
+        await SeedBacklogAsync("PRG-1", "2026-06", progress: 50);
+        var vm = CreateVm(new DateOnly(2026, 6, 15));
+        await vm.LoadAsync();
+        var row = Row(vm, "PRG-1");
+
+        Assert.Equal("50", row.EditProgressText);   // seeded from the stored ProgressPercent
+        Assert.Equal(50, row.EditProgress);
+
+        row.EditProgressText = "abc";                // invalid → parser ignores it, EditProgress unchanged
+        Assert.Equal(50, row.EditProgress);
+
+        row.ResetProgressEdit();                     // Escape restores the committed value + clears the bad text
+        Assert.Equal("50", row.EditProgressText);
+        Assert.Equal(50, row.EditProgress);
+    }
+
     [Fact] // ISSUE 3: a specific month still filters (null-period + other months excluded).
     public async Task SpecificMonth_filters_and_excludes_null_period()
     {
