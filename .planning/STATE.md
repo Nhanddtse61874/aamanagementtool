@@ -3,7 +3,7 @@
 **Last updated:** 2026-07-01 (PM) — **QA-hardening pass MERGED to `main` + PUSHED to origin** (`--no-ff`, HEAD `927da96`).
 Branch `feature/qa-fixes-2026-07-01` (9 commits, from `main` @ `af9f683`) landed: agent-team audit (5 dims × verify),
 **522 tests green** (was 514; +8), build clean (0 warnings), app boots + DI resolves.
-⚠️ **UAT #1/#2/#3 were still OPEN at merge time** — user chose to merge before finishing UAT; re-test on `main` when convenient.
+✅ **UAT #1/#2/#3 CONFIRMED by user (passed)** — Task List cell format, Settings tag creation, and TagPicker all verified OK on `main`. QA branch fully closed. Awaiting next task assignment.
 
 ### Follow-up feature (same branch, after the audit batches)
 - **Task List Progress cell — click-to-edit:** display mode shows only the % bar; click → swaps in a 0-100
@@ -46,12 +46,14 @@ Open a session in `E:\Learning\AAM 2nd\aamanagementtool`, say *"đọc .planning
 - **Planning docs:** `.planning/P13-REQUIREMENTS.md` (resolved decisions + field mapping), `P13-PLAN.md` (4-wave plan), `P13-QUALITY-AUDIT.md` + `P13-AUDIT-SLICES.md` (audit), `P13-DESIGN-NOTES.md`, `P13-PLANCHECK.md`.
 - Config: model_profile `quality`; Mode **B** (team) for P13; autonomous, PAUSE at plan for schema.
 
-## ⏳ NEXT: finish UAT with the user, then commit-squash + merge
-Pending the user's confirmation (re-test in app):
-- **#1 Task List cell format** — unified editable controls to 28px (`CompactComboBox` 26→28 + new `CompactDatePicker`). Ask if rows look even now; if not, get a screenshot (mixed control vs static-text cells has limits).
-- **#2 Settings "can't create tags"** — **no code bug found** (SaveTagAsync/TagEditorViewModel correct). Most likely a side-effect of #3 (created tags were invisible in the picker). Re-test: Settings → New tag → Save → appears in Settings list + the backlog TagPicker?
-- **#3 TagPicker empty (FIXED)** — `TagPicker.xaml.cs` ctor captured `_cvs.View` while `_cvs.Source` was null; `RebuildView` set Source but never re-pointed the ItemsControl → picker always empty. Fixed (re-assign view in RebuildView). Confirm tags now show in backlog Create/Edit.
-- **Wave 2/3/4 behavior** — editor gating (create disables Progress / edit hides operational); Task List inline edits persist + audit; deadline change → note popup; task sub-row edits; holiday cells; Reports per-user list.
+## ✅ UAT CLOSED (2026-07-01) — all P13/QA acceptance confirmed by user
+- **#1 Task List cell format** — unified editable controls to 28px (`CompactComboBox` 26→28 + new `CompactDatePicker`). **PASSED.**
+- **#2 Settings "can't create tags"** — was a side-effect of #3 (created tags invisible in picker); no code bug in SaveTagAsync/TagEditorViewModel. **PASSED** (create → appears in Settings list + backlog TagPicker).
+- **#3 TagPicker empty (FIXED)** — `TagPicker.xaml.cs` ctor captured `_cvs.View` while `_cvs.Source` was null; `RebuildView` now re-points the view. **PASSED** (tags show in backlog Create/Edit).
+- **Wave 2/3/4 behavior** — editor gating, Task List inline edits + audit, deadline note popup, sub-row edits, holiday cells, Reports per-user list. **PASSED.**
+
+## ⏳ NEXT: awaiting next task assignment from user
+No open work. On `main` (HEAD `f21d656`, synced to origin), 522 tests green, schema v9. Next task starts at STEP 1 (Fast Lane check).
 
 ## P13 — what was built (this session)
 **Schema v9** (additive; `DatabaseInitializer.cs` SchemaVersion 8→9; `SchemaV9UpgradeTests`): Tasks `+type,+assignee_user_id`; new `TaskTags`/`TaskAudit` (in CreateTables); `BacklogAudit +note`. `SchemaV7/V8UpgradeTests` version-asserts bumped to 9 (V8 seed gained BacklogAudit).
