@@ -2,41 +2,45 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Select user"
-        Width="360" Height="380"
+        Width="380" SizeToContent="Height"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False"
-        ResizeMode="NoResize">
-  <Grid Margin="12">
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-    </Grid.RowDefinitions>
-
-    <TextBlock Grid.Row="0"
-               Text="Windows account not recognized. Select your user:"
-               TextWrapping="Wrap" Margin="0,0,0,8"/>
-
-    <ListBox Grid.Row="1"
-             x:Name="UsersList"
-             DisplayMemberPath="Name"
-             SelectedItem="{Binding SelectedUser, Mode=TwoWay}"
-             MouseDoubleClick="UsersList_MouseDoubleClick"/>
-
-    <!-- First-run: the user list can be empty; let the user create themselves inline. -->
-    <StackPanel Grid.Row="2" Margin="0,8,0,0">
-      <TextBlock Text="Or create a new user (enter a name, then click OK):"
-                 TextWrapping="Wrap" Margin="0,0,0,4"/>
-      <TextBox x:Name="NewUserNameBox"/>
-    </StackPanel>
-
-    <StackPanel Grid.Row="3" Orientation="Horizontal"
-                HorizontalAlignment="Right" Margin="0,12,0,0">
-      <Button Content="OK" Width="80" Margin="0,0,8,0"
-              IsDefault="True" Click="Ok_Click"/>
-      <Button Content="Cancel" Width="80"
-              IsCancel="True"/>
-    </StackPanel>
-  </Grid>
+        ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent">
+  <!-- Themed chrome to match every other dialog (TaskInputDialog etc.): WindowStyle=None + a Surface
+       card with header/footer, instead of the alien native OS window. -->
+  <Border Background="{StaticResource Surface}" CornerRadius="12" BorderBrush="{StaticResource Border}"
+          BorderThickness="1" Margin="12">
+    <Border.Effect>
+      <DropShadowEffect Color="#0F172A" Opacity="0.3" BlurRadius="24" ShadowDepth="4" Direction="270"/>
+    </Border.Effect>
+    <DockPanel>
+      <!-- Header -->
+      <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
+              Padding="20,14" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+        <TextBlock Text="Select user" FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}"/>
+      </Border>
+      <!-- Footer -->
+      <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
+              Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Content="Cancel" Style="{StaticResource GhostButton}" Padding="18,6" Margin="0,0,8,0"
+                  IsCancel="True"/>
+          <Button Content="OK" Padding="22,6" IsDefault="True" Click="Ok_Click"/>
+        </StackPanel>
+      </Border>
+      <!-- Body -->
+      <StackPanel Margin="20,16">
+        <TextBlock Text="Windows account not recognized. Select your user:"
+                   TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{StaticResource TextSecondary}"/>
+        <ListBox x:Name="UsersList" Height="180"
+                 DisplayMemberPath="Name"
+                 SelectedItem="{Binding SelectedUser, Mode=TwoWay}"
+                 MouseDoubleClick="UsersList_MouseDoubleClick"/>
+        <TextBlock Text="Or create a new user (enter a name, then click OK):"
+                   TextWrapping="Wrap" Margin="0,12,0,4" Foreground="{StaticResource TextSecondary}"/>
+        <TextBox x:Name="NewUserNameBox"/>
+      </StackPanel>
+    </DockPanel>
+  </Border>
 </Window>
