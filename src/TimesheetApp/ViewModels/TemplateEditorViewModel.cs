@@ -20,6 +20,10 @@ public sealed partial class TemplateEditorViewModel : ObservableObject
 
     [ObservableProperty] private string _templateName = string.Empty;
 
+    // Surfaced in the overlay footer when Save is blocked (blank name / no tasks) so the click isn't a
+    // silent no-op. Mirrors BacklogEditorViewModel.ErrorMessage.
+    [ObservableProperty] private string _errorMessage = string.Empty;
+
     public ObservableCollection<TemplateTaskRowVm> Tasks { get; } = new();
 
     // Ordered, non-blank task names in display order — the set to persist on Save.
