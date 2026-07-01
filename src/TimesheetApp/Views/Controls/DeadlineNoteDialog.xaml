@@ -14,7 +14,7 @@
       <!-- Header -->
       <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
               Padding="20,14" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-        <TextBlock Text="Reason for deadline change" FontWeight="Bold" FontSize="16"
+        <TextBlock Text="Reason for deadline change" FontWeight="Bold" FontSize="17"
                    Foreground="{StaticResource TextPrimary}"/>
       </Border>
       <!-- Footer -->

@@ -10,6 +10,7 @@ namespace TimesheetApp.Tests.Views;
 // with InvalidOperationException the moment the control loads — breaking the multi-team filter on all
 // four screens. This test instantiates the real control (with the app's merged resources) on an STA
 // thread so any future style/TargetType mismatch on TeamFilter fails CI instead of only at runtime.
+[Collection("WpfSta")]
 public sealed class TeamFilterLoadTests
 {
     // Runs an action on a dedicated STA thread (WPF controls require STA) and surfaces any exception.

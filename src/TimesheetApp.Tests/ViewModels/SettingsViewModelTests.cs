@@ -230,6 +230,21 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public async Task SaveTemplate_WithNameButNoTasks_SurfacesError_InsteadOfSilentNoOp()  // SET-03 fix
+    {
+        var vm = Build(out _, out _, out var templates, out _);
+        await vm.LoadAsync();
+        vm.BeginCreateTemplateCommand.Execute(null);
+        vm.TemplateEditor!.TemplateName = "Bugfix"; // valid name, but the user removed every task
+
+        await vm.SaveTemplateCommand.ExecuteAsync(null);
+
+        templates.Verify(t => t.InsertAsync(It.IsAny<TaskTemplate>()), Times.Never);
+        Assert.NotNull(vm.TemplateEditor); // stays open
+        Assert.Contains("task", vm.TemplateEditor!.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CancelTemplate_ClosesEditorWithoutSaving()
     {
         var vm = Build(out _, out _, out var templates, out _);

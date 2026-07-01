@@ -1,10 +1,41 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-07-01 — **MERGED to `main` + pushed to origin** (HEAD `1c2669e`). **P13 "Task List
-Operations & History" is CODE-COMPLETE across all 4 waves + a quality refactor + several UAT fixes.** Schema
-**v9**, **514 tests green**, build clean (0 warnings), app boots + Task List render-guarded. **UAT still open**
-(user testing the tag fixes + Wave 2/3 behavior — merged on the user's call before full UAT). Prior stacked
-features (M3 Task List, M5 Backup, M4 Multi-Team, M6 Export, M7 Retention) also landed on `main` in this merge.
+**Last updated:** 2026-07-01 (PM) — **QA hardening pass on branch `feature/qa-fixes-2026-07-01`** (from `main` @ `af9f683`).
+Agent-team audit (5 dims × verify) → **8 atomic commits**, **522 tests green** (was 514; +8), build clean (0 warnings),
+app boots + DI resolves. **NOT yet merged to main; not pushed** — awaiting user review of the batch.
+
+### Follow-up feature (same branch, after the audit batches)
+- **Task List Progress cell — click-to-edit:** display mode shows only the % bar; click → swaps in a 0-100
+  number input (auto-focused); Enter / click-away commits (via the existing `EditProgressText` LostFocus
+  binding → reload → bar reflects new %); Escape cancels. `TaskListRowVm.IsEditingProgress` + `ResetProgressEdit`,
+  `BoolToVisibilityConverter` gained a `ConverterParameter=Invert`. (commit `7b59c4a`)
+
+### This QA pass — what was fixed (branch `feature/qa-fixes-2026-07-01`, 6 commits)
+- **Baseline fix:** the "514 green" was actually 513/1 — `TeamFilterLoadTests` flaked on a cross-collection
+  `new Application()` race. Serialized the 3 STA-render test classes into one `[Collection("WpfSta")]`.
+- **Batch A (validation/data-integrity):** holiday guard was missing on the BULK log paths
+  (`ValidateSmartFillAsync`/`ValidateDayTotalsAsync`) — Smart Fill could write hours onto a holiday; added it.
+  `SmartInputPanelVm` searched backlogs with NO team scope (cross-team leak) → threaded active-team id.
+  Auto-save + Smart Fill never broadcast `DataKind.Logs` → Reports/Task List went stale; now they do.
+- **Batch B (Settings):** tag icon/color quick-picks were bound to `DataContext.PickIconCommand` (wrong prefix →
+  silent no-op); template Save with no tasks failed silently → surfaced `ErrorMessage`; blank tag icon left a
+  phantom chip gap → converter now collapses empty strings.
+- **Batch C (UI consistency):** hard-coded `Red`→`{StaticResource Danger}`; Users "Deactivate" teal→`DangerGhostButton`;
+  5 dialog titles 16→17; drag-grip 14→15; DailyBoard name 14→15.
+- **Batch D (drag-drop):** grip hidden on locked standup days; honest cross-group drag cursor (`AreInSameGroup`).
+- **Batch E:** backup/restore `File.Copy` moved off the UI thread (`Task.Run`); `SelectUserDialog` restyled to the
+  themed chrome (+ STA render-guard).
+- **#4 answer (SharePoint auth):** **NOT implemented.** "Export/backup to SharePoint" is only `File.Copy`/
+  `File.WriteAllTextAsync` into a local/mapped folder (`ExportRoot1/2Path`). No MSAL/Graph, no account window, no
+  certificate window. Making it real API upload is an architecture change → needs its own plan, not a bugfix.
+- **Deferred (noted, not done):** drop-target row highlight (WPF DragEnter/Leave flicker handling); concurrent
+  `ReloadAsync` race guard (0.88, hard-to-hit, hot path); calendar-cell vs tag-picker button heights (different
+  contexts); `DefaultTaskSyncService` order_index reset (0.78, low confidence).
+
+### Prior state (P13 merge — still true)
+**MERGED to `main` + pushed to origin** (HEAD `af9f683`). **P13 "Task List Operations & History" CODE-COMPLETE**
+across 4 waves + quality refactor. Schema **v9**. Prior stacked features (M3 Task List, M5 Backup, M4 Multi-Team,
+M6 Export, M7 Retention) landed on `main`. **P13 UAT was still open** at merge time.
 
 ## How to resume (READ FIRST)
 Open a session in `E:\Learning\AAM 2nd\aamanagementtool`, say *"đọc .planning/STATE.md để tiếp tục"*.

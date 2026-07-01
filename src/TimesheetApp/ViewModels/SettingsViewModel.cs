@@ -363,7 +363,18 @@ public partial class SettingsViewModel : ObservableObject
 
         var name = editor.TemplateName.Trim();
         var taskNames = editor.OrderedTaskNames;
-        if (string.IsNullOrWhiteSpace(name) || taskNames.Count == 0) return; // need a name + ≥1 task
+        // Need a name + ≥1 task. Surface why (was a silent no-op) instead of just returning.
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            editor.ErrorMessage = "Template name is required.";
+            return;
+        }
+        if (taskNames.Count == 0)
+        {
+            editor.ErrorMessage = "A template must have at least one task.";
+            return;
+        }
+        editor.ErrorMessage = string.Empty;
 
         // Edit = delete-then-reinsert all rows (handles rename + reorder + add/remove in one shot).
         if (editor.IsEditMode)

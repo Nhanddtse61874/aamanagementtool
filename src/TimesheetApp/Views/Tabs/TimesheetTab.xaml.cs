@@ -67,7 +67,14 @@ public partial class TimesheetTab : UserControl
 
     private void OnTaskDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(TaskFormat) ? DragDropEffects.Move : DragDropEffects.None;
+        // Reorder is same-group only; show Move only when the drop would actually do something, else
+        // None — a Move cursor over another group would promise a reorder the drop silently swallows.
+        var sameGroup = e.Data.GetDataPresent(TaskFormat)
+            && e.Data.GetData(TaskFormat) is TimesheetRowVm dragged
+            && (sender as FrameworkElement)?.DataContext is TimesheetRowVm target
+            && DataContext is TimesheetViewModel vm
+            && vm.AreInSameGroup(dragged.TaskId, target.TaskId);
+        e.Effects = sameGroup ? DragDropEffects.Move : DragDropEffects.None;
         e.Handled = true;
     }
 

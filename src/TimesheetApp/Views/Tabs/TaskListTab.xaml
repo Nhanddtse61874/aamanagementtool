@@ -286,22 +286,37 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <!-- Progress: bar stays OneWay for display (NEVER TwoWay-bind ProgressBar.Value); a small TextBox edits
-             the percent. EditProgressText commits on LostFocus (empty clears; 0-100 valid; other input ignored). -->
+        <!-- Progress: DISPLAY mode = % bar (click to edit); EDIT mode = a 0-100 number input. Click the
+             bar → IsEditingProgress=true swaps in the TextBox (auto-focused); Enter or click-away commits
+             (via EditProgressText, LostFocus) and swaps back to the bar. Bar stays OneWay (NEVER TwoWay to
+             ProgressBar.Value). Reload after commit re-seeds the row so the bar reflects the new %. -->
         <DataGridTemplateColumn Header="PROGRESS" Width="150" MinWidth="140">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <ProgressBar Width="60" Height="8" Minimum="0" Maximum="100"
-                             Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"
-                             Foreground="{StaticResource Accent}"
-                             Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
-                <TextBox Width="40" Margin="6,0,0,0" FontSize="12" VerticalContentAlignment="Center"
-                         TextAlignment="Right" ToolTip="Progress % (0-100); blank to clear"
-                         Text="{Binding EditProgressText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
-                <TextBlock Text="%" Margin="2,0,0,0" VerticalAlignment="Center" FontSize="12"
-                           Foreground="{StaticResource TextSecondary}"/>
-              </StackPanel>
+              <Grid VerticalAlignment="Center">
+                <!-- Display: click anywhere on the bar/percent to start editing. -->
+                <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
+                            ToolTip="Click to edit progress (0-100%)"
+                            MouseLeftButtonUp="OnProgressDisplayClick"
+                            Visibility="{Binding IsEditingProgress, ConverterParameter=Invert,
+                                         Converter={StaticResource BoolToVisibleConverter}}">
+                  <ProgressBar Width="60" Height="8" Minimum="0" Maximum="100"
+                               Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"
+                               Foreground="{StaticResource Accent}"
+                               Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
+                  <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center"
+                             FontSize="12" Foreground="{StaticResource TextSecondary}"/>
+                </StackPanel>
+                <!-- Edit: number input, auto-focused; Enter / lost-focus commits, Escape cancels. -->
+                <TextBox Width="46" HorizontalAlignment="Left" FontSize="12" MaxLength="3"
+                         VerticalContentAlignment="Center" TextAlignment="Right"
+                         ToolTip="Enter 0-100, then press Enter or click away (blank to clear)"
+                         Visibility="{Binding IsEditingProgress, Converter={StaticResource BoolToVisibleConverter}}"
+                         Text="{Binding EditProgressText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         IsVisibleChanged="OnProgressEditVisibleChanged"
+                         PreviewKeyDown="OnProgressEditKeyDown"
+                         LostFocus="OnProgressEditLostFocus"/>
+              </Grid>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>

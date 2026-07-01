@@ -31,18 +31,23 @@ public sealed class BackupService : IBackupService
 
     // P11 (EX-05): copy the live .db into an arbitrary folder (the structured export's {root}/db), pruning
     // to `keep` newest. Same copy + stamp + pattern as BackupNowAsync (which now delegates here).
-    public Task<string?> BackupToFolderAsync(string folder, int keep)
+    public async Task<string?> BackupToFolderAsync(string folder, int keep)
     {
         var dbPath = _config.DbPath;
         if (string.IsNullOrWhiteSpace(folder) || string.IsNullOrWhiteSpace(dbPath) || !File.Exists(dbPath))
-            return Task.FromResult<string?>(null);
+            return null;
 
-        Directory.CreateDirectory(folder);
         var stamp = _clock.UtcNow.LocalDateTime.ToString(Stamp, CultureInfo.InvariantCulture);
         var backupPath = Path.Combine(folder, $"{Prefix}{stamp}{Extension}");
-        File.Copy(dbPath, backupPath, overwrite: true);
-        Prune(folder, keep);
-        return Task.FromResult<string?>(backupPath);
+        // Copy off the caller's (UI) thread: a large DB or a slow network share (export root) would
+        // otherwise freeze the window for the duration of the copy.
+        await Task.Run(() =>
+        {
+            Directory.CreateDirectory(folder);
+            File.Copy(dbPath, backupPath, overwrite: true);
+            Prune(folder, keep);
+        });
+        return backupPath;
     }
 
     public async Task<bool> AutoBackupIfDueAsync()
@@ -75,7 +80,7 @@ public sealed class BackupService : IBackupService
         return list.OrderByDescending(b => b.Timestamp).ToList();
     }
 
-    public Task RestoreAsync(string backupPath)
+    public async Task RestoreAsync(string backupPath)
     {
         if (string.IsNullOrWhiteSpace(backupPath) || !File.Exists(backupPath))
             throw new FileNotFoundException("Backup file not found or unreadable.", backupPath);
@@ -88,15 +93,17 @@ public sealed class BackupService : IBackupService
             string.Equals(Path.GetFullPath(backupPath), Path.GetFullPath(dbPath), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Cannot restore the live database file onto itself.");
 
-        // Safety copy of the CURRENT db before overwrite, so a wrong restore is reversible (BK-05).
-        if (!string.IsNullOrWhiteSpace(dbPath) && File.Exists(dbPath))
+        var stamp = _clock.UtcNow.LocalDateTime.ToString(Stamp, CultureInfo.InvariantCulture);
+        // Copy off the UI thread (see BackupToFolderAsync). Validation above stays synchronous so a bad
+        // path/self-restore surfaces immediately.
+        await Task.Run(() =>
         {
-            var stamp = _clock.UtcNow.LocalDateTime.ToString(Stamp, CultureInfo.InvariantCulture);
-            File.Copy(dbPath, $"{dbPath}.pre-restore_{stamp}.bak", overwrite: false);
-        }
+            // Safety copy of the CURRENT db before overwrite, so a wrong restore is reversible (BK-05).
+            if (!string.IsNullOrWhiteSpace(dbPath) && File.Exists(dbPath))
+                File.Copy(dbPath, $"{dbPath}.pre-restore_{stamp}.bak", overwrite: false);
 
-        File.Copy(backupPath, dbPath, overwrite: true);
-        return Task.CompletedTask;
+            File.Copy(backupPath, dbPath, overwrite: true);
+        });
     }
 
     // BK-06: keep only the newest BackupKeepCount "timesheet_*.db" files in the folder. Best-effort:

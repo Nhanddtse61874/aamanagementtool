@@ -10,7 +10,7 @@
       <Setter Property="HorizontalAlignment" Value="Center"/>
       <Style.Triggers>
         <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
-          <Setter Property="Foreground" Value="Red"/>
+          <Setter Property="Foreground" Value="{StaticResource Danger}"/>
           <Setter Property="FontWeight" Value="Bold"/>
         </DataTrigger>
       </Style.Triggers>
@@ -151,7 +151,7 @@
                   <Setter Property="Visibility" Value="Collapsed"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding SaveStatusIsError}" Value="True">
-                  <Setter Property="Foreground" Value="Red"/>
+                  <Setter Property="Foreground" Value="{StaticResource Danger}"/>
                 </DataTrigger>
               </Style.Triggers>
             </Style>
@@ -330,7 +330,7 @@
                         </Grid.ColumnDefinitions>
 
                         <DockPanel Grid.Column="0" Margin="10,5,8,5">
-                          <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="14" Cursor="SizeAll"
+                          <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="15" Cursor="SizeAll"
                                      Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"
                                      ToolTip="Drag to reorder, or drop on the trash to delete"
                                      Visibility="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibleConverter}}"

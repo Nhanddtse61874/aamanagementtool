@@ -63,6 +63,8 @@ public sealed class TimeLogService : ITimeLogService
         foreach (var dayGroup in cells.GroupBy(c => c.Date))
         {
             if (IsWeekend(dayGroup.Key)) return Err($"{dayGroup.Key:yyyy-MM-dd} is a weekend.");
+            if (await _holidays.IsHolidayAsync(dayGroup.Key))      // HOL-02: match the single-cell guard
+                return Err($"{dayGroup.Key:yyyy-MM-dd} is a holiday.");
 
             var sameDay = await _logs.GetByUserAndRangeAsync(userId, dayGroup.Key, dayGroup.Key);
             var otherTasksTotal = sameDay.Where(l => l.TaskId != taskId).Sum(l => l.Hours);
@@ -105,7 +107,11 @@ public sealed class TimeLogService : ITimeLogService
         if (flat.Count == 0) return Err("Select at least one task and enter hours to fill.");
 
         foreach (var date in flat.Select(x => x.Date).Distinct())
+        {
             if (IsWeekend(date)) return Err($"{date:yyyy-MM-dd} is a weekend.");
+            if (await _holidays.IsHolidayAsync(date))              // HOL-02: match the single-cell guard
+                return Err($"{date:yyyy-MM-dd} is a holiday.");
+        }
 
         var checkedIds = tasks.Select(t => t.TaskId).ToHashSet();
         var from = flat.Min(x => x.Date);

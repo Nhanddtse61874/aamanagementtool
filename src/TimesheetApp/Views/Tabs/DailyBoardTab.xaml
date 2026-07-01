@@ -74,7 +74,7 @@
               <TextBlock Text="{Binding UserName, Converter={StaticResource Initial}}" Foreground="White"
                          FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <TextBlock Text="{Binding UserName}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding UserName}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
           </StackPanel>
 
           <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">

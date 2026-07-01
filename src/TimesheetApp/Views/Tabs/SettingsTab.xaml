@@ -449,7 +449,8 @@
                                     Padding="18,6" Margin="0,0,8,0"
                                     Command="{Binding DataContext.CancelTemplateCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                            <TextBlock/>
+                            <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Danger}"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
                         </DockPanel>
                     </Border>
 
@@ -561,7 +562,7 @@
                                         <Button Content="{Binding}" Width="34" Height="30" Margin="0,0,4,4"
                                                 FontFamily="Segoe UI Emoji"
                                                 Style="{StaticResource GhostButton}"
-                                                Command="{Binding DataContext.PickIconCommand,
+                                                Command="{Binding PickIconCommand,
                                                     RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"/>
                                     </DataTemplate>
@@ -578,7 +579,7 @@
                                     <DataTemplate>
                                         <Button Width="30" Height="26" Margin="0,0,4,4"
                                                 Background="{Binding Converter={StaticResource HexToBrush}}"
-                                                Command="{Binding DataContext.PickColorCommand,
+                                                Command="{Binding PickColorCommand,
                                                     RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}">
                                             <Button.Template>

@@ -22,17 +22,21 @@ public sealed class DbBackupHelper : IDbBackupHelper
         _clock = clock;
     }
 
-    public Task<string?> BackupAsync()
+    public async Task<string?> BackupAsync()
     {
         var dbPath = _config.DbPath;
         if (string.IsNullOrWhiteSpace(dbPath) || !File.Exists(dbPath))
-            return Task.FromResult<string?>(null);
+            return null;
 
         var stamp = _clock.UtcNow.ToString("yyyyMMddHHmmssfff");
         var backupPath = $"{dbPath}.{stamp}.bak";
-        File.Copy(dbPath, backupPath, overwrite: false);
-        PruneOldBackups(dbPath);
-        return Task.FromResult<string?>(backupPath);
+        // Off the caller's thread — this runs before every bulk write (smart-input apply / sync).
+        await Task.Run(() =>
+        {
+            File.Copy(dbPath, backupPath, overwrite: false);
+            PruneOldBackups(dbPath);
+        });
+        return backupPath;
     }
 
     /// XC-10: keep only the newest <see cref="KeepBackups"/> "<c>{db}.{stamp}.bak</c>" siblings.
