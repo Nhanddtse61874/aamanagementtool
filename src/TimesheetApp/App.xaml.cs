@@ -164,6 +164,8 @@ public partial class App : Application
         // P11 (EX-02/05/06/07): structured per-team export hub + path sanitizer.
         sc.AddSingleton<IPathSanitizer, PathSanitizer>();
         sc.AddSingleton<IExportHubService, ExportHubService>();
+        // P14 (SP-01): verifies the SharePoint/network export destination before "Export now".
+        sc.AddSingleton<ISharePointDestinationValidator, SharePointDestinationValidator>();
         // P12 (RT-03/RT-05): retention/prune core + the archive-before-prune seam. Singletons next to
         // the export services. PruneArchiver writes the per-team markdown + the never-auto-pruned .db
         // snapshot; RetentionService re-verifies that snapshot before any delete.

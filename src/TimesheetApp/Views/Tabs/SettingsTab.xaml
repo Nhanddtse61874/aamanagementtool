@@ -34,12 +34,37 @@
                 <TextBlock Text="Two folders the structured per-team export mirrors to (a shared/SharePoint folder and a local folder). Leave a folder empty to skip it; both empty falls back to the legacy flat archive."
                            Style="{StaticResource FieldHint}"/>
                 <TextBlock Text="Shared/SharePoint folder" Style="{StaticResource FieldLabel}"/>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock Text="For SharePoint without OneDrive sync: “Open in Explorer” or map the library as a drive, then paste that drive/folder path (e.g. Z:\… or \\host.sharepoint.com@SSL\DavWWWRoot\…). Use Verify to confirm exports will reach SharePoint."
+                           Style="{StaticResource FieldHint}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <TextBox Width="420" Height="32" Text="{Binding ExportRoot1Path, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Browse…" Height="32" Margin="8,0,0,0" Click="OnBrowseExportRoot1"
                             Style="{StaticResource GhostButton}"/>
+                    <Button Content="Verify" Height="32" Margin="8,0,0,0" Command="{Binding VerifyExportRoot1Command}"
+                            Style="{StaticResource GhostButton}"/>
                     <Button Content="Apply" Height="32" Margin="8,0,0,0" Command="{Binding ApplyExportRoot1Command}"/>
                 </StackPanel>
+                <!-- SP-01: Verify result — green OK / amber Warning / red Error. -->
+                <TextBlock Text="{Binding ExportRoot1VerifyStatus}" Margin="0,0,0,8" TextWrapping="Wrap"
+                           MaxWidth="620" HorizontalAlignment="Left"
+                           Visibility="{Binding ExportRoot1VerifyStatus, Converter={StaticResource NullToCollapsedConverter}}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ExportRoot1VerifyLevel}" Value="Ok">
+                                    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ExportRoot1VerifyLevel}" Value="Warning">
+                                    <Setter Property="Foreground" Value="{StaticResource AmberFg}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ExportRoot1VerifyLevel}" Value="Error">
+                                    <Setter Property="Foreground" Value="{StaticResource Danger}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 <TextBlock Text="Local folder" Style="{StaticResource FieldLabel}"/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBox Width="420" Height="32" Text="{Binding ExportRoot2Path, UpdateSourceTrigger=PropertyChanged}"/>

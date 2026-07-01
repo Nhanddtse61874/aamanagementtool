@@ -1,6 +1,27 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-07-01 (PM) — **QA-hardening pass MERGED to `main` + PUSHED to origin** (`--no-ff`, HEAD `927da96`).
+**Last updated:** 2026-07-01 (PM #2) — **P14 SharePoint Export CODE-COMPLETE** on branch `feature/sharepoint-export-2026-07-01`
+(from `main`). SP-01/02/03 done; build clean (0 warnings); **536 tests green** (was 522; +13 SP-01 validator + 1 SP-03 guard).
+**Awaiting user UAT** (Verify button colors + Export-now guard) before ship. Also added CLAUDE.md rule: `sonnet` tier → `claude-sonnet-5`.
+
+### P14 — SharePoint Export (file-sync) — what was built (this session)
+- **Approach (locked at brainstorm):** file-based — write into a OneDrive-synced / mapped SharePoint folder (WebDAV UNC or mapped
+  drive). NOT Graph/MSAL (user has no Azure AD app). Config = a folder/drive path, never a web URL. See `.planning/P14-SharePoint-Export-REQUIREMENTS.md`.
+- **SP-01 (Verify destination):** new `ISharePointDestinationValidator` / `SharePointDestinationValidator` — `Classify` (pure: WebUrl /
+  SharePointOrNetwork / PlainLocal) + authoritative write-probe. Levels: Error(red, web-URL/unwritable) / Warning(amber, plain-local) /
+  Ok(green, UNC / `sharepoint`/`DavWWWRoot` / `OneDrive` segment / mapped Network drive). DI singleton (`App.xaml.cs`). Settings VM
+  `VerifyExportRoot1Command` + `ExportRoot1VerifyStatus`/`Level`; `SettingsTab.xaml` "Verify" button + colored status line + hint.
+  13 tests (`SharePointDestinationValidatorTests`).
+- **SP-02 (Export delivers Logs+Daily+DB):** satisfied by existing `ExportHubService.ExportRootAsync` (tasklist+timesheet+daily+db per
+  root). No new code; existing hub tests stay green.
+- **SP-03 (Guard bad destination):** `ExportHubService` gained optional `ISharePointDestinationValidator` (null in older tests); `RunAsync`
+  pre-verifies each root — `Level==Error` → `failed: {root} — {reason}` + skip, other root still runs (best-effort per-root preserved).
+  1 test (web-URL root fails with reason, writable root still `ok:`).
+- **Files:** `Services/ISharePointDestinationValidator.cs`, `Services/SharePointDestinationValidator.cs`, `Services/ExportHubService.cs`,
+  `App.xaml.cs`, `ViewModels/SettingsViewModel.cs`, `Views/Tabs/SettingsTab.xaml`; tests `SharePointDestinationValidatorTests.cs`,
+  `ExportHubServiceTests.cs`.
+
+### Prior (2026-07-01 PM #1) — QA-hardening pass MERGED to `main` + PUSHED to origin (`--no-ff`, HEAD `927da96`).
 Branch `feature/qa-fixes-2026-07-01` (9 commits, from `main` @ `af9f683`) landed: agent-team audit (5 dims × verify),
 **522 tests green** (was 514; +8), build clean (0 warnings), app boots + DI resolves.
 ✅ **UAT #1/#2/#3 CONFIRMED by user (passed)** — Task List cell format, Settings tag creation, and TagPicker all verified OK on `main`. QA branch fully closed. Awaiting next task assignment.
@@ -52,8 +73,8 @@ Open a session in `E:\Learning\AAM 2nd\aamanagementtool`, say *"đọc .planning
 - **#3 TagPicker empty (FIXED)** — `TagPicker.xaml.cs` ctor captured `_cvs.View` while `_cvs.Source` was null; `RebuildView` now re-points the view. **PASSED** (tags show in backlog Create/Edit).
 - **Wave 2/3/4 behavior** — editor gating, Task List inline edits + audit, deadline note popup, sub-row edits, holiday cells, Reports per-user list. **PASSED.**
 
-## ⏳ NEXT: awaiting next task assignment from user
-No open work. On `main` (HEAD `f21d656`, synced to origin), 522 tests green, schema v9. Next task starts at STEP 1 (Fast Lane check).
+## ⏳ NEXT: P14 UAT (user tests app), then ship
+On branch `feature/sharepoint-export-2026-07-01` (from `main`). P14 code-complete + committed, 536 tests green, build clean, schema v9 (unchanged — P14 adds no schema). **Awaiting user UAT** in Settings → "Shared/SharePoint folder": (1) web URL → Verify red; (2) plain local folder → amber; (3) mapped SharePoint/`\\…` drive → green; (4) Export now with a bad (web-URL) root → `failed: … — …web URL…` while the local root still `ok:`. On UAT pass → STEP 9 QA (skip/light) → merge to `main` + push (push only on user OK).
 
 ## P13 — what was built (this session)
 **Schema v9** (additive; `DatabaseInitializer.cs` SchemaVersion 8→9; `SchemaV9UpgradeTests`): Tasks `+type,+assignee_user_id`; new `TaskTags`/`TaskAudit` (in CreateTables); `BacklogAudit +note`. `SchemaV7/V8UpgradeTests` version-asserts bumped to 9 (V8 seed gained BacklogAudit).

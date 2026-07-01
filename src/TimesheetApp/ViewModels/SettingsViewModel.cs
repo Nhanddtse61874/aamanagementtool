@@ -29,6 +29,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IUserRepository _users;                // P10 TM-03 (membership editor)
     private readonly IExportHubService? _exportHub;         // P11 EX-06 (manual "Export now"; null in tests)
     private readonly IRetentionService? _retention;         // P12 RT-01..07 (Preview/Run now; null in tests)
+    private readonly ISharePointDestinationValidator? _spValidator;  // P14 SP-01 (Verify; null in tests)
     private readonly IMessenger _messenger;
 
     public SettingsViewModel(
@@ -44,7 +45,8 @@ public partial class SettingsViewModel : ObservableObject
         IUserRepository users,
         IMessenger? messenger = null,
         IExportHubService? exportHub = null,
-        IRetentionService? retention = null)
+        IRetentionService? retention = null,
+        ISharePointDestinationValidator? spValidator = null)
     {
         _config = config;
         _settings = settings;
@@ -57,6 +59,7 @@ public partial class SettingsViewModel : ObservableObject
         _users = users;
         _exportHub = exportHub;
         _retention = retention;
+        _spValidator = spValidator;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         HolidayCalendar = new HolidayCalendarViewModel(holidays, _messenger);
     }
@@ -69,6 +72,11 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _exportRoot1Path = "";
     [ObservableProperty] private string _exportRoot2Path = "";
     [ObservableProperty] private string _exportStatus = "";
+
+    // P14 (SP-01): the SharePoint-folder Verify result — message + level ("Ok"/"Warning"/"Error") that
+    // colors the status line (green/amber/red) in Settings.
+    [ObservableProperty] private string _exportRoot1VerifyStatus = "";
+    [ObservableProperty] private string _exportRoot1VerifyLevel = "";
 
     // The template editor overlay; null = hidden (mirrors BacklogsViewModel.Editor).
     [ObservableProperty] private TemplateEditorViewModel? _templateEditor;
@@ -186,6 +194,23 @@ public partial class SettingsViewModel : ObservableObject
     {
         _config.SetExportRoot2Path(ExportRoot2Path);
         return Task.CompletedTask;
+    }
+
+    // SP-01: verify the SharePoint folder is a usable write destination before exporting. _spValidator is
+    // null only in unit tests that don't inject it.
+    [RelayCommand]
+    private void VerifyExportRoot1()
+    {
+        if (_spValidator is null)
+        {
+            ExportRoot1VerifyLevel = "Error";
+            ExportRoot1VerifyStatus = "Verification is not available.";
+            return;
+        }
+
+        var result = _spValidator.Verify(ExportRoot1Path);
+        ExportRoot1VerifyLevel = result.Level.ToString();
+        ExportRoot1VerifyStatus = result.Message;
     }
 
     // EX-06: manual "Export now" — regenerate the structured per-team export into every configured root

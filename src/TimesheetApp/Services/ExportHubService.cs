@@ -22,11 +22,13 @@ public sealed class ExportHubService : IExportHubService
     private readonly IBackupService _backup;
     private readonly IClock _clock;
     private readonly IPathSanitizer _sanitizer;
+    private readonly ISharePointDestinationValidator? _spValidator;   // P14 SP-03 (null in older tests)
 
     public ExportHubService(
         IAppConfig config, ITeamRepository teams, IStandupArchiveService standup,
         ITaskListArchiveService tasklist, IExportService export, IBackupService backup,
-        IClock clock, IPathSanitizer sanitizer)
+        IClock clock, IPathSanitizer sanitizer,
+        ISharePointDestinationValidator? spValidator = null)
     {
         _config = config;
         _teams = teams;
@@ -36,6 +38,7 @@ public sealed class ExportHubService : IExportHubService
         _backup = backup;
         _clock = clock;
         _sanitizer = sanitizer;
+        _spValidator = spValidator;
     }
 
     public Task<string> ExportNowAsync() => RunAsync(backfillOnly: false);
@@ -56,6 +59,16 @@ public sealed class ExportHubService : IExportHubService
         var status = new StringBuilder();
         foreach (var root in roots)
         {
+            // SP-03: hard-verify the destination before writing. A web-URL or unwritable root is skipped
+            // with the same clear, actionable reason the Settings "Verify" gives (not an opaque OS error),
+            // so files never land in the wrong place. Warning-level (writable but plain-local) still exports.
+            var check = _spValidator?.Verify(root);
+            if (check is { Level: DestinationLevel.Error })
+            {
+                status.AppendLine($"failed: {root} — {check.Message}");
+                continue;
+            }
+
             try
             {
                 await ExportRootAsync(root, teams, months, weekMondays, backfillOnly);
