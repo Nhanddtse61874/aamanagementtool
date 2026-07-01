@@ -1,8 +1,9 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-07-01 (PM) — **QA hardening pass on branch `feature/qa-fixes-2026-07-01`** (from `main` @ `af9f683`).
-Agent-team audit (5 dims × verify) → **8 atomic commits**, **522 tests green** (was 514; +8), build clean (0 warnings),
-app boots + DI resolves. **NOT yet merged to main; not pushed** — awaiting user review of the batch.
+**Last updated:** 2026-07-01 (PM) — **QA-hardening pass MERGED to `main` + PUSHED to origin** (`--no-ff`, HEAD `927da96`).
+Branch `feature/qa-fixes-2026-07-01` (9 commits, from `main` @ `af9f683`) landed: agent-team audit (5 dims × verify),
+**522 tests green** (was 514; +8), build clean (0 warnings), app boots + DI resolves.
+⚠️ **UAT #1/#2/#3 were still OPEN at merge time** — user chose to merge before finishing UAT; re-test on `main` when convenient.
 
 ### Follow-up feature (same branch, after the audit batches)
 - **Task List Progress cell — click-to-edit:** display mode shows only the % bar; click → swaps in a 0-100
