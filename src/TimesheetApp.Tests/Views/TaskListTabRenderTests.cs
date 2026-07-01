@@ -16,6 +16,7 @@ namespace TimesheetApp.Tests.Views;
 // only throws when the cell/sub-row TEMPLATE actually renders with a row present — invisible to unit tests.
 // This renders the real TaskListTab, with one seeded backlog + task and its row expanded, on an STA thread,
 // so any such regression fails CI instead of surfacing as the runtime error dialog.
+[Collection("WpfSta")]
 public sealed class TaskListTabRenderTests
 {
     private static void RunSta(Action action)

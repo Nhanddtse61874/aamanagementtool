@@ -17,6 +17,7 @@ namespace TimesheetApp.Tests.Views;
 // property 'TeamName' ...") the moment the overlay rendered — surfacing as the global error dialog when
 // a user clicked "Members". This test renders the real SettingsTab with the overlay open on an STA
 // thread so any future read-only/TwoWay binding regression in that overlay fails CI instead of runtime.
+[Collection("WpfSta")]
 public sealed class SettingsMembershipOverlayLoadTests
 {
     private static void RunSta(Action action)
