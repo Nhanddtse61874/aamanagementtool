@@ -1,15 +1,16 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-07-01 — branch `feature/task-list-2026-06-27`. **P13 "Task List Operations & History"
-is CODE-COMPLETE across all 4 waves + a quality refactor + several UAT fixes.** Schema **v9**, **514 tests
-green**, build clean (0 warnings), app boots + Task List render-guarded. **IN LIVE UAT** (user testing).
-Prior stacked features (M3 Task List, M5 Backup, M4 Multi-Team, M6 Export, M7 Retention) already on this branch.
+**Last updated:** 2026-07-01 — **MERGED to `main` + pushed to origin** (HEAD `1c2669e`). **P13 "Task List
+Operations & History" is CODE-COMPLETE across all 4 waves + a quality refactor + several UAT fixes.** Schema
+**v9**, **514 tests green**, build clean (0 warnings), app boots + Task List render-guarded. **UAT still open**
+(user testing the tag fixes + Wave 2/3 behavior — merged on the user's call before full UAT). Prior stacked
+features (M3 Task List, M5 Backup, M4 Multi-Team, M6 Export, M7 Retention) also landed on `main` in this merge.
 
 ## How to resume (READ FIRST)
 Open a session in `E:\Learning\AAM 2nd\aamanagementtool`, say *"đọc .planning/STATE.md để tiếp tục"*.
-- Branch `feature/task-list-2026-06-27` (NOT pushed). `dotnet test src/TimesheetApp.sln` → expect **514 green**.
+- On **`main`** (P13 merged + **pushed** to origin; fast-forward, no conflicts). `dotnet test src/TimesheetApp.sln` → expect **514 green**.
 - Run: `dotnet run --project src/TimesheetApp`. First launch migrated the real DB to **v9** (additive).
-- **Commits on branch:** `68e168d` (P13 Wave 1 schema v9 + audit-driven quality refactor) + the P13 Wave 2-4 + UAT-fix checkpoint (this save). NOT pushed/merged.
+- **On main/origin:** `68e168d` (Wave 1 schema v9 + audit-driven refactor) + `1c2669e` (Wave 2-4 + UAT fixes + state). `feature/task-list-2026-06-27` still points at the same commit.
 - **Planning docs:** `.planning/P13-REQUIREMENTS.md` (resolved decisions + field mapping), `P13-PLAN.md` (4-wave plan), `P13-QUALITY-AUDIT.md` + `P13-AUDIT-SLICES.md` (audit), `P13-DESIGN-NOTES.md`, `P13-PLANCHECK.md`.
 - Config: model_profile `quality`; Mode **B** (team) for P13; autonomous, PAUSE at plan for schema.
 
