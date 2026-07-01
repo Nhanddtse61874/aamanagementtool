@@ -797,4 +797,25 @@
     <Setter Property="FontSize" Value="12"/>
   </Style>
 
+  <!-- Flat, rounded progress bar (Task List) — replaces the default chunky ProgressBar chrome with a
+       clean rounded pill: light track + accent fill, both rounded, no border. -->
+  <Style x:Key="FlatProgressBar" TargetType="ProgressBar">
+    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+    <Setter Property="Background" Value="#E8ECF1"/>
+    <Setter Property="Height" Value="7"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ProgressBar">
+          <Border CornerRadius="4" Background="{TemplateBinding Background}" ClipToBounds="True">
+            <Grid x:Name="PART_Track">
+              <Border x:Name="PART_Indicator" CornerRadius="4" HorizontalAlignment="Left"
+                      Background="{TemplateBinding Foreground}"/>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
 </ResourceDictionary>

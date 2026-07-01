@@ -1,6 +1,71 @@
 # STATE — TimesheetApp (resume doc)
 
-**Last updated:** 2026-07-01 (PM) — **QA-hardening pass MERGED to `main` + PUSHED to origin** (`--no-ff`, HEAD `927da96`).
+**Last updated:** 2026-07-01 (PM #4) — **Task List inline-edit UX overhaul + operational-field relocation**, merged to `main` + pushed.
+Branch `feature/sharepoint-export-2026-07-01` (P14 export + dropdown-persist fix + this UX pass) → `main`. Build clean, **536 tests green**.
+
+### Task List UX pass (2026-07-01 PM #4) — user-driven, verified via live DB + screenshots
+- **Inline-edit reliability (DataGrid CellTemplate class of bug — TwoWay writes don't reach the row VM):**
+  parent Type/PCT/PCA combos already fixed (prior commit); this pass fixed **Progress** (click-away now commits via
+  code-behind, not the unreliable LostFocus binding; input widened + not clipped) and confirmed the DatePicker/combo
+  code-behind pattern is the house rule for grid-cell editors.
+- **Expand no longer collapses on sub-row edit:** `LoadAsync` preserves expanded BacklogIds across the reload that
+  every inline commit triggers.
+- **Operational fields moved to the Task List (business rule: Backlog editor = default fields only):**
+  - **Start/End date** — new inline START/END DatePicker columns (`TaskListRow` gained `EndDate`; `CommitStartEndAsync`);
+    hidden in the Backlog editor on EDIT.
+  - **Tags** — hidden in the Backlog editor on EDIT; edited in the Task List via a **modal `TagSelectDialog`**
+    (an in-grid Popup — cell OR row-details — closes before a checkbox can be ticked; a Window + an in-cell "✎ Tags"
+    Button is reliable). Chips are display-only in the grid; the dialog's checkboxes mutate the same `TagPickVm` the row
+    VM is subscribed to (commits per toggle), and the grid refreshes on dialog close.
+- **Visual (referenced Log Work's clean look, no risky DataGrid→ItemsControl rewrite):** subtle vertical gridlines
+  (`VerticalGridLinesBrush`), flat rounded `FlatProgressBar`, cleaner ▸/▾ expand caret, text columns inset+centered to
+  line up with the boxed editors.
+- **Not done (noted):** full grouped-section rewrite like Log Work (would risk the just-fixed inline edits; offered as a
+  separate pass if wanted).
+
+### Prior (2026-07-01 PM #3) — BUGFIX: Task List parent-row inline combos persist (Type/PCT/PCA)
+Plus P14 SharePoint Export CODE-COMPLETE (SP-01/02/03). Also added CLAUDE.md rule: `sonnet` tier → `claude-sonnet-5`.
+
+### BUGFIX (2026-07-01 PM #3) — Task List parent-row Type/PCT/PCA dropdowns didn't save
+- **Symptom (user):** changing the Type/PCT/PCA dropdown on a Task List **backlog row** didn't reach the DB.
+- **Diagnosis (DB + file-log evidence):** the row VM commit path, repo SQL, and audit were all correct AND unit-tested;
+  **sub-row (task) combos in the expand panel persisted fine** (`TaskAudit` grew), but **parent-row combos never fired their
+  setter**. Root cause: a `ComboBox` in a **`DataGridTemplateColumn.CellTemplate`** does NOT push its `SelectedItem`/`SelectedValue`
+  TwoWay write back to the row VM — the **same** reason the deadline `DatePicker`s in this grid are driven from code-behind
+  (and the old expand `ToggleButton`'s `IsChecked` "never reached the row"). The 3 combos were left as TwoWay bindings → silent no-op.
+  Prior P13 UAT "#1 cell format" only checked visuals (28px), never the persist round-trip; VM unit tests pass with a mock repo,
+  so nothing caught it.
+- **Fix (3 files, mirrors the DatePicker pattern):** `TaskListTab.xaml` — Type/PCT/PCA combos now bind **OneWay** (display) + carry
+  `Tag="{Binding}"` + `SelectionChanged` handlers. `TaskListTab.xaml.cs` — `OnRowTypeChanged/OnRowPctChanged/OnRowPcaChanged`
+  set the VM edit prop on a genuine user pick (guards: `picked == current` skips seeds/reloads; `!IsKeyboardFocusWithin` skips
+  non-user changes) → the VM `OnXxxChanged` → Commit → persist + audit. `TaskListViewModel.cs` — comment only.
+- **Verified:** PLUS-2004 Type Estimate→Implement, PCT→Chi, PCA→Hino all landed in `Backlogs` + `BacklogAudit` (live-DB check).
+  Sub-rows still fine. 536 tests green.
+- **Not yet checked (follow-up):** the parent-row **Progress** click-to-edit textbox uses a similar in-cell TwoWay LostFocus
+  binding — TextBox-in-cell usually commits on LostFocus, but should be UAT-spot-checked. Reported bug was dropdowns only.
+- **No automated test:** this is a WPF view-binding defect (CellTemplate write-back); the VM/repo layers were already correct and
+  tested. Consistent with the DatePicker fix, no unit test added — relies on UAT.
+
+### P14 — SharePoint Export (file-sync) — what was built (this session)
+
+### P14 — SharePoint Export (file-sync) — what was built (this session)
+- **Approach (locked at brainstorm):** file-based — write into a OneDrive-synced / mapped SharePoint folder (WebDAV UNC or mapped
+  drive). NOT Graph/MSAL (user has no Azure AD app). Config = a folder/drive path, never a web URL. See `.planning/P14-SharePoint-Export-REQUIREMENTS.md`.
+- **SP-01 (Verify destination):** new `ISharePointDestinationValidator` / `SharePointDestinationValidator` — `Classify` (pure: WebUrl /
+  SharePointOrNetwork / PlainLocal) + authoritative write-probe. Levels: Error(red, web-URL/unwritable) / Warning(amber, plain-local) /
+  Ok(green, UNC / `sharepoint`/`DavWWWRoot` / `OneDrive` segment / mapped Network drive). DI singleton (`App.xaml.cs`). Settings VM
+  `VerifyExportRoot1Command` + `ExportRoot1VerifyStatus`/`Level`; `SettingsTab.xaml` "Verify" button + colored status line + hint.
+  13 tests (`SharePointDestinationValidatorTests`).
+- **SP-02 (Export delivers Logs+Daily+DB):** satisfied by existing `ExportHubService.ExportRootAsync` (tasklist+timesheet+daily+db per
+  root). No new code; existing hub tests stay green.
+- **SP-03 (Guard bad destination):** `ExportHubService` gained optional `ISharePointDestinationValidator` (null in older tests); `RunAsync`
+  pre-verifies each root — `Level==Error` → `failed: {root} — {reason}` + skip, other root still runs (best-effort per-root preserved).
+  1 test (web-URL root fails with reason, writable root still `ok:`).
+- **Files:** `Services/ISharePointDestinationValidator.cs`, `Services/SharePointDestinationValidator.cs`, `Services/ExportHubService.cs`,
+  `App.xaml.cs`, `ViewModels/SettingsViewModel.cs`, `Views/Tabs/SettingsTab.xaml`; tests `SharePointDestinationValidatorTests.cs`,
+  `ExportHubServiceTests.cs`.
+
+### Prior (2026-07-01 PM #1) — QA-hardening pass MERGED to `main` + PUSHED to origin (`--no-ff`, HEAD `927da96`).
 Branch `feature/qa-fixes-2026-07-01` (9 commits, from `main` @ `af9f683`) landed: agent-team audit (5 dims × verify),
 **522 tests green** (was 514; +8), build clean (0 warnings), app boots + DI resolves.
 ✅ **UAT #1/#2/#3 CONFIRMED by user (passed)** — Task List cell format, Settings tag creation, and TagPicker all verified OK on `main`. QA branch fully closed. Awaiting next task assignment.
@@ -52,8 +117,8 @@ Open a session in `E:\Learning\AAM 2nd\aamanagementtool`, say *"đọc .planning
 - **#3 TagPicker empty (FIXED)** — `TagPicker.xaml.cs` ctor captured `_cvs.View` while `_cvs.Source` was null; `RebuildView` now re-points the view. **PASSED** (tags show in backlog Create/Edit).
 - **Wave 2/3/4 behavior** — editor gating, Task List inline edits + audit, deadline note popup, sub-row edits, holiday cells, Reports per-user list. **PASSED.**
 
-## ⏳ NEXT: awaiting next task assignment from user
-No open work. On `main` (HEAD `f21d656`, synced to origin), 522 tests green, schema v9. Next task starts at STEP 1 (Fast Lane check).
+## ⏳ NEXT: P14 UAT (user tests app), then ship
+On branch `feature/sharepoint-export-2026-07-01` (from `main`). P14 code-complete + committed, 536 tests green, build clean, schema v9 (unchanged — P14 adds no schema). **Awaiting user UAT** in Settings → "Shared/SharePoint folder": (1) web URL → Verify red; (2) plain local folder → amber; (3) mapped SharePoint/`\\…` drive → green; (4) Export now with a bad (web-URL) root → `failed: … — …web URL…` while the local root still `ok:`. On UAT pass → STEP 9 QA (skip/light) → merge to `main` + push (push only on user OK).
 
 ## P13 — what was built (this session)
 **Schema v9** (additive; `DatabaseInitializer.cs` SchemaVersion 8→9; `SchemaV9UpgradeTests`): Tasks `+type,+assignee_user_id`; new `TaskTags`/`TaskAudit` (in CreateTables); `BacklogAudit +note`. `SchemaV7/V8UpgradeTests` version-asserts bumped to 9 (V8 seed gained BacklogAudit).

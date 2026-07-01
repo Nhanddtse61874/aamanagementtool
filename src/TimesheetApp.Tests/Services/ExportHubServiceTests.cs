@@ -59,7 +59,8 @@ public sealed class ExportHubServiceTests : IDisposable
 
     // A hub whose builders always return content (so every period writes a file) and whose backup writes
     // a marker .db into {folder}. Tracks roots given to BackupToFolderAsync.
-    private (ExportHubService hub, FakeConfig cfg, List<string> dbFolders) MakeAllData(IReadOnlyList<Team> teams)
+    private (ExportHubService hub, FakeConfig cfg, List<string> dbFolders) MakeAllData(
+        IReadOnlyList<Team> teams, ISharePointDestinationValidator? spValidator = null)
     {
         var cfg = new FakeConfig { ExportRoot1Path = _root1, ExportRoot2Path = _root2 };
         var teamRepo = new Mock<ITeamRepository>();
@@ -95,7 +96,7 @@ public sealed class ExportHubServiceTests : IDisposable
 
         var hub = new ExportHubService(
             cfg, teamRepo.Object, standup.Object, tasklist.Object, export.Object,
-            backup.Object, new FakeClock(), new PathSanitizer());
+            backup.Object, new FakeClock(), new PathSanitizer(), spValidator);
         return (hub, cfg, dbFolders);
     }
 
@@ -267,6 +268,27 @@ public sealed class ExportHubServiceTests : IDisposable
             .Where(n => n != "db")
             .ToList();
         Assert.Equal(2, teamFolders.Count);
+    }
+
+    // SP-03: a root that fails HARD verification (a web URL here) is skipped with a clear reason — not a
+    // silent success — while the other (writable) root still exports. The guard uses the real validator.
+    [Fact]
+    public async Task ExportNow_web_url_root_fails_with_reason_and_other_root_still_runs()
+    {
+        var (hub, cfg, dbFolders) = MakeAllData(new[] { Team(1, "Team A") }, new SharePointDestinationValidator());
+        cfg.ExportRoot1Path = "https://contoso.sharepoint.com/sites/Team";   // hard-fail: web URL
+        cfg.ExportRoot2Path = _root2;                                        // writable local root
+
+        var status = await hub.ExportNowAsync();
+
+        // Bad root: surfaced as a failure with the validator's actionable reason, NOT a silent "ok".
+        Assert.Contains($"failed: {cfg.ExportRoot1Path}", status);
+        Assert.Contains("web URL", status);
+        Assert.DoesNotContain($"ok: {cfg.ExportRoot1Path}", status);
+
+        // Good root: still ran to completion (db copy landed under it).
+        Assert.Contains($"ok: {_root2}", status);
+        Assert.Contains(Path.Combine(_root2, "db"), dbFolders);
     }
 
     public void Dispose()

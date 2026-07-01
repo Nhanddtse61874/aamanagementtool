@@ -115,6 +115,84 @@ public partial class TaskListTab : UserControl
         }
     }
 
+    // ---- v9: tag editing via a modal dialog. An in-grid Popup (cell or row-details) closes before a
+    //      checkbox can be ticked, so the "✎ Tags" buttons open TagSelectDialog instead. The dialog's
+    //      checkboxes bind to the SAME TagPickVm items the row/task VM is subscribed to, so each toggle
+    //      commits immediately; we reload once on close to refresh the chip display. ----
+    private void OnEditBacklogTagsClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is TaskListRowVm row)
+            OpenTagDialog(row.EditTagPicks);
+    }
+
+    private void OnEditTaskTagsClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is TaskRowVm task)
+            OpenTagDialog(task.EditTagPicks);
+    }
+
+    private void OpenTagDialog(System.Collections.IEnumerable picks)
+    {
+        new TagSelectDialog(picks) { Owner = Application.Current.MainWindow }.ShowDialog();
+        if (DataContext is TaskListViewModel vm) _ = vm.RefreshAsync();   // refresh chips after edits
+    }
+
+    // ---- v9: inline START / END operational date edit (moved out of the Backlog editor). Same OneWay +
+    //      code-behind pattern as the deadlines, but no reason popup — a genuine pick commits directly. ----
+
+    private void OnStartDateChanged(object sender, SelectionChangedEventArgs e)
+        => HandleStartEndChanged(sender as DatePicker, isStart: true);
+
+    private void OnEndDateChanged(object sender, SelectionChangedEventArgs e)
+        => HandleStartEndChanged(sender as DatePicker, isStart: false);
+
+    private void HandleStartEndChanged(DatePicker? picker, bool isStart)
+    {
+        if (picker?.Tag is not TaskListRowVm row) return;
+        if (DataContext is not TaskListViewModel vm) return;
+
+        var current = isStart ? row.StartDate : row.EndDate;
+        var picked = picker.SelectedDate is { } dt ? DateOnly.FromDateTime(dt) : (DateOnly?)null;
+        if (picked == current) return;              // programmatic seed / grid reload
+        if (!picker.IsKeyboardFocusWithin) return;   // user-initiated gate (initial bind fires before focus)
+        _ = vm.CommitStartEndAsync(row.BacklogId, isStart, picked);
+    }
+
+    // ---- P13 W3 (bugfix): inline TYPE / PCT / PCA combo edit. A ComboBox in a DataGrid CellTemplate does
+    //      NOT push its SelectedItem/SelectedValue back to the row VM (the same reason the deadline
+    //      DatePickers above are driven from code-behind, not a TwoWay binding). So these combos bind
+    //      OneWay for display and commit here on a genuine user pick. Guards mirror HandleDeadlineChanged:
+    //      skip programmatic seeds/reloads (picked == the row's current value) and non-user changes (the
+    //      initial OneWay bind fires before the control is ever focused). Setting the VM property fires its
+    //      OnXxxChanged partial -> Commit -> persist. ----
+
+    private void OnRowTypeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
+        var picked = combo.SelectedItem as string;
+        if (Equals(picked, row.EditType)) return;       // programmatic seed / grid reload
+        if (!combo.IsKeyboardFocusWithin) return;        // user-initiated gate
+        row.EditType = picked;
+    }
+
+    private void OnRowPctChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
+        var picked = combo.SelectedValue as int?;
+        if (picked == row.EditPctUserId) return;
+        if (!combo.IsKeyboardFocusWithin) return;
+        row.EditPctUserId = picked;
+    }
+
+    private void OnRowPcaChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
+        var picked = combo.SelectedValue as int?;
+        if (picked == row.EditPcaId) return;
+        if (!combo.IsKeyboardFocusWithin) return;
+        row.EditPcaId = picked;
+    }
+
     // ---- P13 (QA): Progress cell inline edit. Click the % bar -> IsEditingProgress=true swaps in a 0-100
     //      number input (auto-focused). Enter or click-away commits (through the EditProgressText LostFocus
     //      binding) and swaps the bar back in; Escape cancels, restoring the committed value. ----
@@ -135,10 +213,10 @@ public partial class TaskListTab : UserControl
 
     private void OnProgressEditKeyDown(object sender, KeyEventArgs e)
     {
-        if (sender is not TextBox { DataContext: TaskListRowVm row }) return;
+        if (sender is not TextBox { DataContext: TaskListRowVm row } tb) return;
         if (e.Key == Key.Enter)
         {
-            // Collapsing the box drops focus → the LostFocus-triggered binding commits EditProgressText.
+            row.EditProgressText = tb.Text;   // push explicitly — a CellTemplate TextBox LostFocus write is unreliable
             row.IsEditingProgress = false;
             e.Handled = true;
         }
@@ -152,9 +230,12 @@ public partial class TaskListTab : UserControl
 
     private void OnProgressEditLostFocus(object sender, RoutedEventArgs e)
     {
-        // Click-away: the LostFocus-triggered binding already pushed the value; swap the bar back in.
-        if ((sender as FrameworkElement)?.DataContext is TaskListRowVm row)
-            row.IsEditingProgress = false;
+        // Click-away: push the typed value into the VM here (the in-cell TwoWay LostFocus binding does not
+        // reliably reach the row — same reason the combos/DatePickers commit from code-behind), then swap
+        // the bar back in. Setting EditProgressText fires the VM's OnEditProgressTextChanged → commit.
+        if (sender is not TextBox { DataContext: TaskListRowVm row } tb) return;
+        row.EditProgressText = tb.Text;
+        row.IsEditingProgress = false;
     }
 
     private static Brush Res(string key, Brush fallback) =>

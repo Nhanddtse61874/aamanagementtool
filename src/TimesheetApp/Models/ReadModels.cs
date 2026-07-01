@@ -90,7 +90,7 @@ public enum ScheduleState { Normal, Warning, Late }
 public sealed record TaskListRow(
     int BacklogId, string BacklogCode, string Project, string? Type,
     string? PctAssigneeName, string? PcaContactName,
-    DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate,
+    DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate, DateOnly? EndDate,
     int? ProgressPercent, decimal LoggedHours, decimal? EstimateHours,
     ScheduleState ScheduleState, IReadOnlyList<Tag> Tags, IReadOnlyList<TaskItem> Tasks);
 

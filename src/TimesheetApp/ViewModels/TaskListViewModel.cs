@@ -29,6 +29,9 @@ public sealed partial class TaskListViewModel : ObservableObject
     private readonly ITaskListArchiveService _archive;
     private readonly IClock _clock;
     private readonly IMessenger _messenger;
+    // Set only while broadcasting the VM's own inline tag commit, so the self-registered reload handler
+    // skips the rebuild (keeps an open TagPicker alive across a multi-tag selection). See SendKeepingPicker.
+    private bool _suppressSelfReload;
     private readonly ICurrentTeamService? _currentTeam;   // v8 (P10): active team + multi-team filter
     private readonly ICurrentUserService? _currentUser;   // v9 (P13-W3): audit who-changed on inline edits
 
@@ -72,6 +75,9 @@ public sealed partial class TaskListViewModel : ObservableObject
         // static lambda + recipient arg keeps the weak ref (mirrors TimesheetViewModel).
         _messenger.Register<TaskListViewModel, DataChangedMessage>(this, static (r, m) =>
         {
+            // Skip our OWN inline tag commit — a full rebuild here would destroy the open TagPicker popup
+            // mid-multi-select (you could only ever check one tag). External tag changes still reload.
+            if (r._suppressSelfReload) return;
             if (m.Kind is DataKind.Backlogs or DataKind.Tasks or DataKind.Logs
                 or DataKind.Tags or DataKind.Holidays or DataKind.PcaContacts)
                 _ = r.LoadAsync();
@@ -173,6 +179,11 @@ public sealed partial class TaskListViewModel : ObservableObject
         var filteredIds = filteredBacklogs.Select(b => b.Id).ToList();
         var tasksByBacklog = await _tasks.GetActiveByBacklogsAsync(filteredIds);
 
+        // Preserve which rows are expanded across the rebuild — an inline edit re-broadcasts a
+        // DataChangedMessage that reloads the grid; without this, editing a sub-row field would collapse
+        // its detail panel (rebuilt rows default to IsExpanded=false).
+        var expandedBacklogIds = Rows.Where(r => r.IsExpanded).Select(r => r.BacklogId).ToHashSet();
+
         var rows = new List<TaskListRowVm>();
         // Gantt source: the backlog + its computed schedule state, captured while we build the grid rows
         // so the Gantt axis/bars derive from the exact same data (R5 — bars and chips agree).
@@ -200,7 +211,7 @@ public sealed partial class TaskListViewModel : ObservableObject
 
             var row = new TaskListRow(
                 b.Id, b.BacklogCode, b.Project, b.Type, pctName, pcaName,
-                b.DeadlineInternal, b.DeadlineExternal, b.StartDate,
+                b.DeadlineInternal, b.DeadlineExternal, b.StartDate, b.EndDate,
                 b.ProgressPercent, logged, estimate, state, tags, taskList);
 
             // v9 (P13-W3): editable task sub-rows — each carries its own current type/assignee/tags so the
@@ -224,7 +235,10 @@ public sealed partial class TaskListViewModel : ObservableObject
 
         Rows.Clear();
         foreach (var r in rows.OrderBy(r => r.Row.BacklogCode, StringComparer.OrdinalIgnoreCase))
+        {
+            if (expandedBacklogIds.Contains(r.BacklogId)) r.IsExpanded = true;   // restore expansion
             Rows.Add(r);
+        }
 
         // Build the Gantt last, from the loaded backlogs + the holiday set used above (W6).
         Gantt = BuildGantt(
@@ -366,7 +380,7 @@ public sealed partial class TaskListViewModel : ObservableObject
     internal async Task CommitBacklogTagsAsync(int backlogId, IReadOnlyList<int> tagIds)
     {
         await _backlogs.SetTagsAsync(backlogId, tagIds, CurrentUserId, CurrentUserName);
-        _messenger.Send(new DataChangedMessage(DataKind.Tags));
+        SendKeepingPicker(DataKind.Tags);
     }
 
     /// <summary>
@@ -383,6 +397,22 @@ public sealed partial class TaskListViewModel : ObservableObject
             ? backlog with { DeadlineInternal = newDate }
             : backlog with { DeadlineExternal = newDate };
         await _backlogs.UpdateAsync(updated, CurrentUserId, CurrentUserName, auditNote: note);
+        _messenger.Send(new DataChangedMessage(DataKind.Backlogs));
+    }
+
+    /// <summary>
+    /// Commit a backlog's operational start/end date (edited inline in the Task List, not the Backlog
+    /// editor — business rule: the editor holds only default fields). No reason note, unlike deadlines.
+    /// </summary>
+    public async Task CommitStartEndAsync(int backlogId, bool isStart, DateOnly? newDate)
+    {
+        var backlog = await _backlogs.GetByIdAsync(backlogId);
+        if (backlog is null) return;
+
+        var updated = isStart
+            ? backlog with { StartDate = newDate }
+            : backlog with { EndDate = newDate };
+        await _backlogs.UpdateAsync(updated, CurrentUserId, CurrentUserName);
         _messenger.Send(new DataChangedMessage(DataKind.Backlogs));
     }
 
@@ -406,7 +436,17 @@ public sealed partial class TaskListViewModel : ObservableObject
     internal async Task UpdateTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds)
     {
         await _tasks.SetTaskTagsAsync(taskId, tagIds, CurrentUserId, CurrentUserName);
-        _messenger.Send(new DataChangedMessage(DataKind.Tags));
+        SendKeepingPicker(DataKind.Tags);
+    }
+
+    // Broadcast a tag change WITHOUT triggering our own reload — the WeakReferenceMessenger delivers
+    // synchronously, so the flag reliably scopes just our self-handler. Other tabs still reload; our own
+    // open TagPicker survives so the user can toggle several tags in one go.
+    private void SendKeepingPicker(DataKind kind)
+    {
+        _suppressSelfReload = true;
+        try { _messenger.Send(new DataChangedMessage(kind)); }
+        finally { _suppressSelfReload = false; }
     }
 }
 
@@ -488,6 +528,9 @@ public sealed partial class TaskListRowVm : ObservableObject
     public string? PcaContactName => Row.PcaContactName;
     public DateOnly? DeadlineInternal => Row.DeadlineInternal;
     public DateOnly? DeadlineExternal => Row.DeadlineExternal;
+    // v9 operational dates edited inline in the Task List (moved out of the Backlog editor per business rule).
+    public DateOnly? StartDate => Row.StartDate;
+    public DateOnly? EndDate => Row.EndDate;
     public int? ProgressPercent => Row.ProgressPercent;
     public bool HasProgress => Row.ProgressPercent is not null;
     // null progress → "—"; otherwise the whole-number percent.
@@ -566,7 +609,9 @@ public sealed partial class TaskListRowVm : ObservableObject
         _suppressProgressCommit = false;
     }
 
-    // Persist Type/PCT/PCA/Progress via the owner (skips while seeding / on the legacy ctor).
+    // Persist Type/PCT/PCA/Progress via the owner (skips while seeding / on the legacy ctor). The genuine
+    // user edit arrives by a code-behind combo handler setting the edit prop (a CellTemplate combo's own
+    // TwoWay write never reaches the row — see TaskListTab.xaml.cs).
     private void Commit()
     {
         if (_suppressCommit || _owner is null) return;

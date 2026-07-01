@@ -113,6 +113,11 @@ Already covered by STEP 6 (goal-backward + `must_haves` frontmatter + `<verify>`
 - If user explicitly asks to commit/push directly to `main`, follow the user request.
 - **Never skip git hooks** (`--no-verify`) without explicit user request.
 
+## Model Selection Rule
+
+- **Use Claude Sonnet 5 (`claude-sonnet-5`) wherever the `sonnet` tier is referenced.** Whenever the workflow resolves the `sonnet` tier — `model_defaults.standard` (STEP 0), a `<model>sonnet</model>` task tag (STEP 6), or an escalation to `sonnet` (STEP 7) — dispatch the model ID **`claude-sonnet-5`**, never an older Sonnet (4.6 / 4.5 / etc.).
+- This applies to both Mode A and Mode B. It changes only which concrete model the `sonnet` tier maps to; the tier keywords (`haiku`/`sonnet`/`opus`) in plans and config stay unchanged.
+
 ## Stack-Specific Rules
 
 When facing a coding task, the AI **must** load the matching stack skill. The AI analyzes the task → matches the correct stack on its own — no need to declare it upfront.
@@ -172,4 +177,4 @@ Record every decision that deviates from the plugin workflow (e.g., using a diff
 
 ## Last updated
 
-2026-06-25
+2026-07-01

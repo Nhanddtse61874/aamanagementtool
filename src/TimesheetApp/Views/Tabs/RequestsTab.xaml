@@ -198,8 +198,19 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- v2: ticket start / end date -->
+                            <!-- v2: ticket start / end date. Operational fields → shown on CREATE, hidden on
+                                 EDIT (edited inline in the Task List, mirroring the deadlines below). -->
                             <Grid Margin="0,0,0,10">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsEditMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="16"/>
@@ -323,9 +334,22 @@
                                              VerticalScrollBarVisibility="Auto" Margin="0,0,0,10"/>
 
                                     <!-- tag multi-select: dropdown ("Tags (N) ▾") of checkable chips.
-                                         Same TagPicks data as before, so CheckedTagIds / save path is unchanged. -->
-                                    <TextBlock Text="Tags" Style="{StaticResource FieldLabel}"/>
-                                    <ctrl:TagPicker ItemsSource="{Binding TagPicks}" HorizontalAlignment="Left"/>
+                                         Operational field → shown on CREATE, hidden on EDIT (edited inline
+                                         in the Task List). Save path (CheckedTagIds) is unchanged. -->
+                                    <StackPanel>
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsEditMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="Tags" Style="{StaticResource FieldLabel}"/>
+                                        <ctrl:TagPicker ItemsSource="{Binding TagPicks}" HorizontalAlignment="Left"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
 
