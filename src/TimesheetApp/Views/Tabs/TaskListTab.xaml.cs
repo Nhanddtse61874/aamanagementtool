@@ -115,6 +115,33 @@ public partial class TaskListTab : UserControl
         }
     }
 
+    // ---- P13 (QA): inline ComboBox edits (TYPE / PCT / PCA / STATUS). Commit ONLY on a user-initiated
+    //      selection (keyboard focus is within the ComboBox), mirroring the DatePicker guard above. WPF
+    //      raises SelectionChanged with a spurious null/echo value while the DataGrid realizes or reloads
+    //      a row (the control is unfocused then); committing on those wiped the fields to null on reopen.
+    //      Handled=true stops the child event bubbling up to the DataGrid's own selection handling. ----
+
+    private void OnRowInlineComboChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox { IsKeyboardFocusWithin: true, DataContext: TaskListRowVm row })
+            row.CommitInlineEdit();
+        e.Handled = true;
+    }
+
+    private void OnTaskExtendedComboChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox { IsKeyboardFocusWithin: true, DataContext: TaskRowVm task })
+            task.CommitExtendedEdit();
+        e.Handled = true;
+    }
+
+    private void OnTaskStatusComboChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox { IsKeyboardFocusWithin: true, DataContext: TaskRowVm task })
+            task.CommitStatusEdit();
+        e.Handled = true;
+    }
+
     // ---- P13 (QA): Progress cell inline edit. Click the % bar -> IsEditingProgress=true swaps in a 0-100
     //      number input (auto-focused). Enter or click-away commits (through the EditProgressText LostFocus
     //      binding) and swaps the bar back in; Escape cancels, restoring the committed value. ----

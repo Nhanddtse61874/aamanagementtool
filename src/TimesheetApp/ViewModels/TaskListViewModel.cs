@@ -531,9 +531,10 @@ public sealed partial class TaskListRowVm : ObservableObject
     // Progress edit as text — parses to EditProgress (0-100), commits on a valid/cleared change.
     [ObservableProperty] private string _editProgressText = string.Empty;
 
-    partial void OnEditTypeChanged(string? value) => Commit();
-    partial void OnEditPctUserIdChanged(int? value) => Commit();
-    partial void OnEditPcaIdChanged(int? value) => Commit();
+    // TYPE/PCT/PCA no longer commit from these setters. WPF writes spurious null/echo values into the
+    // ComboBox TwoWay bindings while the DataGrid realizes or reloads a row (the control is unfocused
+    // then) — the old setter-commit persisted those nulls, wiping the fields on reopen. The View now
+    // commits from a focus-gated ComboBox SelectionChanged (CommitInlineEdit), mirroring the DatePicker.
 
     // Set true only during ResetProgressEdit so restoring the committed value doesn't persist it back.
     private bool _suppressProgressCommit;
@@ -572,6 +573,10 @@ public sealed partial class TaskListRowVm : ObservableObject
         if (_suppressCommit || _owner is null) return;
         _ = _owner.CommitBacklogEditAsync(this);
     }
+
+    // Focus-gated inline commit entry point — the View calls this from a user-driven ComboBox
+    // SelectionChanged (TYPE / PCT / PCA), replacing the former setter-driven commit.
+    internal void CommitInlineEdit() => Commit();
 
     // A tag CheckBox toggled (after seeding) → replace the whole link set with the now-checked tags.
     private void OnTagPickChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -645,9 +650,8 @@ public sealed partial class TaskRowVm : ObservableObject
     // STATUS (one of TaskStatus.All) → UpdateStatusAsync.
     [ObservableProperty] private string _editStatus = "Todo";
 
-    partial void OnEditTypeChanged(string? value) => CommitExtended();
-    partial void OnEditPctUserIdChanged(int? value) => CommitExtended();
-    partial void OnEditStatusChanged(string value) => CommitStatus();
+    // Sub-row TYPE/PCT/STATUS no longer commit from these setters (same spurious-writeback reason as the
+    // parent row) — the View commits from focus-gated ComboBox SelectionChanged via the wrappers below.
 
     // type + assignee live on the same row UPDATE (UpdateExtendedAsync), so both setters route here.
     private void CommitExtended()
@@ -661,6 +665,10 @@ public sealed partial class TaskRowVm : ObservableObject
         if (_suppressCommit) return;
         _ = _owner.UpdateTaskStatusAsync(TaskId, EditStatus);
     }
+
+    // Focus-gated inline commit entry points called by the View on user-driven sub-row selections.
+    internal void CommitExtendedEdit() => CommitExtended();
+    internal void CommitStatusEdit() => CommitStatus();
 
     private void OnTagPickChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

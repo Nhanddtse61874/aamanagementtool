@@ -797,4 +797,28 @@
     <Setter Property="FontSize" Value="12"/>
   </Style>
 
+  <!-- Flat progress bar: rounded light track + solid accent fill, no gloss/animation (the default WPF
+       template is glossy + animated). The only ProgressBar in the app is the Task List progress cell. -->
+  <Style TargetType="ProgressBar">
+    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+    <Setter Property="Background" Value="{StaticResource Border}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Height" Value="8"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ProgressBar">
+          <Border Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True">
+            <Grid ClipToBounds="True">
+              <!-- PART_Track is required for WPF to size PART_Indicator from Value; kept invisible. -->
+              <Border x:Name="PART_Track"/>
+              <Border x:Name="PART_Indicator" HorizontalAlignment="Left" CornerRadius="4"
+                      Background="{TemplateBinding Foreground}"/>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
 </ResourceDictionary>

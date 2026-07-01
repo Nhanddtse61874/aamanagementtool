@@ -73,6 +73,13 @@
     <!-- Proxy so the TEAM DataGridColumn (outside the visual tree) can bind to the VM's TeamFilter and
          hide itself when only one team is selected (the cell would otherwise be empty dead space). -->
     <ctrl:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
+
+    <!-- Text-column cells vertically centered so plain-text columns (CODE/PROJECT/LOGGED/ESTIMATE) line up
+         with the boxed inline editors (ComboBox/DatePicker are h28 centered; a DataGridTextColumn TextBlock
+         is top-aligned by default, which made those columns sit a few px high — the row looked uneven). -->
+    <Style x:Key="GridCellText" TargetType="TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
   </UserControl.Resources>
 
   <DockPanel Margin="12">
@@ -209,8 +216,10 @@
 
         <!-- Star-width + MinWidth = responsive: columns grow to fill a wide window, clamp to MinWidth and
              trigger horizontal scroll when narrow. Text stays a fixed readable size (no font scaling). -->
-        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.3*" MinWidth="112"/>
-        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="*" MinWidth="90"/>
+        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.3*" MinWidth="112"
+                            ElementStyle="{StaticResource GridCellText}"/>
+        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="*" MinWidth="90"
+                            ElementStyle="{StaticResource GridCellText}"/>
 
         <!-- P10 (TM-07): team chip, shown only when >1 team is checked (ShowTeam). The whole column hides
              for single-team users (via VmProxy) so it doesn't leave an empty 110px gap. -->
@@ -235,7 +244,8 @@
             <DataTemplate>
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
                         ItemsSource="{Binding TypeOptions}"
-                        SelectedItem="{Binding EditType, Mode=TwoWay}"/>
+                        SelectedItem="{Binding EditType, Mode=TwoWay}"
+                        SelectionChanged="OnRowInlineComboChanged"/>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
@@ -247,7 +257,8 @@
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
                         ItemsSource="{Binding AssigneeOptions}"
                         SelectedValuePath="Id" DisplayMemberPath="Name"
-                        SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"/>
+                        SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"
+                        SelectionChanged="OnRowInlineComboChanged"/>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
@@ -259,7 +270,8 @@
               <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
                         ItemsSource="{Binding PcaOptions}"
                         SelectedValuePath="Id" DisplayMemberPath="Name"
-                        SelectedValue="{Binding EditPcaId, Mode=TwoWay}"/>
+                        SelectedValue="{Binding EditPcaId, Mode=TwoWay}"
+                        SelectionChanged="OnRowInlineComboChanged"/>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
@@ -321,8 +333,10 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
 
-        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto" MinWidth="84"/>
-        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto" MinWidth="98"/>
+        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto" MinWidth="84"
+                            ElementStyle="{StaticResource GridCellText}"/>
+        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto" MinWidth="98"
+                            ElementStyle="{StaticResource GridCellText}"/>
 
         <!-- TAGS: the live chips (system late/warning + current custom tags) stay for display, plus the
              inline TagPicker to edit the custom-tag set (toggling a tag commits the whole set via the row).
@@ -372,18 +386,21 @@
                     <ComboBox Grid.Column="1" Width="110" Margin="0,0,6,0"
                               Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
                               ItemsSource="{Binding TypeOptions}"
-                              SelectedItem="{Binding EditType, Mode=TwoWay}"/>
+                              SelectedItem="{Binding EditType, Mode=TwoWay}"
+                              SelectionChanged="OnTaskExtendedComboChanged"/>
                     <!-- PCT -> EditPctUserId (SelectedValue = user id, null = "—"). -->
                     <ComboBox Grid.Column="2" Width="130" Margin="0,0,6,0"
                               Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
                               ItemsSource="{Binding AssigneeOptions}"
                               SelectedValuePath="Id" DisplayMemberPath="Name"
-                              SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"/>
+                              SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"
+                              SelectionChanged="OnTaskExtendedComboChanged"/>
                     <!-- STATUS -> EditStatus. -->
                     <ComboBox Grid.Column="3" Width="110" Margin="0,0,6,0"
                               Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
                               ItemsSource="{Binding StatusOptions}"
-                              SelectedItem="{Binding EditStatus, Mode=TwoWay}"/>
+                              SelectedItem="{Binding EditStatus, Mode=TwoWay}"
+                              SelectionChanged="OnTaskStatusComboChanged"/>
                     <!-- TAGS -> the task's checkable tag set (toggling commits via SetTaskTagsAsync). -->
                     <ctrl:TagPicker Grid.Column="4" VerticalAlignment="Center"
                                     ItemsSource="{Binding EditTagPicks}"/>
