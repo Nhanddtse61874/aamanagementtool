@@ -13,7 +13,7 @@
     <DockPanel>
       <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
               Padding="20,14" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-        <TextBlock Text="Add issue" FontWeight="Bold" FontSize="16" Foreground="{StaticResource TextPrimary}"/>
+        <TextBlock Text="Add issue" FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}"/>
       </Border>
       <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
               Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">

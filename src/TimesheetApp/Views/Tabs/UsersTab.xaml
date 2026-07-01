@@ -91,7 +91,7 @@
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <!-- USR-03: deactivate — disabled for already-inactive users -->
-                            <Button Content="Deactivate" Style="{StaticResource MiniGhostButton}"
+                            <Button Content="Deactivate" Style="{StaticResource DangerGhostButton}"
                                     HorizontalAlignment="Right" Margin="0,0,6,0"
                                     IsEnabled="{Binding IsActive}"
                                     Command="{Binding DataContext.DeactivateCommand,
