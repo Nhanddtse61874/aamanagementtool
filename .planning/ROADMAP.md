@@ -3,10 +3,10 @@
 **Last updated:** 2026-07-02
 
 ## Active
-- **P15 — Task List Grouped Section Bands** (Mode A) — collapsible section bands, adaptive Team/Project (VM `GroupKey`/`GroupOrder` + `CollectionViewSource`/`GroupStyle`). **Executed** (W1 `357d92b`, W2 `ec7d439`), 538 tests green, on branch `feature/tasklist-grouped-bands-2026-07-02` (pushed). Layout display superseded by P16; grouping logic retained.
-- **P16 — Task List per-backlog Card layout** (Mode A) — `DataGrid` → grouped `ItemsControl` of cards; tags full-width on top of each card (always visible, no h-scroll); Type/PCT/PCA → direct TwoWay. Keeps P15 bands. Same branch. Spec `docs/superpowers/specs/2026-07-02-tasklist-card-layout-design.md`; plan `docs/superpowers/plans/2026-07-02-P16-tasklist-card-layout.md`. **Status: plan written (APPROVE), awaiting user approval → execute.**
+- _(none — P15/P16/P17 merged to `main` `bc4c02f` on 2026-07-02)_
 
 ## Shipped
+- **P15 / P16 / P17 — Task List card layout + auto-provision user** — MERGED to `main` + pushed (`bc4c02f`, 2026-07-02), build clean, **536 tests green**. **P15** grouped section bands (adaptive Team/Project, collapsible, `Name (count)`). **P16** per-backlog **card** layout (`DataGrid`→grouped `ItemsControl`; tags full-width on top of each card, no horizontal scroll; Type/PCT/PCA → direct TwoWay) + tweaks (External in compact header, "Estimation" label, no-progress defaults to 0%). **P17** auto-provision current user on startup (unmapped Windows account → auto-create + map, no manual add / no picker). Specs+plans: `docs/superpowers/{specs,plans}/2026-07-02-*`. UAT: `.planning/P15-UAT.md`, `.planning/P16-UAT.md`. Summary: `.planning/P15-P16-P17-SUMMARY.md`. Follow-up UAT (non-blocking): live-check Type/PCT/PCA persist + auto-provision.
 - **M1 — WPF Desktop Timesheet Tool v1** — build complete, 162 tests green, QA-passed. Awaiting user UAT.
   - [x] P1 Data + Schema
   - [x] P2 Services

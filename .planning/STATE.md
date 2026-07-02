@@ -1,12 +1,15 @@
 # STATE — TimesheetApp (resume doc)
 
-**Task List grid visual redesign (Log Work-inspired) — MERGED to `main` + PUSHED (2026-07-02).**
-Now on `main` = `45b6285` "Merge feature/tasklist-redesign-2026-07-01 into main" = `[origin/main]` (in sync).
-Redesign commit `6f2c9fe`: `TaskListTab.xaml` — grid wrapped in a rounded **TableContainer** (border + 8px radius,
-grid `BorderThickness=0`, corners clipped via `beh:RoundedClip.Radius=8`, hidden as a whole in Gantt mode) + rows gained
-a subtle **hover** highlight (`#F1F5F9`). Builds on the prior PM #4 pass (flat progress bar, vertical gridlines `#EDEFF3`,
-aligned text columns, clean caret). Build clean, 536 tests green. Feature branch `feature/tasklist-redesign-2026-07-01`
-still points at `6f2c9fe` (pre-merge tip).
+**Task List CARD layout + grouped bands + auto-provision user — MERGED to `main` + PUSHED (2026-07-02).**
+`main` = `bc4c02f` "Merge feature/tasklist-grouped-bands-2026-07-02 into main" = `[origin/main]` (in sync). Build clean, **536 tests green**.
+Shipped together: **P15** (grouped section bands — adaptive Team/Project, collapsible), **P16** (per-backlog **card** layout — tags
+full-width on top, no h-scroll; Type/PCT/PCA → direct TwoWay; + External-in-header / "Estimation" / progress-default-0 tweaks),
+**P17** (auto-provision current user on startup — unmapped Windows account auto-creates + maps, no manual add). Summary:
+`.planning/P15-P16-P17-SUMMARY.md`. Feature branch `feature/tasklist-grouped-bands-2026-07-02` still at `9a0fdf1` (pre-merge tip; deletable).
+**⏳ Follow-up UAT (did NOT block merge, per user):** live-check P16 Type/PCT/PCA persist (TwoWay) + P17 auto-provision on an unmapped account; fix-forward if either misfires.
+
+<!-- Detailed step-by-step records for P15/P16/P17 are below (marked "⏳ ACTIVE" historically) — all shipped in bc4c02f. -->
+_Prior redesign (visual pass `6f2c9fe`) was merged earlier in `45b6285`; superseded by the P16 card layout above._
 
 **⏳ ACTIVE — Task List grouped section bands (Log Work).** Branch `feature/tasklist-grouped-bands-2026-07-02` (from `main` @ `8aa1aef`).
 - **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** approved (0/5 Mode B signals — 1 domain, low risk, no formal QA gate).
