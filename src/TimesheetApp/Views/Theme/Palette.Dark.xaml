@@ -7,11 +7,12 @@
        contrast in W3. Swapped in at runtime by ThemeService.
        ============================================================ -->
 
-  <!-- accent (teal, brightened for dark backgrounds) -->
-  <Color x:Key="AccentColor">#14B8A6</Color>
-  <SolidColorBrush x:Key="Accent" Color="#14B8A6"/>
-  <SolidColorBrush x:Key="AccentHover" Color="#2DD4BF"/>
-  <SolidColorBrush x:Key="AccentPressed" Color="#0D9488"/>
+  <!-- accent (teal). teal-600 base keeps white button text ~3:1 while still reading bright as accent
+       text on the dark surfaces; hover brightens, pressed deepens. -->
+  <Color x:Key="AccentColor">#0D9488</Color>
+  <SolidColorBrush x:Key="Accent" Color="#0D9488"/>
+  <SolidColorBrush x:Key="AccentHover" Color="#14B8A6"/>
+  <SolidColorBrush x:Key="AccentPressed" Color="#0F766E"/>
   <SolidColorBrush x:Key="AccentSoft" Color="#134E4A"/>
 
   <!-- surfaces / borders / text -->
@@ -26,9 +27,9 @@
   <SolidColorBrush x:Key="GhostText" Color="#CBD5E1"/>
 
   <!-- status -->
-  <SolidColorBrush x:Key="Danger" Color="#F87171"/>
+  <SolidColorBrush x:Key="Danger" Color="#EF4444"/>
   <SolidColorBrush x:Key="DangerSoft" Color="#7F1D1D"/>
-  <SolidColorBrush x:Key="DangerBorder" Color="#991B1B"/>
+  <SolidColorBrush x:Key="DangerBorder" Color="#B91C1C"/>
   <SolidColorBrush x:Key="Disabled" Color="#64748B"/>
   <SolidColorBrush x:Key="HolidayBg" Color="#334155"/>
 
