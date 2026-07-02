@@ -8,10 +8,27 @@ a subtle **hover** highlight (`#F1F5F9`). Builds on the prior PM #4 pass (flat p
 aligned text columns, clean caret). Build clean, 536 tests green. Feature branch `feature/tasklist-redesign-2026-07-01`
 still points at `6f2c9fe` (pre-merge tip).
 
-**⏳ ACTIVE NEXT — structural rewrite (deferred from the visual pass):** a true rewrite to Log Work's grouped
-"section band" layout (DataGrid → ItemsControl) and/or borderless combo/DatePicker templates. Deferred earlier because
-both **risk the just-fixed inline edits** (default WPF ComboBox/DatePicker templates ignore `BorderBrush` → flattening
-needs a full template rewrite). NOT fast-lane (structural/high-regression) → going through the workflow: STEP 2 Brainstorm.
+**⏳ ACTIVE — Task List grouped section bands (Log Work).** Branch `feature/tasklist-grouped-bands-2026-07-02` (from `main` @ `8aa1aef`).
+- **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** approved (0/5 Mode B signals — 1 domain, low risk, no formal QA gate).
+- **Design approved & committed** `a77aa91`: `docs/superpowers/specs/2026-07-02-tasklist-grouped-section-bands-design.md`.
+- **Decision:** deliver the grouped "section band" look via **view-layer DataGrid grouping** (Approach ① — `CollectionViewSource` + `DataGrid.GroupStyle` Expander), **NOT** the DataGrid→ItemsControl rewrite (rejected as high-risk to inline edits). Adaptive group key: multi-team→Team else Project; collapsible bands (default open); band shows `Name (count)`. Inline-edit machinery untouched by construction.
+- **STEP 6 Plan: DONE (2026-07-02).** Plan `docs/superpowers/plans/2026-07-02-P15-tasklist-grouped-bands.md` — 2 tasks / 2 waves (W1 VM `GroupKey`/`GroupOrder`/flags; W2 XAML `CollectionViewSource`+`GroupStyle` Expander band + hide group-key column). Plan-check **APPROVE** (11/11). Both tasks `[sonnet]`.
+- **STEP 7 Execute: DONE (2026-07-02, inline, Mode A).** W1 `357d92b` (VM `GroupKey`/`GroupOrder`/`GroupByProject`/`GroupByTeam` + 2 tests), W2 `ec7d439` (XAML `CollectionViewSource`+`GroupStyle` Expander band; PROJECT hidden single-team, TEAM column Collapsed). Build clean, **538 tests green** (was 536; +2), render test passes (grouped XAML render-safe).
+- **Status: waiting_for_user → STEP 8 UAT.** `.planning/P15-UAT.md` — user runs `dotnet run --project src/TimesheetApp`, Task List grid: verify bands (Project single-team / Team multi-team), collapse, inline edits unchanged, Gantt unaffected. **Not merged/pushed** — awaits UAT pass.
+- **NEXT (P15):** superseded by P16 for the layout — P15's grouping logic (GroupKey/bands) stays; UAT folded into P16.
+
+**⏳ ACTIVE — P16: Task List per-backlog CARD layout (same branch).** User wants tags full-width **on top of each backlog, always visible** (no scroll-right) → definitive rewrite `DataGrid` → `ItemsControl` cards.
+- **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** (0/5 B signals). Design approved & committed `e1c3244`: `docs/superpowers/specs/2026-07-02-tasklist-card-layout-design.md`. Card = compact header (CODE·PCT·Internal·Progress·caret) + full-width tag strip on top; expand → Type/PCA/Ext/Start/End + tasks. **Type/PCT/PCA → direct TwoWay** (kills the DataGrid CellTemplate write-back bug class); deadlines/start-end/progress/tags/expand keep existing paths. Keeps P15 section bands (reuse `GroupedRows` CVS + `GroupStyle` on the ItemsControl).
+- **STEP 6 Plan: DONE.** `docs/superpowers/plans/2026-07-02-P16-tasklist-card-layout.md` — W1 `[opus]` XAML card rewrite + drop 3 combo handlers; W2 `[sonnet]` render-test refresh + full suite. Plan-check **APPROVE**.
+- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `62648ac` (TaskListTab.xaml DataGrid→ItemsControl cards + drop OnRowType/Pct/PcaChanged), W2 `9ce94d3` (render-test note). Build clean (0 warn), **538 tests green**, render test covers the card layout. `GridTextCell` resource removed (orphaned by the rewrite).
+- **Status: waiting_for_user → STEP 8 UAT.** `.planning/P16-UAT.md`. **⚠️ #1 UAT check = Type/PCT/PCA now commit via TwoWay** (not test-coverable — must confirm real DB write; revert to code-behind if it misfires). **Not merged/pushed** beyond the branch.
+- **UAT tweaks (Fast Lane, 2026-07-02):** External deadline surfaced in the compact header (next to Internal); expanded "Est" label → "Estimation"; **no-progress now defaults to 0%** (ProgressText "—"→"0%", bar always shown). Build clean, 538 green.
+- **NEXT:** on UAT pass → STEP 9 QA (light, `requesting-code-review`) → merge to `main` + push (push on user OK). Branch also carries P15 (grouping) + P16 (cards) + P17 (auto-provision user).
+
+**⏳ P17 — Auto-provision current user (Fast Lane, 2026-07-02, same branch).** User: khi run app mà tài khoản Windows chưa map thì tự tạo user, khỏi add tay.
+- **Change:** `MainViewModel.ResolveCurrentUserAsync` — removed the `active.Count==0` gate + the SelectUserDialog branch; now **always auto-creates** a user named after `Environment.UserName` + maps windows_username when the account is unmapped (whether or not other users exist). `InitializeActiveTeamAsync` already joins them to the active team. `selectUser` delegate + `App.ShowSelectUserDialog` retained as an unused fallback seam (startup no longer prompts). Decision: **always auto-create** (Option A — DBs are per-Windows-profile so no dup risk in practice).
+- **Tests:** removed 2 obsolete cancel tests, rewrote the picker test → `NeedsSelection_withExistingUsers_autoCreatesNewUser`. Build clean, **536 green**.
+- **UAT note:** hard to hit on your own machine (your account is already mapped from prior runs); a fresh Windows account / unmapped DB lands straight in a usable session with no picker.
 
 ---
 

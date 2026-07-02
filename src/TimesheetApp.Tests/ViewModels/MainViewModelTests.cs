@@ -88,24 +88,21 @@ public sealed class MainViewModelTests
         _users.Verify(u => u.GetActiveAsync(), Times.Never);
     }
 
-    [Fact] // XC-07: NeedsSelection -> selector invoked, chosen user persisted + set current
-    public async Task NeedsSelection_invokes_selector_and_persists_choice()
+    [Fact] // Auto-provision: an unmapped Windows account auto-creates a NEW user even when other users exist (no picker).
+    public async Task NeedsSelection_withExistingUsers_autoCreatesNewUser()
     {
         _currentUser.Setup(s => s.ResolveAsync())
             .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.NeedsSelection, null));
-        var active = new[] { U(1, "Bob"), U(2, "Cara") };
-        _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(active);
-        // After persistence, the service exposes the chosen user as Current.
-        _currentUser.SetupGet(s => s.Current).Returns(U(2, "Cara"));
+        _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[] { U(1, "Bob"), U(2, "Cara") });
+        _users.Setup(u => u.InsertAsync(It.IsAny<User>())).ReturnsAsync(9);
+        _currentUser.SetupGet(s => s.Current).Returns(U(9, "dana"));
+        var vm = CreateVm(windowsUserName: () => "dana");
 
-        IReadOnlyList<User>? offered = null;
-        var vm = CreateVm(windowsUserName: () => "DESK\\cara");
+        await vm.InitializeAsync(NeverCalled); // no picker, even with existing users
 
-        await vm.InitializeAsync(users => { offered = users; return users[1]; });
-
-        Assert.Equal(active, offered); // active users were offered to the selector
-        _currentUser.Verify(s => s.SetWindowsUsernameAsync(2, "DESK\\cara"), Times.Once);
-        Assert.Equal("Cara", vm.CurrentUserName);
+        _users.Verify(u => u.InsertAsync(It.Is<User>(x => x.Name == "dana" && x.IsActive)), Times.Once);
+        _currentUser.Verify(s => s.SetWindowsUsernameAsync(9, "dana"), Times.Once);
+        Assert.Equal("dana", vm.CurrentUserName);
     }
 
     [Fact] // Zero-config first run: a fresh (empty) DB auto-creates a user from the Windows name, no dialog.
@@ -123,20 +120,6 @@ public sealed class MainViewModelTests
         _users.Verify(u => u.InsertAsync(It.Is<User>(x => x.Name == "sam" && x.IsActive)), Times.Once);
         _currentUser.Verify(s => s.SetWindowsUsernameAsync(9, "sam"), Times.Once);
         Assert.Equal("sam", vm.CurrentUserName);
-    }
-
-    [Fact] // XC-07: cancelling the dialog leaves no current user and persists nothing
-    public async Task NeedsSelection_cancel_persists_nothing()
-    {
-        _currentUser.Setup(s => s.ResolveAsync())
-            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.NeedsSelection, null));
-        _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[] { U(1, "Bob") });
-        var vm = CreateVm();
-
-        await vm.InitializeAsync(_ => null); // user cancelled
-
-        _currentUser.Verify(s => s.SetWindowsUsernameAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
-        Assert.Equal(string.Empty, vm.CurrentUserName);
     }
 
     [Fact] // XC-08: conflict-copy sibling present -> ConflictWarning populated
@@ -345,21 +328,6 @@ public sealed class MainViewModelTests
         Assert.Single(vm.AvailableTeams);
         Assert.NotNull(vm.ActiveTeam);
         Assert.Equal(1, vm.ActiveTeam!.Id);
-    }
-
-    [Fact] // Cancelled selection (no user) -> no join, no team init (child VMs see id 0)
-    public async Task Init_cancelledSelection_does_not_join_or_init_team()
-    {
-        _currentUser.Setup(s => s.ResolveAsync())
-            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.NeedsSelection, null));
-        _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[] { U(1, "Bob") });
-        _config.SetupGet(c => c.ActiveTeamId).Returns(2);
-        var vm = CreateVm();
-
-        await vm.InitializeAsync(_ => null); // cancelled
-
-        _teams.Verify(t => t.AddMemberAsync(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
-        _currentTeam.Verify(s => s.InitializeAsync(It.IsAny<int>()), Times.Never);
     }
 
     [Fact] // Unset active team (0) -> never insert a bogus membership, but still init the team service

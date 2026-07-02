@@ -271,27 +271,17 @@ public sealed partial class MainViewModel : ObservableObject
             return resolved;
         }
 
-        var active = await _users.GetActiveAsync();
-
-        // Zero-config first run: a fresh DB has no users at all. Don't prompt — auto-create a user
-        // named after the Windows account and map it, so the app opens straight to a usable timesheet.
-        if (active.Count == 0)
-        {
-            var winName = _windowsUserName();
-            var displayName = string.IsNullOrWhiteSpace(winName) ? "Me" : winName.Trim();
-            var newId = await _users.InsertAsync(new User(0, displayName, null, true));
-            await _currentUser.SetWindowsUsernameAsync(newId, winName);
-            CurrentUserName = _currentUser.Current?.Name ?? displayName;
-            return _currentUser.Current ?? new User(newId, displayName, null, true);
-        }
-
-        // NeedsSelection with existing users: present them to the View, persist the chosen mapping (XC-07).
-        var chosen = selectUser(active);
-        if (chosen is null) return null; // cancelled — Current stays null, child VMs see id 0
-
-        await _currentUser.SetWindowsUsernameAsync(chosen.Id, _windowsUserName());
-        CurrentUserName = _currentUser.Current?.Name ?? chosen.Name;
-        return _currentUser.Current ?? chosen;
+        // Unmapped Windows account => auto-provision: create a user named after the Windows account, map
+        // it, and open straight into a usable session — no manual "add user" step and no picker, whether
+        // or not other users already exist (self-service onboarding). InitializeActiveTeamAsync then joins
+        // the new user to the active team. `selectUser` is retained as an unused fallback seam (keeps this
+        // VM WPF-free; a picker can be re-enabled without a signature change).
+        var winName = _windowsUserName();
+        var displayName = string.IsNullOrWhiteSpace(winName) ? "Me" : winName.Trim();
+        var newId = await _users.InsertAsync(new User(0, displayName, null, true));
+        await _currentUser.SetWindowsUsernameAsync(newId, winName);
+        CurrentUserName = _currentUser.Current?.Name ?? displayName;
+        return _currentUser.Current ?? new User(newId, displayName, null, true);
     }
 
     private void DetectConflictCopies()
