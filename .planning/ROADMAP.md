@@ -3,7 +3,8 @@
 **Last updated:** 2026-07-02
 
 ## Active
-- **P15 — Task List Grouped Section Bands** (Mode A) — group grid rows under collapsible section bands, adaptively by Team/Project (view-layer DataGrid grouping; inline-edit untouched). Branch `feature/tasklist-grouped-bands-2026-07-02`. Spec `docs/superpowers/specs/2026-07-02-tasklist-grouped-section-bands-design.md`; plan `docs/superpowers/plans/2026-07-02-P15-tasklist-grouped-bands.md`. **Status: plan written (APPROVE), awaiting user approval → execute.**
+- **P15 — Task List Grouped Section Bands** (Mode A) — collapsible section bands, adaptive Team/Project (VM `GroupKey`/`GroupOrder` + `CollectionViewSource`/`GroupStyle`). **Executed** (W1 `357d92b`, W2 `ec7d439`), 538 tests green, on branch `feature/tasklist-grouped-bands-2026-07-02` (pushed). Layout display superseded by P16; grouping logic retained.
+- **P16 — Task List per-backlog Card layout** (Mode A) — `DataGrid` → grouped `ItemsControl` of cards; tags full-width on top of each card (always visible, no h-scroll); Type/PCT/PCA → direct TwoWay. Keeps P15 bands. Same branch. Spec `docs/superpowers/specs/2026-07-02-tasklist-card-layout-design.md`; plan `docs/superpowers/plans/2026-07-02-P16-tasklist-card-layout.md`. **Status: plan written (APPROVE), awaiting user approval → execute.**
 
 ## Shipped
 - **M1 — WPF Desktop Timesheet Tool v1** — build complete, 162 tests green, QA-passed. Awaiting user UAT.

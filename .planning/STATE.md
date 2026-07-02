@@ -15,7 +15,12 @@ still points at `6f2c9fe` (pre-merge tip).
 - **STEP 6 Plan: DONE (2026-07-02).** Plan `docs/superpowers/plans/2026-07-02-P15-tasklist-grouped-bands.md` — 2 tasks / 2 waves (W1 VM `GroupKey`/`GroupOrder`/flags; W2 XAML `CollectionViewSource`+`GroupStyle` Expander band + hide group-key column). Plan-check **APPROVE** (11/11). Both tasks `[sonnet]`.
 - **STEP 7 Execute: DONE (2026-07-02, inline, Mode A).** W1 `357d92b` (VM `GroupKey`/`GroupOrder`/`GroupByProject`/`GroupByTeam` + 2 tests), W2 `ec7d439` (XAML `CollectionViewSource`+`GroupStyle` Expander band; PROJECT hidden single-team, TEAM column Collapsed). Build clean, **538 tests green** (was 536; +2), render test passes (grouped XAML render-safe).
 - **Status: waiting_for_user → STEP 8 UAT.** `.planning/P15-UAT.md` — user runs `dotnet run --project src/TimesheetApp`, Task List grid: verify bands (Project single-team / Team multi-team), collapse, inline edits unchanged, Gantt unaffected. **Not merged/pushed** — awaits UAT pass.
-- **NEXT:** on UAT pass → STEP 9 QA (light, Mode A `requesting-code-review`) → merge to `main` + push (push only on user OK).
+- **NEXT (P15):** superseded by P16 for the layout — P15's grouping logic (GroupKey/bands) stays; UAT folded into P16.
+
+**⏳ ACTIVE — P16: Task List per-backlog CARD layout (same branch).** User wants tags full-width **on top of each backlog, always visible** (no scroll-right) → definitive rewrite `DataGrid` → `ItemsControl` cards.
+- **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** (0/5 B signals). Design approved & committed `e1c3244`: `docs/superpowers/specs/2026-07-02-tasklist-card-layout-design.md`. Card = compact header (CODE·PCT·Internal·Progress·caret) + full-width tag strip on top; expand → Type/PCA/Ext/Start/End + tasks. **Type/PCT/PCA → direct TwoWay** (kills the DataGrid CellTemplate write-back bug class); deadlines/start-end/progress/tags/expand keep existing paths. Keeps P15 section bands (reuse `GroupedRows` CVS + `GroupStyle` on the ItemsControl).
+- **STEP 6 Plan: DONE.** `docs/superpowers/plans/2026-07-02-P16-tasklist-card-layout.md` — W1 `[opus]` XAML card rewrite + drop 3 combo handlers; W2 `[sonnet]` render-test refresh + full suite. Plan-check **APPROVE**.
+- **Status: waiting_for_user** — approve plan → STEP 7 execute (inline). Then P16-UAT (must live-check Type/PCT/PCA persist) → QA → merge+push (push on user OK).
 
 ---
 
