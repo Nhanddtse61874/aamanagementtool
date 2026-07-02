@@ -11,6 +11,15 @@ full-width on top, no h-scroll; Type/PCT/PCA → direct TwoWay; + External-in-he
 <!-- Detailed step-by-step records for P15/P16/P17 are below (marked "⏳ ACTIVE" historically) — all shipped in bc4c02f. -->
 _Prior redesign (visual pass `6f2c9fe`) was merged earlier in `45b6285`; superseded by the P16 card layout above._
 
+---
+
+**⏳ ACTIVE — P18: Daily Quick Import.** Branch `feature/daily-quick-import-2026-07-02` (from `main` @ `d16fa3a`). Mode A.
+User: trong Daily muốn "quick import" — chọn 1 ngày → copy full data ngày đó (entry + issue của mình) sang ngày hiện tại để sửa nhanh.
+- **STEP 2/3/5/6 done + approved.** Spec `docs/superpowers/specs/2026-07-02-daily-quick-import-design.md`; plan `docs/superpowers/plans/2026-07-02-P18-daily-quick-import.md` (plan-check APPROVE). Decisions: append all (incl duplicates); copy current-user entries both sections + issues, statuses as-is; source = DatePicker; target = selected editable day; scope current-user + active-team.
+- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `StandupService.QuickImportDayAsync(sourceDate, targetDate)` + 5 unit tests; W2 VM `QuickImportAsync` + `QuickImportDialog` (DatePicker) + "⬇ Quick import" button in Daily Input. Build clean, **541 tests green**.
+- **Status: waiting_for_user → STEP 8 UAT** (`.planning/P18-UAT.md`). Not merged/pushed yet.
+- **NEXT (queued):** **P19 — Dark mode** (robust: `DynamicResource` for palette-brush refs + Light/Dark dictionary swap = live hot-switch; promote hardcoded hex literals → theme brushes; toggle in Settings + config; per-tab render tests for BOTH themes). User chose high-impact/robust over minimal, verify thoroughly — see memory `startup-phase-prefers-robust-over-minimal`.
+
 **⏳ ACTIVE — Task List grouped section bands (Log Work).** Branch `feature/tasklist-grouped-bands-2026-07-02` (from `main` @ `8aa1aef`).
 - **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** approved (0/5 Mode B signals — 1 domain, low risk, no formal QA gate).
 - **Design approved & committed** `a77aa91`: `docs/superpowers/specs/2026-07-02-tasklist-grouped-section-bands-design.md`.
