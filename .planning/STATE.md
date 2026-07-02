@@ -8,10 +8,13 @@ a subtle **hover** highlight (`#F1F5F9`). Builds on the prior PM #4 pass (flat p
 aligned text columns, clean caret). Build clean, 536 tests green. Feature branch `feature/tasklist-redesign-2026-07-01`
 still points at `6f2c9fe` (pre-merge tip).
 
-**⏳ ACTIVE NEXT — structural rewrite (deferred from the visual pass):** a true rewrite to Log Work's grouped
-"section band" layout (DataGrid → ItemsControl) and/or borderless combo/DatePicker templates. Deferred earlier because
-both **risk the just-fixed inline edits** (default WPF ComboBox/DatePicker templates ignore `BorderBrush` → flattening
-needs a full template rewrite). NOT fast-lane (structural/high-regression) → going through the workflow: STEP 2 Brainstorm.
+**⏳ ACTIVE — Task List grouped section bands (Log Work).** Branch `feature/tasklist-grouped-bands-2026-07-02` (from `main` @ `8aa1aef`).
+- **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** approved (0/5 Mode B signals — 1 domain, low risk, no formal QA gate).
+- **Design approved & committed** `a77aa91`: `docs/superpowers/specs/2026-07-02-tasklist-grouped-section-bands-design.md`.
+- **Decision:** deliver the grouped "section band" look via **view-layer DataGrid grouping** (Approach ① — `CollectionViewSource` + `DataGrid.GroupStyle` Expander), **NOT** the DataGrid→ItemsControl rewrite (rejected as high-risk to inline edits). Adaptive group key: multi-team→Team else Project; collapsible bands (default open); band shows `Name (count)`. Inline-edit machinery untouched by construction.
+- **STEP 6 Plan: DONE (2026-07-02).** Plan `docs/superpowers/plans/2026-07-02-P15-tasklist-grouped-bands.md` — 2 tasks / 2 waves (W1 VM `GroupKey`/`GroupOrder`/flags; W2 XAML `CollectionViewSource`+`GroupStyle` Expander band + hide group-key column). Plan-check **APPROVE** (11/11). Both tasks `[sonnet]`.
+- **Status: waiting_for_user** — approve plan → STEP 7 execute (Mode A). Execution mode TBD: inline (`executing-plans`) recommended vs subagent-driven.
+- **NEXT:** on plan approval, run W1 then W2; main agent builds + runs tests after each wave (agents don't build). Kill running `TimesheetApp` before build.
 
 ---
 

@@ -1,6 +1,9 @@
 # ROADMAP — TimesheetApp
 
-**Last updated:** 2026-06-22
+**Last updated:** 2026-07-02
+
+## Active
+- **P15 — Task List Grouped Section Bands** (Mode A) — group grid rows under collapsible section bands, adaptively by Team/Project (view-layer DataGrid grouping; inline-edit untouched). Branch `feature/tasklist-grouped-bands-2026-07-02`. Spec `docs/superpowers/specs/2026-07-02-tasklist-grouped-section-bands-design.md`; plan `docs/superpowers/plans/2026-07-02-P15-tasklist-grouped-bands.md`. **Status: plan written (APPROVE), awaiting user approval → execute.**
 
 ## Shipped
 - **M1 — WPF Desktop Timesheet Tool v1** — build complete, 162 tests green, QA-passed. Awaiting user UAT.
