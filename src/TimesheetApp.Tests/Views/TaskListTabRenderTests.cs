@@ -16,6 +16,8 @@ namespace TimesheetApp.Tests.Views;
 // only throws when the cell/sub-row TEMPLATE actually renders with a row present — invisible to unit tests.
 // This renders the real TaskListTab, with one seeded backlog + task and its row expanded, on an STA thread,
 // so any such regression fails CI instead of surfacing as the runtime error dialog.
+// P16: the grid is now an ItemsControl of per-backlog cards (tag strip on top + expandable detail); this
+// guard still renders a seeded, expanded card so the card template / TwoWay combos stay render-safe.
 [Collection("WpfSta")]
 public sealed class TaskListTabRenderTests
 {
