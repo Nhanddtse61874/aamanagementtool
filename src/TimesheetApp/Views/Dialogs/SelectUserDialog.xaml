@@ -9,20 +9,20 @@
         Background="Transparent">
   <!-- Themed chrome to match every other dialog (TaskInputDialog etc.): WindowStyle=None + a Surface
        card with header/footer, instead of the alien native OS window. -->
-  <Border Background="{StaticResource Surface}" CornerRadius="12" BorderBrush="{StaticResource Border}"
+  <Border Background="{DynamicResource Surface}" CornerRadius="12" BorderBrush="{DynamicResource Border}"
           BorderThickness="1" Margin="12">
     <Border.Effect>
       <DropShadowEffect Color="#0F172A" Opacity="0.3" BlurRadius="24" ShadowDepth="4" Direction="270"/>
     </Border.Effect>
     <DockPanel>
       <!-- Header -->
-      <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
-              Padding="20,14" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-        <TextBlock Text="Select user" FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}"/>
+      <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}" CornerRadius="12,12,0,0"
+              Padding="20,14" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+        <TextBlock Text="Select user" FontWeight="Bold" FontSize="17" Foreground="{DynamicResource TextPrimary}"/>
       </Border>
       <!-- Footer -->
-      <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
-              Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+      <Border DockPanel.Dock="Bottom" Background="{DynamicResource HeaderBg}" CornerRadius="0,0,12,12"
+              Padding="20,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button Content="Cancel" Style="{StaticResource GhostButton}" Padding="18,6" Margin="0,0,8,0"
                   IsCancel="True"/>
@@ -32,13 +32,13 @@
       <!-- Body -->
       <StackPanel Margin="20,16">
         <TextBlock Text="Windows account not recognized. Select your user:"
-                   TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{StaticResource TextSecondary}"/>
+                   TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource TextSecondary}"/>
         <ListBox x:Name="UsersList" Height="180"
                  DisplayMemberPath="Name"
                  SelectedItem="{Binding SelectedUser, Mode=TwoWay}"
                  MouseDoubleClick="UsersList_MouseDoubleClick"/>
         <TextBlock Text="Or create a new user (enter a name, then click OK):"
-                   TextWrapping="Wrap" Margin="0,12,0,4" Foreground="{StaticResource TextSecondary}"/>
+                   TextWrapping="Wrap" Margin="0,12,0,4" Foreground="{DynamicResource TextSecondary}"/>
         <TextBox x:Name="NewUserNameBox"/>
       </StackPanel>
     </DockPanel>

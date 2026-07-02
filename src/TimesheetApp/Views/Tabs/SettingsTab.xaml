@@ -55,16 +55,16 @@
                            Visibility="{Binding ExportRoot1VerifyStatus, Converter={StaticResource NullToCollapsedConverter}}">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
-                            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding ExportRoot1VerifyLevel}" Value="Ok">
-                                    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding ExportRoot1VerifyLevel}" Value="Warning">
-                                    <Setter Property="Foreground" Value="{StaticResource AmberFg}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource AmberFg}"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding ExportRoot1VerifyLevel}" Value="Error">
-                                    <Setter Property="Foreground" Value="{StaticResource Danger}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Danger}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -80,7 +80,7 @@
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                     <Button Content="Export now" Height="32" Command="{Binding ExportNowCommand}"/>
                 </StackPanel>
-                <TextBlock Text="{Binding ExportStatus}" Foreground="{StaticResource TextSecondary}"
+                <TextBlock Text="{Binding ExportStatus}" Foreground="{DynamicResource TextSecondary}"
                            Margin="0,0,0,16" TextWrapping="Wrap"/>
 
                 <!-- BK-01..07: Backup & Restore -->
@@ -98,11 +98,11 @@
                     <CheckBox Content="Auto-backup once per day on startup" VerticalAlignment="Center"
                               IsChecked="{Binding AutoBackupEnabled}"/>
                     <TextBlock Text="Keep last" VerticalAlignment="Center" Margin="20,0,6,0"
-                               Foreground="{StaticResource TextSecondary}"/>
+                               Foreground="{DynamicResource TextSecondary}"/>
                     <TextBox Width="56" Height="32" VerticalContentAlignment="Center"
                              Text="{Binding BackupKeepCount, UpdateSourceTrigger=PropertyChanged}"/>
                     <TextBlock Text="backups" VerticalAlignment="Center" Margin="6,0,0,0"
-                               Foreground="{StaticResource TextSecondary}"/>
+                               Foreground="{DynamicResource TextSecondary}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                     <Button Content="Backup now" Height="32" Command="{Binding BackupNowCommand}"
@@ -110,12 +110,12 @@
                     <Button Content="Refresh" Height="32" Margin="8,0,0,0" Style="{StaticResource GhostButton}"
                             Command="{Binding RefreshBackupsCommand}" IsEnabled="{Binding HasBackupFolder}"/>
                 </StackPanel>
-                <TextBlock Text="{Binding BackupStatus}" Foreground="{StaticResource TextSecondary}"
+                <TextBlock Text="{Binding BackupStatus}" Foreground="{DynamicResource TextSecondary}"
                            Margin="0,0,0,6" TextWrapping="Wrap"/>
                 <ItemsControl ItemsSource="{Binding Backups}" Margin="0,0,0,16">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6"
                                     Margin="0,0,0,5" Padding="10,6">
                                 <DockPanel>
                                     <Button Content="Restore" DockPanel.Dock="Right" Margin="4,0,0,0"
@@ -123,7 +123,7 @@
                                             Click="OnRestoreBackup"
                                             CommandParameter="{Binding}"/>
                                     <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0"
-                                               Foreground="{StaticResource TextSecondary}" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondary}" FontSize="12"
                                                Text="{Binding SizeBytes, StringFormat={}{0:N0} bytes}"/>
                                     <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
                                                Text="{Binding Timestamp, StringFormat=yyyy-MM-dd HH:mm:ss}"/>
@@ -141,11 +141,11 @@
                     <CheckBox Content="Enable retention" VerticalAlignment="Center"
                               IsChecked="{Binding RetentionEnabled}"/>
                     <TextBlock Text="Keep last" VerticalAlignment="Center" Margin="20,0,6,0"
-                               Foreground="{StaticResource TextSecondary}"/>
+                               Foreground="{DynamicResource TextSecondary}"/>
                     <TextBox Width="56" Height="32" VerticalContentAlignment="Center"
                              Text="{Binding RetentionMonths, UpdateSourceTrigger=PropertyChanged}"/>
                     <TextBlock Text="months" VerticalAlignment="Center" Margin="6,0,0,0"
-                               Foreground="{StaticResource TextSecondary}"/>
+                               Foreground="{DynamicResource TextSecondary}"/>
                     <Button Content="Apply" Height="32" Margin="20,0,0,0"
                             Command="{Binding ApplyRetentionSettingsCommand}"/>
                 </StackPanel>
@@ -155,9 +155,9 @@
                     <Button Content="Run retention now" Height="32" Margin="8,0,0,0"
                             Style="{StaticResource DangerGhostButton}" Click="OnRunRetention"/>
                 </StackPanel>
-                <TextBlock Text="{Binding RetentionStatus}" Foreground="{StaticResource TextSecondary}"
+                <TextBlock Text="{Binding RetentionStatus}" Foreground="{DynamicResource TextSecondary}"
                            Margin="0,0,0,6" TextWrapping="Wrap"/>
-                <TextBlock Text="{Binding RetentionPreviewText}" Foreground="{StaticResource TextSecondary}"
+                <TextBlock Text="{Binding RetentionPreviewText}" Foreground="{DynamicResource TextSecondary}"
                            FontFamily="Consolas" FontSize="12" Margin="0,0,0,16" TextWrapping="Wrap"/>
 
                 <!-- SET-02: N-days warning (default 3) -->
@@ -180,7 +180,7 @@
                 <ItemsControl ItemsSource="{Binding TemplateGroups}" Margin="0,0,0,16">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6"
                                     Margin="0,0,0,5" Padding="10,6">
                                 <DockPanel>
                                     <Button Content="Delete" DockPanel.Dock="Right" Margin="4,0,0,0"
@@ -219,7 +219,7 @@
                 <ItemsControl ItemsSource="{Binding Tags}" Margin="0,0,0,16">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6"
                                     Margin="0,0,0,5" Padding="10,6">
                                 <DockPanel>
                                     <Button Content="Delete" DockPanel.Dock="Right" Margin="4,0,0,0"
@@ -263,7 +263,7 @@
                 <ItemsControl ItemsSource="{Binding PcaContacts}" Margin="0,0,0,16">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6"
                                     Margin="0,0,0,5" Padding="10,6">
                                 <DockPanel>
                                     <Button Content="Deactivate" DockPanel.Dock="Right" Margin="4,0,0,0"
@@ -279,7 +279,7 @@
                                             CommandParameter="{Binding Id}"/>
                                     <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0"
                                                FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{StaticResource Disabled}"
+                                               Foreground="{DynamicResource Disabled}"
                                                Text="Inactive">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -314,7 +314,7 @@
                 <ItemsControl ItemsSource="{Binding Teams}" Margin="0,0,0,16">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6"
+                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6"
                                     Margin="0,0,0,5" Padding="10,6">
                                 <DockPanel>
                                     <Button Content="Deactivate" DockPanel.Dock="Right" Margin="4,0,0,0"
@@ -336,7 +336,7 @@
                                             CommandParameter="{Binding Id}"/>
                                     <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0"
                                                FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{StaticResource Disabled}"
+                                               Foreground="{DynamicResource Disabled}"
                                                Text="Inactive">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -362,7 +362,7 @@
                 <TextBlock Text="Holiday calendar" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Click a day to mark/unmark it a holiday. Weekends are excluded automatically."
                            Style="{StaticResource FieldHint}"/>
-                <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8"
+                <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="8"
                         Padding="12" Margin="0,0,0,16" HorizontalAlignment="Left" Width="380"
                         DataContext="{Binding HolidayCalendar}">
                     <StackPanel>
@@ -376,13 +376,13 @@
                         </DockPanel>
                         <!-- weekday header -->
                         <UniformGrid Columns="7" Margin="0,0,0,4">
-                            <TextBlock Text="Mon" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
-                            <TextBlock Text="Tue" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
-                            <TextBlock Text="Wed" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
-                            <TextBlock Text="Thu" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
-                            <TextBlock Text="Fri" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
-                            <TextBlock Text="Sat" HorizontalAlignment="Center" Foreground="{StaticResource Disabled}" FontSize="11"/>
-                            <TextBlock Text="Sun" HorizontalAlignment="Center" Foreground="{StaticResource Disabled}" FontSize="11"/>
+                            <TextBlock Text="Mon" HorizontalAlignment="Center" Foreground="{DynamicResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Tue" HorizontalAlignment="Center" Foreground="{DynamicResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Wed" HorizontalAlignment="Center" Foreground="{DynamicResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Thu" HorizontalAlignment="Center" Foreground="{DynamicResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Fri" HorizontalAlignment="Center" Foreground="{DynamicResource TextSecondary}" FontSize="11"/>
+                            <TextBlock Text="Sat" HorizontalAlignment="Center" Foreground="{DynamicResource Disabled}" FontSize="11"/>
+                            <TextBlock Text="Sun" HorizontalAlignment="Center" Foreground="{DynamicResource Disabled}" FontSize="11"/>
                         </UniformGrid>
                         <ItemsControl ItemsSource="{Binding Days}">
                             <ItemsControl.ItemsPanel>
@@ -400,9 +400,9 @@
                                             IsEnabled="{Binding IsInMonth}">
                                         <Button.Style>
                                             <Style TargetType="Button">
-                                                <Setter Property="Background" Value="{StaticResource Surface}"/>
-                                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-                                                <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+                                                <Setter Property="Background" Value="{DynamicResource Surface}"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                                                <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
                                                 <Setter Property="BorderThickness" Value="1"/>
                                                 <Setter Property="Cursor" Value="Hand"/>
                                                 <Setter Property="Template">
@@ -424,19 +424,19 @@
                                                     <!-- out-of-month: faint placeholder -->
                                                     <DataTrigger Binding="{Binding IsInMonth}" Value="False">
                                                         <Setter Property="Background" Value="Transparent"/>
-                                                        <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource Disabled}"/>
                                                         <Setter Property="BorderBrush" Value="Transparent"/>
                                                     </DataTrigger>
                                                     <!-- weekend: gray -->
                                                     <DataTrigger Binding="{Binding IsWeekend}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource BadgeGrayBg}"/>
-                                                        <Setter Property="Foreground" Value="{StaticResource BadgeGrayFg}"/>
+                                                        <Setter Property="Background" Value="{DynamicResource BadgeGrayBg}"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource BadgeGrayFg}"/>
                                                     </DataTrigger>
                                                     <!-- holiday: accent (teal) — wins over weekend -->
                                                     <DataTrigger Binding="{Binding IsHoliday}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource Accent}"/>
+                                                        <Setter Property="Background" Value="{DynamicResource Accent}"/>
                                                         <Setter Property="Foreground" Value="White"/>
-                                                        <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -454,7 +454,7 @@
         <Border Background="#66000000"
                 Visibility="{Binding TemplateEditor,
                              Converter={StaticResource NullToCollapsedConverter}}">
-            <Border Width="500" MaxHeight="600" Background="{StaticResource Surface}" CornerRadius="12"
+            <Border Width="500" MaxHeight="600" Background="{DynamicResource Surface}" CornerRadius="12"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Border.Effect>
                     <DropShadowEffect Color="#0F172A" Opacity="0.28" BlurRadius="28" ShadowDepth="4" Direction="270"/>
@@ -462,15 +462,15 @@
                 <DockPanel DataContext="{Binding TemplateEditor}">
 
                     <!-- Header -->
-                    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
-                            Padding="20,15" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}" CornerRadius="12,12,0,0"
+                            Padding="20,15" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <TextBlock Text="Task template" FontWeight="Bold" FontSize="17"
-                                   Foreground="{StaticResource TextPrimary}"/>
+                                   Foreground="{DynamicResource TextPrimary}"/>
                     </Border>
 
                     <!-- Footer -->
-                    <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
-                            Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                    <Border DockPanel.Dock="Bottom" Background="{DynamicResource HeaderBg}" CornerRadius="0,0,12,12"
+                            Padding="20,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
                         <DockPanel>
                             <Button Content="Save" DockPanel.Dock="Right" Padding="22,6"
                                     Command="{Binding DataContext.SaveTemplateCommand,
@@ -479,7 +479,7 @@
                                     Padding="18,6" Margin="0,0,8,0"
                                     Command="{Binding DataContext.CancelTemplateCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                            <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Danger}"
+                            <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource Danger}"
                                        VerticalAlignment="Center" TextWrapping="Wrap"/>
                         </DockPanel>
                     </Border>
@@ -495,12 +495,12 @@
                             <ItemsControl ItemsSource="{Binding Tasks}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                        <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                                                 BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="0,0,0,5">
                                             <DockPanel>
                                                 <Button Content="&#10005;" DockPanel.Dock="Right"
                                                         Style="{StaticResource TaskIconButton}"
-                                                        Foreground="{StaticResource Danger}" ToolTip="Remove task"
+                                                        Foreground="{DynamicResource Danger}" ToolTip="Remove task"
                                                         Command="{Binding RemoveTaskCommand,
                                                             RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                         CommandParameter="{Binding}"/>
@@ -537,21 +537,21 @@
         <Border Background="#66000000"
                 Visibility="{Binding TagEditor,
                              Converter={StaticResource NullToCollapsedConverter}}">
-            <Border Width="460" MaxHeight="600" Background="{StaticResource Surface}" CornerRadius="12"
+            <Border Width="460" MaxHeight="600" Background="{DynamicResource Surface}" CornerRadius="12"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Border.Effect>
                     <DropShadowEffect Color="#0F172A" Opacity="0.28" BlurRadius="28" ShadowDepth="4" Direction="270"/>
                 </Border.Effect>
                 <DockPanel DataContext="{Binding TagEditor}">
 
-                    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
-                            Padding="20,15" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}" CornerRadius="12,12,0,0"
+                            Padding="20,15" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <TextBlock Text="Tag" FontWeight="Bold" FontSize="17"
-                                   Foreground="{StaticResource TextPrimary}"/>
+                                   Foreground="{DynamicResource TextPrimary}"/>
                     </Border>
 
-                    <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
-                            Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                    <Border DockPanel.Dock="Bottom" Background="{DynamicResource HeaderBg}" CornerRadius="0,0,12,12"
+                            Padding="20,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
                         <DockPanel>
                             <Button Content="Save" DockPanel.Dock="Right" Padding="22,6"
                                     Command="{Binding DataContext.SaveTagCommand,
@@ -615,7 +615,7 @@
                                             <Button.Template>
                                                 <ControlTemplate TargetType="Button">
                                                     <Border CornerRadius="5" Background="{TemplateBinding Background}"
-                                                            BorderBrush="{StaticResource BorderStrong}" BorderThickness="1"/>
+                                                            BorderBrush="{DynamicResource BorderStrong}" BorderThickness="1"/>
                                                 </ControlTemplate>
                                             </Button.Template>
                                         </Button>
@@ -632,22 +632,22 @@
         <Border Background="#66000000"
                 Visibility="{Binding MembershipEditor,
                              Converter={StaticResource NullToCollapsedConverter}}">
-            <Border Width="420" MaxHeight="600" Background="{StaticResource Surface}" CornerRadius="12"
+            <Border Width="420" MaxHeight="600" Background="{DynamicResource Surface}" CornerRadius="12"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Border.Effect>
                     <DropShadowEffect Color="#0F172A" Opacity="0.28" BlurRadius="28" ShadowDepth="4" Direction="270"/>
                 </Border.Effect>
                 <DockPanel DataContext="{Binding MembershipEditor}">
 
-                    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
-                            Padding="20,15" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-                        <TextBlock FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}">
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}" CornerRadius="12,12,0,0"
+                            Padding="20,15" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                        <TextBlock FontWeight="Bold" FontSize="17" Foreground="{DynamicResource TextPrimary}">
                             <Run Text="Members —"/><Run Text="{Binding TeamName, Mode=OneWay}"/>
                         </TextBlock>
                     </Border>
 
-                    <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
-                            Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                    <Border DockPanel.Dock="Bottom" Background="{DynamicResource HeaderBg}" CornerRadius="0,0,12,12"
+                            Padding="20,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
                         <DockPanel>
                             <Button Content="Save" DockPanel.Dock="Right" Padding="22,6"
                                     Command="{Binding DataContext.SaveMembersCommand,

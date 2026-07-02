@@ -36,13 +36,13 @@
             <Style.Triggers>
               <!-- system Warning chip = amber -->
               <DataTrigger Binding="{Binding IsSystem}" Value="True">
-                <Setter Property="Background" Value="{StaticResource AmberBg}"/>
-                <Setter Property="BorderBrush" Value="{StaticResource AmberBorder}"/>
+                <Setter Property="Background" Value="{DynamicResource AmberBg}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource AmberBorder}"/>
                 <Setter Property="BorderThickness" Value="1"/>
               </DataTrigger>
               <!-- system Late chip = red -->
               <DataTrigger Binding="{Binding IsLate}" Value="True">
-                <Setter Property="Background" Value="{StaticResource Danger}"/>
+                <Setter Property="Background" Value="{DynamicResource Danger}"/>
                 <Setter Property="BorderThickness" Value="0"/>
               </DataTrigger>
             </Style.Triggers>
@@ -59,7 +59,7 @@
                 <Setter Property="Foreground" Value="White"/>
                 <Style.Triggers>
                   <DataTrigger Binding="{Binding IsSystem}" Value="True">
-                    <Setter Property="Foreground" Value="{StaticResource AmberFg}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource AmberFg}"/>
                   </DataTrigger>
                   <DataTrigger Binding="{Binding IsLate}" Value="True">
                     <Setter Property="Foreground" Value="White"/>
@@ -146,13 +146,13 @@
       <Button Content="&#11015; Export this month" Command="{Binding ExportThisMonthCommand}"
               Style="{StaticResource ToolbarButton}" Margin="0,0,12,6"
               ToolTip="Write this month's Task List overview to a markdown file"/>
-      <TextBlock Text="{Binding ExportStatus}" Foreground="{StaticResource TextSecondary}"
+      <TextBlock Text="{Binding ExportStatus}" Foreground="{DynamicResource TextSecondary}"
                  VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,0,6"/>
     </WrapPanel>
 
     <!-- Collapsible chart area (Gantt placeholder for Wave 6). Collapses via IsChartCollapsed. -->
-    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}"
-            BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8"
+    <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}"
+            BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="8"
             MinHeight="120" MaxHeight="320" Margin="0,0,0,10" Padding="12">
       <Border.Style>
         <Style TargetType="Border">
@@ -172,7 +172,7 @@
           <Canvas x:Name="GanttCanvas" Background="Transparent"
                   SizeChanged="OnGanttCanvasSizeChanged"/>
         </ScrollViewer>
-        <TextBlock Text="Switch to Gantt to see the timeline." Foreground="{StaticResource TextSecondary}"
+        <TextBlock Text="Switch to Gantt to see the timeline." Foreground="{DynamicResource TextSecondary}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource ShowWhenGrid}"/>
       </Grid>
     </Border>
@@ -205,14 +205,14 @@
                   <Setter Property="Template">
                     <Setter.Value>
                       <ControlTemplate TargetType="{x:Type GroupItem}">
-                        <Expander IsExpanded="True" Background="{StaticResource HeaderBg}"
+                        <Expander IsExpanded="True" Background="{DynamicResource HeaderBg}"
                                   BorderThickness="0" Padding="0" Margin="0,0,0,4">
                           <Expander.Header>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                               <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
-                                         Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                                         Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
                               <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" VerticalAlignment="Center"
-                                         Margin="2,0,0,0" Foreground="{StaticResource TextSecondary}"/>
+                                         Margin="2,0,0,0" Foreground="{DynamicResource TextSecondary}"/>
                             </StackPanel>
                           </Expander.Header>
                           <ItemsPresenter/>
@@ -229,12 +229,12 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate DataType="{x:Type vm:TaskListRowVm}">
               <Border Margin="0,0,0,8" Padding="10" CornerRadius="8"
-                      BorderBrush="{StaticResource Border}" BorderThickness="1" Background="White">
+                      BorderBrush="{DynamicResource Border}" BorderThickness="1" Background="White">
                 <Border.Style>
                   <Style TargetType="Border">
                     <Style.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Background" Value="#F8FAFC"/>
+                        <Setter Property="Background" Value="{DynamicResource AltRowBg}"/>
                       </Trigger>
                     </Style.Triggers>
                   </Style>
@@ -275,11 +275,11 @@
                         <Style TargetType="Button" BasedOn="{StaticResource MiniGhostButton}">
                           <Setter Property="Content" Value="&#9656;"/>
                           <Setter Property="FontSize" Value="11"/>
-                          <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                          <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
                           <Style.Triggers>
                             <DataTrigger Binding="{Binding IsExpanded}" Value="True">
                               <Setter Property="Content" Value="&#9662;"/>
-                              <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                              <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
                             </DataTrigger>
                           </Style.Triggers>
                         </Style>
@@ -289,7 +289,7 @@
                     <TextBlock Grid.Column="1" Text="{Binding BacklogCode}" FontWeight="SemiBold" FontSize="13"
                                VerticalAlignment="Center" Margin="6,0,0,0"/>
                     <!-- Project shown only when grouped by Team (band shows Project otherwise). -->
-                    <TextBlock Grid.Column="2" Text="{Binding Project}" Foreground="{StaticResource TextSecondary}"
+                    <TextBlock Grid.Column="2" Text="{Binding Project}" Foreground="{DynamicResource TextSecondary}"
                                VerticalAlignment="Center" Margin="8,0,0,0"
                                Visibility="{Binding Data.GroupByProject, Source={StaticResource VmProxy},
                                             Converter={StaticResource BoolToVisibleConverter}, ConverterParameter=Invert}"/>
@@ -297,7 +297,7 @@
                     <!-- PCT (assignee), TwoWay — in an ItemsControl the write reaches the row VM directly
                          (the DataGrid CellTemplate write-back bug does not apply), firing OnEditPctUserIdChanged. -->
                     <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                      <TextBlock Text="PCT" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                      <TextBlock Text="PCT" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                       <ComboBox Style="{StaticResource CompactComboBox}" Width="120" VerticalAlignment="Center"
                                 ItemsSource="{Binding AssigneeOptions}" SelectedValuePath="Id" DisplayMemberPath="Name"
                                 SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"/>
@@ -305,7 +305,7 @@
 
                     <!-- Internal deadline (OneWay display + code-behind reason-note popup commit). -->
                     <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                      <TextBlock Text="Internal" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                      <TextBlock Text="Internal" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                       <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
                                   SelectedDate="{Binding DeadlineInternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
                                   SelectedDateChanged="OnInternalDeadlineChanged"/>
@@ -313,7 +313,7 @@
 
                     <!-- External deadline in the compact header too (OneWay + code-behind reason-note popup). -->
                     <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                      <TextBlock Text="External" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                      <TextBlock Text="External" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                       <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
                                   SelectedDate="{Binding DeadlineExternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
                                   SelectedDateChanged="OnExternalDeadlineChanged"/>
@@ -331,7 +331,7 @@
                                      Minimum="0" Maximum="100"
                                      Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"/>
                         <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center"
-                                   FontSize="12" Foreground="{StaticResource TextSecondary}"/>
+                                   FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                       </StackPanel>
                       <TextBox Width="54" Height="26" HorizontalAlignment="Left" VerticalAlignment="Center"
                                Padding="6,2" FontSize="12" MaxLength="3"
@@ -351,44 +351,44 @@
                     <WrapPanel>
                       <!-- Type (TwoWay). -->
                       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
-                        <TextBlock Text="Type" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="Type" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <ComboBox Style="{StaticResource CompactComboBox}" Width="120" VerticalAlignment="Center"
                                   ItemsSource="{Binding TypeOptions}"
                                   SelectedItem="{Binding EditType, Mode=TwoWay}"/>
                       </StackPanel>
                       <!-- PCA (TwoWay). -->
                       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
-                        <TextBlock Text="PCA" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="PCA" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <ComboBox Style="{StaticResource CompactComboBox}" Width="130" VerticalAlignment="Center"
                                   ItemsSource="{Binding PcaOptions}" SelectedValuePath="Id" DisplayMemberPath="Name"
                                   SelectedValue="{Binding EditPcaId, Mode=TwoWay}"/>
                       </StackPanel>
                       <!-- Start (OneWay + commit). -->
                       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
-                        <TextBlock Text="Start" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="Start" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
                                     SelectedDate="{Binding StartDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
                                     SelectedDateChanged="OnStartDateChanged"/>
                       </StackPanel>
                       <!-- End (OneWay + commit). -->
                       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
-                        <TextBlock Text="End" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="End" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
                                     SelectedDate="{Binding EndDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
                                     SelectedDateChanged="OnEndDateChanged"/>
                       </StackPanel>
                       <!-- Logged / Estimate (display). -->
                       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
-                        <TextBlock Text="Logged" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="Logged" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <TextBlock Text="{Binding LoggedHoursText}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock Text="Estimation" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="Estimation" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <TextBlock Text="{Binding EstimateText}" VerticalAlignment="Center"/>
                       </StackPanel>
                     </WrapPanel>
 
                     <!-- Task sub-rows (inline-editable), carried over from the P15 RowDetailsTemplate. -->
                     <TextBlock Text="Chưa có task nào trong backlog này."
-                               Foreground="{StaticResource TextSecondary}" FontStyle="Italic" FontSize="12" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextSecondary}" FontStyle="Italic" FontSize="12" Margin="0,4,0,0"
                                Visibility="{Binding HasNoTasks, Converter={StaticResource BoolToVisibleConverter}}"/>
                     <ItemsControl ItemsSource="{Binding TaskRows}" Margin="0,4,0,0">
                       <ItemsControl.ItemTemplate>
