@@ -27,6 +27,15 @@ public partial class DailyInputTab : UserControl
             await vm.AddEntryAsync(draft);
     }
 
+    // "⬇ Quick import" → pick a past day, then clone that day's standup into the current day.
+    private async void OnQuickImport(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DailyReportViewModel vm) return;
+        var dialog = new QuickImportDialog { Owner = Window.GetWindow(this) };
+        if (dialog.ShowDialog() == true)
+            await vm.QuickImportAsync(dialog.SelectedDate);
+    }
+
     // "+ Issue" → open the issue dialog for the entry under the button; persist on confirm.
     private async void OnAddIssue(object sender, RoutedEventArgs e)
     {

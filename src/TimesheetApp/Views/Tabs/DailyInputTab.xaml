@@ -117,9 +117,12 @@
 
   <!-- One pinned "Add entry" button (the section is chosen in the dialog); only the entries scroll. -->
   <DockPanel Margin="22,4,22,16">
-    <Button DockPanel.Dock="Top" Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}"
-            HorizontalAlignment="Left" Margin="0,0,0,10" Click="OnAddEntry"
-            Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10"
+                Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}">
+      <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" Click="OnAddEntry"/>
+      <Button Content="&#11015; Quick import" Style="{StaticResource ToolbarButton}" Margin="8,0,0,0"
+              Click="OnQuickImport" ToolTip="Copy a past day's items into the current day"/>
+    </StackPanel>
 
     <!-- Drag-to-delete zone (pinned at the bottom). Highlights while dragging an entry over it. -->
     <Border x:Name="EntryTrash" DockPanel.Dock="Bottom" AllowDrop="True" Drop="OnEntryTrashDrop"

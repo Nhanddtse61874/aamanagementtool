@@ -129,6 +129,20 @@ public sealed partial class DailyReportViewModel : ObservableObject
         }
     }
 
+    // P18 Quick Import: clone a chosen past day's standup (the current user's entries + issues) into the
+    // currently-selected day, then refresh. A locked target / empty source surfaces an inline message.
+    internal Task QuickImportAsync(DateOnly sourceDate) => RunAsync(async () =>
+    {
+        var n = await _service.QuickImportDayAsync(sourceDate, SelectedDate);
+        if (n <= 0)
+        {
+            StatusMessage = "Nothing to import from that day (or this day is locked).";
+            return;
+        }
+        StatusMessage = $"Imported {n} {(n == 1 ? "entry" : "entries")} from {sourceDate:yyyy-MM-dd}.";
+        await ReloadAndBroadcastAsync();
+    });
+
     internal Task DeleteEntryAsync(int entryId) => RunAsync(async () =>
     {
         if (await _service.DeleteEntryAsync(entryId)) await ReloadAndBroadcastAsync();
