@@ -374,4 +374,50 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
         Assert.Equal(new[] { 10 }, vm.TeamFilter!.CheckedTeamIds);
         Assert.Equal(new[] { "ALPHA-1" }, vm.Rows.Select(r => r.BacklogCode).ToArray());
     }
+
+    // ===== P15 (grouped section bands) =====
+
+    // Single-team view → group by Project: GroupKey = Project, GroupOrder = enum rank, mode flags set.
+    [Fact]
+    public async Task Grouping_by_project_when_single_team()
+    {
+        await _backlogs.InsertAsync(new Backlog(0, "ARMS-1", "ARMS", DateTimeOffset.UtcNow, PeriodMonth: "2026-06"));
+        await _backlogs.InsertAsync(new Backlog(0, "ARCS-1", "ARCS", DateTimeOffset.UtcNow, PeriodMonth: "2026-06"));
+
+        var vm = CreateVm(new DateOnly(2026, 6, 15));
+        await vm.LoadAsync();
+
+        Assert.True(vm.GroupByProject);
+        Assert.False(vm.GroupByTeam);
+
+        var arcs = Row(vm, "ARCS-1");
+        var arms = Row(vm, "ARMS-1");
+        Assert.Equal("ARCS", arcs.GroupKey);
+        Assert.Equal("ARMS", arms.GroupKey);
+        Assert.Equal(0, arcs.GroupOrder);   // ARCS heads the enum order
+        Assert.Equal(2, arms.GroupOrder);   // ARCS=0, PlusArcs=1, ARMS=2
+    }
+
+    // Multi-team view (2 teams checked) → group by Team: GroupKey = TeamName, GroupOrder = alpha rank.
+    [Fact]
+    public async Task Grouping_by_team_when_multi_team()
+    {
+        await SeedBacklogAsync("ALPHA-1", "2026-06", teamId: 10);
+        await SeedBacklogAsync("BETA-1", "2026-06", teamId: 20);
+
+        var vm = CreateVm(new DateOnly(2026, 6, 15), TwoTeams(activeId: 20));
+        await vm.LoadAsync();
+        vm.TeamFilter!.Teams.First(t => t.Team.Id == 10).IsChecked = true;   // 2 teams → multi-team
+        await vm.LoadAsync();
+
+        Assert.True(vm.GroupByTeam);
+        Assert.False(vm.GroupByProject);
+
+        var alpha = Row(vm, "ALPHA-1");
+        var beta = Row(vm, "BETA-1");
+        Assert.Equal("Alpha", alpha.GroupKey);
+        Assert.Equal("Beta", beta.GroupKey);
+        Assert.Equal(0, alpha.GroupOrder);   // Alpha sorts before Beta
+        Assert.Equal(1, beta.GroupOrder);
+    }
 }

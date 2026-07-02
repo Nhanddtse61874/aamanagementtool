@@ -123,6 +123,11 @@ public sealed partial class TaskListViewModel : ObservableObject
     [ObservableProperty] private bool _isGantt;
     [ObservableProperty] private bool _isChartCollapsed;
 
+    // P15: adaptive section-band grouping mode (mutually exclusive). Multi-team view → group rows by Team;
+    // otherwise → by Project. Drives which of the PROJECT/TEAM columns is hidden (the band shows that value).
+    [ObservableProperty] private bool _groupByProject = true;
+    [ObservableProperty] private bool _groupByTeam;
+
     // Gantt model (W6): working-day axis + one bar per row. Built at the end of LoadAsync from the
     // same rows + holiday set the grid uses, so bars and chips agree (R5). Null until first load.
     [ObservableProperty] private GanttModel? _gantt;
@@ -171,6 +176,15 @@ public sealed partial class TaskListViewModel : ObservableObject
         var teamNames = _currentTeam?.AvailableTeams.ToDictionary(t => t.Id, t => t.Name)
                         ?? new Dictionary<int, string>();
         var showTeam = TeamFilter?.ShowTeamColumn ?? false;
+
+        // P15: adaptive grouping — multi-team view groups by Team, otherwise by Project. Set the mode flags
+        // (they drive the group-key column-hide) + a stable team-name → order map so team bands sort by name.
+        GroupByTeam = showTeam;
+        GroupByProject = !showTeam;
+        var teamGroupOrder = teamNames.Values.Distinct()
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .Select((n, i) => (Name: n, Index: i))
+            .ToDictionary(x => x.Name, x => x.Index, StringComparer.OrdinalIgnoreCase);
 
         var filteredBacklogs = allBacklogs
             .Where(b => !string.Equals(b.BacklogCode, DefaultBacklogCode, StringComparison.Ordinal))
@@ -225,11 +239,16 @@ public sealed partial class TaskListViewModel : ObservableObject
             }
 
             var teamName = b.TeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tn : null;
+            // P15: the row's group-band key (adaptive) + sort rank (project enum order / team alpha rank).
+            var groupKey = showTeam ? (teamName ?? "—") : b.Project;
+            var groupOrder = showTeam
+                ? (teamName is not null && teamGroupOrder.TryGetValue(teamName, out var to) ? to : int.MaxValue)
+                : ProjectOrder(b.Project);
             // Pass the owning VM + the backlog's current ids/tag-id set so the row's edit props seed correctly.
             rows.Add(new TaskListRowVm(
                 this, row, b.AssigneeUserId, b.PcaContactId,
                 tagIdsByBacklog.TryGetValue(b.Id, out var bIds) ? bIds : Array.Empty<int>(),
-                taskRows, teamName, showTeam));
+                taskRows, teamName, showTeam, groupKey, groupOrder));
             ganttSource.Add((b, state));
         }
 
@@ -244,6 +263,15 @@ public sealed partial class TaskListViewModel : ObservableObject
         Gantt = BuildGantt(
             ganttSource.OrderBy(g => g.Backlog.BacklogCode, StringComparer.OrdinalIgnoreCase).ToList(),
             holidaySet, _calc);
+    }
+
+    // P15: index of a project in the fixed enum order (ARCS→PlusArcs→ARMS→Other); unknown/null sort last.
+    private static int ProjectOrder(string? project)
+    {
+        for (var i = 0; i < BacklogProjects.All.Count; i++)
+            if (string.Equals(BacklogProjects.All[i], project, StringComparison.Ordinal))
+                return i;
+        return int.MaxValue;
     }
 
     /// <summary>
@@ -474,6 +502,8 @@ public sealed partial class TaskListRowVm : ObservableObject
         Chips = BuildChips(row);
         TeamName = teamName;
         ShowTeam = showTeam;
+        GroupKey = row.Project;
+        GroupOrder = 0;
         TaskRows = Array.Empty<TaskRowVm>();
         EditTagPicks = new ObservableCollection<TagPickVm>();
     }
@@ -482,7 +512,8 @@ public sealed partial class TaskListRowVm : ObservableObject
     public TaskListRowVm(
         TaskListViewModel owner, TaskListRow row,
         int? pctUserId, int? pcaId, IReadOnlyList<int> tagIds,
-        IReadOnlyList<TaskRowVm> taskRows, string? teamName = null, bool showTeam = false)
+        IReadOnlyList<TaskRowVm> taskRows, string? teamName = null, bool showTeam = false,
+        string? groupKey = null, int groupOrder = 0)
     {
         _suppressCommit = true;   // seeding initial values must not commit
 
@@ -491,6 +522,8 @@ public sealed partial class TaskListRowVm : ObservableObject
         Chips = BuildChips(row);
         TeamName = teamName;
         ShowTeam = showTeam;
+        GroupKey = groupKey ?? row.Project;
+        GroupOrder = groupOrder;
         TaskRows = taskRows;
 
         // Seed the inline-edit props from the row's current values (write backing fields / the auto-prop
@@ -519,6 +552,11 @@ public sealed partial class TaskListRowVm : ObservableObject
     // P10 (TM-07): the owning team's name + whether to show it (only when >1 team is checked).
     public string? TeamName { get; }
     public bool ShowTeam { get; }
+
+    // P15: section-band grouping. GroupKey = adaptive (Team when multi-team else Project); GroupOrder =
+    // stable sort rank (project enum order / team alpha rank). Set once at build; read-only to the view.
+    public string GroupKey { get; }
+    public int GroupOrder { get; }
 
     // Convenience pass-throughs for binding (keeps the XAML cells terse).
     public string BacklogCode => Row.BacklogCode;
