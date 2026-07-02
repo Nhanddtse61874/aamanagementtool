@@ -20,7 +20,9 @@ still points at `6f2c9fe` (pre-merge tip).
 **⏳ ACTIVE — P16: Task List per-backlog CARD layout (same branch).** User wants tags full-width **on top of each backlog, always visible** (no scroll-right) → definitive rewrite `DataGrid` → `ItemsControl` cards.
 - **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** (0/5 B signals). Design approved & committed `e1c3244`: `docs/superpowers/specs/2026-07-02-tasklist-card-layout-design.md`. Card = compact header (CODE·PCT·Internal·Progress·caret) + full-width tag strip on top; expand → Type/PCA/Ext/Start/End + tasks. **Type/PCT/PCA → direct TwoWay** (kills the DataGrid CellTemplate write-back bug class); deadlines/start-end/progress/tags/expand keep existing paths. Keeps P15 section bands (reuse `GroupedRows` CVS + `GroupStyle` on the ItemsControl).
 - **STEP 6 Plan: DONE.** `docs/superpowers/plans/2026-07-02-P16-tasklist-card-layout.md` — W1 `[opus]` XAML card rewrite + drop 3 combo handlers; W2 `[sonnet]` render-test refresh + full suite. Plan-check **APPROVE**.
-- **Status: waiting_for_user** — approve plan → STEP 7 execute (inline). Then P16-UAT (must live-check Type/PCT/PCA persist) → QA → merge+push (push on user OK).
+- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `62648ac` (TaskListTab.xaml DataGrid→ItemsControl cards + drop OnRowType/Pct/PcaChanged), W2 `9ce94d3` (render-test note). Build clean (0 warn), **538 tests green**, render test covers the card layout. `GridTextCell` resource removed (orphaned by the rewrite).
+- **Status: waiting_for_user → STEP 8 UAT.** `.planning/P16-UAT.md`. **⚠️ #1 UAT check = Type/PCT/PCA now commit via TwoWay** (not test-coverable — must confirm real DB write; revert to code-behind if it misfires). **Not merged/pushed** beyond the branch.
+- **NEXT:** on UAT pass → STEP 9 QA (light, `requesting-code-review`) → merge to `main` + push (push on user OK). Branch also carries P15 (grouping) + P16 (cards).
 
 ---
 
