@@ -41,6 +41,7 @@ public sealed class SettingsMembershipOverlayLoadTests
         var app = Application.Current ?? new Application();
         if (!app.Resources.Contains("ToolbarGhostToggle"))
         {
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/TimesheetApp;component/Views/Theme/Palette.Light.xaml", UriKind.Absolute) });
             app.Resources.MergedDictionaries.Add(new ResourceDictionary
             {
                 Source = new Uri(

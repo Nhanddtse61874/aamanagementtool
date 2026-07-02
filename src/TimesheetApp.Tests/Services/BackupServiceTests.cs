@@ -44,6 +44,8 @@ public class BackupServiceTests : IDisposable
         public void SetExportRoot2Path(string v) => ExportRoot2Path = v;
         public void SetRetentionEnabled(bool v) => RetentionEnabled = v;
         public void SetRetentionMonths(int v) => RetentionMonths = v;
+        public bool IsDarkMode { get; set; }
+        public void SetIsDarkMode(bool v) => IsDarkMode = v;
     }
 
     private (BackupService svc, FakeConfig cfg) Make(DateTimeOffset utcNow, bool setFolder = true, int keep = 30)

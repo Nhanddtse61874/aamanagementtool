@@ -7,21 +7,21 @@
   <!-- DataContext is the TimesheetViewModel.SmartInput (SmartInputPanelVm).
        Two-column architecture: the form on the left, the preview filling the FULL height on the right
        so it isn't squeezed into the leftover space below the inputs. -->
-  <Border Background="{StaticResource Surface}" CornerRadius="12" BorderBrush="{StaticResource Border}"
+  <Border Background="{DynamicResource Surface}" CornerRadius="12" BorderBrush="{DynamicResource Border}"
           BorderThickness="1" Margin="12">
     <Border.Effect>
       <DropShadowEffect Color="#0F172A" Opacity="0.3" BlurRadius="24" ShadowDepth="4" Direction="270"/>
     </Border.Effect>
     <DockPanel>
       <!-- Header -->
-      <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
-              Padding="20,14" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-        <TextBlock Text="&#9889; Smart fill" FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}"/>
+      <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}" CornerRadius="12,12,0,0"
+              Padding="20,14" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+        <TextBlock Text="&#9889; Smart fill" FontWeight="Bold" FontSize="17" Foreground="{DynamicResource TextPrimary}"/>
       </Border>
 
       <!-- Footer (sticky) -->
-      <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
-              Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+      <Border DockPanel.Dock="Bottom" Background="{DynamicResource HeaderBg}" CornerRadius="0,0,12,12"
+              Padding="20,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button Content="Cancel" Style="{StaticResource GhostButton}" Padding="18,6" Margin="0,0,8,0" IsCancel="True"/>
           <Button Content="Confirm" Padding="22,6" IsDefault="True" Command="{Binding ApplyCommand}"/>
@@ -41,7 +41,7 @@
           <StackPanel DockPanel.Dock="Bottom">
             <Button Content="Preview" Command="{Binding BuildPreviewCommand}" Margin="0,12,0,0"
                     HorizontalAlignment="Stretch"/>
-            <TextBlock Text="{Binding PreviewError}" Foreground="{StaticResource Danger}" TextWrapping="Wrap"
+            <TextBlock Text="{Binding PreviewError}" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"
                        FontSize="12" Margin="0,6,0,0"
                        Visibility="{Binding PreviewError, Converter={StaticResource NullToCollapsedConverter}}"/>
           </StackPanel>
@@ -56,14 +56,14 @@
                 <TextBox Text="{Binding BacklogCode, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="Type any part of the backlog code, then Find"/>
               </DockPanel>
-              <TextBlock Text="{Binding LoadError}" Foreground="{StaticResource Danger}" TextWrapping="Wrap"
+              <TextBlock Text="{Binding LoadError}" Foreground="{DynamicResource Danger}" TextWrapping="Wrap"
                          FontSize="12" Margin="0,4,0,0"
                          Visibility="{Binding LoadError, Converter={StaticResource NullToCollapsedConverter}}"/>
 
               <!-- 2) Tasks as checkboxes -->
               <TextBlock Text="Tasks (check the ones to fill)" Style="{StaticResource FieldLabel}" Margin="0,10,0,0"/>
-              <Border BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="6"
-                      Background="{StaticResource Surface}" Height="130" Padding="4" Margin="0,2,0,0">
+              <Border BorderBrush="{DynamicResource BorderStrong}" BorderThickness="1" CornerRadius="6"
+                      Background="{DynamicResource Surface}" Height="130" Padding="4" Margin="0,2,0,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                   <ItemsControl ItemsSource="{Binding Tasks}">
                     <ItemsControl.ItemTemplate>
@@ -114,7 +114,7 @@
         <!-- RIGHT: preview fills the full body height -->
         <DockPanel Grid.Column="2">
           <TextBlock DockPanel.Dock="Top" Text="Preview" Style="{StaticResource FieldLabel}"/>
-          <Border BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="6"
+          <Border BorderBrush="{DynamicResource BorderStrong}" BorderThickness="1" CornerRadius="6"
                   Margin="0,2,0,0" ClipToBounds="True">
             <DataGrid ItemsSource="{Binding PreviewCells}" AutoGenerateColumns="False" IsReadOnly="True"
                       HeadersVisibility="Column" VerticalScrollBarVisibility="Auto" BorderThickness="0">

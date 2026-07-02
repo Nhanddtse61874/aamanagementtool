@@ -46,4 +46,8 @@ public interface IAppConfig
 
     int RetentionMonths { get; }
     void SetRetentionMonths(int months);
+
+    // P19: dark-mode preference — app-local per-machine/user UI pref (DATA-07). Default off (light).
+    bool IsDarkMode { get; }
+    void SetIsDarkMode(bool dark);
 }

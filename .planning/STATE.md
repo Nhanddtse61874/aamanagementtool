@@ -22,12 +22,17 @@ _Prior redesign (visual pass `6f2c9fe`) was merged earlier in `45b6285`; superse
 
 ---
 
-**⏳ ACTIVE — P18: Daily Quick Import.** Branch `feature/daily-quick-import-2026-07-02` (from `main` @ `d16fa3a`). Mode A.
+**⏳ ACTIVE — P18: Daily Quick Import.** Branch `feature/daily-quick-import-2026-07-02` (now folded into `feature/batch-p18-p19-p20-2026-07-02`). Mode A.
 User: trong Daily muốn "quick import" — chọn 1 ngày → copy full data ngày đó (entry + issue của mình) sang ngày hiện tại để sửa nhanh.
 - **STEP 2/3/5/6 done + approved.** Spec `docs/superpowers/specs/2026-07-02-daily-quick-import-design.md`; plan `docs/superpowers/plans/2026-07-02-P18-daily-quick-import.md` (plan-check APPROVE). Decisions: append all (incl duplicates); copy current-user entries both sections + issues, statuses as-is; source = DatePicker; target = selected editable day; scope current-user + active-team.
-- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `StandupService.QuickImportDayAsync(sourceDate, targetDate)` + 5 unit tests; W2 VM `QuickImportAsync` + `QuickImportDialog` (DatePicker) + "⬇ Quick import" button in Daily Input. Build clean, **541 tests green**.
-- **Status: waiting_for_user → STEP 8 UAT** (`.planning/P18-UAT.md`). Not merged/pushed yet.
-- **NEXT (queued):** **P19 — Dark mode** (robust: `DynamicResource` for palette-brush refs + Light/Dark dictionary swap = live hot-switch; promote hardcoded hex literals → theme brushes; toggle in Settings + config; per-tab render tests for BOTH themes). User chose high-impact/robust over minimal, verify thoroughly — see memory `startup-phase-prefers-robust-over-minimal`.
+- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `StandupService.QuickImportDayAsync(sourceDate, targetDate)` + 5 unit tests; W2 VM `QuickImportAsync` + `QuickImportDialog` (DatePicker) + "⬇ Quick import" button in Daily Input. Build clean.
+- **Status: waiting_for_user → STEP 8 UAT** (`.planning/P18-UAT.md`).
+
+**⏳ ACTIVE — P19: Dark mode.** Branch `feature/dark-mode-2026-07-02` (now folded into `feature/batch-p18-p19-p20-2026-07-02`). Mode A. User chose the **robust/high-impact** approach (verify thoroughly) — see memory `startup-phase-prefers-robust-over-minimal`.
+- **Approach (locked):** split palette → `Palette.Light.xaml`/`Palette.Dark.xaml`; `Theme.xaml` styles + all views reference palette keys via **`DynamicResource`**; `ThemeService` swaps the palette dict at runtime = **live, no-restart** toggle. Promote hardcoded hex literals → theme keys. Config `IsDarkMode` + Settings toggle. Palette = ~36 keys.
+- **STEP 5/6 done:** spec `docs/superpowers/specs/2026-07-02-dark-mode-design.md`; plan `docs/superpowers/plans/2026-07-02-P19-dark-mode.md` (3 waves).
+- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `0830bcd` (palette split + ThemeService + config `IsDarkMode` + startup apply + Settings toggle; Theme.xaml→DynamicResource). W2 `9b6ff80` (converted 315 view palette-refs across 19 views+MainWindow; reconciliation 315→315/0). W3 `f80caa4` (tuned `Palette.Dark.xaml` + `PaletteParityTests` + `ThemeServiceTests`). **Live hot-switch works** (Settings toggle → whole app, no restart; persists).
+- **Status: waiting_for_user → STEP 8 UAT** (`.planning/P19-UAT.md`): sweep every tab/dialog for light patches + readability, verify persistence. Post-merge: `QuickImportDialog.xaml` (P18's new dialog) also converted to DynamicResource for dark parity.
 
 **⏳ ACTIVE — Task List grouped section bands (Log Work).** Branch `feature/tasklist-grouped-bands-2026-07-02` (from `main` @ `8aa1aef`).
 - **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** approved (0/5 Mode B signals — 1 domain, low risk, no formal QA gate).

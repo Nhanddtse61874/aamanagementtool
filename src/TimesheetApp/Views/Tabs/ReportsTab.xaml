@@ -13,7 +13,7 @@
   <DockPanel Margin="8">
 
     <!-- RPT-04 banner: visible only when BannerText is non-empty -->
-    <Border DockPanel.Dock="Top" Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}"
+    <Border DockPanel.Dock="Top" Background="{DynamicResource AmberBg}" BorderBrush="{DynamicResource AmberBorder}"
             BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,10">
       <Border.Style>
         <Style TargetType="Border">
@@ -28,13 +28,13 @@
       <!-- D1: one line PER USER (not the flattened BannerText), capped height + scroll when the list is long. -->
       <DockPanel>
         <TextBlock DockPanel.Dock="Top" Text="&#9888; Missing time logs" FontWeight="SemiBold"
-                   Foreground="{StaticResource AmberFg}" Margin="0,0,0,4"/>
+                   Foreground="{DynamicResource AmberFg}" Margin="0,0,0,4"/>
         <ScrollViewer MaxHeight="96" VerticalScrollBarVisibility="Auto">
           <ItemsControl ItemsSource="{Binding MissingBanner}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding UserName}" TextWrapping="Wrap"
-                           Foreground="{StaticResource AmberFg}" Margin="0,1"/>
+                           Foreground="{DynamicResource AmberFg}" Margin="0,1"/>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
@@ -83,7 +83,7 @@
         <StackPanel>
           <TextBlock Style="{StaticResource StatLabel}" Text="WEEK TOTAL"/>
           <TextBlock Style="{StaticResource StatValue}" Text="{Binding WeekTotalText}"
-                     Foreground="{StaticResource Accent}"/>
+                     Foreground="{DynamicResource Accent}"/>
         </StackPanel>
       </Border>
       <Border Grid.Column="1" Style="{StaticResource StatCard}" Margin="5,0">
@@ -98,13 +98,13 @@
           <TextBlock Style="{StaticResource StatValue}" Text="{Binding DaysLoggedText}"/>
         </StackPanel>
       </Border>
-      <Border Grid.Column="3" Margin="5,0,0,0" Background="{StaticResource AmberBg}"
-              BorderBrush="{StaticResource AmberBorder}" BorderThickness="1" CornerRadius="8" Padding="14,11">
+      <Border Grid.Column="3" Margin="5,0,0,0" Background="{DynamicResource AmberBg}"
+              BorderBrush="{DynamicResource AmberBorder}" BorderThickness="1" CornerRadius="8" Padding="14,11">
         <StackPanel>
-          <TextBlock Style="{StaticResource StatLabel}" Text="&#9888; NOT LOGGED" Foreground="{StaticResource AmberFg}"/>
+          <TextBlock Style="{StaticResource StatLabel}" Text="&#9888; NOT LOGGED" Foreground="{DynamicResource AmberFg}"/>
           <!-- Count of users with missing logs (the per-user detail lives in the banner above — no dup). -->
           <TextBlock Style="{StaticResource StatValue}" Text="{Binding MissingBanner.Count}"
-                     Foreground="{StaticResource AmberFg}"/>
+                     Foreground="{DynamicResource AmberFg}"/>
         </StackPanel>
       </Border>
     </Grid>
@@ -166,7 +166,7 @@
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding TeamName}" FontWeight="Bold"/>
                 <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}" FontWeight="Bold"
-                           Foreground="{StaticResource TextSecondary}"/>
+                           Foreground="{DynamicResource TextSecondary}"/>
               </StackPanel>
             </HierarchicalDataTemplate>
             <!-- Level 1: ProjectNode — children are Backlogs -->
@@ -174,7 +174,7 @@
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding Project}" FontWeight="Bold"/>
                 <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}" FontWeight="Bold"
-                           Foreground="{StaticResource TextSecondary}"/>
+                           Foreground="{DynamicResource TextSecondary}"/>
               </StackPanel>
             </HierarchicalDataTemplate>
             <!-- Level 2: BacklogNode — children are Tasks -->
@@ -182,7 +182,7 @@
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding BacklogCode}"/>
                 <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}"
-                           Foreground="{StaticResource TextSecondary}"/>
+                           Foreground="{DynamicResource TextSecondary}"/>
               </StackPanel>
             </HierarchicalDataTemplate>
             <!-- Level 3: TaskNode — children are Dates -->
@@ -190,16 +190,16 @@
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding TaskName}"/>
                 <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}"
-                           Foreground="{StaticResource TextSecondary}"/>
+                           Foreground="{DynamicResource TextSecondary}"/>
               </StackPanel>
             </HierarchicalDataTemplate>
             <!-- Level 4 leaf: DateEntry — date + hours logged that day -->
             <DataTemplate DataType="{x:Type m:DateEntry}">
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding Date, StringFormat='ddd, yyyy-MM-dd'}"
-                           Foreground="{StaticResource TextSecondary}"/>
+                           Foreground="{DynamicResource TextSecondary}"/>
                 <TextBlock Text="{Binding TotalHours, StringFormat=' — {0:N1}h'}" FontWeight="SemiBold"
-                           Foreground="{StaticResource Accent}"/>
+                           Foreground="{DynamicResource Accent}"/>
               </StackPanel>
             </DataTemplate>
           </TreeView.Resources>

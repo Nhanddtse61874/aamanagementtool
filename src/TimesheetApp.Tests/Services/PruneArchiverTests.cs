@@ -68,6 +68,8 @@ public sealed class PruneArchiverTests : IDisposable
         public void SetExportRoot2Path(string v) => ExportRoot2Path = v;
         public void SetRetentionEnabled(bool v) => RetentionEnabled = v;
         public void SetRetentionMonths(int v) => RetentionMonths = v;
+        public bool IsDarkMode { get; set; }
+        public void SetIsDarkMode(bool v) => IsDarkMode = v;
     }
 
     // A timesheet markdown that the archiver recognizes as having data (the per-row table header).

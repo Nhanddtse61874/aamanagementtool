@@ -46,6 +46,8 @@ public sealed class ExportHubServiceTests : IDisposable
         public void SetExportRoot2Path(string v) => ExportRoot2Path = v;
         public void SetRetentionEnabled(bool v) => RetentionEnabled = v;
         public void SetRetentionMonths(int v) => RetentionMonths = v;
+        public bool IsDarkMode { get; set; }
+        public void SetIsDarkMode(bool v) => IsDarkMode = v;
     }
 
     private sealed class FakeClock : IClock
