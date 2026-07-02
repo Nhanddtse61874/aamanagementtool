@@ -34,13 +34,15 @@ public sealed partial class TaskListViewModel : ObservableObject
     private bool _suppressSelfReload;
     private readonly ICurrentTeamService? _currentTeam;   // v8 (P10): active team + multi-team filter
     private readonly ICurrentUserService? _currentUser;   // v9 (P13-W3): audit who-changed on inline edits
+    private readonly IBacklogContinuationService? _continuation;   // P20: continue-to-next-month (null in tests)
 
     public TaskListViewModel(
         IBacklogRepository backlogs, ITaskRepository tasks, ITimeLogRepository timeLogs,
         ITagRepository tagsRepo, IPcaContactRepository pcaContacts, IUserRepository users,
         IHolidayRepository holidays, IWorkingDayCalculator calc, IScheduleStateService schedule,
         ITaskListArchiveService archive, IClock clock, IMessenger? messenger = null,
-        ICurrentTeamService? currentTeam = null, ICurrentUserService? currentUser = null)
+        ICurrentTeamService? currentTeam = null, ICurrentUserService? currentUser = null,
+        IBacklogContinuationService? continuation = null)
     {
         _backlogs = backlogs;
         _tasks = tasks;
@@ -56,6 +58,7 @@ public sealed partial class TaskListViewModel : ObservableObject
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _currentTeam = currentTeam;
         _currentUser = currentUser;
+        _continuation = continuation;
 
         // P10 (TM-07): the multi-team checkbox filter; reload the grid on a selection/active-team change.
         if (_currentTeam is not null)
@@ -117,7 +120,34 @@ public sealed partial class TaskListViewModel : ObservableObject
     public IReadOnlyList<int> Years { get; } = Enumerable.Range(DateTime.Today.Year - 2, 6).ToList();
 
     partial void OnSelectedYearChanged(int value) => _ = LoadAsync();
-    partial void OnSelectedMonthChanged(int value) => _ = LoadAsync();
+    partial void OnSelectedMonthChanged(int value)
+    {
+        OnPropertyChanged(nameof(CanContinue));
+        _ = LoadAsync();
+    }
+
+    // P20: "Continue to next month" only makes sense for a concrete month (not "All months").
+    public bool CanContinue => SelectedMonth != AllMonths;
+
+    // P20: copy a backlog forward into next month with Type="Continue" (the original stays). `row` is the
+    // card's VM. Blocked (service returns 0) when that code already exists in the target month.
+    [RelayCommand]
+    private async Task ContinueToNextMonthAsync(TaskListRowVm? row)
+    {
+        if (row is null || _continuation is null || SelectedMonth == AllMonths) return;
+        var nextMonth = SelectedMonth == 12 ? 1 : SelectedMonth + 1;
+        var nextYear = SelectedMonth == 12 ? SelectedYear + 1 : SelectedYear;
+        var targetPeriod = $"{nextYear:0000}-{nextMonth:00}";
+
+        var newId = await _continuation.ContinueAsync(row.BacklogId, targetPeriod);
+        if (newId <= 0)
+        {
+            ExportStatus = $"'{row.BacklogCode}' đã có ở {targetPeriod} — không tạo lại.";
+            return;
+        }
+        ExportStatus = $"Đã continue '{row.BacklogCode}' → {targetPeriod}.";
+        _messenger.Send(new DataChangedMessage(DataKind.Backlogs));
+    }
 
     // Grid↔Gantt toggle + collapsible chart area (Gantt body is filled in Wave 6).
     [ObservableProperty] private bool _isGantt;

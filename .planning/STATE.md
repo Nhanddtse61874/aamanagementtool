@@ -1,5 +1,14 @@
 # STATE — TimesheetApp (resume doc)
 
+**⏳ ACTIVE (in-flight branches, off `main` @ `d16fa3a`, none merged yet):**
+- **P18 — Daily Quick Import** — branch `feature/daily-quick-import-2026-07-02`. Execute done (541 green), awaiting UAT. `.planning/P18-UAT.md`.
+- **P19 — Dark mode** (live hot-switch) — branch `feature/dark-mode-2026-07-02`. Execute done W1-W3 (538 green), awaiting UAT. `.planning/P19-UAT.md`.
+- **P20 — Task List "Continue on next month"** — branch `feature/tasklist-continue-2026-07-02`. Execute done (541 green), awaiting UAT. `.planning/P20-UAT.md`.
+  - `BacklogContinuationService.ContinueAsync(backlogId, targetPeriod)`: clone backlog → M+1 with `Type="Continue"` (keep progress + fields + backlog tags) + copy **not-Done** tasks (type/assignee + tags) + `continued` audit; original untouched; **block** if same code already in M+1 (team-scoped). VM `ContinueToNextMonthCommand` + `CanContinue` (hidden in All-months) + "↻ Continue" button on each card. Spec/plan: `docs/superpowers/plans/2026-07-02-P20-continue-next-month.md`. Decisions: copy backlog + not-Done tasks; keep progress; block duplicate; audit note. Commits: W1 service + W2 VM/button.
+  - **NEXT:** UAT all 3 (user "build chung, test sau") → merge each to `main` when OK.
+
+
+
 **Task List CARD layout + grouped bands + auto-provision user — MERGED to `main` + PUSHED (2026-07-02).**
 `main` = `bc4c02f` "Merge feature/tasklist-grouped-bands-2026-07-02 into main" = `[origin/main]` (in sync). Build clean, **536 tests green**.
 Shipped together: **P15** (grouped section bands — adaptive Team/Project, collapsible), **P16** (per-backlog **card** layout — tags

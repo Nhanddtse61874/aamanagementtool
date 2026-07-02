@@ -252,6 +252,13 @@
                     <Button Content="✎ Tags" Style="{StaticResource MiniGhostButton}" Padding="8,2" Margin="6,0,0,0"
                             VerticalAlignment="Center" Click="OnEditBacklogTagsClick"
                             ToolTip="Sửa tag của backlog"/>
+                    <!-- P20: copy this backlog to next month (Type=Continue); hidden in "All months". -->
+                    <Button Content="↻ Continue" Style="{StaticResource MiniGhostButton}" Padding="8,2" Margin="6,0,0,0"
+                            VerticalAlignment="Center"
+                            Command="{Binding Data.ContinueToNextMonthCommand, Source={StaticResource VmProxy}}"
+                            CommandParameter="{Binding}"
+                            Visibility="{Binding Data.CanContinue, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibleConverter}}"
+                            ToolTip="Copy backlog này sang tháng sau (Type=Continue)"/>
                   </StackPanel>
 
                   <!-- Compact header: caret · CODE · (Project only in Team-grouping) · PCT · Internal · Progress. -->
