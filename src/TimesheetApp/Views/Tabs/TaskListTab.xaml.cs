@@ -158,40 +158,10 @@ public partial class TaskListTab : UserControl
         _ = vm.CommitStartEndAsync(row.BacklogId, isStart, picked);
     }
 
-    // ---- P13 W3 (bugfix): inline TYPE / PCT / PCA combo edit. A ComboBox in a DataGrid CellTemplate does
-    //      NOT push its SelectedItem/SelectedValue back to the row VM (the same reason the deadline
-    //      DatePickers above are driven from code-behind, not a TwoWay binding). So these combos bind
-    //      OneWay for display and commit here on a genuine user pick. Guards mirror HandleDeadlineChanged:
-    //      skip programmatic seeds/reloads (picked == the row's current value) and non-user changes (the
-    //      initial OneWay bind fires before the control is ever focused). Setting the VM property fires its
-    //      OnXxxChanged partial -> Commit -> persist. ----
-
-    private void OnRowTypeChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
-        var picked = combo.SelectedItem as string;
-        if (Equals(picked, row.EditType)) return;       // programmatic seed / grid reload
-        if (!combo.IsKeyboardFocusWithin) return;        // user-initiated gate
-        row.EditType = picked;
-    }
-
-    private void OnRowPctChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
-        var picked = combo.SelectedValue as int?;
-        if (picked == row.EditPctUserId) return;
-        if (!combo.IsKeyboardFocusWithin) return;
-        row.EditPctUserId = picked;
-    }
-
-    private void OnRowPcaChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (sender is not ComboBox { Tag: TaskListRowVm row } combo) return;
-        var picked = combo.SelectedValue as int?;
-        if (picked == row.EditPcaId) return;
-        if (!combo.IsKeyboardFocusWithin) return;
-        row.EditPcaId = picked;
-    }
+    // P16: TYPE / PCT / PCA now commit via direct TwoWay bindings on the card ComboBoxes — in an
+    //      ItemsControl the write reaches the row VM (the DataGrid CellTemplate write-back bug does not
+    //      apply), so the old OnRowType/Pct/PcaChanged handlers were removed. The VM's
+    //      OnEditType/OnEditPctUserId/OnEditPcaIdChanged partials fire Commit -> persist directly.
 
     // ---- P13 (QA): Progress cell inline edit. Click the % bar -> IsEditingProgress=true swaps in a 0-100
     //      number input (auto-focused). Enter or click-away commits (through the EditProgressText LostFocus

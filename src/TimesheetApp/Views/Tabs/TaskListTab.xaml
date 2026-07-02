@@ -25,15 +25,6 @@
       </Style.Triggers>
     </Style>
 
-    <!-- Text-column cell: vertically centred + a small left inset so plain text lines up with the text
-         INSIDE the boxed editors (combos/date inputs) in the neighbouring columns, instead of hugging the
-         left gridline (which read as "misaligned" against the boxed columns). -->
-    <Style x:Key="GridTextCell" TargetType="TextBlock">
-      <Setter Property="VerticalAlignment" Value="Center"/>
-      <Setter Property="Padding" Value="6,0,0,0"/>
-      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
-    </Style>
-
     <!-- Chip template shared by the grid. System chips use fixed amber/red theme brushes; custom tags
          use HexToBrush over the tag's hex color + its icon glyph. -->
     <DataTemplate x:Key="ChipTemplate" DataType="{x:Type vm:TaskListChipVm}">
@@ -81,11 +72,11 @@
       </Border>
     </DataTemplate>
 
-    <!-- Proxy so the TEAM DataGridColumn (outside the visual tree) can bind to the VM's TeamFilter and
-         hide itself when only one team is selected (the cell would otherwise be empty dead space). -->
+    <!-- Proxy so a card element can bind to the owning VM (GroupByProject / ToggleExpandCommand) even though
+         the card's own DataContext is the row VM. Data = the UserControl DataContext (the TaskListViewModel). -->
     <ctrl:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
 
-    <!-- P15: group the grid rows into collapsible section bands. Grouped by GroupKey (adaptive: Team when
+    <!-- P15: group the rows into collapsible section bands. Grouped by GroupKey (adaptive: Team when
          multi-team else Project); sorted by GroupOrder (band order) then BacklogCode (within-band order),
          so bands render in a stable order WITHOUT reordering the VM's Rows (the Gantt reads Rows directly). -->
     <CollectionViewSource x:Key="GroupedRows" Source="{Binding Rows}">
@@ -186,9 +177,10 @@
       </Grid>
     </Border>
 
-    <!-- GRID view: one row per non-DEFAULT backlog in the selected month, expandable to its tasks.
-         Wrapped in a rounded "table container" (Log Work look): border + 8px radius, grid border removed,
-         corners clipped via beh:RoundedClip. Hidden as a whole in Gantt mode. -->
+    <!-- GRID view (P16): one CARD per non-DEFAULT backlog in the selected month, under Log Work-style section
+         bands (adaptive Team/Project grouping from P15). Tags sit in a full-width strip on TOP of each card
+         (always visible → no horizontal scroll); the rest of the fields live in a collapsible detail area.
+         Wrapped in the rounded TableContainer; hidden as a whole in Gantt mode. -->
     <Border>
       <Border.Style>
         <Style TargetType="Border" BasedOn="{StaticResource TableContainer}">
@@ -199,335 +191,249 @@
           </Style.Triggers>
         </Style>
       </Border.Style>
-    <DataGrid ItemsSource="{Binding Source={StaticResource GroupedRows}}" AutoGenerateColumns="False" IsReadOnly="True"
-              SelectionMode="Single"
-              ColumnHeaderHeight="40"
-              BorderThickness="0" beh:RoundedClip.Radius="8"
-              GridLinesVisibility="All" VerticalGridLinesBrush="#EDEFF3"
-              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-      <!-- BasedOn the theme DataGrid style so it KEEPS RowHeight=36 + alternating rows + gridlines
-           (a plain ShowWhenGrid style would replace the theme, dropping RowHeight → rows auto-size and
-           balloon vertically on resize). The IsGantt trigger reproduces ShowWhenGrid's hide behavior. -->
-      <DataGrid.Style>
-        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
-          <Setter Property="Visibility" Value="Visible"/>
-          <Style.Triggers>
-            <DataTrigger Binding="{Binding IsGantt}" Value="True">
-              <Setter Property="Visibility" Value="Collapsed"/>
-            </DataTrigger>
-          </Style.Triggers>
-        </Style>
-      </DataGrid.Style>
-      <DataGrid.Columns>
-        <!-- expand toggle for the row-detail (tasks + status). A Button bound to the VM's ToggleExpandCommand
-             (the same reliable command pattern as the Backlog tab's Edit button) — the previous in-cell
-             ToggleButton's IsChecked write to IsExpanded never reached the row, so nothing ever expanded.
-             Chevron points right when collapsed, down when expanded. -->
-        <DataGridTemplateColumn Header="" Width="30">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <Button Command="{Binding DataContext.ToggleExpandCommand,
-                                RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                      CommandParameter="{Binding}" Padding="2" Width="24"
-                      ToolTip="Hiện / ẩn danh sách task của backlog này">
-                <Button.Style>
-                  <Style TargetType="Button" BasedOn="{StaticResource MiniGhostButton}">
-                    <!-- clean caret: subtle grey ▸ when collapsed, accent ▾ when expanded -->
-                    <Setter Property="Content" Value="&#9656;"/>  <!-- ▸ collapsed -->
-                    <Setter Property="FontSize" Value="11"/>
-                    <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+
+      <!-- Vertical scroll only — tags are on top and fields wrap, so there is never a horizontal scroll. -->
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Source={StaticResource GroupedRows}}" Margin="6"
+                      beh:RoundedClip.Radius="8">
+
+          <!-- Section band per group (Project/Team), collapsible; moved verbatim from P15's DataGrid.GroupStyle. -->
+          <ItemsControl.GroupStyle>
+            <GroupStyle>
+              <GroupStyle.ContainerStyle>
+                <Style TargetType="{x:Type GroupItem}">
+                  <Setter Property="Template">
+                    <Setter.Value>
+                      <ControlTemplate TargetType="{x:Type GroupItem}">
+                        <Expander IsExpanded="True" Background="{StaticResource HeaderBg}"
+                                  BorderThickness="0" Padding="0" Margin="0,0,0,4">
+                          <Expander.Header>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                         Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                              <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" VerticalAlignment="Center"
+                                         Margin="2,0,0,0" Foreground="{StaticResource TextSecondary}"/>
+                            </StackPanel>
+                          </Expander.Header>
+                          <ItemsPresenter/>
+                        </Expander>
+                      </ControlTemplate>
+                    </Setter.Value>
+                  </Setter>
+                </Style>
+              </GroupStyle.ContainerStyle>
+            </GroupStyle>
+          </ItemsControl.GroupStyle>
+
+          <!-- One backlog = one card. -->
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="{x:Type vm:TaskListRowVm}">
+              <Border Margin="0,0,0,8" Padding="10" CornerRadius="8"
+                      BorderBrush="{StaticResource Border}" BorderThickness="1" Background="White">
+                <Border.Style>
+                  <Style TargetType="Border">
                     <Style.Triggers>
-                      <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-                        <Setter Property="Content" Value="&#9662;"/>  <!-- ▾ expanded -->
-                        <Setter Property="Foreground" Value="{StaticResource Accent}"/>
-                      </DataTrigger>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                      </Trigger>
                     </Style.Triggers>
                   </Style>
-                </Button.Style>
-              </Button>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
+                </Border.Style>
+                <StackPanel>
 
-        <!-- Star-width + MinWidth = responsive: columns grow to fill a wide window, clamp to MinWidth and
-             trigger horizontal scroll when narrow. Text stays a fixed readable size (no font scaling). -->
-        <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.3*" MinWidth="112"
-                            ElementStyle="{StaticResource GridTextCell}"/>
-        <!-- P15: PROJECT is the group-band key in single-team mode → hide it there (the band shows it);
-             keep it in multi-team mode (band shows Team) so each row's project stays visible. -->
-        <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="*" MinWidth="90"
-                            ElementStyle="{StaticResource GridTextCell}"
-                            Visibility="{Binding Data.GroupByProject, Source={StaticResource VmProxy},
-                                         Converter={StaticResource BoolToVisibleConverter}, ConverterParameter=Invert}"/>
+                  <!-- Tag strip (full-width, always on top): live chips + the ✎ Tags edit button (modal dialog). -->
+                  <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}"
+                                  VerticalAlignment="Center">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                    <Button Content="✎ Tags" Style="{StaticResource MiniGhostButton}" Padding="8,2" Margin="6,0,0,0"
+                            VerticalAlignment="Center" Click="OnEditBacklogTagsClick"
+                            ToolTip="Sửa tag của backlog"/>
+                  </StackPanel>
 
-        <!-- P10 (TM-07): team chip, shown only when >1 team is checked (ShowTeam). The whole column hides
-             for single-team users (via VmProxy) so it doesn't leave an empty 110px gap. -->
-        <!-- P15: grouping by Team now shows the team in the section band, so this per-row TEAM chip column is
-             redundant and stays hidden (it only ever appeared in multi-team = exactly the group-by-team case). -->
-        <DataGridTemplateColumn Header="TEAM" Width="110" Visibility="Collapsed">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
-                      HorizontalAlignment="Left" VerticalAlignment="Center"
-                      Visibility="{Binding ShowTeam, Converter={StaticResource BoolToVisibleConverter}}">
-                <TextBlock Text="{Binding TeamName}" FontSize="11" FontWeight="SemiBold"
-                           Foreground="{StaticResource Accent}"/>
-              </Border>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-
-        <!-- TYPE: inline ComboBox (TypeOptions). Bound OneWay for display; the write goes through
-             OnRowTypeChanged (a CellTemplate combo's TwoWay write never reaches the row VM — see the code-behind). -->
-        <DataGridTemplateColumn Header="TYPE" Width="120" MinWidth="110">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
-                        Tag="{Binding}"
-                        ItemsSource="{Binding TypeOptions}"
-                        SelectedItem="{Binding EditType, Mode=OneWay}"
-                        SelectionChanged="OnRowTypeChanged"/>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-
-        <!-- PCT: ComboBox(AssigneeOptions); SelectedValue=user id (null = "—" sentinel). OneWay display +
-             OnRowPctChanged commit (same CellTemplate write-back reason as TYPE). -->
-        <DataGridTemplateColumn Header="PCT" Width="*" MinWidth="110">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
-                        Tag="{Binding}"
-                        ItemsSource="{Binding AssigneeOptions}"
-                        SelectedValuePath="Id" DisplayMemberPath="Name"
-                        SelectedValue="{Binding EditPctUserId, Mode=OneWay}"
-                        SelectionChanged="OnRowPctChanged"/>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-
-        <!-- PCA: ComboBox(PcaOptions); SelectedValue=contact id (null = "—" sentinel). OneWay display +
-             OnRowPcaChanged commit. -->
-        <DataGridTemplateColumn Header="PCA" Width="*" MinWidth="110">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <ComboBox Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
-                        Tag="{Binding}"
-                        ItemsSource="{Binding PcaOptions}"
-                        SelectedValuePath="Id" DisplayMemberPath="Name"
-                        SelectedValue="{Binding EditPcaId, Mode=OneWay}"
-                        SelectionChanged="OnRowPcaChanged"/>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-
-        <!-- INTERNAL / EXTERNAL deadline: DatePicker. SelectedDate is OneWay (display only — NEVER TwoWay to a
-             read-only VM prop). A genuine user pick is caught by SelectedDateChanged in code-behind, which shows
-             the reason popup then calls CommitDeadlineAsync; Tag carries the row + which deadline this picker is. -->
-        <DataGridTemplateColumn Header="INTERNAL" Width="Auto" MinWidth="128">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
-                          SelectedDate="{Binding DeadlineInternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
-                          SelectedDateChanged="OnInternalDeadlineChanged"/>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-        <DataGridTemplateColumn Header="EXTERNAL" Width="Auto" MinWidth="128">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
-                          SelectedDate="{Binding DeadlineExternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
-                          SelectedDateChanged="OnExternalDeadlineChanged"/>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-
-        <!-- START / END: operational project dates, edited inline here (moved out of the Backlog editor).
-             OneWay display + code-behind commit (a CellTemplate DatePicker's own write never reaches the row). -->
-        <DataGridTemplateColumn Header="START" Width="Auto" MinWidth="128">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
-                          SelectedDate="{Binding StartDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
-                          SelectedDateChanged="OnStartDateChanged"/>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-        <DataGridTemplateColumn Header="END" Width="Auto" MinWidth="128">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
-                          SelectedDate="{Binding EndDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
-                          SelectedDateChanged="OnEndDateChanged"/>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-
-        <!-- Progress: DISPLAY mode = % bar (click to edit); EDIT mode = a 0-100 number input. Click the
-             bar → IsEditingProgress=true swaps in the TextBox (auto-focused); Enter or click-away commits
-             (via EditProgressText, LostFocus) and swaps back to the bar. Bar stays OneWay (NEVER TwoWay to
-             ProgressBar.Value). Reload after commit re-seeds the row so the bar reflects the new %. -->
-        <DataGridTemplateColumn Header="PROGRESS" Width="150" MinWidth="140">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <Grid VerticalAlignment="Center">
-                <!-- Display: click anywhere on the bar/percent to start editing. -->
-                <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
-                            ToolTip="Click to edit progress (0-100%)"
-                            MouseLeftButtonUp="OnProgressDisplayClick"
-                            Visibility="{Binding IsEditingProgress, ConverterParameter=Invert,
-                                         Converter={StaticResource BoolToVisibleConverter}}">
-                  <ProgressBar Style="{StaticResource FlatProgressBar}" Width="64" VerticalAlignment="Center"
-                               Minimum="0" Maximum="100"
-                               Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"
-                               Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
-                  <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center"
-                             FontSize="12" Foreground="{StaticResource TextSecondary}"/>
-                </StackPanel>
-                <!-- Edit: number input, auto-focused; Enter / lost-focus commits, Escape cancels. -->
-                <TextBox Width="54" Height="26" HorizontalAlignment="Left" VerticalAlignment="Center"
-                         Padding="6,2" FontSize="12" MaxLength="3"
-                         VerticalContentAlignment="Center" TextAlignment="Center"
-                         ToolTip="Enter 0-100, then press Enter or click away (blank to clear)"
-                         Visibility="{Binding IsEditingProgress, Converter={StaticResource BoolToVisibleConverter}}"
-                         Text="{Binding EditProgressText, Mode=OneWay}"
-                         IsVisibleChanged="OnProgressEditVisibleChanged"
-                         PreviewKeyDown="OnProgressEditKeyDown"
-                         LostFocus="OnProgressEditLostFocus"/>
-              </Grid>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-
-        <DataGridTextColumn Header="LOGGED" Binding="{Binding LoggedHoursText}" Width="Auto" MinWidth="84"
-                            ElementStyle="{StaticResource GridTextCell}"/>
-        <DataGridTextColumn Header="ESTIMATE" Binding="{Binding EstimateText}" Width="Auto" MinWidth="98"
-                            ElementStyle="{StaticResource GridTextCell}"/>
-
-        <!-- TAGS: the live chips (system late/warning + current custom tags) stay for display, plus the
-             inline TagPicker to edit the custom-tag set (toggling a tag commits the whole set via the row).
-             Star-sized so it soaks up slack on a wide window; MinWidth keeps labels readable. -->
-        <!-- TAGS: chips (read-only at-a-glance). Editing the backlog's tag set happens in the expand panel
-             (a Popup opened from inside a DataGrid cell closes before you can tick anything). -->
-        <DataGridTemplateColumn Header="TAGS" Width="1.5*" MinWidth="200">
-          <DataGridTemplateColumn.CellTemplate>
-            <DataTemplate>
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}"
-                              VerticalAlignment="Center">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                </ItemsControl>
-                <Button Content="✎ Tags" Style="{StaticResource MiniGhostButton}" Padding="8,2" Margin="6,0,0,0"
-                        VerticalAlignment="Center" Click="OnEditBacklogTagsClick"
-                        ToolTip="Sửa tag của backlog"/>
-              </StackPanel>
-            </DataTemplate>
-          </DataGridTemplateColumn.CellTemplate>
-        </DataGridTemplateColumn>
-      </DataGrid.Columns>
-
-      <!-- P15: each group renders as a collapsible section band (Log Work look) — an Expander whose header is
-           a full-width band showing the group name + backlog count; its content is that group's rows. Header
-           text is display-only (no TwoWay-to-readonly, no Button-style-on-ToggleButton → render-crash-safe). -->
-      <DataGrid.GroupStyle>
-        <GroupStyle>
-          <GroupStyle.ContainerStyle>
-            <Style TargetType="{x:Type GroupItem}">
-              <Setter Property="Template">
-                <Setter.Value>
-                  <ControlTemplate TargetType="{x:Type GroupItem}">
-                    <Expander IsExpanded="True" Background="{StaticResource HeaderBg}" BorderThickness="0" Padding="0">
-                      <Expander.Header>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
-                                     Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
-                          <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" VerticalAlignment="Center"
-                                     Margin="2,0,0,0" Foreground="{StaticResource TextSecondary}"/>
-                        </StackPanel>
-                      </Expander.Header>
-                      <ItemsPresenter/>
-                    </Expander>
-                  </ControlTemplate>
-                </Setter.Value>
-              </Setter>
-            </Style>
-          </GroupStyle.ContainerStyle>
-        </GroupStyle>
-      </DataGrid.GroupStyle>
-
-      <!-- Row detail: the backlog's tasks, now inline-editable (PCT / TYPE / STATUS / tags) per TaskRowVm
-           (shown when the row is expanded). Each editable prop commits to TaskRepository via the owning VM. -->
-      <DataGrid.RowDetailsTemplate>
-        <DataTemplate>
-          <Border Background="{StaticResource HeaderBg}" Padding="10,6" Margin="34,0,0,0">
-           <StackPanel>
-            <!-- Empty-state: a backlog with no active tasks expands to this hint instead of a blank strip. -->
-            <TextBlock Text="Chưa có task nào trong backlog này."
-                       Foreground="{StaticResource TextSecondary}" FontStyle="Italic" FontSize="12"
-                       Visibility="{Binding HasNoTasks, Converter={StaticResource BoolToVisibleConverter}}"/>
-            <ItemsControl ItemsSource="{Binding TaskRows}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid Margin="0,3">
+                  <!-- Compact header: caret · CODE · (Project only in Team-grouping) · PCT · Internal · Progress. -->
+                  <Grid>
                     <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" MinWidth="120"/>
                       <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <!-- Task name stays visible (read-only). -->
-                    <TextBlock Grid.Column="0" Text="{Binding TaskName}" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                    <!-- TYPE -> EditType. -->
-                    <ComboBox Grid.Column="1" Width="110" Margin="0,0,6,0"
-                              Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
-                              ItemsSource="{Binding TypeOptions}"
-                              SelectedItem="{Binding EditType, Mode=TwoWay}"/>
-                    <!-- PCT -> EditPctUserId (SelectedValue = user id, null = "—"). -->
-                    <ComboBox Grid.Column="2" Width="130" Margin="0,0,6,0"
-                              Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
-                              ItemsSource="{Binding AssigneeOptions}"
-                              SelectedValuePath="Id" DisplayMemberPath="Name"
-                              SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"/>
-                    <!-- STATUS -> EditStatus. -->
-                    <ComboBox Grid.Column="3" Width="110" Margin="0,0,6,0"
-                              Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
-                              ItemsSource="{Binding StatusOptions}"
-                              SelectedItem="{Binding EditStatus, Mode=TwoWay}"/>
-                    <!-- TAGS -> the task's checkable tag set. Opens the modal picker (a Popup inside the grid
-                         closes before you can tick anything); toggles commit via SetTaskTagsAsync. -->
-                    <Button Grid.Column="4" Content="✎ Tags" Style="{StaticResource MiniGhostButton}"
-                            Padding="8,2" VerticalAlignment="Center" Click="OnEditTaskTagsClick"
-                            ToolTip="Sửa tag của task"/>
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-           </StackPanel>
-          </Border>
-        </DataTemplate>
-      </DataGrid.RowDetailsTemplate>
 
-      <!-- Bind each row's detail visibility directly to its IsExpanded flag (a direct binding updates
-           reliably whenever the command flips IsExpanded; the prior DataTrigger never fired because the
-           old toggle wasn't writing IsExpanded). -->
-      <DataGrid.RowStyle>
-        <Style TargetType="DataGridRow">
-          <Setter Property="DetailsVisibility"
-                  Value="{Binding IsExpanded, Converter={StaticResource BoolToVisibleConverter}}"/>
-          <Style.Triggers>
-            <!-- subtle row hover, like the Log Work rows -->
-            <Trigger Property="IsMouseOver" Value="True">
-              <Setter Property="Background" Value="#F1F5F9"/>
-            </Trigger>
-          </Style.Triggers>
-        </Style>
-      </DataGrid.RowStyle>
-    </DataGrid>
+                    <!-- Expand/collapse the detail (fields + tasks). Reliable command via VmProxy (not IsChecked). -->
+                    <Button Grid.Column="0" Command="{Binding Data.ToggleExpandCommand, Source={StaticResource VmProxy}}"
+                            CommandParameter="{Binding}" Padding="2" Width="24" VerticalAlignment="Center"
+                            ToolTip="Hiện / ẩn chi tiết + task">
+                      <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource MiniGhostButton}">
+                          <Setter Property="Content" Value="&#9656;"/>
+                          <Setter Property="FontSize" Value="11"/>
+                          <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                              <Setter Property="Content" Value="&#9662;"/>
+                              <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
+
+                    <TextBlock Grid.Column="1" Text="{Binding BacklogCode}" FontWeight="SemiBold" FontSize="13"
+                               VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    <!-- Project shown only when grouped by Team (band shows Project otherwise). -->
+                    <TextBlock Grid.Column="2" Text="{Binding Project}" Foreground="{StaticResource TextSecondary}"
+                               VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding Data.GroupByProject, Source={StaticResource VmProxy},
+                                            Converter={StaticResource BoolToVisibleConverter}, ConverterParameter=Invert}"/>
+
+                    <!-- PCT (assignee), TwoWay — in an ItemsControl the write reaches the row VM directly
+                         (the DataGrid CellTemplate write-back bug does not apply), firing OnEditPctUserIdChanged. -->
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                      <TextBlock Text="PCT" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                      <ComboBox Style="{StaticResource CompactComboBox}" Width="120" VerticalAlignment="Center"
+                                ItemsSource="{Binding AssigneeOptions}" SelectedValuePath="Id" DisplayMemberPath="Name"
+                                SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"/>
+                    </StackPanel>
+
+                    <!-- Internal deadline (OneWay display + code-behind reason-note popup commit). -->
+                    <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                      <TextBlock Text="Internal" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                      <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+                                  SelectedDate="{Binding DeadlineInternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
+                                  SelectedDateChanged="OnInternalDeadlineChanged"/>
+                    </StackPanel>
+
+                    <!-- Progress: display bar (click to edit) / 0-100 input. Bar stays OneWay (never TwoWay on Value). -->
+                    <Grid Grid.Column="6" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
+                                  ToolTip="Click to edit progress (0-100%)"
+                                  MouseLeftButtonUp="OnProgressDisplayClick"
+                                  Visibility="{Binding IsEditingProgress, ConverterParameter=Invert,
+                                               Converter={StaticResource BoolToVisibleConverter}}">
+                        <ProgressBar Style="{StaticResource FlatProgressBar}" Width="64" VerticalAlignment="Center"
+                                     Minimum="0" Maximum="100"
+                                     Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"
+                                     Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
+                        <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center"
+                                   FontSize="12" Foreground="{StaticResource TextSecondary}"/>
+                      </StackPanel>
+                      <TextBox Width="54" Height="26" HorizontalAlignment="Left" VerticalAlignment="Center"
+                               Padding="6,2" FontSize="12" MaxLength="3"
+                               VerticalContentAlignment="Center" TextAlignment="Center"
+                               ToolTip="Enter 0-100, then press Enter or click away (blank to clear)"
+                               Visibility="{Binding IsEditingProgress, Converter={StaticResource BoolToVisibleConverter}}"
+                               Text="{Binding EditProgressText, Mode=OneWay}"
+                               IsVisibleChanged="OnProgressEditVisibleChanged"
+                               PreviewKeyDown="OnProgressEditKeyDown"
+                               LostFocus="OnProgressEditLostFocus"/>
+                    </Grid>
+                  </Grid>
+
+                  <!-- Expanded detail: remaining fields (wrap) + editable task sub-rows. -->
+                  <StackPanel Margin="30,8,0,0"
+                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibleConverter}}">
+                    <WrapPanel>
+                      <!-- Type (TwoWay). -->
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
+                        <TextBlock Text="Type" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <ComboBox Style="{StaticResource CompactComboBox}" Width="120" VerticalAlignment="Center"
+                                  ItemsSource="{Binding TypeOptions}"
+                                  SelectedItem="{Binding EditType, Mode=TwoWay}"/>
+                      </StackPanel>
+                      <!-- PCA (TwoWay). -->
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
+                        <TextBlock Text="PCA" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <ComboBox Style="{StaticResource CompactComboBox}" Width="130" VerticalAlignment="Center"
+                                  ItemsSource="{Binding PcaOptions}" SelectedValuePath="Id" DisplayMemberPath="Name"
+                                  SelectedValue="{Binding EditPcaId, Mode=TwoWay}"/>
+                      </StackPanel>
+                      <!-- External deadline (OneWay + reason-note popup). -->
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
+                        <TextBlock Text="External" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+                                    SelectedDate="{Binding DeadlineExternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
+                                    SelectedDateChanged="OnExternalDeadlineChanged"/>
+                      </StackPanel>
+                      <!-- Start (OneWay + commit). -->
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
+                        <TextBlock Text="Start" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+                                    SelectedDate="{Binding StartDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
+                                    SelectedDateChanged="OnStartDateChanged"/>
+                      </StackPanel>
+                      <!-- End (OneWay + commit). -->
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
+                        <TextBlock Text="End" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+                                    SelectedDate="{Binding EndDate, Mode=OneWay, Converter={StaticResource DateOnly}}"
+                                    SelectedDateChanged="OnEndDateChanged"/>
+                      </StackPanel>
+                      <!-- Logged / Estimate (display). -->
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
+                        <TextBlock Text="Logged" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="{Binding LoggedHoursText}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Est" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="{Binding EstimateText}" VerticalAlignment="Center"/>
+                      </StackPanel>
+                    </WrapPanel>
+
+                    <!-- Task sub-rows (inline-editable), carried over from the P15 RowDetailsTemplate. -->
+                    <TextBlock Text="Chưa có task nào trong backlog này."
+                               Foreground="{StaticResource TextSecondary}" FontStyle="Italic" FontSize="12" Margin="0,4,0,0"
+                               Visibility="{Binding HasNoTasks, Converter={StaticResource BoolToVisibleConverter}}"/>
+                    <ItemsControl ItemsSource="{Binding TaskRows}" Margin="0,4,0,0">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="*" MinWidth="120"/>
+                              <ColumnDefinition Width="Auto"/>
+                              <ColumnDefinition Width="Auto"/>
+                              <ColumnDefinition Width="Auto"/>
+                              <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Task name stays visible (read-only). -->
+                            <TextBlock Grid.Column="0" Text="{Binding TaskName}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <!-- TYPE -> EditType. -->
+                            <ComboBox Grid.Column="1" Width="110" Margin="0,0,6,0"
+                                      Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                                      ItemsSource="{Binding TypeOptions}"
+                                      SelectedItem="{Binding EditType, Mode=TwoWay}"/>
+                            <!-- PCT -> EditPctUserId (SelectedValue = user id, null = "—"). -->
+                            <ComboBox Grid.Column="2" Width="130" Margin="0,0,6,0"
+                                      Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                                      ItemsSource="{Binding AssigneeOptions}"
+                                      SelectedValuePath="Id" DisplayMemberPath="Name"
+                                      SelectedValue="{Binding EditPctUserId, Mode=TwoWay}"/>
+                            <!-- STATUS -> EditStatus. -->
+                            <ComboBox Grid.Column="3" Width="110" Margin="0,0,6,0"
+                                      Style="{StaticResource CompactComboBox}" VerticalAlignment="Center"
+                                      ItemsSource="{Binding StatusOptions}"
+                                      SelectedItem="{Binding EditStatus, Mode=TwoWay}"/>
+                            <!-- TAGS -> the task's checkable tag set (modal dialog; commits via SetTaskTagsAsync). -->
+                            <Button Grid.Column="4" Content="✎ Tags" Style="{StaticResource MiniGhostButton}"
+                                    Padding="8,2" VerticalAlignment="Center" Click="OnEditTaskTagsClick"
+                                    ToolTip="Sửa tag của task"/>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
     </Border>
   </DockPanel>
 </UserControl>
