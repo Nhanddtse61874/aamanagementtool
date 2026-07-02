@@ -264,6 +264,7 @@
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Expand/collapse the detail (fields + tasks). Reliable command via VmProxy (not IsChecked). -->
@@ -310,17 +311,25 @@
                                   SelectedDateChanged="OnInternalDeadlineChanged"/>
                     </StackPanel>
 
+                    <!-- External deadline in the compact header too (OneWay + code-behind reason-note popup). -->
+                    <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                      <TextBlock Text="External" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                      <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
+                                  SelectedDate="{Binding DeadlineExternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
+                                  SelectedDateChanged="OnExternalDeadlineChanged"/>
+                    </StackPanel>
+
                     <!-- Progress: display bar (click to edit) / 0-100 input. Bar stays OneWay (never TwoWay on Value). -->
-                    <Grid Grid.Column="6" VerticalAlignment="Center">
+                    <Grid Grid.Column="7" VerticalAlignment="Center">
                       <StackPanel Orientation="Horizontal" Background="Transparent" Cursor="Hand"
                                   ToolTip="Click to edit progress (0-100%)"
                                   MouseLeftButtonUp="OnProgressDisplayClick"
                                   Visibility="{Binding IsEditingProgress, ConverterParameter=Invert,
                                                Converter={StaticResource BoolToVisibleConverter}}">
+                        <!-- P16: always show the bar; no progress defaults to 0 (TargetNullValue=0). -->
                         <ProgressBar Style="{StaticResource FlatProgressBar}" Width="64" VerticalAlignment="Center"
                                      Minimum="0" Maximum="100"
-                                     Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"
-                                     Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibleConverter}}"/>
+                                     Value="{Binding ProgressPercent, Mode=OneWay, FallbackValue=0, TargetNullValue=0}"/>
                         <TextBlock Text="{Binding ProgressText}" Margin="6,0,0,0" VerticalAlignment="Center"
                                    FontSize="12" Foreground="{StaticResource TextSecondary}"/>
                       </StackPanel>
@@ -354,13 +363,6 @@
                                   ItemsSource="{Binding PcaOptions}" SelectedValuePath="Id" DisplayMemberPath="Name"
                                   SelectedValue="{Binding EditPcaId, Mode=TwoWay}"/>
                       </StackPanel>
-                      <!-- External deadline (OneWay + reason-note popup). -->
-                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
-                        <TextBlock Text="External" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                        <DatePicker Style="{StaticResource CompactDatePicker}" VerticalAlignment="Center" Tag="{Binding}"
-                                    SelectedDate="{Binding DeadlineExternal, Mode=OneWay, Converter={StaticResource DateOnly}}"
-                                    SelectedDateChanged="OnExternalDeadlineChanged"/>
-                      </StackPanel>
                       <!-- Start (OneWay + commit). -->
                       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
                         <TextBlock Text="Start" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
@@ -379,7 +381,7 @@
                       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,6">
                         <TextBlock Text="Logged" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <TextBlock Text="{Binding LoggedHoursText}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock Text="Est" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="Estimation" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <TextBlock Text="{Binding EstimateText}" VerticalAlignment="Center"/>
                       </StackPanel>
                     </WrapPanel>

@@ -22,6 +22,7 @@ still points at `6f2c9fe` (pre-merge tip).
 - **STEP 6 Plan: DONE.** `docs/superpowers/plans/2026-07-02-P16-tasklist-card-layout.md` — W1 `[opus]` XAML card rewrite + drop 3 combo handlers; W2 `[sonnet]` render-test refresh + full suite. Plan-check **APPROVE**.
 - **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `62648ac` (TaskListTab.xaml DataGrid→ItemsControl cards + drop OnRowType/Pct/PcaChanged), W2 `9ce94d3` (render-test note). Build clean (0 warn), **538 tests green**, render test covers the card layout. `GridTextCell` resource removed (orphaned by the rewrite).
 - **Status: waiting_for_user → STEP 8 UAT.** `.planning/P16-UAT.md`. **⚠️ #1 UAT check = Type/PCT/PCA now commit via TwoWay** (not test-coverable — must confirm real DB write; revert to code-behind if it misfires). **Not merged/pushed** beyond the branch.
+- **UAT tweaks (Fast Lane, 2026-07-02):** External deadline surfaced in the compact header (next to Internal); expanded "Est" label → "Estimation"; **no-progress now defaults to 0%** (ProgressText "—"→"0%", bar always shown). Build clean, 538 green.
 - **NEXT:** on UAT pass → STEP 9 QA (light, `requesting-code-review`) → merge to `main` + push (push on user OK). Branch also carries P15 (grouping) + P16 (cards).
 
 ---

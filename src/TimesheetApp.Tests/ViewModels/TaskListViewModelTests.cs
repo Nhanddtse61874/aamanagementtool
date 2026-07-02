@@ -306,8 +306,8 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
         Assert.Equal("Acme", row.PcaContactName);
     }
 
-    [Fact] // null progress → "—" + no bar; a set progress renders its whole-number percent.
-    public async Task Progress_formats_null_as_dash()
+    [Fact] // P16: no progress set → defaults to "0%"; a set progress renders its whole-number percent.
+    public async Task Progress_formats_null_as_zero()
     {
         await SeedBacklogAsync("PROG-NULL", "2026-06");
         await SeedBacklogAsync("PROG-60", "2026-06", progress: 60);
@@ -315,9 +315,7 @@ public sealed class TaskListViewModelTests : IAsyncLifetime
         var vm = CreateVm(new DateOnly(2026, 6, 15));
         await vm.LoadAsync();
 
-        Assert.False(Row(vm, "PROG-NULL").HasProgress);
-        Assert.Equal("—", Row(vm, "PROG-NULL").ProgressText);
-        Assert.True(Row(vm, "PROG-60").HasProgress);
+        Assert.Equal("0%", Row(vm, "PROG-NULL").ProgressText);   // no progress → default 0%
         Assert.Equal("60%", Row(vm, "PROG-60").ProgressText);
     }
 

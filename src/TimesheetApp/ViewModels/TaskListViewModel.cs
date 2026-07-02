@@ -571,8 +571,8 @@ public sealed partial class TaskListRowVm : ObservableObject
     public DateOnly? EndDate => Row.EndDate;
     public int? ProgressPercent => Row.ProgressPercent;
     public bool HasProgress => Row.ProgressPercent is not null;
-    // null progress → "—"; otherwise the whole-number percent.
-    public string ProgressText => Row.ProgressPercent is { } p ? $"{p}%" : "—";
+    // P16: no progress set → default to 0% (was "—"); otherwise the whole-number percent.
+    public string ProgressText => Row.ProgressPercent is { } p ? $"{p}%" : "0%";
     // Whole-number hours (§7): drop the decimals.
     public string LoggedHoursText => $"{Row.LoggedHours:0}";
     public string EstimateText => Row.EstimateHours is { } e ? $"{e:0}" : "—";
