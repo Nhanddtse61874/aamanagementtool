@@ -1,11 +1,12 @@
 # STATE — TimesheetApp (resume doc)
 
-**⏳ ACTIVE (in-flight branches, off `main` @ `d16fa3a`, none merged yet):**
-- **P18 — Daily Quick Import** — branch `feature/daily-quick-import-2026-07-02`. Execute done (541 green), awaiting UAT. `.planning/P18-UAT.md`.
-- **P19 — Dark mode** (live hot-switch) — branch `feature/dark-mode-2026-07-02`. Execute done W1-W3 (538 green), awaiting UAT. `.planning/P19-UAT.md`.
-- **P20 — Task List "Continue on next month"** — branch `feature/tasklist-continue-2026-07-02`. Execute done (541 green), awaiting UAT. `.planning/P20-UAT.md`.
-  - `BacklogContinuationService.ContinueAsync(backlogId, targetPeriod)`: clone backlog → M+1 with `Type="Continue"` (keep progress + fields + backlog tags) + copy **not-Done** tasks (type/assignee + tags) + `continued` audit; original untouched; **block** if same code already in M+1 (team-scoped). VM `ContinueToNextMonthCommand` + `CanContinue` (hidden in All-months) + "↻ Continue" button on each card. Spec/plan: `docs/superpowers/plans/2026-07-02-P20-continue-next-month.md`. Decisions: copy backlog + not-Done tasks; keep progress; block duplicate; audit note. Commits: W1 service + W2 VM/button.
-  - **NEXT:** UAT all 3 (user "build chung, test sau") → merge each to `main` when OK.
+**⏳ ACTIVE — one combined branch `feature/batch-p18-p19-p20-2026-07-02`** (off `main` @ `d16fa3a`; merges `41fb317`). Build clean, **548 tests green**. Awaiting UAT, not merged to `main`.
+Folds three features (originals `feature/daily-quick-import-2026-07-02`, `feature/dark-mode-2026-07-02`, `feature/tasklist-continue-2026-07-02` — kept, foldable/deletable):
+- **P18 — Daily Quick Import** (`.planning/P18-UAT.md`): "⬇ Quick import" in Daily Input clones a chosen day's standup (entries both sections + issues) into the selected day, append.
+- **P19 — Dark mode** (`.planning/P19-UAT.md`): live no-restart toggle in Settings; palette split + `DynamicResource` swap; ALL views (incl P18's `QuickImportDialog`, post-merge) converted; config-persisted.
+- **P20 — Continue next month** (`.planning/P20-UAT.md`): "↻ Continue" on each Task List card copies the backlog → M+1 `Type="Continue"` (keep progress + not-Done tasks + tags); blocks a same-code duplicate; original stays.
+- Merge was clean except `.planning/STATE.md` (resolved) — code files auto-merged; only post-fix = converting `QuickImportDialog.xaml` palette refs to `DynamicResource` for dark parity.
+- **NEXT:** UAT the combined branch (user "build chung, test sau") → merge to `main` + push when OK.
 
 
 
