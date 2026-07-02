@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:TimesheetApp.ViewModels"
              xmlns:ctrl="clr-namespace:TimesheetApp.Views.Controls"
-             xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors">
+             xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors"
+             xmlns:scm="clr-namespace:System.ComponentModel;assembly=WindowsBase">
   <UserControl.Resources>
     <!-- Local style helpers: show-when-true / show-when-false / collapse-when-true, keyed off a bool
          binding, so this tab needs no new IValueConverter (W3 owns the converter set). -->
@@ -83,6 +84,19 @@
     <!-- Proxy so the TEAM DataGridColumn (outside the visual tree) can bind to the VM's TeamFilter and
          hide itself when only one team is selected (the cell would otherwise be empty dead space). -->
     <ctrl:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
+
+    <!-- P15: group the grid rows into collapsible section bands. Grouped by GroupKey (adaptive: Team when
+         multi-team else Project); sorted by GroupOrder (band order) then BacklogCode (within-band order),
+         so bands render in a stable order WITHOUT reordering the VM's Rows (the Gantt reads Rows directly). -->
+    <CollectionViewSource x:Key="GroupedRows" Source="{Binding Rows}">
+      <CollectionViewSource.GroupDescriptions>
+        <PropertyGroupDescription PropertyName="GroupKey"/>
+      </CollectionViewSource.GroupDescriptions>
+      <CollectionViewSource.SortDescriptions>
+        <scm:SortDescription PropertyName="GroupOrder" Direction="Ascending"/>
+        <scm:SortDescription PropertyName="BacklogCode" Direction="Ascending"/>
+      </CollectionViewSource.SortDescriptions>
+    </CollectionViewSource>
   </UserControl.Resources>
 
   <DockPanel Margin="12">
@@ -185,7 +199,7 @@
           </Style.Triggers>
         </Style>
       </Border.Style>
-    <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
+    <DataGrid ItemsSource="{Binding Source={StaticResource GroupedRows}}" AutoGenerateColumns="False" IsReadOnly="True"
               SelectionMode="Single"
               ColumnHeaderHeight="40"
               BorderThickness="0" beh:RoundedClip.Radius="8"
@@ -239,14 +253,18 @@
              trigger horizontal scroll when narrow. Text stays a fixed readable size (no font scaling). -->
         <DataGridTextColumn Header="CODE" Binding="{Binding BacklogCode}" Width="1.3*" MinWidth="112"
                             ElementStyle="{StaticResource GridTextCell}"/>
+        <!-- P15: PROJECT is the group-band key in single-team mode → hide it there (the band shows it);
+             keep it in multi-team mode (band shows Team) so each row's project stays visible. -->
         <DataGridTextColumn Header="PROJECT" Binding="{Binding Project}" Width="*" MinWidth="90"
-                            ElementStyle="{StaticResource GridTextCell}"/>
+                            ElementStyle="{StaticResource GridTextCell}"
+                            Visibility="{Binding Data.GroupByProject, Source={StaticResource VmProxy},
+                                         Converter={StaticResource BoolToVisibleConverter}, ConverterParameter=Invert}"/>
 
         <!-- P10 (TM-07): team chip, shown only when >1 team is checked (ShowTeam). The whole column hides
              for single-team users (via VmProxy) so it doesn't leave an empty 110px gap. -->
-        <DataGridTemplateColumn Header="TEAM" Width="110"
-            Visibility="{Binding Data.TeamFilter.ShowTeamColumn, Source={StaticResource VmProxy},
-                         Converter={StaticResource BoolToVisibleConverter}}">
+        <!-- P15: grouping by Team now shows the team in the section band, so this per-row TEAM chip column is
+             redundant and stays hidden (it only ever appeared in multi-team = exactly the group-by-team case). -->
+        <DataGridTemplateColumn Header="TEAM" Width="110" Visibility="Collapsed">
           <DataGridTemplateColumn.CellTemplate>
             <DataTemplate>
               <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
@@ -410,6 +428,35 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
       </DataGrid.Columns>
+
+      <!-- P15: each group renders as a collapsible section band (Log Work look) — an Expander whose header is
+           a full-width band showing the group name + backlog count; its content is that group's rows. Header
+           text is display-only (no TwoWay-to-readonly, no Button-style-on-ToggleButton → render-crash-safe). -->
+      <DataGrid.GroupStyle>
+        <GroupStyle>
+          <GroupStyle.ContainerStyle>
+            <Style TargetType="{x:Type GroupItem}">
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type GroupItem}">
+                    <Expander IsExpanded="True" Background="{StaticResource HeaderBg}" BorderThickness="0" Padding="0">
+                      <Expander.Header>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                     Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                          <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" VerticalAlignment="Center"
+                                     Margin="2,0,0,0" Foreground="{StaticResource TextSecondary}"/>
+                        </StackPanel>
+                      </Expander.Header>
+                      <ItemsPresenter/>
+                    </Expander>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </GroupStyle.ContainerStyle>
+        </GroupStyle>
+      </DataGrid.GroupStyle>
 
       <!-- Row detail: the backlog's tasks, now inline-editable (PCT / TYPE / STATUS / tags) per TaskRowVm
            (shown when the row is expanded). Each editable prop commits to TaskRepository via the owning VM. -->
