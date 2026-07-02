@@ -29,6 +29,12 @@ public interface IStandupService
     // Drag-reorder: move the dragged entry to the target entry's position (and section), same day + owner.
     Task ReorderEntryAsync(int draggedId, int targetId);
 
+    // P18 Quick Import: clone the current user's standup for sourceDate (both sections + their issues) into
+    // targetDate, APPENDING — new ids/timestamps/order, everything else copied. Scoped to current user +
+    // active team. Returns # entries cloned; a locked target / no current user / empty source => 0 (no-op).
+    // The source day is never modified.
+    Task<int> QuickImportDayAsync(DateOnly sourceDate, DateOnly targetDate);
+
     // Issue writes — collaborative, not gated by owner/lock (DR-04).
     Task<int> AddIssueAsync(int entryId, string issueText, string? solutionText, string status);
     Task UpdateIssueAsync(StandupIssue issue);

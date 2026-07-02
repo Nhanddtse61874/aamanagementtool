@@ -108,6 +108,48 @@ public sealed class StandupService : IStandupService
         return await _repo.InsertEntryAsync(entry);
     }
 
+    /// <summary>
+    /// P18 Quick Import: clone the current user's standup for <paramref name="sourceDate"/> (both sections,
+    /// with their issues) into <paramref name="targetDate"/>, appending — new ids/timestamps/order, everything
+    /// else copied verbatim. Scoped to the current user + active team (mirrors GetMyStandupAsync). Returns the
+    /// number of entries cloned; a locked target (edit-lock), no current user, or an empty source is a no-op (0).
+    /// The source day is never modified — the caller (VM) refreshes/broadcasts.
+    /// </summary>
+    public async Task<int> QuickImportDayAsync(DateOnly sourceDate, DateOnly targetDate)
+    {
+        if (!CanEditDay(targetDate)) return 0;           // locked target -> no-op
+        var me = _currentUser.Current;
+        if (me is null) return 0;
+
+        var teamId = _currentTeam.ActiveTeamId;
+        var source = await _repo.GetEntriesAsync(me.Id, sourceDate, teamId);
+        if (source.Count == 0) return 0;
+
+        var issuesByEntry = (await _repo.GetIssuesForEntriesAsync(source.Select(e => e.Id).ToList()))
+            .ToLookup(i => i.EntryId);
+
+        // Per-section next order index in the target day: seed once from the existing target rows, then bump
+        // locally so a batch doesn't collide with itself or with what's already there.
+        var nextOrder = new Dictionary<string, int>();
+        var cloned = 0;
+        foreach (var e in source)   // repo returns section then order_index order
+        {
+            if (!nextOrder.TryGetValue(e.Section, out var order))
+                order = await NextOrderAsync(me.Id, targetDate, e.Section);
+            nextOrder[e.Section] = order + 1;
+
+            var newId = await _repo.InsertEntryAsync(
+                e with { Id = 0, WorkDate = targetDate, OrderIndex = order, CreatedAt = _clock.UtcNow });
+
+            foreach (var iss in issuesByEntry[e.Id].OrderBy(i => i.OrderIndex).ThenBy(i => i.Id))
+                await _repo.InsertIssueAsync(
+                    iss with { Id = 0, EntryId = newId, CreatedAt = _clock.UtcNow });
+
+            cloned++;
+        }
+        return cloned;
+    }
+
     public async Task<bool> UpdateEntryAsync(int entryId, StandupEntryDraft draft)
     {
         ValidateDraft(draft);

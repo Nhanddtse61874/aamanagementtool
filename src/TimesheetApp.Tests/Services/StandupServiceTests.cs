@@ -347,4 +347,115 @@ public class StandupServiceTests
         ctx.Repo.Verify(r => r.InsertIssueAsync(It.Is<StandupIssue>(i =>
             i.EntryId == 10 && i.IssueText == "blocked" && i.SolutionText == null && i.Status == "open")), Times.Once);
     }
+
+    // ===== P18: Quick Import =====
+
+    private static readonly DateTimeOffset ClockNow = new(2026, 6, 25, 8, 0, 0, TimeSpan.Zero);
+
+    // QI-03/04: clones the current user's source-day entries (both sections) + their issues into the target
+    // day — new ids (Id=0), WorkDate=target, CreatedAt regenerated, section + content preserved; source untouched.
+    [Fact]
+    public async Task QuickImport_clones_entries_and_issues_into_target_day()
+    {
+        var ctx = new Ctx();
+        var old = new DateTimeOffset(2026, 6, 20, 0, 0, 0, TimeSpan.Zero);   // source rows have an OLD CreatedAt
+        var src = new[]
+        {
+            Entry(10, 1, TwoDaysAgo, StandupSection.Yesterday) with { OrderIndex = 0, BacklogCode = "REQ-A", CreatedAt = old, TeamId = 7 },
+            Entry(11, 1, TwoDaysAgo, StandupSection.Today) with { OrderIndex = 0, BacklogCode = "REQ-B", Status = "In-process", CreatedAt = old, TeamId = 7 },
+        };
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, TwoDaysAgo, 7)).ReturnsAsync(src);       // source read
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, 7)).ReturnsAsync(Array.Empty<StandupEntry>()); // target empty -> order 0
+        ctx.Repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>()))
+            .ReturnsAsync(new[] { new StandupIssue(100, 11, "blocked", "fixed", "resolved", 0, old) });
+        ctx.Repo.Setup(r => r.InsertEntryAsync(It.IsAny<StandupEntry>())).ReturnsAsync(500);
+        ctx.Repo.Setup(r => r.InsertIssueAsync(It.IsAny<StandupIssue>())).ReturnsAsync(900);
+        var svc = ctx.Make(Today);
+
+        var n = await svc.QuickImportDayAsync(TwoDaysAgo, Today);
+
+        Assert.Equal(2, n);
+        // yesterday entry re-stamped (new id, target date, regenerated CreatedAt, section + code preserved)
+        ctx.Repo.Verify(r => r.InsertEntryAsync(It.Is<StandupEntry>(e =>
+            e.Id == 0 && e.WorkDate == Today && e.UserId == 1 && e.TeamId == 7 &&
+            e.Section == StandupSection.Yesterday && e.BacklogCode == "REQ-A" && e.CreatedAt == ClockNow)), Times.Once);
+        // today entry preserves status
+        ctx.Repo.Verify(r => r.InsertEntryAsync(It.Is<StandupEntry>(e =>
+            e.Id == 0 && e.WorkDate == Today && e.Section == StandupSection.Today &&
+            e.BacklogCode == "REQ-B" && e.Status == "In-process")), Times.Once);
+        // the issue is cloned onto the new entry id, content + status preserved, new id + regenerated CreatedAt
+        ctx.Repo.Verify(r => r.InsertIssueAsync(It.Is<StandupIssue>(i =>
+            i.Id == 0 && i.EntryId == 500 && i.IssueText == "blocked" &&
+            i.SolutionText == "fixed" && i.Status == "resolved" && i.CreatedAt == ClockNow)), Times.Once);
+        // source is never modified
+        ctx.Repo.Verify(r => r.UpdateEntryAsync(It.IsAny<StandupEntry>()), Times.Never);
+        ctx.Repo.Verify(r => r.DeleteEntryAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    // QI-03 (append): the cloned entry's order continues AFTER the target day's existing entries in that section.
+    [Fact]
+    public async Task QuickImport_appends_order_after_existing_target_entries()
+    {
+        var ctx = new Ctx();
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Yesterday, 7)).ReturnsAsync(new[]
+        {
+            Entry(11, 1, Yesterday, StandupSection.Today) with { OrderIndex = 0 },
+        });
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, Today, 7)).ReturnsAsync(new[]   // target already has 2 today rows
+        {
+            Entry(20, 1, Today, StandupSection.Today) with { OrderIndex = 0 },
+            Entry(21, 1, Today, StandupSection.Today) with { OrderIndex = 1 },
+        });
+        ctx.Repo.Setup(r => r.GetIssuesForEntriesAsync(It.IsAny<IReadOnlyList<int>>())).ReturnsAsync(Array.Empty<StandupIssue>());
+        ctx.Repo.Setup(r => r.InsertEntryAsync(It.IsAny<StandupEntry>())).ReturnsAsync(500);
+        var svc = ctx.Make(Today);
+
+        var n = await svc.QuickImportDayAsync(Yesterday, Today);
+
+        Assert.Equal(1, n);
+        ctx.Repo.Verify(r => r.InsertEntryAsync(It.Is<StandupEntry>(e => e.OrderIndex == 2)), Times.Once);
+    }
+
+    // QI-05: a locked target day is a no-op (0) — nothing read, nothing inserted.
+    [Fact]
+    public async Task QuickImport_locked_target_is_noop()
+    {
+        var ctx = new Ctx();
+        var svc = ctx.Make(Today);   // TwoDaysAgo is locked
+
+        var n = await svc.QuickImportDayAsync(Yesterday, TwoDaysAgo);
+
+        Assert.Equal(0, n);
+        ctx.Repo.Verify(r => r.GetEntriesAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), It.IsAny<int?>()), Times.Never);
+        ctx.Repo.Verify(r => r.InsertEntryAsync(It.IsAny<StandupEntry>()), Times.Never);
+    }
+
+    // Empty source day -> 0, nothing inserted.
+    [Fact]
+    public async Task QuickImport_empty_source_is_noop()
+    {
+        var ctx = new Ctx();
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, TwoDaysAgo, 7)).ReturnsAsync(Array.Empty<StandupEntry>());
+        var svc = ctx.Make(Today);
+
+        var n = await svc.QuickImportDayAsync(TwoDaysAgo, Today);
+
+        Assert.Equal(0, n);
+        ctx.Repo.Verify(r => r.InsertEntryAsync(It.IsAny<StandupEntry>()), Times.Never);
+    }
+
+    // QI-06: source read is scoped to the current user id + the active team (no match-all leak).
+    [Fact]
+    public async Task QuickImport_reads_only_current_user_and_active_team()
+    {
+        var ctx = new Ctx();
+        ctx.CurrentTeam.ActiveTeamId = 42;
+        ctx.Repo.Setup(r => r.GetEntriesAsync(1, TwoDaysAgo, 42)).ReturnsAsync(Array.Empty<StandupEntry>());
+        var svc = ctx.Make(Today);
+
+        await svc.QuickImportDayAsync(TwoDaysAgo, Today);
+
+        ctx.Repo.Verify(r => r.GetEntriesAsync(1, TwoDaysAgo, 42), Times.Once);
+        ctx.Repo.Verify(r => r.GetEntriesAsync(It.IsAny<int>(), It.IsAny<DateOnly>(), (int?)null), Times.Never);
+    }
 }
