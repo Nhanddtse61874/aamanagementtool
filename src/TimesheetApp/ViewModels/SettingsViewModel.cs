@@ -30,6 +30,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IExportHubService? _exportHub;         // P11 EX-06 (manual "Export now"; null in tests)
     private readonly IRetentionService? _retention;         // P12 RT-01..07 (Preview/Run now; null in tests)
     private readonly ISharePointDestinationValidator? _spValidator;  // P14 SP-01 (Verify; null in tests)
+    private readonly IThemeService? _theme;                 // P19 (dark-mode live toggle; null in tests)
     private readonly IMessenger _messenger;
 
     public SettingsViewModel(
@@ -46,7 +47,8 @@ public partial class SettingsViewModel : ObservableObject
         IMessenger? messenger = null,
         IExportHubService? exportHub = null,
         IRetentionService? retention = null,
-        ISharePointDestinationValidator? spValidator = null)
+        ISharePointDestinationValidator? spValidator = null,
+        IThemeService? theme = null)
     {
         _config = config;
         _settings = settings;
@@ -60,6 +62,7 @@ public partial class SettingsViewModel : ObservableObject
         _exportHub = exportHub;
         _retention = retention;
         _spValidator = spValidator;
+        _theme = theme;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         HolidayCalendar = new HolidayCalendarViewModel(holidays, _messenger);
     }
@@ -138,6 +141,17 @@ public partial class SettingsViewModel : ObservableObject
     // Human-readable dry-run result (cutoff + per-month counts) from the last Preview.
     [ObservableProperty] private string _retentionPreviewText = "";
 
+    // P19: dark-mode toggle. Applies live (palette swap) + persists on change. Loaded in LoadAsync by
+    // setting the backing field directly (so loading the saved value doesn't re-fire Apply/Save).
+    [ObservableProperty] private bool _isDarkMode;
+    private bool _loadingTheme;   // true while LoadAsync seeds IsDarkMode → skip the re-Apply/Save
+    partial void OnIsDarkModeChanged(bool value)
+    {
+        if (_loadingTheme) return;
+        _config.SetIsDarkMode(value);
+        _theme?.Apply(value);
+    }
+
     public async Task LoadAsync()
     {
         DbPath = _config.DbPath;
@@ -157,6 +171,10 @@ public partial class SettingsViewModel : ObservableObject
 
         RetentionEnabled = _config.RetentionEnabled;
         RetentionMonths = _config.RetentionMonths;
+
+        _loadingTheme = true;               // seed from config without re-firing Apply/Save
+        IsDarkMode = _config.IsDarkMode;
+        _loadingTheme = false;
 
         await ReloadTemplatesAsync();
         await ReloadTagsAsync();

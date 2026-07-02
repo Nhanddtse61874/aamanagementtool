@@ -18,7 +18,8 @@ public sealed class JsonAppConfig : IAppConfig
         string? ExportRoot1Path = null,
         string? ExportRoot2Path = null,
         bool? RetentionEnabled = null,
-        int? RetentionMonths = null);
+        int? RetentionMonths = null,
+        bool? IsDarkMode = null);
 
     // P9 (BK-06): default retention when no value persisted yet.
     private const int DefaultBackupKeepCount = 30;
@@ -37,6 +38,7 @@ public sealed class JsonAppConfig : IAppConfig
     private string _exportRoot2Path;
     private bool _retentionEnabled;
     private int _retentionMonths;
+    private bool _isDarkMode;
 
     public JsonAppConfig()
         : this(DefaultConfigPath(), DefaultDbPath())
@@ -57,6 +59,7 @@ public sealed class JsonAppConfig : IAppConfig
         _exportRoot2Path = model?.ExportRoot2Path ?? "";
         _retentionEnabled = model?.RetentionEnabled ?? false;
         _retentionMonths = model?.RetentionMonths ?? DefaultRetentionMonths;
+        _isDarkMode = model?.IsDarkMode ?? false;
     }
 
     public string DbPath => _dbPath;
@@ -69,6 +72,7 @@ public sealed class JsonAppConfig : IAppConfig
     public string ExportRoot2Path => _exportRoot2Path;
     public bool RetentionEnabled => _retentionEnabled;
     public int RetentionMonths => _retentionMonths;
+    public bool IsDarkMode => _isDarkMode;
 
     public void SetDbPath(string dbPath)
     {
@@ -130,6 +134,12 @@ public sealed class JsonAppConfig : IAppConfig
         Save();
     }
 
+    public void SetIsDarkMode(bool dark)
+    {
+        _isDarkMode = dark;
+        Save();
+    }
+
     private void Save()
     {
         var dir = Path.GetDirectoryName(_configPath);
@@ -144,7 +154,8 @@ public sealed class JsonAppConfig : IAppConfig
             string.IsNullOrWhiteSpace(_exportRoot1Path) ? null : _exportRoot1Path,
             string.IsNullOrWhiteSpace(_exportRoot2Path) ? null : _exportRoot2Path,
             _retentionEnabled,
-            _retentionMonths);
+            _retentionMonths,
+            _isDarkMode);
         var json = JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
     }

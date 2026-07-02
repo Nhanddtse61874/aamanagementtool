@@ -5,6 +5,8 @@
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
+        <!-- P19: palette FIRST (swapped at runtime by ThemeService), then the styles that DynamicResource it. -->
+        <ResourceDictionary Source="Views/Theme/Palette.Light.xaml"/>
         <ResourceDictionary Source="Views/Theme/Theme.xaml"/>
       </ResourceDictionary.MergedDictionaries>
       <conv:OverEightTagConverter x:Key="OverEightTag"/>

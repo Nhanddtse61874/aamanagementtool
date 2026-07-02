@@ -5,6 +5,11 @@
         <ScrollViewer>
             <StackPanel Margin="16">
 
+                <!-- P19: Appearance — instant dark-mode toggle (applies live + persists). -->
+                <TextBlock Text="Appearance" Style="{StaticResource SectionTitle}"/>
+                <CheckBox Content="Dark mode" Margin="0,0,0,16" VerticalAlignment="Center"
+                          IsChecked="{Binding IsDarkMode}"/>
+
                 <!-- SET-01: DB path + Browse -->
                 <TextBlock Text="Database file" Style="{StaticResource SectionTitle}"/>
                 <TextBlock Text="Path to the SQLite database file (.db) used to store data."

@@ -36,7 +36,8 @@ public sealed class TeamFilterLoadTests
         var app = Application.Current ?? new Application();
         if (app.Resources.Contains("ToolbarGhostToggle")) return;
 
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
+        app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/TimesheetApp;component/Views/Theme/Palette.Light.xaml", UriKind.Absolute) });
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri(
                 "pack://application:,,,/TimesheetApp;component/Views/Theme/Theme.xaml", UriKind.Absolute),
