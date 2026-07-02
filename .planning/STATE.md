@@ -1,13 +1,17 @@
 # STATE — TimesheetApp (resume doc)
 
-**Branch `feature/tasklist-redesign-2026-07-01` (2026-07-02) — Task List grid visual redesign (Log Work-inspired), awaiting user review.**
-From `main`. Only `TaskListTab.xaml` changed (23 ins / 2 del): the grid is now wrapped in a rounded **TableContainer**
-(border + 8px radius, grid `BorderThickness=0`, corners clipped via `beh:RoundedClip.Radius=8`, hidden as a whole in
-Gantt mode) and rows gained a subtle **hover** highlight (`#F1F5F9`). Builds on the prior PM #4 pass (flat progress bar,
-vertical gridlines, aligned text columns, clean caret). **Not done:** a true structural rewrite to Log Work's grouped
-"section band" ItemsControl layout, or borderless combo/DatePicker templates — both would risk the just-fixed inline
-edits (the default WPF ComboBox/DatePicker templates ignore `BorderBrush`, so flattening needs a full template rewrite).
-Build clean, 536 tests green. **Not merged/pushed** — user will review the look first.
+**Task List grid visual redesign (Log Work-inspired) — MERGED to `main` + PUSHED (2026-07-02).**
+Now on `main` = `45b6285` "Merge feature/tasklist-redesign-2026-07-01 into main" = `[origin/main]` (in sync).
+Redesign commit `6f2c9fe`: `TaskListTab.xaml` — grid wrapped in a rounded **TableContainer** (border + 8px radius,
+grid `BorderThickness=0`, corners clipped via `beh:RoundedClip.Radius=8`, hidden as a whole in Gantt mode) + rows gained
+a subtle **hover** highlight (`#F1F5F9`). Builds on the prior PM #4 pass (flat progress bar, vertical gridlines `#EDEFF3`,
+aligned text columns, clean caret). Build clean, 536 tests green. Feature branch `feature/tasklist-redesign-2026-07-01`
+still points at `6f2c9fe` (pre-merge tip).
+
+**⏳ ACTIVE NEXT — structural rewrite (deferred from the visual pass):** a true rewrite to Log Work's grouped
+"section band" layout (DataGrid → ItemsControl) and/or borderless combo/DatePicker templates. Deferred earlier because
+both **risk the just-fixed inline edits** (default WPF ComboBox/DatePicker templates ignore `BorderBrush` → flattening
+needs a full template rewrite). NOT fast-lane (structural/high-regression) → going through the workflow: STEP 2 Brainstorm.
 
 ---
 
