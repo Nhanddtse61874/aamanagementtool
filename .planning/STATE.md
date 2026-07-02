@@ -11,6 +11,14 @@ full-width on top, no h-scroll; Type/PCT/PCA → direct TwoWay; + External-in-he
 <!-- Detailed step-by-step records for P15/P16/P17 are below (marked "⏳ ACTIVE" historically) — all shipped in bc4c02f. -->
 _Prior redesign (visual pass `6f2c9fe`) was merged earlier in `45b6285`; superseded by the P16 card layout above._
 
+---
+
+**⏳ ACTIVE — P19: Dark mode.** Branch `feature/dark-mode-2026-07-02` (from `main` @ `d16fa3a`). Mode A. (P18 Quick Import is on a SEPARATE branch `feature/daily-quick-import-2026-07-02`, awaiting its own UAT/merge.)
+User chose the **robust/high-impact** approach (verify thoroughly) — see memory `startup-phase-prefers-robust-over-minimal`.
+- **Approach (locked):** split palette → `Palette.Light.xaml`/`Palette.Dark.xaml`; `Theme.xaml` styles + all views reference palette keys via **`DynamicResource`**; `ThemeService` swaps the palette dict at runtime = **live, no-restart** toggle. Promote hardcoded hex literals → theme keys. Config `IsDarkMode` + Settings toggle. Palette = ~36 keys (Theme.xaml L13-35 + L509-525).
+- **STEP 5/6 done:** spec `docs/superpowers/specs/2026-07-02-dark-mode-design.md`; plan `docs/superpowers/plans/2026-07-02-P19-dark-mode.md` (3 waves: W1 palette infra+config+service+toggle `[opus]`; W2 convert all view refs + promote literals `[sonnet]`; W3 dark-palette tuning + both-theme render matrix `[sonnet]`). Plan-check APPROVE. **W1/W2 are large.**
+- **Status: waiting_for_user** — approve plan → execute W1 (inline). Verify-heavy per user: grep reconciliation (no over-conversion), hex-literal audit, both-theme STA render matrix, full UAT sweep.
+
 **⏳ ACTIVE — Task List grouped section bands (Log Work).** Branch `feature/tasklist-grouped-bands-2026-07-02` (from `main` @ `8aa1aef`).
 - **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** approved (0/5 Mode B signals — 1 domain, low risk, no formal QA gate).
 - **Design approved & committed** `a77aa91`: `docs/superpowers/specs/2026-07-02-tasklist-grouped-section-bands-design.md`.
