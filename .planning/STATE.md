@@ -13,8 +13,9 @@ still points at `6f2c9fe` (pre-merge tip).
 - **Design approved & committed** `a77aa91`: `docs/superpowers/specs/2026-07-02-tasklist-grouped-section-bands-design.md`.
 - **Decision:** deliver the grouped "section band" look via **view-layer DataGrid grouping** (Approach ① — `CollectionViewSource` + `DataGrid.GroupStyle` Expander), **NOT** the DataGrid→ItemsControl rewrite (rejected as high-risk to inline edits). Adaptive group key: multi-team→Team else Project; collapsible bands (default open); band shows `Name (count)`. Inline-edit machinery untouched by construction.
 - **STEP 6 Plan: DONE (2026-07-02).** Plan `docs/superpowers/plans/2026-07-02-P15-tasklist-grouped-bands.md` — 2 tasks / 2 waves (W1 VM `GroupKey`/`GroupOrder`/flags; W2 XAML `CollectionViewSource`+`GroupStyle` Expander band + hide group-key column). Plan-check **APPROVE** (11/11). Both tasks `[sonnet]`.
-- **Status: waiting_for_user** — approve plan → STEP 7 execute (Mode A). Execution mode TBD: inline (`executing-plans`) recommended vs subagent-driven.
-- **NEXT:** on plan approval, run W1 then W2; main agent builds + runs tests after each wave (agents don't build). Kill running `TimesheetApp` before build.
+- **STEP 7 Execute: DONE (2026-07-02, inline, Mode A).** W1 `357d92b` (VM `GroupKey`/`GroupOrder`/`GroupByProject`/`GroupByTeam` + 2 tests), W2 `ec7d439` (XAML `CollectionViewSource`+`GroupStyle` Expander band; PROJECT hidden single-team, TEAM column Collapsed). Build clean, **538 tests green** (was 536; +2), render test passes (grouped XAML render-safe).
+- **Status: waiting_for_user → STEP 8 UAT.** `.planning/P15-UAT.md` — user runs `dotnet run --project src/TimesheetApp`, Task List grid: verify bands (Project single-team / Team multi-team), collapse, inline edits unchanged, Gantt unaffected. **Not merged/pushed** — awaits UAT pass.
+- **NEXT:** on UAT pass → STEP 9 QA (light, Mode A `requesting-code-review`) → merge to `main` + push (push only on user OK).
 
 ---
 
