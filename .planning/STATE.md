@@ -1,5 +1,17 @@
 # STATE — TimesheetApp (resume doc)
 
+**Branch `feature/tasklist-redesign-2026-07-01` (2026-07-02) — Task List grid visual redesign (Log Work-inspired), awaiting user review.**
+From `main`. Only `TaskListTab.xaml` changed (23 ins / 2 del): the grid is now wrapped in a rounded **TableContainer**
+(border + 8px radius, grid `BorderThickness=0`, corners clipped via `beh:RoundedClip.Radius=8`, hidden as a whole in
+Gantt mode) and rows gained a subtle **hover** highlight (`#F1F5F9`). Builds on the prior PM #4 pass (flat progress bar,
+vertical gridlines, aligned text columns, clean caret). **Not done:** a true structural rewrite to Log Work's grouped
+"section band" ItemsControl layout, or borderless combo/DatePicker templates — both would risk the just-fixed inline
+edits (the default WPF ComboBox/DatePicker templates ignore `BorderBrush`, so flattening needs a full template rewrite).
+Build clean, 536 tests green. **Not merged/pushed** — user will review the look first.
+
+---
+
+
 **Last updated:** 2026-07-01 (PM #4) — **Task List inline-edit UX overhaul + operational-field relocation**, merged to `main` + pushed.
 Branch `feature/sharepoint-export-2026-07-01` (P14 export + dropdown-persist fix + this UX pass) → `main`. Build clean, **536 tests green**.
 

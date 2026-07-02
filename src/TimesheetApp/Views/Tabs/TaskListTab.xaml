@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:TimesheetApp.ViewModels"
-             xmlns:ctrl="clr-namespace:TimesheetApp.Views.Controls">
+             xmlns:ctrl="clr-namespace:TimesheetApp.Views.Controls"
+             xmlns:beh="clr-namespace:TimesheetApp.Views.Behaviors">
   <UserControl.Resources>
     <!-- Local style helpers: show-when-true / show-when-false / collapse-when-true, keyed off a bool
          binding, so this tab needs no new IValueConverter (W3 owns the converter set). -->
@@ -171,10 +172,23 @@
       </Grid>
     </Border>
 
-    <!-- GRID view: one row per non-DEFAULT backlog in the selected month, expandable to its tasks. -->
+    <!-- GRID view: one row per non-DEFAULT backlog in the selected month, expandable to its tasks.
+         Wrapped in a rounded "table container" (Log Work look): border + 8px radius, grid border removed,
+         corners clipped via beh:RoundedClip. Hidden as a whole in Gantt mode. -->
+    <Border>
+      <Border.Style>
+        <Style TargetType="Border" BasedOn="{StaticResource TableContainer}">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding IsGantt}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
     <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
               SelectionMode="Single"
               ColumnHeaderHeight="40"
+              BorderThickness="0" beh:RoundedClip.Radius="8"
               GridLinesVisibility="All" VerticalGridLinesBrush="#EDEFF3"
               HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
       <!-- BasedOn the theme DataGrid style so it KEEPS RowHeight=36 + alternating rows + gridlines
@@ -458,8 +472,15 @@
         <Style TargetType="DataGridRow">
           <Setter Property="DetailsVisibility"
                   Value="{Binding IsExpanded, Converter={StaticResource BoolToVisibleConverter}}"/>
+          <Style.Triggers>
+            <!-- subtle row hover, like the Log Work rows -->
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter Property="Background" Value="#F1F5F9"/>
+            </Trigger>
+          </Style.Triggers>
         </Style>
       </DataGrid.RowStyle>
     </DataGrid>
+    </Border>
   </DockPanel>
 </UserControl>
