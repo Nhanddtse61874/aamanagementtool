@@ -177,6 +177,7 @@ public partial class App : Application
         sc.AddSingleton<IStandupArchiveService, StandupArchiveService>();
         // P8 Task List — new repos.
         sc.AddSingleton<ITagRepository, TagRepository>();
+        sc.AddSingleton<IBacklogContinuationService, BacklogContinuationService>();   // P20: continue to next month
         sc.AddSingleton<IPcaContactRepository, PcaContactRepository>();
         sc.AddSingleton<IHolidayRepository, HolidayRepository>();
         // P10 Multi-Team — team repo + current-team context + bootstrap (W9 wiring). NOTE: do NOT add
