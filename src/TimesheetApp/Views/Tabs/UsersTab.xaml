@@ -15,7 +15,7 @@
                     DockPanel.Dock="Right" Padding="12,5" Margin="6,0,0,0"/>
             <Grid>
                 <TextBox x:Name="NewUserBox" Text="{Binding NewUserName, UpdateSourceTrigger=PropertyChanged}"/>
-                <TextBlock Text="New user name…" Foreground="{StaticResource Disabled}" Margin="10,0"
+                <TextBlock Text="New user name…" Foreground="{DynamicResource Disabled}" Margin="10,0"
                            VerticalAlignment="Center" IsHitTestVisible="False">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
@@ -61,10 +61,10 @@
                                     VerticalAlignment="Center">
                                 <Border.Style>
                                     <Style TargetType="Border">
-                                        <Setter Property="Background" Value="{StaticResource BadgeGreenBg}"/>
+                                        <Setter Property="Background" Value="{DynamicResource BadgeGreenBg}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="False">
-                                                <Setter Property="Background" Value="{StaticResource BadgeGrayBg}"/>
+                                                <Setter Property="Background" Value="{DynamicResource BadgeGrayBg}"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -73,10 +73,10 @@
                                            Text="{Binding IsActive, Converter={StaticResource ActiveStatusConverter}}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource BadgeGreenFg}"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsActive}" Value="False">
-                                                    <Setter Property="Foreground" Value="{StaticResource BadgeGrayFg}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource BadgeGrayFg}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>

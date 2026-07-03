@@ -5,21 +5,21 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent">
-  <Border Background="{StaticResource Surface}" CornerRadius="12" BorderBrush="{StaticResource Border}"
+  <Border Background="{DynamicResource Surface}" CornerRadius="12" BorderBrush="{DynamicResource Border}"
           BorderThickness="1" Margin="12">
     <Border.Effect>
       <DropShadowEffect Color="#0F172A" Opacity="0.3" BlurRadius="24" ShadowDepth="4" Direction="270"/>
     </Border.Effect>
     <DockPanel>
       <!-- Header -->
-      <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}" CornerRadius="12,12,0,0"
-              Padding="20,14" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+      <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}" CornerRadius="12,12,0,0"
+              Padding="20,14" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
         <TextBlock Text="Reason for deadline change" FontWeight="Bold" FontSize="17"
-                   Foreground="{StaticResource TextPrimary}"/>
+                   Foreground="{DynamicResource TextPrimary}"/>
       </Border>
       <!-- Footer -->
-      <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}" CornerRadius="0,0,12,12"
-              Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+      <Border DockPanel.Dock="Bottom" Background="{DynamicResource HeaderBg}" CornerRadius="0,0,12,12"
+              Padding="20,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button Content="Cancel" Style="{StaticResource GhostButton}" Padding="18,6" Margin="0,0,8,0"
                   IsCancel="True"/>

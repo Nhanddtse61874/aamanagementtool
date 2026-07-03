@@ -15,31 +15,31 @@
         <StackPanel>
           <DockPanel>
             <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="15" Cursor="SizeAll" Margin="0,0,9,0"
-                       VerticalAlignment="Top" Foreground="{StaticResource TextSecondary}"
+                       VerticalAlignment="Top" Foreground="{DynamicResource TextSecondary}"
                        ToolTip="Drag to reorder, or drop on the trash to delete"
                        Visibility="{Binding DataContext.CanEditSelectedDay, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibleConverter}}"
                        PreviewMouseLeftButtonDown="OnEntryDragHandleDown" PreviewMouseMove="OnEntryDragHandleMove"/>
-            <Border DockPanel.Dock="Right" Background="{StaticResource BadgeGrayBg}" CornerRadius="10"
+            <Border DockPanel.Dock="Right" Background="{DynamicResource BadgeGrayBg}" CornerRadius="10"
                     Padding="9,2" VerticalAlignment="Top">
               <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="SemiBold"
-                         Foreground="{StaticResource BadgeGrayFg}"/>
+                         Foreground="{DynamicResource BadgeGrayFg}"/>
             </Border>
             <StackPanel>
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding BacklogCode}" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
-                <TextBlock Text="·" Margin="6,0" Foreground="{StaticResource TextSecondary}"/>
+                <TextBlock Text="{Binding BacklogCode}" FontWeight="Bold" Foreground="{DynamicResource Accent}"/>
+                <TextBlock Text="·" Margin="6,0" Foreground="{DynamicResource TextSecondary}"/>
                 <TextBlock Text="{Binding TaskText}" FontWeight="SemiBold"/>
               </StackPanel>
               <TextBlock Text="{Binding Description}" Margin="0,4,8,0"
-                         Foreground="{StaticResource TextSecondary}" FontSize="13"/>
+                         Foreground="{DynamicResource TextSecondary}" FontSize="13"/>
               <TextBlock Text="{Binding DeadlineText, StringFormat='Deadline: {0}'}" FontSize="12"
-                         Margin="0,4,0,0" Foreground="{StaticResource TextSecondary}"
+                         Margin="0,4,0,0" Foreground="{DynamicResource TextSecondary}"
                          Visibility="{Binding DeadlineText, Converter={StaticResource NullToCollapsedConverter}}"/>
             </StackPanel>
           </DockPanel>
 
           <!-- issues: existing ones are inline-editable (solution + status); add via dialog -->
-          <Border Background="{StaticResource Border}" Height="1" Margin="0,12,0,8"/>
+          <Border Background="{DynamicResource Border}" Height="1" Margin="0,12,0,8"/>
           <DockPanel>
             <Button DockPanel.Dock="Right" Content="&#10133; Issue" Style="{StaticResource MiniGhostButton}"
                     Click="OnAddIssue"/>
@@ -50,8 +50,8 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <!-- Amber "warning" until a solution is saved; flips to green "resolved" (✓) once it has one. -->
-                <Border x:Name="issueBox" Background="{StaticResource AmberBg}"
-                        BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+                <Border x:Name="issueBox" Background="{DynamicResource AmberBg}"
+                        BorderBrush="{DynamicResource AmberBorder}" BorderThickness="1"
                         CornerRadius="6" Padding="9" Margin="0,0,0,6">
                   <StackPanel>
                     <!-- header: status icon + issue text + delete -->
@@ -59,9 +59,9 @@
                       <Button DockPanel.Dock="Right" Content="✕" Style="{StaticResource MiniGhostButton}"
                               Command="{Binding DeleteCommand}" ToolTip="Delete issue" VerticalAlignment="Top"/>
                       <TextBlock x:Name="issueIcon" DockPanel.Dock="Left" Text="⚠" FontWeight="Bold"
-                                 Foreground="{StaticResource AmberFg}" Margin="0,0,7,0" VerticalAlignment="Top"/>
+                                 Foreground="{DynamicResource AmberFg}" Margin="0,0,7,0" VerticalAlignment="Top"/>
                       <TextBlock x:Name="issueText" Text="{Binding IssueText}" FontWeight="SemiBold"
-                                 Foreground="{StaticResource AmberFg}" TextWrapping="Wrap"/>
+                                 Foreground="{DynamicResource AmberFg}" TextWrapping="Wrap"/>
                     </DockPanel>
 
                     <!-- no solution yet: placeholder + "add solution" button (no empty input) -->
@@ -70,7 +70,7 @@
                       <Button DockPanel.Dock="Right" Content="&#10133; Add solution"
                               Style="{StaticResource MiniGhostButton}" Command="{Binding BeginEditSolutionCommand}"/>
                       <TextBlock Text="No solution yet" FontStyle="Italic" FontSize="12"
-                                 Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                                 Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
                     </DockPanel>
 
                     <!-- solution editor: while adding one, or once it exists (then the row is "resolved") -->
@@ -96,11 +96,11 @@
 
                 <DataTemplate.Triggers>
                   <DataTrigger Binding="{Binding HasSolution}" Value="True">
-                    <Setter TargetName="issueBox" Property="Background" Value="{StaticResource BadgeGreenBg}"/>
-                    <Setter TargetName="issueBox" Property="BorderBrush" Value="{StaticResource ResolvedBorder}"/>
+                    <Setter TargetName="issueBox" Property="Background" Value="{DynamicResource BadgeGreenBg}"/>
+                    <Setter TargetName="issueBox" Property="BorderBrush" Value="{DynamicResource ResolvedBorder}"/>
                     <Setter TargetName="issueIcon" Property="Text" Value="&#10003;"/>
-                    <Setter TargetName="issueIcon" Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
-                    <Setter TargetName="issueText" Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+                    <Setter TargetName="issueIcon" Property="Foreground" Value="{DynamicResource BadgeGreenFg}"/>
+                    <Setter TargetName="issueText" Property="Foreground" Value="{DynamicResource BadgeGreenFg}"/>
                   </DataTrigger>
                 </DataTemplate.Triggers>
               </DataTemplate>
@@ -117,31 +117,34 @@
 
   <!-- One pinned "Add entry" button (the section is chosen in the dialog); only the entries scroll. -->
   <DockPanel Margin="22,4,22,16">
-    <Button DockPanel.Dock="Top" Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}"
-            HorizontalAlignment="Left" Margin="0,0,0,10" Click="OnAddEntry"
-            Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}"/>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10"
+                Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}">
+      <Button Content="&#10133; Add entry" Style="{StaticResource ToolbarButton}" Click="OnAddEntry"/>
+      <Button Content="&#11015; Quick import" Style="{StaticResource ToolbarButton}" Margin="8,0,0,0"
+              Click="OnQuickImport" ToolTip="Copy a past day's items into the current day"/>
+    </StackPanel>
 
     <!-- Drag-to-delete zone (pinned at the bottom). Highlights while dragging an entry over it. -->
     <Border x:Name="EntryTrash" DockPanel.Dock="Bottom" AllowDrop="True" Drop="OnEntryTrashDrop"
             DragEnter="OnEntryTrashDragOver" DragOver="OnEntryTrashDragOver" DragLeave="OnEntryTrashDragLeave"
-            Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+            Background="{DynamicResource AmberBg}" BorderBrush="{DynamicResource AmberBorder}" BorderThickness="1"
             CornerRadius="8" Padding="10,8" Margin="0,10,0,0"
             Visibility="{Binding CanEditSelectedDay, Converter={StaticResource BoolToVisibleConverter}}">
       <TextBlock Text="&#128465;  Drop an entry here to delete" HorizontalAlignment="Center"
-                 Foreground="{StaticResource AmberFg}" FontSize="12" FontWeight="SemiBold"/>
+                 Foreground="{DynamicResource AmberFg}" FontSize="12" FontWeight="SemiBold"/>
     </Border>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel>
         <!-- Yesterday -->
-        <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
-          <TextBlock Text="Yesterday" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
+        <Border Background="{DynamicResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
+          <TextBlock Text="Yesterday" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TableHeaderText}"/>
         </Border>
         <ItemsControl ItemsSource="{Binding MyYesterday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,16"/>
 
         <!-- Today -->
-        <Border Background="{StaticResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
-          <TextBlock Text="Today" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TableHeaderText}"/>
+        <Border Background="{DynamicResource TableHeaderBg}" CornerRadius="5" Padding="9,4">
+          <TextBlock Text="Today" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TableHeaderText}"/>
         </Border>
         <ItemsControl ItemsSource="{Binding MyToday}" ItemTemplate="{StaticResource EntryTemplate}" Margin="0,8,0,0"/>
       </StackPanel>

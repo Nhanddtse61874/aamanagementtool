@@ -28,4 +28,9 @@ public interface IBacklogRepository
     Task SetTagsAsync(int backlogId, IReadOnlyList<int> tagIds,
         int? changedByUserId = null, string? changedByName = null);
     Task<IReadOnlyDictionary<int, IReadOnlyList<int>>> GetTagIdsForAllAsync();  // bulk, avoids N+1
+
+    // P20: record that a backlog was created by "continue to next month" (traceability). Writes one
+    // BacklogAudit row field='continued', new_value = the source period the copy was continued from.
+    Task WriteContinuedAuditAsync(int backlogId, string? fromPeriod,
+        int? changedByUserId = null, string? changedByName = null);
 }

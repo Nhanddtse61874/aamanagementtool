@@ -4,40 +4,40 @@
         xmlns:tabs="clr-namespace:TimesheetApp.Views.Tabs"
         Title="Worklog"
         Width="1180" Height="760" MinWidth="980" MinHeight="620"
-        Background="{StaticResource WindowBg}"
+        Background="{DynamicResource WindowBg}"
         WindowStartupLocation="CenterScreen">
 
-  <Grid Background="{StaticResource Surface}">
+  <Grid Background="{DynamicResource Surface}">
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="218"/>
       <ColumnDefinition Width="*"/>
     </Grid.ColumnDefinitions>
 
     <!-- ============================ SIDEBAR ============================ -->
-    <Border Grid.Column="0" Background="{StaticResource SidebarBg}"
-            BorderBrush="{StaticResource SidebarBorder}" BorderThickness="0,0,1,0">
+    <Border Grid.Column="0" Background="{DynamicResource SidebarBg}"
+            BorderBrush="{DynamicResource SidebarBorder}" BorderThickness="0,0,1,0">
       <DockPanel>
 
         <!-- Brand / logo -->
-        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource SidebarBorder}"
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource SidebarBorder}"
                 BorderThickness="0,0,0,1" Padding="16,15">
           <StackPanel Orientation="Horizontal">
-            <Border Background="{StaticResource Accent}" CornerRadius="8" Width="34" Height="34"
+            <Border Background="{DynamicResource Accent}" CornerRadius="8" Width="34" Height="34"
                     Margin="0,0,10,0">
               <TextBlock Text="W" Foreground="White" FontWeight="Bold" FontSize="16"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <StackPanel VerticalAlignment="Center">
               <TextBlock Text="Worklog" FontSize="14" FontWeight="Bold"/>
-              <TextBlock Text="Desktop · WPF" FontSize="11" Foreground="{StaticResource SectionLabel}"/>
+              <TextBlock Text="Desktop · WPF" FontSize="11" Foreground="{DynamicResource SectionLabel}"/>
             </StackPanel>
           </StackPanel>
         </Border>
 
         <!-- Current-user chip (bottom, XC-07) -->
-        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource SidebarBorder}"
+        <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource SidebarBorder}"
                 BorderThickness="0,1,0,0" Padding="12">
-          <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource SidebarBorder}"
+          <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource SidebarBorder}"
                   BorderThickness="1" CornerRadius="7" Padding="9,7">
             <StackPanel Orientation="Horizontal">
               <Border Background="{Binding CurrentUserName, Converter={StaticResource AvatarBrush}}" CornerRadius="13" Width="26" Height="26"
@@ -48,7 +48,7 @@
               <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="{Binding CurrentUserName, TargetNullValue='(none selected)', FallbackValue='(none selected)'}"
                            FontSize="12" FontWeight="SemiBold"/>
-                <TextBlock Text="Active" FontSize="11" Foreground="{StaticResource SectionLabel}"/>
+                <TextBlock Text="Active" FontSize="11" Foreground="{DynamicResource SectionLabel}"/>
               </StackPanel>
               <Ellipse Width="7" Height="7" Fill="#22C55E" VerticalAlignment="Center"
                        Margin="10,0,0,0"/>
@@ -116,7 +116,7 @@
       <StackPanel Grid.Row="0">
 
         <!-- XC-08 conflict-copy banner -->
-        <Border Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+        <Border Background="{DynamicResource AmberBg}" BorderBrush="{DynamicResource AmberBorder}" BorderThickness="1"
                 CornerRadius="8" Padding="12,8" Margin="22,14,22,0">
           <Border.Style>
             <Style TargetType="Border">
@@ -128,11 +128,11 @@
               </Style.Triggers>
             </Style>
           </Border.Style>
-          <TextBlock Text="{Binding ConflictWarning, Mode=OneWay}" TextWrapping="Wrap" Foreground="{StaticResource AmberFg}"/>
+          <TextBlock Text="{Binding ConflictWarning, Mode=OneWay}" TextWrapping="Wrap" Foreground="{DynamicResource AmberFg}"/>
         </Border>
 
         <!-- XC-09 lingering-journal (data-integrity) banner with a dismiss button -->
-        <Border Background="{StaticResource DangerSoft}" BorderBrush="{StaticResource DangerBorder}" BorderThickness="1"
+        <Border Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource DangerBorder}" BorderThickness="1"
                 CornerRadius="8" Padding="12,8" Margin="22,14,22,0">
           <Border.Style>
             <Style TargetType="Border">
@@ -148,7 +148,7 @@
             <Button DockPanel.Dock="Right" Content="Dismiss" Command="{Binding DismissJournalWarningCommand}"
                     Style="{StaticResource MiniGhostButton}" VerticalAlignment="Center" Margin="12,0,0,0"/>
             <TextBlock Text="{Binding JournalWarning, Mode=OneWay}" TextWrapping="Wrap"
-                       Foreground="{StaticResource Danger}" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource Danger}" VerticalAlignment="Center"/>
           </DockPanel>
         </Border>
       </StackPanel>
@@ -163,7 +163,7 @@
             <TextBlock Text="&#128197;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Log Work"/>
             <TextBlock Text="Log hours per backlog &amp; task" Margin="10,0,0,0"
-                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <tabs:TimesheetTab DataContext="{Binding Timesheet}" Margin="22,8,22,0"/>
         </DockPanel>
@@ -175,7 +175,7 @@
             <TextBlock Text="&#128203;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Backlog"/>
             <TextBlock Text="Manage backlogs &amp; their tasks" Margin="10,0,0,0"
-                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <tabs:BacklogsTab DataContext="{Binding Backlogs}" Margin="22,8,22,0"/>
         </DockPanel>
@@ -187,7 +187,7 @@
             <TextBlock Text="&#9989;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Task List"/>
             <TextBlock Text="Per-month overview of all backlogs" Margin="10,0,0,0"
-                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <tabs:TaskListTab DataContext="{Binding TaskList}" Margin="22,8,22,0"/>
         </DockPanel>
@@ -199,7 +199,7 @@
             <TextBlock Text="&#128202;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Reports"/>
             <TextBlock Text="Logged-hours analytics" Margin="10,0,0,0"
-                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <tabs:ReportsTab DataContext="{Binding Reports}" Margin="22,8,22,0"/>
         </DockPanel>
@@ -214,7 +214,7 @@
               <TextBlock Text="&#128221;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
               <TextBlock Style="{StaticResource FeatureTitle}" Text="Daily Report"/>
               <TextBlock Text="Standup — what each member did yesterday &amp; is doing today" Margin="10,0,0,0"
-                         Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+                         Foreground="{DynamicResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
             </StackPanel>
             <!-- Shared date toolbar (drives both Input and Board sub-tabs) -->
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
@@ -225,7 +225,7 @@
               <Button Content="Archive week" Style="{StaticResource ToolbarGhostButton}" Margin="14,0,0,0"
                       Command="{Binding ArchiveWeekCommand}"/>
               <TextBlock Text="{Binding StatusMessage}" Margin="14,0,0,0" VerticalAlignment="Center"
-                         Foreground="{StaticResource TextSecondary}" FontSize="12"/>
+                         Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
             </StackPanel>
           </StackPanel>
           <TabControl Margin="22,8,22,0" DataContext="{Binding DailyReport}">
@@ -245,7 +245,7 @@
             <TextBlock Text="&#128101;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Users"/>
             <TextBlock Text="Manage app accounts" Margin="10,0,0,0"
-                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <tabs:UsersTab DataContext="{Binding Users}" Margin="10,0,10,0"/>
         </DockPanel>
@@ -257,7 +257,7 @@
             <TextBlock Text="&#9881;" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <TextBlock Style="{StaticResource FeatureTitle}" Text="Settings"/>
             <TextBlock Text="Database &amp; preferences" Margin="10,0,0,0"
-                       Foreground="{StaticResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource SectionLabel}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
           <tabs:SettingsTab DataContext="{Binding Settings}"/>
         </DockPanel>

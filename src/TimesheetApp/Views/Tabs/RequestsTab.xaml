@@ -23,7 +23,7 @@
                 <Grid>
                     <TextBox x:Name="SearchBox" Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Filter by backlog code or project (live)"/>
-                    <TextBlock Text="Search code or project…" Foreground="{StaticResource Disabled}"
+                    <TextBlock Text="Search code or project…" Foreground="{DynamicResource Disabled}"
                                Margin="10,0" VerticalAlignment="Center" IsHitTestVisible="False">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -65,11 +65,11 @@
                 <DataGridTemplateColumn Header="TYPE" Width="110">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
+                            <Border Background="{DynamicResource AccentSoft}" CornerRadius="9" Padding="8,2"
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
                                     Visibility="{Binding Type, Converter={StaticResource NullToCollapsedConverter}}">
                                 <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{StaticResource Accent}"/>
+                                           Foreground="{DynamicResource Accent}"/>
                             </Border>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
@@ -82,11 +82,11 @@
                                  Converter={StaticResource BoolToVisibleConverter}}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,2"
+                            <Border Background="{DynamicResource AccentSoft}" CornerRadius="9" Padding="8,2"
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
                                     Visibility="{Binding ShowTeam, Converter={StaticResource BoolToVisibleConverter}}">
                                 <TextBlock Text="{Binding TeamName}" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{StaticResource Accent}"/>
+                                           Foreground="{DynamicResource Accent}"/>
                             </Border>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
@@ -110,7 +110,7 @@
         <!-- REQ-02/03: editor overlay — shown when Editor != null -->
         <Border Grid.RowSpan="2" Background="#66000000"
                 Visibility="{Binding Editor, Converter={StaticResource NullToCollapsedConverter}}">
-            <Border Width="540" MaxHeight="660" Background="{StaticResource Surface}"
+            <Border Width="540" MaxHeight="660" Background="{DynamicResource Surface}"
                     CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Border.Effect>
                     <DropShadowEffect Color="#0F172A" Opacity="0.28" BlurRadius="28" ShadowDepth="4" Direction="270"/>
@@ -119,10 +119,10 @@
                 <DockPanel DataContext="{Binding Editor}">
 
                     <!-- Header strip: title switches on create vs edit -->
-                    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBg}"
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}"
                             CornerRadius="12,12,0,0" Padding="20,15"
-                            BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
-                        <TextBlock FontWeight="Bold" FontSize="17" Foreground="{StaticResource TextPrimary}">
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                        <TextBlock FontWeight="Bold" FontSize="17" Foreground="{DynamicResource TextPrimary}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Text" Value="New backlog"/>
@@ -137,9 +137,9 @@
                     </Border>
 
                     <!-- Footer actions (always visible): error message + Cancel/Save -->
-                    <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBg}"
+                    <Border DockPanel.Dock="Bottom" Background="{DynamicResource HeaderBg}"
                             CornerRadius="0,0,12,12" Padding="20,12"
-                            BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
                         <DockPanel>
                             <Button Content="Save" DockPanel.Dock="Right" Padding="22,6"
                                     Command="{Binding SaveCommand,
@@ -148,7 +148,7 @@
                                     Style="{StaticResource GhostButton}" Padding="18,6" Margin="0,0,8,0"
                                     Command="{Binding DataContext.CancelEditorCommand,
                                         RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                            <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource Danger}"
+                            <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource Danger}"
                                        FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"
                                        Margin="0,0,8,0"
                                        Visibility="{Binding ErrorMessage,
@@ -228,7 +228,7 @@
 
                             <!-- v7: Task List tracking (spec §5.2). DEFAULT backlog never reaches this
                                  editor (it has no Edit affordance), so no extra guard is needed here. -->
-                            <Border Background="{StaticResource HeaderBg}" CornerRadius="8" Padding="12,10"
+                            <Border Background="{DynamicResource HeaderBg}" CornerRadius="8" Padding="12,10"
                                     Margin="0,2,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Tracking" Style="{StaticResource FieldLabel}"
@@ -358,7 +358,7 @@
                             <ComboBox ItemsSource="{Binding TemplateNames}"
                                       SelectedItem="{Binding SelectedTemplateName}" Margin="0,0,0,2"/>
                             <TextBlock Text="Selecting a template adds its tasks to the list below."
-                                       Foreground="{StaticResource TextSecondary}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondary}" FontSize="11"
                                        Margin="0,0,0,12"/>
 
                             <!-- REQ-02/04: ordered editable task list with reorder + remove-task.
@@ -367,14 +367,14 @@
                             <ItemsControl ItemsSource="{Binding Tasks}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="{StaticResource Surface}"
-                                                BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                        <Border Background="{DynamicResource Surface}"
+                                                BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                                 CornerRadius="6" Padding="6,4" Margin="0,0,0,5">
                                             <DockPanel>
                                                 <!-- REQ-04: soft-delete TASK only, NOT the backlog -->
                                                 <Button Content="&#10005;" DockPanel.Dock="Right"
                                                         Style="{StaticResource TaskIconButton}"
-                                                        Foreground="{StaticResource Danger}" ToolTip="Remove task"
+                                                        Foreground="{DynamicResource Danger}" ToolTip="Remove task"
                                                         Command="{Binding RemoveTaskCommand,
                                                             RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                         CommandParameter="{Binding}"/>
@@ -388,7 +388,7 @@
                                                         Command="{Binding MoveUpCommand,
                                                             RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                         CommandParameter="{Binding}"/>
-                                                <Border DockPanel.Dock="Right" Background="{StaticResource Danger}"
+                                                <Border DockPanel.Dock="Right" Background="{DynamicResource Danger}"
                                                         CornerRadius="4" Padding="6,1" Margin="6,0,0,0"
                                                         VerticalAlignment="Center"
                                                         Visibility="{Binding IsRemoved,
@@ -427,7 +427,7 @@
                                 <ItemsControl ItemsSource="{Binding AuditEntries}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
+                                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
                                                     Padding="0,4">
                                                 <StackPanel>
                                                     <TextBlock FontSize="12">
@@ -437,7 +437,7 @@
                                                         <Run Text=" &#8594; "/>
                                                         <Run Text="{Binding NewValue, Mode=OneWay, TargetNullValue='—'}"/>
                                                     </TextBlock>
-                                                    <TextBlock FontSize="11" Foreground="{StaticResource TextSecondary}">
+                                                    <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondary}">
                                                         <Run Text="{Binding ChangedByName, Mode=OneWay, TargetNullValue='(?)'}"/>
                                                         <Run Text=" &#183; "/>
                                                         <Run Text="{Binding ChangedAt, Mode=OneWay, StringFormat='dd/MM/yyyy HH:mm'}"/>

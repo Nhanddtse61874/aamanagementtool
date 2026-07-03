@@ -10,7 +10,7 @@
       <Setter Property="HorizontalAlignment" Value="Center"/>
       <Style.Triggers>
         <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
-          <Setter Property="Foreground" Value="{StaticResource Danger}"/>
+          <Setter Property="Foreground" Value="{DynamicResource Danger}"/>
           <Setter Property="FontWeight" Value="Bold"/>
         </DataTrigger>
       </Style.Triggers>
@@ -29,7 +29,7 @@
     <Style x:Key="HolidayCellBorder" TargetType="Border">
       <Style.Triggers>
         <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
-          <Setter Property="Background" Value="{StaticResource HolidayBg}"/>
+          <Setter Property="Background" Value="{DynamicResource HolidayBg}"/>
           <Setter Property="ToolTip" Value="Holiday — not a working day"/>
         </DataTrigger>
       </Style.Triggers>
@@ -52,7 +52,7 @@
             <Grid Background="{TemplateBinding Background}">
               <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
               <TextBlock x:Name="holidayHint" Text="Holiday" Visibility="Collapsed" IsHitTestVisible="False"
-                         FontSize="11" Foreground="{StaticResource TextSecondary}"
+                         FontSize="11" Foreground="{DynamicResource TextSecondary}"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
             <ControlTemplate.Triggers>
@@ -67,19 +67,19 @@
 
     <!-- Backlog "section" row: a full-width clickable band that collapses/expands its tasks. -->
     <Style x:Key="SectionToggle" TargetType="ToggleButton">
-      <Setter Property="Background" Value="{StaticResource TableHeaderBg}"/>
+      <Setter Property="Background" Value="{DynamicResource TableHeaderBg}"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
             <Border x:Name="bd" Background="{TemplateBinding Background}"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
               <ContentPresenter VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="{StaticResource HeaderBg}"/>
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HeaderBg}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -90,7 +90,7 @@
     <!-- Expand/collapse caret that flips with the group's IsExpanded. -->
     <Style x:Key="SectionCaret" TargetType="TextBlock">
       <Setter Property="Text" Value="&#9662;"/>
-      <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
       <Setter Property="Margin" Value="0,0,8,0"/>
       <Style.Triggers>
@@ -107,21 +107,21 @@
     <DockPanel DockPanel.Dock="Top" Margin="8,8,8,6">
 
       <!-- Week total chip (right) -->
-      <Border DockPanel.Dock="Right" Background="{StaticResource HeaderBg}" CornerRadius="7"
+      <Border DockPanel.Dock="Right" Background="{DynamicResource HeaderBg}" CornerRadius="7"
               Padding="12,3" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal">
           <TextBlock Text="Week total" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
-                     Foreground="{StaticResource TableHeaderText}" Margin="0,0,8,0"/>
+                     Foreground="{DynamicResource TableHeaderText}" Margin="0,0,8,0"/>
           <TextBlock Text="{Binding WeekTotal, StringFormat='{}{0:N1}h'}" FontSize="15" FontWeight="Bold"
-                     Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                     Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
         </StackPanel>
       </Border>
 
       <!-- Left group: segmented week nav + Save + Smart fill -->
       <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
         <!-- Segmented prev / week / next -->
-        <Border BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="6"
-                Background="{StaticResource Surface}">
+        <Border BorderBrush="{DynamicResource BorderStrong}" BorderThickness="1" CornerRadius="6"
+                Background="{DynamicResource Surface}">
           <StackPanel Orientation="Horizontal">
             <Button Content="&#9664; Prev" Command="{Binding PreviousWeekCommand}"
                     Style="{StaticResource GhostButton}" BorderThickness="0" Padding="12,4"
@@ -144,14 +144,14 @@
                    FontSize="12" FontWeight="SemiBold">
           <TextBlock.Style>
             <Style TargetType="TextBlock">
-              <Setter Property="Foreground" Value="{StaticResource BadgeGreenFg}"/>
+              <Setter Property="Foreground" Value="{DynamicResource BadgeGreenFg}"/>
               <Setter Property="Visibility" Value="Visible"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding SaveStatus}" Value="">
                   <Setter Property="Visibility" Value="Collapsed"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding SaveStatusIsError}" Value="True">
-                  <Setter Property="Foreground" Value="{StaticResource Danger}"/>
+                  <Setter Property="Foreground" Value="{DynamicResource Danger}"/>
                 </DataTrigger>
               </Style.Triggers>
             </Style>
@@ -177,18 +177,18 @@
       <ComboBox Width="56" ItemsSource="{Binding Months}" SelectedItem="{Binding FilterMonthNumber}"
                 Margin="0,0,6,0" ToolTip="Show only tickets in the selected month"/>
       <ComboBox Width="80" ItemsSource="{Binding Years}" SelectedItem="{Binding FilterYear}"/>
-      <Border Background="{StaticResource AmberBg}" CornerRadius="7" Padding="10,3" Margin="16,0,0,0"
+      <Border Background="{DynamicResource AmberBg}" CornerRadius="7" Padding="10,3" Margin="16,0,0,0"
               VerticalAlignment="Center"
               Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVisibleConverter}}">
         <TextBlock Text="Read-only (whole team)" FontSize="12" FontWeight="SemiBold"
-                   Foreground="{StaticResource AmberFg}"/>
+                   Foreground="{DynamicResource AmberFg}"/>
       </Border>
     </StackPanel>
 
     <!-- Per-column footer totals strip across ALL groups (TS-05, TS-06).
          Right margin = scrollbar gutter (~17) + 8 so the columns line up with the scrollable data. -->
-    <Border DockPanel.Dock="Bottom" Margin="8,2,25,8" Background="{StaticResource TableHeaderBg}"
-            BorderBrush="{StaticResource BorderStrong}" BorderThickness="1">
+    <Border DockPanel.Dock="Bottom" Margin="8,2,25,8" Background="{DynamicResource TableHeaderBg}"
+            BorderBrush="{DynamicResource BorderStrong}" BorderThickness="1">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="2*"/>
@@ -200,32 +200,32 @@
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <TextBlock Grid.Column="0" Text="DAY TOTALS" FontWeight="Bold" VerticalAlignment="Center" Margin="10,6"
-                   Foreground="{StaticResource TableHeaderText}"/>
-        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+                   Foreground="{DynamicResource TableHeaderText}"/>
+        <Border Grid.Column="1" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
           <TextBlock Text="{Binding MonTotal, StringFormat=N1}" Tag="{Binding MonTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
         </Border>
-        <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+        <Border Grid.Column="2" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
           <TextBlock Text="{Binding TueTotal, StringFormat=N1}" Tag="{Binding TueTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
         </Border>
-        <Border Grid.Column="3" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+        <Border Grid.Column="3" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
           <TextBlock Text="{Binding WedTotal, StringFormat=N1}" Tag="{Binding WedTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
         </Border>
-        <Border Grid.Column="4" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+        <Border Grid.Column="4" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
           <TextBlock Text="{Binding ThuTotal, StringFormat=N1}" Tag="{Binding ThuTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
         </Border>
-        <Border Grid.Column="5" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+        <Border Grid.Column="5" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
           <TextBlock Text="{Binding FriTotal, StringFormat=N1}" Tag="{Binding FriTotal, Converter={StaticResource OverEightTag}}" Style="{StaticResource TotalTextBlock}"/>
         </Border>
-        <Border Grid.Column="6" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
+        <Border Grid.Column="6" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,6">
           <TextBlock Text="{Binding WeekTotal, StringFormat=N1}" FontWeight="Bold"
-                     HorizontalAlignment="Center" Foreground="{StaticResource Accent}"/>
+                     HorizontalAlignment="Center" Foreground="{DynamicResource Accent}"/>
         </Border>
       </Grid>
     </Border>
 
     <!-- Column-header strip so the per-group DataGrids (headers hidden) stay aligned (Excel-like cells). -->
-    <Border DockPanel.Dock="Top" Margin="8,4,25,0" Background="{StaticResource TableHeaderBg}"
-            BorderBrush="{StaticResource BorderStrong}" BorderThickness="1,1,1,0">
+    <Border DockPanel.Dock="Top" Margin="8,4,25,0" Background="{DynamicResource TableHeaderBg}"
+            BorderBrush="{DynamicResource BorderStrong}" BorderThickness="1,1,1,0">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="2*"/>
@@ -237,31 +237,31 @@
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <TextBlock Grid.Column="0" Text="TASK" FontWeight="Bold" Margin="10,7"
-                   Foreground="{StaticResource TableHeaderText}"/>
-        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+                   Foreground="{DynamicResource TableHeaderText}"/>
+        <Border Grid.Column="1" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
           <TextBlock Text="{Binding MonHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
-        <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+        <Border Grid.Column="2" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
           <TextBlock Text="{Binding TueHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
-        <Border Grid.Column="3" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+        <Border Grid.Column="3" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
           <TextBlock Text="{Binding WedHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
-        <Border Grid.Column="4" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+        <Border Grid.Column="4" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
           <TextBlock Text="{Binding ThuHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
-        <Border Grid.Column="5" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+        <Border Grid.Column="5" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
           <TextBlock Text="{Binding FriHeader}" FontWeight="Bold" HorizontalAlignment="Center"/></Border>
-        <Border Grid.Column="6" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
+        <Border Grid.Column="6" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="0,7">
           <TextBlock Text="TOTAL" FontWeight="Bold" HorizontalAlignment="Center"
-                     Foreground="{StaticResource TableHeaderText}"/></Border>
+                     Foreground="{DynamicResource TableHeaderText}"/></Border>
       </Grid>
     </Border>
 
     <!-- Drag-to-delete zone for task rows (pinned just above the day-totals footer; editable view only). -->
     <Border x:Name="TaskTrash" DockPanel.Dock="Bottom" AllowDrop="True" Drop="OnTaskTrashDrop"
             DragEnter="OnTaskTrashDragOver" DragOver="OnTaskTrashDragOver" DragLeave="OnTaskTrashDragLeave"
-            Background="{StaticResource AmberBg}" BorderBrush="{StaticResource AmberBorder}" BorderThickness="1"
+            Background="{DynamicResource AmberBg}" BorderBrush="{DynamicResource AmberBorder}" BorderThickness="1"
             CornerRadius="8" Padding="10,7" Margin="8,4,25,4"
             Visibility="{Binding CanEdit, Converter={StaticResource BoolToVisibleConverter}}">
       <TextBlock Text="&#128465;  Drop a task here to delete" HorizontalAlignment="Center"
-                 Foreground="{StaticResource AmberFg}" FontSize="12" FontWeight="SemiBold"/>
+                 Foreground="{DynamicResource AmberFg}" FontSize="12" FontWeight="SemiBold"/>
     </Border>
 
     <!-- Single continuous table body: one "section" band per backlog, its task rows beneath (each with
@@ -288,20 +288,20 @@
                     <TextBlock Style="{StaticResource SectionCaret}"/>
                     <TextBlock Text="{Binding BacklogCode}" FontWeight="Bold" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding Project, StringFormat=' · {0}'}" VerticalAlignment="Center"
-                               Foreground="{StaticResource TextSecondary}"
+                               Foreground="{DynamicResource TextSecondary}"
                                Visibility="{Binding Project, Converter={StaticResource NullToCollapsedConverter}}"/>
-                    <Border Background="{StaticResource AccentSoft}" CornerRadius="9" Padding="8,1" Margin="10,0,0,0"
+                    <Border Background="{DynamicResource AccentSoft}" CornerRadius="9" Padding="8,1" Margin="10,0,0,0"
                             VerticalAlignment="Center"
                             Visibility="{Binding Type, Converter={StaticResource NullToCollapsedConverter}}">
                       <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                 Foreground="{StaticResource Accent}"/>
+                                 Foreground="{DynamicResource Accent}"/>
                     </Border>
                     <TextBlock Text="{Binding PeriodMonth}" FontSize="11" Margin="8,0,0,0"
-                               VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
-                    <Border Background="{StaticResource HeaderBg}" CornerRadius="9" Padding="8,1" Margin="8,0,0,0"
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondary}"/>
+                    <Border Background="{DynamicResource HeaderBg}" CornerRadius="9" Padding="8,1" Margin="8,0,0,0"
                             VerticalAlignment="Center"
                             Visibility="{Binding AssigneeName, Converter={StaticResource NullToCollapsedConverter}}">
-                      <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}">
+                      <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}">
                         <Run Text="&#128100; "/><Run Text="{Binding AssigneeName, Mode=OneWay}"/>
                       </TextBlock>
                     </Border>
@@ -309,7 +309,7 @@
 
                   <!-- Right: group total aligned under the TOTAL column -->
                   <TextBlock Grid.Column="6" Text="{Binding GroupTotal, StringFormat='{}{0:N1}h'}"
-                             FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextSecondary}"
+                             FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextSecondary}"
                              HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,6,12,6"/>
                 </Grid>
               </ToggleButton>
@@ -319,8 +319,8 @@
                             Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibleConverter}}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
-                            Background="{StaticResource Surface}"
+                    <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                            Background="{DynamicResource Surface}"
                             AllowDrop="True" Drop="OnTaskDrop" DragOver="OnTaskDragOver">
                       <Grid>
                         <Grid.ColumnDefinitions>
@@ -331,7 +331,7 @@
 
                         <DockPanel Grid.Column="0" Margin="10,5,8,5">
                           <TextBlock DockPanel.Dock="Left" Text="&#9783;" FontSize="15" Cursor="SizeAll"
-                                     Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"
+                                     Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondary}"
                                      ToolTip="Drag to reorder, or drop on the trash to delete"
                                      Visibility="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibleConverter}}"
                                      PreviewMouseLeftButtonDown="OnTaskDragHandleDown" PreviewMouseMove="OnTaskDragHandleMove"/>
@@ -339,42 +339,42 @@
                                      FontSize="13" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
 
-                        <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                        <Border Grid.Column="1" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
                                 Style="{StaticResource HolidayCellBorder}"
                                 Tag="{Binding DataContext.MonIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
                                    IsReadOnly="{Binding DataContext.MonReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Mon, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="2" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                        <Border Grid.Column="2" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
                                 Style="{StaticResource HolidayCellBorder}"
                                 Tag="{Binding DataContext.TueIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
                                    IsReadOnly="{Binding DataContext.TueReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Tue, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="3" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                        <Border Grid.Column="3" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
                                 Style="{StaticResource HolidayCellBorder}"
                                 Tag="{Binding DataContext.WedIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
                                    IsReadOnly="{Binding DataContext.WedReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Wed, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="4" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                        <Border Grid.Column="4" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
                                 Style="{StaticResource HolidayCellBorder}"
                                 Tag="{Binding DataContext.ThuIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
                                    IsReadOnly="{Binding DataContext.ThuReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Thu, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="5" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0"
+                        <Border Grid.Column="5" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0"
                                 Style="{StaticResource HolidayCellBorder}"
                                 Tag="{Binding DataContext.FriIsHoliday, RelativeSource={RelativeSource AncestorType=UserControl}}">
                           <TextBox Style="{StaticResource GridDayBox}"
                                    IsReadOnly="{Binding DataContext.FriReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                    Text="{Binding Fri, UpdateSourceTrigger=LostFocus, TargetNullValue='', ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
                         </Border>
-                        <Border Grid.Column="6" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                        <Border Grid.Column="6" BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
                           <TextBlock Text="{Binding RowTotal, StringFormat=N1}" FontWeight="SemiBold" FontSize="13"
                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -386,8 +386,8 @@
 
               <!-- Inline add-task row (only when expanded). The "Move to next month" action lives here
                    (right side) instead of cluttering the section header. -->
-              <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
-                      Background="{StaticResource Surface}"
+              <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                      Background="{DynamicResource Surface}"
                       Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibleConverter}}">
                 <DockPanel Margin="28,4,12,4">
                   <Button DockPanel.Dock="Right" Content="Move to next month &#9654;"

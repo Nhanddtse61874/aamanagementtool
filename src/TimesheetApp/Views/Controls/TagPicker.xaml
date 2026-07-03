@@ -11,7 +11,7 @@
         <Popup x:Name="PickerPopup" IsOpen="{Binding IsChecked, ElementName=TagsToggle}" StaysOpen="False"
                PlacementTarget="{Binding ElementName=TagsToggle}" Placement="Bottom"
                AllowsTransparency="True" PopupAnimation="Fade">
-            <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,4,0,0" MinWidth="180">
                 <Border.Effect>
                     <DropShadowEffect Color="#0F172A" Opacity="0.22" BlurRadius="16" ShadowDepth="2" Direction="270"/>

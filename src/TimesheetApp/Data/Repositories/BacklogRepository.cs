@@ -291,6 +291,23 @@ public sealed class BacklogRepository : IBacklogRepository
                 a.note)).ToList());
     }
 
+    // P20: one 'continued' audit row on a copy created by "continue to next month".
+    public async Task WriteContinuedAuditAsync(int backlogId, string? fromPeriod,
+        int? changedByUserId = null, string? changedByName = null)
+    {
+        using var c = _factory.Create();
+        await c.ExecuteAsync(
+            @"INSERT INTO BacklogAudit(backlog_id, field, old_value, new_value,
+                changed_by_user_id, changed_by_name, changed_at, note)
+              VALUES(@bid, 'continued', NULL, @new, @uid, @uname, @at, @note);",
+            new
+            {
+                bid = backlogId, @new = fromPeriod, uid = changedByUserId, uname = changedByName,
+                at = Iso(DateTimeOffset.UtcNow),
+                note = fromPeriod is null ? null : $"continued from {fromPeriod}",
+            });
+    }
+
     private static string Iso(DateTimeOffset d) =>
         d.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 

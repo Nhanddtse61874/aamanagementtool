@@ -1,5 +1,15 @@
 # STATE — TimesheetApp (resume doc)
 
+**⏳ ACTIVE — one combined branch `feature/batch-p18-p19-p20-2026-07-02`** (off `main` @ `d16fa3a`; merges `41fb317`). Build clean, **548 tests green**. Awaiting UAT, not merged to `main`.
+Folds three features (originals `feature/daily-quick-import-2026-07-02`, `feature/dark-mode-2026-07-02`, `feature/tasklist-continue-2026-07-02` — kept, foldable/deletable):
+- **P18 — Daily Quick Import** (`.planning/P18-UAT.md`): "⬇ Quick import" in Daily Input clones a chosen day's standup (entries both sections + issues) into the selected day, append.
+- **P19 — Dark mode** (`.planning/P19-UAT.md`): live no-restart toggle in Settings; palette split + `DynamicResource` swap; ALL views (incl P18's `QuickImportDialog`, post-merge) converted; config-persisted.
+- **P20 — Continue next month** (`.planning/P20-UAT.md`): "↻ Continue" on each Task List card copies the backlog → M+1 `Type="Continue"` (keep progress + not-Done tasks + tags); blocks a same-code duplicate; original stays.
+- Merge was clean except `.planning/STATE.md` (resolved) — code files auto-merged; only post-fix = converting `QuickImportDialog.xaml` palette refs to `DynamicResource` for dark parity.
+- **NEXT:** UAT the combined branch (user "build chung, test sau") → merge to `main` + push when OK.
+
+
+
 **Task List CARD layout + grouped bands + auto-provision user — MERGED to `main` + PUSHED (2026-07-02).**
 `main` = `bc4c02f` "Merge feature/tasklist-grouped-bands-2026-07-02 into main" = `[origin/main]` (in sync). Build clean, **536 tests green**.
 Shipped together: **P15** (grouped section bands — adaptive Team/Project, collapsible), **P16** (per-backlog **card** layout — tags
@@ -10,6 +20,20 @@ full-width on top, no h-scroll; Type/PCT/PCA → direct TwoWay; + External-in-he
 
 <!-- Detailed step-by-step records for P15/P16/P17 are below (marked "⏳ ACTIVE" historically) — all shipped in bc4c02f. -->
 _Prior redesign (visual pass `6f2c9fe`) was merged earlier in `45b6285`; superseded by the P16 card layout above._
+
+---
+
+**⏳ ACTIVE — P18: Daily Quick Import.** Branch `feature/daily-quick-import-2026-07-02` (now folded into `feature/batch-p18-p19-p20-2026-07-02`). Mode A.
+User: trong Daily muốn "quick import" — chọn 1 ngày → copy full data ngày đó (entry + issue của mình) sang ngày hiện tại để sửa nhanh.
+- **STEP 2/3/5/6 done + approved.** Spec `docs/superpowers/specs/2026-07-02-daily-quick-import-design.md`; plan `docs/superpowers/plans/2026-07-02-P18-daily-quick-import.md` (plan-check APPROVE). Decisions: append all (incl duplicates); copy current-user entries both sections + issues, statuses as-is; source = DatePicker; target = selected editable day; scope current-user + active-team.
+- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `StandupService.QuickImportDayAsync(sourceDate, targetDate)` + 5 unit tests; W2 VM `QuickImportAsync` + `QuickImportDialog` (DatePicker) + "⬇ Quick import" button in Daily Input. Build clean.
+- **Status: waiting_for_user → STEP 8 UAT** (`.planning/P18-UAT.md`).
+
+**⏳ ACTIVE — P19: Dark mode.** Branch `feature/dark-mode-2026-07-02` (now folded into `feature/batch-p18-p19-p20-2026-07-02`). Mode A. User chose the **robust/high-impact** approach (verify thoroughly) — see memory `startup-phase-prefers-robust-over-minimal`.
+- **Approach (locked):** split palette → `Palette.Light.xaml`/`Palette.Dark.xaml`; `Theme.xaml` styles + all views reference palette keys via **`DynamicResource`**; `ThemeService` swaps the palette dict at runtime = **live, no-restart** toggle. Promote hardcoded hex literals → theme keys. Config `IsDarkMode` + Settings toggle. Palette = ~36 keys.
+- **STEP 5/6 done:** spec `docs/superpowers/specs/2026-07-02-dark-mode-design.md`; plan `docs/superpowers/plans/2026-07-02-P19-dark-mode.md` (3 waves).
+- **STEP 7 Execute: DONE (2026-07-02, inline).** W1 `0830bcd` (palette split + ThemeService + config `IsDarkMode` + startup apply + Settings toggle; Theme.xaml→DynamicResource). W2 `9b6ff80` (converted 315 view palette-refs across 19 views+MainWindow; reconciliation 315→315/0). W3 `f80caa4` (tuned `Palette.Dark.xaml` + `PaletteParityTests` + `ThemeServiceTests`). **Live hot-switch works** (Settings toggle → whole app, no restart; persists).
+- **Status: waiting_for_user → STEP 8 UAT** (`.planning/P19-UAT.md`): sweep every tab/dialog for light patches + readability, verify persistence. Post-merge: `QuickImportDialog.xaml` (P18's new dialog) also converted to DynamicResource for dark parity.
 
 **⏳ ACTIVE — Task List grouped section bands (Log Work).** Branch `feature/tasklist-grouped-bands-2026-07-02` (from `main` @ `8aa1aef`).
 - **STEP 2 Brainstorm + STEP 3 Mode Gate: DONE (2026-07-02).** **Mode A** approved (0/5 Mode B signals — 1 domain, low risk, no formal QA gate).

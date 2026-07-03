@@ -43,6 +43,10 @@ public partial class App : Application
 
         Services = sc.BuildServiceProvider();
 
+        // P19: apply the saved theme (light/dark) BEFORE any window renders — swaps the palette dictionary;
+        // DynamicResource consumers pick it up. Independent of the DB, so it runs first.
+        Services.GetRequiredService<IThemeService>().Apply(Services.GetRequiredService<IAppConfig>().IsDarkMode);
+
         // One-time bootstrap BEFORE the first window: schema + migrations + DEFAULT seed.
         await Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
 
@@ -130,6 +134,7 @@ public partial class App : Application
         // default DB under %USERPROFILE%\Documents\TimesheetApp\timesheet.db on first run).
         sc.AddSingleton<IAppConfig, JsonAppConfig>();
         sc.AddSingleton<IClock, SystemClock>();
+        sc.AddSingleton<IThemeService, ThemeService>();   // P19: runtime light/dark palette swap
         sc.AddSingleton<IConnectionFactory, SqliteConnectionFactory>();
         // Cross-tab live sync bus: producers Send(DataChangedMessage), consumer VMs reload.
         sc.AddSingleton<CommunityToolkit.Mvvm.Messaging.IMessenger>(
@@ -177,6 +182,7 @@ public partial class App : Application
         sc.AddSingleton<IStandupArchiveService, StandupArchiveService>();
         // P8 Task List — new repos.
         sc.AddSingleton<ITagRepository, TagRepository>();
+        sc.AddSingleton<IBacklogContinuationService, BacklogContinuationService>();   // P20: continue to next month
         sc.AddSingleton<IPcaContactRepository, PcaContactRepository>();
         sc.AddSingleton<IHolidayRepository, HolidayRepository>();
         // P10 Multi-Team — team repo + current-team context + bootstrap (W9 wiring). NOTE: do NOT add
