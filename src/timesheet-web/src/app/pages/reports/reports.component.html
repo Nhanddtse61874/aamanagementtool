@@ -1,0 +1,70 @@
+<section class="page" style="max-width:1600px;">
+  <div class="page-head">
+    <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12.5" y="7" width="3" height="10"/><rect x="18" y="13" width="3" height="4"/></svg></div>
+    <div><h1>Reports</h1><p>Logged-hours analytics</p></div>
+  </div>
+
+  @if (missing().length) {
+    <details class="missing">
+      <summary>⚠ Missing time logs <span class="pill">{{ missing().length }}</span><span class="hint">tap to expand</span></summary>
+      <div class="missing__list">@for (p of missing(); track p) { <span class="mchip">{{ p }}</span> }</div>
+    </details>
+  }
+
+  <div class="filters">
+    @for (f of reportFilters; track f.label) {
+      <label>{{ f.label }}<span class="select-wrap"><select class="select">@for (o of f.options; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+    }
+    <button class="btn btn-primary" style="margin-left:auto;" (click)="notify('Exported to Excel')">↓ Export to Excel</button>
+  </div>
+
+  <div class="metrics">
+    @for (m of metrics(); track m.label) {
+      <div class="card metric">
+        <div class="metric__lbl">{{ m.icon }} {{ m.label }}</div>
+        <div class="metric__val" [style.color]="metricColor(m.tone)">{{ m.value }}</div>
+        <div class="metric__sub">{{ m.sub }}</div>
+      </div>
+    } @empty {
+      <div class="empty span"><div class="empty__title">No analytics yet</div><div class="empty__sub">Connect <code>getMetrics()</code>.</div></div>
+    }
+  </div>
+
+  <div class="cols">
+    <div class="cols__left">
+      <div class="card tbl-card">
+        <div class="tbl-card__title">Weekly <span>by day · ticket · task</span></div>
+        <div class="wtbl wtbl--head"><div>DATE</div><div>TICKET</div><div>TASK</div><div class="r">HOURS</div></div>
+        <div class="wtbl-body">
+          @for (w of weekly(); track $index) {
+            <div class="wtbl"><div class="b">{{ w.date }}</div><div class="tk">{{ w.ticket }}</div><div class="muted">{{ w.task }}</div><div class="r n">{{ w.hours }}</div></div>
+          } @empty { <div class="tbl-empty">Connect <code>getWeekly()</code></div> }
+        </div>
+      </div>
+      <div class="card tbl-card">
+        <div class="tbl-card__title">Monthly <span>by backlog / task</span></div>
+        <div class="mtbl mtbl--head"><div>BACKLOG</div><div>PROJECT</div><div>TASK</div><div class="r">HOURS</div></div>
+        @for (m of monthly(); track $index) {
+          <div class="mtbl"><div class="b">{{ m.backlog }}</div><div class="muted">{{ m.project }}</div><div class="muted">{{ m.task }}</div><div class="r n">{{ m.hours }}</div></div>
+        } @empty { <div class="tbl-empty">Connect <code>getMonthly()</code></div> }
+      </div>
+    </div>
+
+    <div class="card tree-card">
+      <div class="tree-card__title">
+        <span>Drill-down <span class="sub">Project → Backlog → Task → Date</span></span>
+        <button class="btn btn-ghost btn-sm" (click)="toggleAll()">{{ anyExpanded() ? 'Collapse all' : 'Expand all' }}</button>
+      </div>
+      <div class="tree">
+        @for (n of flat(); track n.id) {
+          <div class="node" [class.branch]="n.hasChildren" [style.padding-left.px]="10 + n.depth * 20" (click)="n.hasChildren && toggleNode(n.id)">
+            <span class="caret" [class.hidden]="!n.hasChildren" [class.open]="n.expanded">▶</span>
+            <span class="lbl" [style.color]="labelColor(n)" [style.font-weight]="n.depth <= 1 ? 800 : (n.depth === 2 ? 700 : 500)">{{ n.label }}</span>
+            <span class="sp"></span>
+            <span class="hrs" [style.color]="n.isLeaf ? 'var(--muted)' : 'var(--accent-700)'">{{ n.hours }}</span>
+          </div>
+        } @empty { <div class="tbl-empty">Connect <code>getDrilldown()</code></div> }
+      </div>
+    </div>
+  </div>
+</section>

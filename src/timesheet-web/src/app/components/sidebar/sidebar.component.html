@@ -1,0 +1,59 @@
+<aside class="sb">
+  <div class="sb__brand">
+    <div class="sb__logo">W</div>
+    <div class="sb__title">
+      <div class="name">Worklog</div>
+      <div class="sub">Desktop · WPF</div>
+    </div>
+  </div>
+
+  <nav class="sb__nav">
+    <div class="sb__section">WORKSPACE</div>
+    @for (item of workspace; track item.link) {
+      <a class="sb__item" [routerLink]="item.link" routerLinkActive="is-active">
+        <span class="bar"></span>
+        <ng-container [ngSwitch]="item.icon">
+          <svg *ngSwitchCase="'log'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>
+          <svg *ngSwitchCase="'backlog'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
+          <svg *ngSwitchCase="'tasklist'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m8 11 2.5 2.5L16 8"/></svg>
+          <svg *ngSwitchCase="'daily'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M15 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg>
+          <svg *ngSwitchCase="'reports'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12.5" y="7" width="3" height="10"/><rect x="18" y="13" width="3" height="4"/></svg>
+        </ng-container>
+        <span>{{ item.label }}</span>
+      </a>
+    }
+
+    <div class="sb__section">ADMIN</div>
+    @for (item of admin; track item.link) {
+      <a class="sb__item" [routerLink]="item.link" routerLinkActive="is-active">
+        <span class="bar"></span>
+        <ng-container [ngSwitch]="item.icon">
+          <svg *ngSwitchCase="'users'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M2 20a7 7 0 0 1 14 0M17 5a3 3 0 0 1 0 6M22 20a6 6 0 0 0-4-5.6"/></svg>
+          <svg *ngSwitchCase="'settings'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="14" cy="18" r="2"/></svg>
+        </ng-container>
+        <span>{{ item.label }}</span>
+      </a>
+    }
+  </nav>
+
+  <div class="sb__foot">
+    <div class="sb__section">TEAM</div>
+    <div class="select-wrap" style="width:100%;margin-bottom:10px;">
+      <select class="select" style="width:100%;">
+        <option>Architect Improvement</option>
+        <option>Plus Team</option>
+      </select>
+      <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <div class="sb__user">
+      <div class="sb__user-av">
+        <div class="avatar" style="width:32px;height:32px;background:var(--accent);font-size:14px;">N</div>
+        <span class="dot"></span>
+      </div>
+      <div>
+        <div class="u-name">Nhan</div>
+        <div class="u-status">Active</div>
+      </div>
+    </div>
+  </div>
+</aside>

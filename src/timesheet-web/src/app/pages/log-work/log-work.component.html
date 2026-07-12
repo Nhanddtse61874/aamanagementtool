@@ -1,0 +1,98 @@
+<section class="page" style="max-width:1500px;">
+  <div class="lw-head">
+    <div class="page-head" style="margin:0;">
+      <div class="icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>
+      </div>
+      <div><h1>Log Work</h1><p>Log hours per backlog &amp; task</p></div>
+    </div>
+    <div class="week-total">
+      <div class="lbl">WEEK TOTAL</div>
+      <div class="val" [class.zero]="weekTotal() === 0">{{ fmt(weekTotal()) }}h</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg">
+      <button (click)="prevWeek()">◀ Prev</button>
+      <div class="seg__label">Week of 06/07/2026</div>
+      <button (click)="nextWeek()">Next ▶</button>
+    </div>
+    <button class="btn btn-primary" (click)="smartFill()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>Smart fill
+    </button>
+    <button class="btn btn-ghost" (click)="collapseAll()">{{ anyOpen() ? '≡ Collapse all' : '≡ Expand all' }}</button>
+  </div>
+
+  <div class="card grid-card">
+    <div class="grid-scroll">
+      <div class="grid">
+        <div class="grid__head">
+          <div class="c-task">TASK</div>
+          @for (d of days; track d.dow) {
+            <div class="c-day">{{ d.dow }} <span>{{ d.date }}</span></div>
+          }
+          <div class="c-total">TOTAL</div>
+        </div>
+
+        @for (g of groups(); track g.code; let gi = $index) {
+          <div class="grp">
+            <div class="grp__head" (click)="toggleGroup(gi)">
+              <span class="caret" [class.closed]="!isOpen(gi)">▾</span>
+              <span class="code">{{ g.code }}</span><span class="dot">·</span>
+              <span class="proj">{{ g.project }}</span>
+              @if (g.type) {
+                <span class="badge" [style.background]="typeColor(g.type)?.bg" [style.color]="typeColor(g.type)?.c">{{ g.type }}</span>
+              }
+              @if (g.assignee) {
+                <span class="asg"><span class="avatar" [style.background]="avatar(g.assignee)" style="width:16px;height:16px;font-size:9px;">{{ g.assignee[0] }}</span>{{ g.assignee }}</span>
+              }
+              <span class="spacer"></span>
+              <span class="grp__total" [class.zero]="groupTotal(gi) === 0">{{ fmt(groupTotal(gi)) }}h</span>
+            </div>
+
+            @if (isOpen(gi)) {
+              @for (t of g.tasks; track t; let ti = $index) {
+                <div class="row">
+                  <div class="c-task task">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2.4" stroke-linecap="round"><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/></svg>
+                    <span>{{ t }}</span>
+                  </div>
+                  @for (d of days; track d.dow; let di = $index) {
+                    <div class="c-day cell" [class.filled]="hour(gi,ti,di)">
+                      <input inputmode="decimal" placeholder="·"
+                        [ngModel]="hour(gi,ti,di)"
+                        (ngModelChange)="editHour(gi,ti,di,$event)" />
+                    </div>
+                  }
+                  <div class="c-total" [class.zero]="rowTotal(gi,ti) === 0">{{ fmt(rowTotal(gi,ti)) }}</div>
+                </div>
+              }
+              <div class="grp__foot">
+                <button class="btn btn-soft btn-sm" (click)="addTask()">+ Add task</button>
+                @if (g.canMove) { <button class="btn btn-ghost btn-sm">Move to next month ▶</button> }
+              </div>
+            }
+          </div>
+        } @empty {
+          <div class="empty">
+            <div class="empty__title">No backlogs this week</div>
+            <div class="empty__sub">Connect the Log Work API in <code>WorklogService.getLogGroups()</code>.</div>
+          </div>
+        }
+
+        @if (groups().length) {
+          <div class="grid__foot">
+            <div class="c-task">DAY TOTALS</div>
+            @for (d of days; track d.dow; let di = $index) {
+              <div class="c-day" [class.zero]="dayTotal(di) === 0">{{ fmt(dayTotal(di)) }}</div>
+            }
+            <div class="c-total">{{ fmt(weekTotal()) }}</div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="dropzone">🗑 Drop a task here to delete</div>
+</section>

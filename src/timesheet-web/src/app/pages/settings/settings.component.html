@@ -1,0 +1,131 @@
+<section class="page" style="max-width:1100px;">
+  <div class="page-head">
+    <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="14" cy="18" r="2"/></svg></div>
+    <div><h1>Settings</h1><p>Database &amp; preferences</p></div>
+  </div>
+
+  <div class="stabs">
+    @for (t of tabs; track t.id) {
+      <button [class.active]="tab() === t.id" (click)="tab.set(t.id)">{{ t.label }}</button>
+    }
+  </div>
+
+  <!-- GENERAL -->
+  @if (tab() === 'general') {
+    <div class="fade stack">
+      <div class="card card--pad">
+        <div class="s-title">Appearance</div>
+        <div class="s-desc">Switch between light and dark theme, and pick an accent.</div>
+        <label class="toggle-row">
+          <span class="switch" [class.on]="theme.dark()" (click)="theme.toggleDark()"><span class="knob"></span></span>
+          <span class="s-strong">Dark mode</span>
+        </label>
+        <div class="accent-row">
+          <span class="s-strong">Accent</span>
+          @for (c of theme.accentOptions; track c) {
+            <button class="swatch" [class.on]="theme.accent() === c" [style.background]="c" (click)="theme.setAccent(c)"></button>
+          }
+        </div>
+      </div>
+
+      <div class="card card--pad">
+        <div class="s-title">"Not logged" warning window</div>
+        <div class="s-desc">Warn if no hours are logged within this many recent working days.</div>
+        <div class="inline"><input class="input num" value="3" /><span class="s-desc">working days</span><button class="btn btn-primary btn-sm" (click)="notify('Saved')">Save</button></div>
+      </div>
+
+      <div class="card card--pad">
+        <div class="s-title">Holiday calendar</div>
+        <div class="s-desc">Click a day to mark/unmark it a holiday. Weekends are excluded automatically.</div>
+        <div class="cal">
+          <div class="cal__head"><button class="cal__nav">◀</button><span>July 2026</span><button class="cal__nav">▶</button></div>
+          <div class="cal__dows">@for (w of weekdays; track w) { <div>{{ w }}</div> }</div>
+          <div class="cal__grid">
+            @for (c of calendar; track c.iso) {
+              <div class="day" [class.out]="!c.inMonth" [class.weekend]="c.weekend" [class.holiday]="isHoliday(c.iso)" (click)="toggleHoliday(c)">{{ c.day }}</div>
+            }
+          </div>
+          <div class="legend"><span><i class="sw-hol"></i>Holiday</span><span><i class="sw-wke"></i>Weekend</span></div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- STORAGE -->
+  @if (tab() === 'storage') {
+    <div class="fade stack">
+      @for (s of storageFields; track s.title) {
+        <div class="card card--pad">
+          <div class="s-title">{{ s.title }}</div>
+          <div class="s-desc">{{ s.desc }}</div>
+          <div class="inline wrap"><input class="input input--mono grow" [value]="s.value" placeholder="Path…" /><button class="btn btn-ghost btn-sm">Browse…</button><button class="btn btn-primary btn-sm" (click)="notify('Applied')">Apply</button></div>
+        </div>
+      }
+      <div class="card card--pad">
+        <div class="s-title">Backup &amp; Restore</div>
+        <div class="s-desc">Back up the full database to a local folder. Restore replaces the current database.</div>
+        <div class="inline wrap" style="margin-bottom:14px;"><input class="input input--mono grow" placeholder="Backup folder…" /><button class="btn btn-ghost btn-sm">Browse…</button><button class="btn btn-primary btn-sm" (click)="notify('Applied')">Apply</button></div>
+        <div class="inline wrap">
+          <label class="toggle-row"><span class="switch" [class.on]="autoBackup()" (click)="autoBackup.set(!autoBackup())"><span class="knob"></span></span><span class="s-desc">Auto-backup once per day</span></label>
+          <span class="s-desc">Keep last <input class="input num sm" value="30" /> backups</span>
+          <button class="btn btn-soft btn-sm" (click)="notify('Backup complete')">Backup now</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- DATA -->
+  @if (tab() === 'data') {
+    <div class="fade">
+      <div class="card card--pad">
+        <div class="s-title">Data retention</div>
+        <div class="s-desc" style="max-width:640px;">When enabled, business data older than the recent N-month window is archived and then deleted from the live database. Preview is read-only; Run now permanently deletes data.</div>
+        <div class="inline wrap" style="margin-bottom:16px;">
+          <label class="toggle-row"><span class="switch" [class.on]="retention()" (click)="retention.set(!retention())"><span class="knob"></span></span><span class="s-strong">Enable retention</span></label>
+          <span class="s-desc">Keep last <input class="input num sm" value="3" /> months</span>
+        </div>
+        <div class="inline"><button class="btn btn-ghost btn-sm">Preview</button><button class="btn btn-danger btn-sm">Run retention now</button></div>
+      </div>
+    </div>
+  }
+
+  <!-- WORKFLOW -->
+  @if (tab() === 'workflow') {
+    <div class="fade stack">
+      <div class="card card--pad">
+        <div class="s-head"><div class="s-title">Task templates</div><button class="btn btn-primary btn-sm" (click)="notify('Template created')">+ New template</button></div>
+        <div class="s-desc">Reusable task lists you can apply to a request.</div>
+        @for (t of templates(); track t.name) {
+          <div class="listrow"><span class="s-strong">{{ t.name }} <span class="s-desc">({{ t.taskCount }} tasks)</span></span><div class="acts"><button class="btn btn-ghost btn-sm">Edit</button><button class="btn btn-danger btn-sm">Delete</button></div></div>
+        } @empty { <div class="listempty">Connect <code>getTemplates()</code></div> }
+      </div>
+      <div class="card card--pad">
+        <div class="s-head"><div class="s-title">Tags</div><button class="btn btn-primary btn-sm" (click)="notify('Tag created')">+ New tag</button></div>
+        <div class="s-desc">Custom labels (icon + color) you can attach to backlogs.</div>
+        @for (t of tags(); track t.label) {
+          <div class="listrow"><span class="tagchip" [style.background]="t.color">{{ t.icon }} {{ t.label }}</span><div class="acts"><button class="btn btn-ghost btn-sm">Edit</button><button class="btn btn-danger btn-sm">Delete</button></div></div>
+        } @empty { <div class="listempty">Connect <code>getTags()</code></div> }
+      </div>
+    </div>
+  }
+
+  <!-- TEAMS -->
+  @if (tab() === 'teams') {
+    <div class="fade stack">
+      <div class="card card--pad">
+        <div class="s-head"><div class="s-title">PCA contacts</div><button class="btn btn-primary btn-sm" (click)="notify('Contact added')">+ Add contact</button></div>
+        <div class="s-desc">External contacts you can assign to a backlog.</div>
+        @for (c of contacts(); track c) {
+          <div class="listrow box"><span class="s-strong">{{ c }}</span><div class="acts"><button class="btn btn-ghost btn-sm">Rename</button><button class="btn btn-danger btn-sm">Deactivate</button></div></div>
+        } @empty { <div class="listempty">Connect <code>getContacts()</code></div> }
+      </div>
+      <div class="card card--pad">
+        <div class="s-head"><div class="s-title">Teams</div><button class="btn btn-primary btn-sm" (click)="notify('Team added')">+ Add team</button></div>
+        <div class="s-desc">Top-level teams that scope backlogs, tasks and standup.</div>
+        @for (t of teams(); track t) {
+          <div class="listrow box"><span class="s-strong">{{ t }}</span><div class="acts"><button class="btn btn-ghost btn-sm">Rename</button><button class="btn btn-ghost btn-sm">Members</button><button class="btn btn-danger btn-sm">Deactivate</button></div></div>
+        } @empty { <div class="listempty">Connect <code>getTeams()</code></div> }
+      </div>
+    </div>
+  }
+</section>

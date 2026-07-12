@@ -1,0 +1,34 @@
+:host { display: block; }
+
+.bl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+
+.search { position: relative; margin-bottom: 14px; }
+.search svg { position: absolute; left: 14px; top: 13px; width: 17px; height: 17px; color: var(--faint); }
+
+.filters { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.filters label { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.filters .count { margin-left: auto; font-size: 12.5px; color: var(--faint); font-weight: 600; }
+
+.table-card { overflow: hidden; }
+.table-scroll { overflow-x: auto; }
+.tbl { min-width: 820px; }
+.tbl__head, .tbl__row { display: grid; grid-template-columns: 1.4fr 1.3fr .9fr 1fr 1.3fr 70px 96px; align-items: center; }
+.tbl__head { background: var(--surf2); border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 700; letter-spacing: .6px; color: var(--faint); }
+.tbl__head > div { padding: 12px 8px; }
+.tbl__head > div:first-child { padding-left: 16px; }
+.ctr { text-align: center; }
+.tbl__row { border-bottom: 1px solid var(--line-soft); transition: background .12s; }
+.tbl__row:hover { background: var(--surf2); }
+.tbl__row > div { padding: 13px 8px; }
+.tbl__row .code { padding-left: 16px; font-weight: 800; font-size: 13.5px; }
+.muted { color: var(--muted); font-weight: 500; }
+.mono { font-variant-numeric: tabular-nums; font-size: 13px; }
+.asg { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; }
+.pill { display: inline-flex; min-width: 26px; justify-content: center; padding: 2px 8px; border-radius: 7px; background: var(--surf2); font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+.right { text-align: right; padding-right: 12px !important; }
+
+.empty { padding: 56px 20px; text-align: center; }
+.empty__icon { width: 56px; height: 56px; border-radius: 16px; background: var(--surf2); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; color: var(--faint); }
+.empty__title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.empty__sub { color: var(--muted); font-size: 13.5px; margin-bottom: 16px; }
+.empty__sub code { font-family: 'Spline Sans Mono', monospace; font-size: 12.5px; }

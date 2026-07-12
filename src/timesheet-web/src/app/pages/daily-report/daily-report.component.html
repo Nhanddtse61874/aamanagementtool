@@ -1,0 +1,81 @@
+<section class="page" style="max-width:1500px;">
+  <div class="page-head">
+    <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M15 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg></div>
+    <div><h1>Daily Report</h1><p>Standup — what each member did yesterday &amp; is doing today</p></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg">
+      <button>◀</button>
+      <div class="seg__label mono">{{ date }}</div>
+      <button>▶</button>
+    </div>
+    <button class="btn btn-ghost" (click)="notify('Week archived')">Archive week</button>
+  </div>
+
+  <div class="tabs">
+    <button [class.active]="tab() === 'input'" (click)="tab.set('input')">Input</button>
+    <button [class.active]="tab() === 'team'" (click)="tab.set('team')">Team board</button>
+  </div>
+
+  @if (tab() === 'input') {
+    <div class="fade">
+      <div class="actions">
+        <button class="btn btn-primary" (click)="notify('Entry added')">+ Add entry</button>
+        <button class="btn btn-soft" (click)="notify('Imported from yesterday')">⇕ Quick import</button>
+      </div>
+      <div class="band band--y">YESTERDAY <span>— nothing logged</span></div>
+      <div class="band band--t">TODAY</div>
+
+      @for (e of entries(); track $index) {
+        <div class="card entry">
+          <div class="entry__top">
+            <div>
+              <div class="entry__title"><span class="code">{{ e.code }}</span><span class="dot">·</span><b>{{ e.title }}</b></div>
+              <div class="muted">{{ e.note }}</div>
+              <div class="faint">Deadline: {{ e.deadline }}</div>
+            </div>
+            <span class="badge" [class.badge-ok]="e.status === 'Done'" [class.badge-warn]="e.status === 'Todo'">{{ e.status }}</span>
+          </div>
+          <div class="issues__head"><span>ISSUES</span><button class="btn btn-soft btn-sm" (click)="notify('Issue added')">+ Issue</button></div>
+          @for (i of e.issues; track $index) {
+            <div class="issue" [class.ok]="i.ok" [class.warn]="!i.ok">
+              <div class="issue__row"><span class="issue__txt">{{ i.ok ? '✓' : '⚠' }} {{ i.text }}</span><button class="x">✕</button></div>
+              @if (i.hasSolution) {
+                <div class="sol-lbl">SOLUTION</div>
+                <div class="sol"><input class="input" [value]="i.solution || ''" /><button class="btn btn-primary btn-sm" (click)="notify('Solution saved')">Save</button></div>
+              } @else {
+                <div class="issue__row" style="margin-top:9px;"><span class="faint">No solution yet</span><button class="btn btn-ghost btn-sm" (click)="notify('Add a solution')">+ Add solution</button></div>
+              }
+            </div>
+          }
+          <div class="right"><button class="btn btn-danger btn-sm">Delete entry</button></div>
+        </div>
+      } @empty {
+        <div class="empty"><div class="empty__title">No entries for today</div><div class="empty__sub">Connect <code>getDailyEntries()</code>.</div></div>
+      }
+    </div>
+  } @else {
+    <div class="fade">
+      <div class="teams-note">Teams: <span class="chip">Teams (1)</span></div>
+      <div class="board">
+        @for (m of team(); track m.name) {
+          <div class="card member">
+            <div class="member__head"><span class="avatar" [style.background]="avatar(m.name)" style="width:32px;height:32px;">{{ initial(m.name) }}</span><b>{{ m.name }}</b></div>
+            <div class="band band--y sm">YESTERDAY <span>— nothing logged</span></div>
+            <div class="band band--t sm">TODAY</div>
+            @for (t of m.today; track $index) {
+              <div class="titem">
+                <div class="titem__row"><span><b class="code">{{ t.code }}</b> · {{ t.title }} <span class="faint">· due {{ t.due }}</span></span><span class="badge" [class.badge-ok]="t.status === 'Done'" [class.badge-warn]="t.status === 'Todo'">{{ t.status }}</span></div>
+                <div class="muted">{{ t.note }}</div>
+                @for (i of t.issues; track $index) { <div class="issue sm" [class.ok]="i.ok" [class.warn]="!i.ok">{{ i.ok ? '✓' : '⚠' }} {{ i.text }}</div> }
+              </div>
+            } @empty { <div class="faint sm-empty">No items today</div> }
+          </div>
+        } @empty {
+          <div class="empty"><div class="empty__title">No team activity</div><div class="empty__sub">Connect <code>getTeamBoard()</code>.</div></div>
+        }
+      </div>
+    </div>
+  }
+</section>

@@ -1,0 +1,52 @@
+<section class="page" style="max-width:1500px;">
+  <div class="bl-head">
+    <div class="page-head" style="margin:0;">
+      <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></svg></div>
+      <div><h1>Backlog</h1><p>Manage backlogs &amp; their tasks</p></div>
+    </div>
+    <button class="btn btn-primary" (click)="notify('New backlog created')">+ New backlog</button>
+  </div>
+
+  <div class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+    <input class="input" style="padding-left:40px;" placeholder="Search code or project..." [ngModel]="search()" (ngModelChange)="search.set($event)" />
+  </div>
+
+  <div class="filters">
+    <label>Project
+      <span class="select-wrap"><select class="select" [ngModel]="fProject()" (ngModelChange)="fProject.set($event)">@for (o of projectOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+    <label>Type
+      <span class="select-wrap"><select class="select" [ngModel]="fType()" (ngModelChange)="fType.set($event)">@for (o of typeOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+    <label>Assignee
+      <span class="select-wrap"><select class="select" [ngModel]="fAssignee()" (ngModelChange)="fAssignee.set($event)">@for (o of assigneeOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+    <label>Month
+      <span class="select-wrap"><select class="select" [ngModel]="fMonth()" (ngModelChange)="fMonth.set($event)">@for (o of monthOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+    <span class="count">{{ filtered().length }} backlogs</span>
+  </div>
+
+  <div class="card table-card">
+    <div class="table-scroll"><div class="tbl">
+      <div class="tbl__head">
+        <div>CODE</div><div>PROJECT</div><div>MONTH</div><div>TYPE</div><div>ASSIGNEE</div><div class="ctr">TASKS</div><div></div>
+      </div>
+      @for (b of filtered(); track b.code + b.month) {
+        <div class="tbl__row">
+          <div class="code">{{ b.code }}</div>
+          <div class="muted">{{ b.project }}</div>
+          <div class="muted mono">{{ b.month }}</div>
+          <div>@if (b.type) { <span class="badge" [style.background]="typeColor(b.type)?.bg" [style.color]="typeColor(b.type)?.c">{{ b.type }}</span> }</div>
+          <div>@if (b.assignee) { <span class="asg"><span class="avatar" [style.background]="avatar(b.assignee)" style="width:22px;height:22px;font-size:10px;">{{ b.assignee[0] }}</span>{{ b.assignee }}</span> }</div>
+          <div class="ctr"><span class="pill">{{ b.tasks }}</span></div>
+          <div class="right"><button class="btn btn-ghost btn-sm" (click)="notify('Editing ' + b.code)">Edit</button></div>
+        </div>
+      } @empty {
+        <div class="empty">
+          <div class="empty__icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg></div>
+          <div class="empty__title">No backlogs to show</div>
+          <div class="empty__sub">Connect <code>WorklogService.getBacklogs()</code> or clear your filters.</div>
+          <button class="btn btn-soft btn-sm" (click)="clearFilters()">Clear filters</button>
+        </div>
+      }
+    </div></div>
+  </div>
+</section>

@@ -1,0 +1,27 @@
+<section class="page" style="max-width:1200px;">
+  <div class="page-head">
+    <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M2 20a7 7 0 0 1 14 0M17 5a3 3 0 0 1 0 6M22 20a6 6 0 0 0-4-5.6"/></svg></div>
+    <div><h1>Users</h1><p>Manage app accounts</p></div>
+  </div>
+
+  <div class="bar">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+      <input class="input" style="padding-left:40px;" placeholder="Search or add a user name..." [ngModel]="search()" (ngModelChange)="search.set($event)" />
+    </div>
+    <button class="btn btn-primary" (click)="addUser()">+ Add user</button>
+  </div>
+
+  <div class="card users-card">
+    <div class="urow urow--head"><div>NAME</div><div>STATUS</div><div></div></div>
+    @for (u of filtered(); track u.name) {
+      <div class="urow">
+        <div class="name"><span class="avatar" [style.background]="avatar(u.name)" style="width:32px;height:32px;font-size:13px;">{{ u.name[0] }}</span>{{ u.name }}</div>
+        <div><span class="badge" [class.badge-ok]="u.active" [class.badge-off]="!u.active">{{ u.active ? 'Active' : 'Inactive' }}</span></div>
+        <div class="right"><button class="btn btn-sm" [class.btn-danger]="u.active" [class.btn-ghost]="!u.active" (click)="toggle(u.name)">{{ u.active ? 'Deactivate' : 'Activate' }}</button></div>
+      </div>
+    } @empty {
+      <div class="empty"><div class="empty__title">No users</div><div class="empty__sub">Connect <code>WorklogService.getUsers()</code>.</div></div>
+    }
+  </div>
+</section>

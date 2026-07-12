@@ -1,0 +1,21 @@
+:host { display: block; }
+
+.bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.search { position: relative; flex: 1; min-width: 220px; }
+.search svg { position: absolute; left: 14px; top: 12px; width: 17px; height: 17px; color: var(--faint); }
+
+.users-card { overflow: hidden; }
+.urow, .urow--head { display: grid; grid-template-columns: 1fr 130px 130px; align-items: center; }
+.urow--head { background: var(--surf2); border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 700; letter-spacing: .6px; color: var(--faint); }
+.urow--head > div { padding: 12px 8px; } .urow--head > div:first-child { padding-left: 18px; }
+.urow { border-bottom: 1px solid var(--line-soft); transition: background .12s; }
+.urow:hover { background: var(--surf2); }
+.urow > div { padding: 12px 8px; }
+.urow .name { padding-left: 18px; display: flex; align-items: center; gap: 11px; font-weight: 600; font-size: 14px; }
+.urow .right { text-align: right; padding-right: 12px; }
+.badge-off { background: color-mix(in srgb, var(--faint) 18%, transparent); color: var(--faint); }
+
+.empty { padding: 44px 20px; text-align: center; }
+.empty__title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.empty__sub { color: var(--muted); font-size: 13.5px; }
+.empty__sub code { font-family: 'Spline Sans Mono', monospace; font-size: 12.5px; }

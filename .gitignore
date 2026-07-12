@@ -19,6 +19,13 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+## Node / Angular (src/timesheet-web)
+node_modules/
+dist/
+.angular/
+*.tsbuildinfo
+npm-debug.log*
+
 ## OS
 .DS_Store
 Thumbs.db
