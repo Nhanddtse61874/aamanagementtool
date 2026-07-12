@@ -1,7 +1,7 @@
 {
   "mode": "interactive",
   "granularity": "standard",
-  "parallelization": false,
+  "parallelization": true,
   "commit_docs": { "state_files": true, "planning_artifacts": true },
   "commit_atomic": true,
   "model_profile": "quality",
