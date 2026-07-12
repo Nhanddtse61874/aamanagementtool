@@ -5,6 +5,11 @@ namespace TimesheetApp.Data.Repositories;
 
 // User data access (USR-01..03, XC-07). SQL + Dapper only; one short connection per method.
 // Soft-delete only (SetActiveAsync) — never hard-delete a user that may own TimeLogs (XC-06).
+//
+// Schema v10 renamed the column windows_username -> username, and Dapper binds BY COLUMN NAME,
+// so the SQL below and UserRaw's property had to move with it or nothing here would read.
+// The *method* vocabulary (GetByWindowsUsernameAsync / SetWindowsUsernameAsync) still says
+// Windows; renaming that, and the User.WindowsUsername model property, is a later slice's work.
 public sealed class UserRepository : IUserRepository
 {
     private readonly IConnectionFactory _factory;
@@ -15,7 +20,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, windows_username, is_active FROM Users WHERE is_active = 1 ORDER BY name;");
+            "SELECT id, name, username, is_active FROM Users WHERE is_active = 1 ORDER BY name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -23,7 +28,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, windows_username, is_active FROM Users ORDER BY is_active DESC, name;");
+            "SELECT id, name, username, is_active FROM Users ORDER BY is_active DESC, name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -31,7 +36,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, windows_username, is_active FROM Users WHERE id = @id;", new { id });
+            "SELECT id, name, username, is_active FROM Users WHERE id = @id;", new { id });
         return row is null ? null : MapUser(row);
     }
 
@@ -39,7 +44,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, windows_username, is_active FROM Users WHERE windows_username = @w;",
+            "SELECT id, name, username, is_active FROM Users WHERE username = @w;",
             new { w = windowsUsername });
         return row is null ? null : MapUser(row);
     }
@@ -48,7 +53,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Users(name, windows_username, is_active)
+            @"INSERT INTO Users(name, username, is_active)
               VALUES(@Name, @WindowsUsername, @IsActive);
               SELECT last_insert_rowid();",
             new { user.Name, user.WindowsUsername, IsActive = user.IsActive ? 1 : 0 });
@@ -58,7 +63,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         await c.ExecuteAsync(
-            "UPDATE Users SET windows_username = @w WHERE id = @id;",
+            "UPDATE Users SET username = @w WHERE id = @id;",
             new { w = windowsUsername, id = userId });
     }
 
@@ -78,14 +83,14 @@ public sealed class UserRepository : IUserRepository
     }
 
     private static User MapUser(UserRaw r) =>
-        new((int)r.id, r.name, r.windows_username, r.is_active != 0);
+        new((int)r.id, r.name, r.username, r.is_active != 0);
 
     // SQLite-native shape (long/string) — narrowed at the boundary above (see Task 4 mapping note).
     private sealed class UserRaw
     {
         public long id { get; set; }
         public string name { get; set; } = "";
-        public string? windows_username { get; set; }
+        public string? username { get; set; }   // binds to Users.username (v10 rename)
         public long is_active { get; set; }
     }
 }

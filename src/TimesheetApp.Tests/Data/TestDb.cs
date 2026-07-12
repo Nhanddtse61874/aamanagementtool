@@ -47,11 +47,12 @@ public sealed class TestDb : IConnectionFactory, IDisposable
     // ---- Seed helpers (raw SQL; reusable by T4 + T5 tests) -------------------------------
 
     // Inserts an active user; returns its new id.
+    // The column is `username` from schema v10 on (renamed from windows_username).
     public async Task<int> SeedUserAsync(string name = "Tester", string? windowsUsername = null, bool isActive = true)
     {
         using var c = Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Users(name, windows_username, is_active)
+            @"INSERT INTO Users(name, username, is_active)
               VALUES(@name, @win, @active);
               SELECT last_insert_rowid();",
             new { name, win = windowsUsername, active = isActive ? 1 : 0 });

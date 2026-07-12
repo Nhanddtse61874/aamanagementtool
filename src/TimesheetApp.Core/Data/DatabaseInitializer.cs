@@ -4,14 +4,15 @@ using Dapper;
 namespace TimesheetApp.Data;
 
 // DATA-01..05. Schema mirrors architecture spec §2/§3:
-//  - Users.windows_username nullable; is_active on Users/Tasks/DefaultTasks.
+//  - Users identity column nullable; is_active on Users/Tasks/DefaultTasks.
+//    (v1..v9 called it windows_username; v10 renamed it to username -- see RunMigrations.)
 //  - Requests has NO is_active (decision 4).
 //  - TimeLogs: single FK task_id, hours REAL, UNIQUE(user_id,task_id,work_date).
 //  - work_date / created_at stored as TEXT (ISO-8601), culture-neutral.
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 9;
+    private const long SchemaVersion = 10;
 
     private readonly IConnectionFactory _factory;
 
@@ -36,11 +37,20 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 
     private static void CreateTables(IDbConnection conn, IDbTransaction tx)
     {
+        // 🚨 DO NOT 'TIDY' Users.windows_username TO username BELOW. 🚨
+        // This DDL is the *v1* schema, not the current one. RunMigrations replays EVERY step on a
+        // brand-new database, and the v10 step does:
+        //     ALTER TABLE Users RENAME COLUMN windows_username TO username;
+        // so the column must be BORN as windows_username for that rename to have something to rename.
+        // Renaming it here would break FRESH INSTALLS ONLY (`no such column: windows_username` at
+        // startup) while every existing database keeps working -- the worst kind of bug to find.
+        // The same reasoning applies to every other legacy name in this DDL (e.g. Tasks.request_id,
+        // renamed to backlog_id by v6). DatabaseInitializerTests.FreshInstall_* guards this.
         const string ddl = @"
 CREATE TABLE IF NOT EXISTS Users (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    NOT NULL,
-    windows_username TEXT,
+    windows_username TEXT,   -- v1 name; v10 renames to username. See the warning above.
     is_active       INTEGER NOT NULL DEFAULT 1
 );
 
@@ -292,6 +302,40 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
                 @"ALTER TABLE Tasks        ADD COLUMN type             TEXT;
                   ALTER TABLE Tasks        ADD COLUMN assignee_user_id INTEGER;
                   ALTER TABLE BacklogAudit ADD COLUMN note             TEXT;", transaction: t),
+            // v10 -> M8.2 web foundation: optimistic concurrency + auth + per-user team scope.
+            //
+            // row_version goes on the 8 tables a second user can concurrently edit. Two UPDATE
+            // templates consume it: check-and-bump (user edits carrying an expectedVersion) and
+            // bump-only (reorders, soft-deletes, system writes). A write that bumps without
+            // checking is safe; a write that checks without bumping is a lost update.
+            //
+            // Deliberately NOT versioned: Holidays and Settings (key/date-keyed -- last-write-wins
+            // IS the correct semantics there), and StandupEntries (owner-gated inside StandupService,
+            // so two users cannot reach the same row in the first place).
+            //
+            // The Users rename is a pure column rename -- values are preserved, so no history is
+            // orphaned and people keep logging in with the name they already use. NOTE this is the
+            // step that requires CreateTables' DDL to keep saying windows_username forever; see the
+            // warning there.
+            static (c, t) => c.Execute(
+                @"ALTER TABLE Backlogs      ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                  ALTER TABLE Tasks         ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                  ALTER TABLE TimeLogs      ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                  ALTER TABLE StandupIssues ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                  ALTER TABLE Users         ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                  ALTER TABLE Teams         ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                  ALTER TABLE Tags          ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+                  ALTER TABLE PcaContacts   ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+
+                  ALTER TABLE Users RENAME COLUMN windows_username TO username;
+                  ALTER TABLE Users ADD COLUMN password_hash  TEXT;
+                  ALTER TABLE Users ADD COLUMN is_admin       INTEGER NOT NULL DEFAULT 0;
+                  ALTER TABLE Users ADD COLUMN active_team_id INTEGER NOT NULL DEFAULT 0;
+
+                  -- Never leave the system with zero admins. On a fresh database Users is empty,
+                  -- so MIN(id) is NULL and this matches no row -- correct, there is nobody to promote.
+                  UPDATE Users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM Users);",
+                transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);
