@@ -1,4 +1,5 @@
 using TimesheetApp.Api.Auth;
+using TimesheetApp.Api.Endpoints;
 using TimesheetApp.Api.Infrastructure;
 using TimesheetApp.Config;
 using TimesheetApp.Data;
@@ -129,8 +130,19 @@ builder.Services.AddScoped<ITimeLogService, TimeLogService>();
 builder.Services.AddScoped<IStandupService, StandupService>();
 builder.Services.AddScoped<IBacklogContinuationService, BacklogContinuationService>();
 
+// Wave 3 replaces this implementation with the real SignalR hub and touches NO endpoint file.
+builder.Services.AddSingleton<IChangeNotifier, NoopChangeNotifier>();
+
 // --- Auth: cookie + Data Protection key ring + the "Admin" policy + FallbackPolicy --------------------
 builder.Services.AddApiAuth(keyRingPath);
+
+// --- OpenAPI: M8.4 GENERATES ITS TYPESCRIPT CLIENT FROM THIS DOCUMENT ---------------------------------
+// It is not documentation. The vendored Angular bundle's models are unusable as a wire contract (User has
+// no id, Backlog has no id, and HoursMap is keyed by `${groupIndex}-${taskIndex}-${dayIndex}` — ARRAY
+// INDICES, so one sort or filter puts hours on the wrong task). Without the document, M8.4 has nothing to
+// generate from and someone hand-types those types back into existence.
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
@@ -141,7 +153,23 @@ using (var scope = app.Services.CreateScope())
 {
     await scope.ServiceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
     await scope.ServiceProvider.GetRequiredService<ITeamBootstrapService>().EnsureBootstrappedAsync();
+
+    await AdminBootstrap.EnsureAdminPasswordAsync(
+        scope.ServiceProvider.GetRequiredService<IUserRepository>(),
+        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("AdminBootstrap"));
 }
+
+// OUTERMOST: it must wrap every endpoint, including anything a later wave adds.
+// ConcurrencyConflictException -> 409 + ConflictBody. ArgumentException -> 400 + ValidationBody.
+// The business-rule channel (SaveResult.Ok == false) NEVER throws and so never reaches this — the ENDPOINT
+// must check Ok and return 400 itself.
+app.UseMiddleware<ExceptionMapper>();
+
+// Swagger sits BEFORE the authorization middleware on purpose: FallbackPolicy = DefaultPolicy applies to
+// "requests served by other middleware after the authorization middleware", so a document served after it
+// would 401 — and M8.4's code generator (and the Wave-2 route audit) could not read it without a cookie.
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -163,7 +191,15 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 // =====================================================================================================
 var api = app.MapGroup("").AddEndpointFilter<ClientContextFilter>();
 
-api.MapAuthMechanism();   // POST /api/auth/login + /api/auth/logout — the mechanism, not the feature.
+// The auth MECHANISM: POST /api/auth/login, POST /api/auth/logout, GET /api/me. Not Wave 2's to re-map.
+api.MapAuthMechanism();
+
+// All four registered NOW, against stubs. Wave 2 fills in exactly one file each and NEVER TOUCHES THIS
+// FILE — which is precisely what makes four parallel agents safe to run.
+api.MapAuthEndpoints();       // W2-A
+api.MapTimesheetEndpoints();  // W2-B
+api.MapBacklogEndpoints();    // W2-C
+api.MapSettingsEndpoints();   // W2-D
 
 app.Run();
 

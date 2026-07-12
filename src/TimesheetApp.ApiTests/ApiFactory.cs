@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using TimesheetApp.Api.Auth;
 using TimesheetApp.Api.Contracts;
 using TimesheetApp.Data;
+using TimesheetApp.Data.Repositories;
 
 namespace TimesheetApp.ApiTests;
 
@@ -40,6 +41,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public string KeyRingPath => Path.Combine(Root, "keys");
     public string ConfigPath => Path.Combine(Root, "appsettings.json");
 
+    /// <summary>Every log message the host emitted at Warning or above — including the one-time admin
+    /// password, which exists nowhere else by design.</summary>
+    public List<string> Logs { get; } = new();
+
     public ApiFactory() : this(NewRoot(), ownsRoot: true) { }
 
     /// <summary>Two factories over ONE root = a process restart against the same database AND the same
@@ -65,8 +70,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
 
         // The host logs every request at Information by default, which buries the assertion that failed.
-        // Warnings and errors still surface.
-        builder.ConfigureLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
+        // Warnings and errors still surface — including the one-time generated admin password.
+        builder.ConfigureLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddProvider(new ListLoggerProvider(Logs));
+        });
 
         // Test-only probe routes on the real pipeline. See ProbeEndpointsFilter.
         builder.ConfigureTestServices(services =>
@@ -153,13 +162,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             new { backlogId, name });
     }
 
-    public async Task SeedHolidayAsync(DateOnly date, string description = "Test holiday")
-    {
-        using var c = OpenDb();
-        await c.ExecuteAsync(
-            "INSERT OR REPLACE INTO Holidays(date, description) VALUES(@d, @desc);",
-            new { d = date.ToString("yyyy-MM-dd"), desc = description });
-    }
+    /// <summary>Marks a non-working day (HOL-02). Goes through the real repository — the column is
+    /// <c>holiday_date</c>, not <c>date</c>, and hand-rolled SQL gets that wrong.</summary>
+    public Task SeedHolidayAsync(DateOnly date, string description = "Test holiday") =>
+        Services.GetRequiredService<IHolidayRepository>().UpsertAsync(date, description);
 
     // ---- Clients -----------------------------------------------------------------------------------
 
