@@ -52,7 +52,19 @@ export class LogWorkComponent {
   // ---- actions ----
   editHour(gi: number, ti: number, di: number, value: string): void {
     this.hours.update(h => ({ ...h, [this.key(gi, ti, di)]: value }));
-    this.api.saveHours(this.key(gi, ti, di), value).subscribe();
+    // M8.4/W2: the call that used to be here was `this.api.saveHours(this.key(gi, ti, di), value)` — and it
+    // was a NO-OP: saveHours returned `of(void 0)` and wrote nothing. Removing it changes no behavior.
+    //
+    // It cannot be kept, because saveHours is now the real write: (taskId, isoDate, hours, expectedVersion)
+    // -> the new rowVersion. This component cannot call that yet, and not for want of a cast: its view model
+    // (LogGroup.tasks is a string[] of task NAMES) carries no task ids and no versions, and its HoursMap is
+    // keyed by ARRAY INDICES (`${gi}-${ti}-${di}`), so one sort or filter re-points every key at a different
+    // task. Passing `null` for expectedVersion to make it compile would be far worse than not calling it:
+    // null asserts "I believe this cell is EMPTY", so every edit of a cell that already has hours would 409.
+    //
+    // Wave 4 owns this file: it re-keys the grid by (taskId, isoDate) — `core/cell-key.ts` — derives the day
+    // axis from the selected Monday, and wires the write, sending each cell's real rowVersion and storing the
+    // one the write returns.
   }
   toggleGroup(gi: number): void {
     this.collapsed.update(c => ({ ...c, [gi]: !c[gi] }));

@@ -70,7 +70,16 @@ public static class TimesheetEndpoints
                 ? await logs.GetWeekGroupedAllUsersAsync(monday)
                 : await logs.GetWeekGroupedAsync(ctx.UserId, monday);
             return Results.Ok(groups);
-        });
+        })
+        .WithName("TimesheetWeek")
+        .WithTags("Timesheet")
+        // M8.4/W2: WITHOUT THIS the OpenAPI document describes NO response body for this route, and the
+        // generated TypeScript client therefore has NO WeekCell and NO rowVersion -- the milestone's entire
+        // read path. `Results.Ok(x)` is typed `IResult`, and ApiExplorer CANNOT infer a schema from it: it
+        // emits a bare `"200": { "description": "OK" }` with no content. The RUNTIME was always correct (see
+        // The_week_read_JSON_exposes_a_per_cell_rowVersion_field) -- only the DOCUMENT was silent, which is
+        // the more dangerous failure, because codegen succeeds and produces a client typed `any`.
+        .Produces<IReadOnlyList<WeekBacklogGroup>>();
 
         api.MapPut("/api/timesheet/cell", async (
             [FromBody] TimesheetSaveCellRequest req,
@@ -96,7 +105,16 @@ public static class TimesheetEndpoints
             await notifier.DataChangedAsync(DataKind.Logs, teamId.Value, ctx.ConnectionId);
             // Hand back the version the checked call returned -- never re-read it (rule #3).
             return Results.Ok(new SavedBody(result.RowVersion));
-        });
+        })
+        .WithName("TimesheetSaveCell")
+        .WithTags("Timesheet")
+        // The write path's four outcomes, all four of which the client MUST discriminate: the new version
+        // (SavedBody) is the caller's next expectedVersion; 400 carries the 8h-cap/holiday message; 404 is a
+        // deleted or out-of-team task; 409 is the conflict dialog. Undocumented, the client sees only `void`.
+        .Produces<SavedBody>()
+        .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapDelete("/api/timesheet/cell", async (
             [FromBody] TimesheetClearCellRequest req,
@@ -116,7 +134,12 @@ public static class TimesheetEndpoints
 
             await notifier.DataChangedAsync(DataKind.Logs, teamId.Value, ctx.ConnectionId);
             return Results.NoContent();
-        });
+        })
+        .WithName("TimesheetClearCell")
+        .WithTags("Timesheet")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         // ==== Smart Fill ==================================================================================
 
@@ -132,7 +155,13 @@ public static class TimesheetEndpoints
 
             var result = await logs.ValidateSmartFillAsync(ctx.UserId, ToDomainTasks(req.Tasks));
             return result.Ok ? Results.Ok() : Results.BadRequest(new ValidationBody(result.Error!));
-        });
+        })
+        .WithName("SmartFillValidate")
+        .WithTags("SmartFill")
+        // Success is deliberately an EMPTY 200 -- validate answers "may I?", it returns no cells.
+        .Produces(StatusCodes.Status200OK)
+        .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/api/smartfill/apply", async (
             [FromBody] SmartFillRequest req,
@@ -167,7 +196,15 @@ public static class TimesheetEndpoints
             var dates = domainTasks.SelectMany(t => t.Cells).Where(c => c.Hours > 0m).Select(c => c.Date).ToList();
             var refreshed = await rawLogs.GetByUserAndRangeAsync(ctx.UserId, dates.Min(), dates.Max());
             return Results.Ok(refreshed.Select(l => l.ToDto()).ToList());
-        });
+        })
+        .WithName("SmartFillApply")
+        .WithTags("SmartFill")
+        // A FLAT TimeLogDto[], NOT a week grid, and it spans only min..max OF THE FILLED DATES. The client
+        // MERGES it into the grid by (taskId, workDate); replacing grid state from it would wipe the days the
+        // fill did not touch, and a flat list cannot reconstruct the backlog grouping anyway.
+        .Produces<IReadOnlyList<TimeLogDto>>()
+        .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound);
 
         // ==== Reports ======================================================================================
 
