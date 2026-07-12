@@ -2,12 +2,12 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute (M8.2 Wave 3, in flight)
+**Phase:** Step 7 — Execute (M8.2 Wave 3.5, in flight)
 **Status:** in_progress
 **Last updated:** 2026-07-12
 
-**Branch:** `feature/m8-core-extraction-2026-07-12` — HEAD `c9c26b0`. **Never merged to `main`.**
-**Suite:** **583 passed, 0 failed** at `fe794c2` (last gated merge). ~9 s.
+**Branch:** `m8.2/w3-integrate` — HEAD `3a89801` (all four W3 agents merged). Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
+**Suite:** **616 passed, 0 failed, 0 warnings** at `3a89801` (last gated merge). ~7 s.
 
 ## Current Milestone
 
@@ -20,9 +20,9 @@
 | **M8.1** — extract `TimesheetApp.Core` (net8.0) | ✅ **DONE, gated.** 81 files moved, zero C# edited, one XAML line. 548→548 green, WPF still runs. |
 | **M8.2 W1** — schema v10 | ✅ **DONE** (`4b00e66`). 560 green. |
 | **M8.2 W2** — WAL profile · backup blocker · 3 bug fixes | ✅ **DONE, merged, gated** (`fe794c2`). **583 green.** 3 agents in parallel, 0 conflicts. |
-| **M8.2 W3** — `row_version` across 8 repositories | 🔄 **IN FLIGHT — see "Resume here" below** |
-| **M8.2 W3.5** — consolidation | ⬜ **NOT STARTED. Controller's job, not an agent's.** |
-| **M8.2 W4** — `ActiveTeamId` per-user | ⬜ Blocked on W3-C |
+| **M8.2 W3** — `row_version` across 8 repositories | ✅ **DONE, merged, gated** (`3a89801`). **616 green.** 4 agents in parallel, **0 merge conflicts** — but they built **two incompatible APIs**; see W3.5. |
+| **M8.2 W3.5** — consolidation | 🔄 **IN FLIGHT — see "Resume here" below** |
+| **M8.2 W4** — `ActiveTeamId` per-user | ⬜ Unblocked (W3-C merged). Run **after** W3.5 — do not parallelize, they collide on ViewModel test files. |
 | **M8.3** — API + auth + SignalR | ⬜ |
 | **M8.4** — Angular shell + Log Work | ⬜ **First slice the user can actually click.** |
 
@@ -33,25 +33,35 @@ Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (rev. 
 
 ## ▶ RESUME HERE
 
-### 1. Find out what Wave 3 actually produced
+### Wave 3 is closed. All four agents merged into `m8.2/w3-integrate` (`3a89801`), 616 green, zero conflicts.
 
-Four agents were dispatched into **pre-created worktrees** (see the worktree gotcha below). One finished; three were still running when the session ended. Their worktrees are on disk, so **nothing is lost** — but they may or may not have committed.
+| Agent | Commit | Scope |
+|---|---|---|
+| W3-A | `7f969f4` | TimeLogs |
+| W3-B | `cea0da3` | Backlogs, Tasks |
+| W3-C | `7a7c363` | Standup, Users |
+| W3-D | `281128e` | Teams, Tags, PcaContacts |
+
+### Wave 3.5 is IN FLIGHT — one agent, worktree `.worktrees/w35`, branch `m8.2/w35`, base `3a89801`
 
 ```bash
-cd "E:/Learning/AAM 2nd/aamanagementtool"
-git worktree list
-for b in a b c d; do echo "w3-$b: $(git log --oneline -1 m8.2/w3-$b 2>/dev/null)"; done
-for b in a b c d; do echo "w3-$b uncommitted: $(git -C .worktrees/w3-$b status --short | wc -l)"; done
+git -C .worktrees/w35 log -1 --format='%h %s'   # still 3a89801 = agent didn't finish
 ```
+If it did not finish, **inspect the worktree; if the work is incomplete, discard and re-dispatch** from the W3.5 brief. Do not commit a half-done consolidation — a red step is only diagnosable if each wave gates green.
 
-- **`m8.2/w3-a` is COMMITTED** (`7f969f4`, 593 green). Safe.
-- If `w3-b`/`w3-c`/`w3-d` are still at base `c9c26b0`, their agent did not finish. **Inspect the worktree; if the work is incomplete, discard it and re-dispatch from the plan.** Do not commit a half-finished repository — the whole point of gating each wave is that a red step is diagnosable.
+**When it lands:** merge `m8.2/w35`, gate on the suite, then run **Wave 4** (`ActiveTeamId` → per-user). Wave 4 is unblocked but must run **after** W3.5, not beside it — both touch the ViewModel test files.
 
-### 2. Merge, then run Wave 3.5 (consolidation)
+### Why W3.5 exists (do not skip it)
 
-Merge the branches that are green, then **do W3.5 yourself — do not give it to an agent.** It touches files shared by all four W3 agents, which is exactly why no agent could do it.
+Four parallel agents each solved their own repositories correctly, and in doing so produced **two incompatible concurrency APIs** plus a shared file nobody would touch:
 
-### 3. Then Wave 4, then M8.3.
+- **W3-A** returned the new `row_version` from the checked write (`Task<long>`).
+- **W3-B and W3-D** returned `void` and offered `GetRowVersionAsync` to re-read it. **That read-back is racy** — between your write committing and your re-read, someone else can write; you pick up *their* version while holding *your* data, and your next save passes the check and silently overwrites them. The lost update, laundered through the read-back.
+- **`Models/Entities.cs` was left half-done.** `User`/`StandupIssue` got `RowVersion = 0`; `Team`/`Tag`/`PcaContact` got `= 1`; **`Backlog`, `TaskItem` and `TimeLog` got nothing at all** — the three the app actually contends on. W3-A and W3-B both, correctly, refused to edit a file four agents shared. So it stayed empty.
+
+**User-approved ruling (2026-07-12): normalize on W3-A's shape** — a separate `<Verb>CheckedAsync` returning `Task<long>`, bump-only keeps its original signature, `GetRowVersionAsync` is deleted. Unify `RowVersion = 0` (fail-closed sentinel: no real row is ever at 0). Project `row_version` in every SELECT.
+
+**The lesson, again:** a file shared by N parallel agents will be edited by none of them. Hand it to the controller *before* the fan-out, not after.
 
 ---
 
@@ -94,6 +104,8 @@ This is the most important lesson in this file. Do not trust a claim about **how
 
 The corrected pitfall research carries a banner about this: a `[VERIFIED]` tag means the author *believed* they had checked it, not that they *executed* it.
 
+**Agents are not exempt.** W3-D added `RowVersion` to three records in `Entities.cs` justifying it as *"following this file's existing convention for `Backlog`."* **There was no such convention** — `git show c9c26b0:…/Entities.cs | grep RowVersion` returns nothing; `Backlog` had no `RowVersion` at all. It had confused `ReadModels.cs` (which does set that precedent, and which the plan cites) with `Entities.cs`. The *action* was right and the *citation* was invented. Check the citation, not just the diff — a plausible reason is the easiest thing in the world to generate.
+
 ### Why 548 tests were green while a data-loss route sat wide open
 
 W2-B found it. **Every pre-existing backup test faked the database with a text file** (`"LIVE-DB"`) or six `0x09` bytes. A text file has no pages, no header, and **cannot have a `-wal`** — it is precisely the fixture that let `File.Copy` look correct for four phases. The tests were *structurally incapable* of catching the bug. Fixtures are now real SQLite databases, and the bug appeared immediately:
@@ -123,6 +135,8 @@ Each connection gets its **own** database, so a conflict can never occur — **t
 - 2026-07-12: **Auth = username + password, cookie session, on the existing `Users` table.** — No AD. ASP.NET Identity rejected (drags in EF Core; creates a second user table). `PasswordHasher<T>` is usable standalone from `Microsoft.Extensions.Identity.Core` — 3 packages, no EF Core.
 - 2026-07-12: **Authorization = one `is_admin` boolean**, gating exactly 3 destructive endpoints (run retention, restore backup, deactivate team). The user does not want edit-level permissions; those three are *destructive*, not merely privileged.
 - 2026-07-12: **Shared contracts are the controller's job, never an agent's.** — Four agents needed `ConcurrencyConflictException`; left to invent it they would have produced four incompatible versions and the merge would be where we found out. Same lesson missed once and re-learned: `Models/Entities.cs` (W3.5/C-1).
+- 2026-07-12: **A checked write RETURNS the new `row_version` (`Task<long>`); it never returns `void`.** — User-approved at the W3 merge. A `void` write forces the caller to re-read the version, and that read-back is **racy**: between the write committing and the re-read, another client can write; you then hold *their* version number with *your* data, and your next save passes the check and silently overwrites them — the exact lost update the mechanism exists to prevent. Returning the version from the same statement that performed the write (`RETURNING row_version`) closes it by construction. Also kills the CS0854 Moq breakage that the optional-parameter shape forced on three test files. `GetRowVersionAsync` is **deleted** — the version now arrives on the entity from the SELECT (W3.5/C-1).
+- 2026-07-12: **A decision recorded in `STATE.md` is NOT a decision an agent knows.** — The "additive `*CheckedAsync`, originals stay bump-only" decision above was already written down *before* Wave 3 ran. W3-A followed it; **W3-B, W3-C and W3-D each independently re-derived a different shape** (optional parameter, `void` return), because their briefs did not restate it. Agents see only their brief. **Every cross-cutting decision must be re-stated verbatim in every brief that could touch it** — otherwise N agents produce N designs and the merge is where you find out.
 
 ## Approved Mode
 
