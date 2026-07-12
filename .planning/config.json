@@ -1,5 +1,5 @@
 {
-  "mode": "B",
+  "mode": "interactive",
   "granularity": "standard",
   "parallelization": false,
   "commit_docs": { "state_files": true, "planning_artifacts": true },
@@ -7,6 +7,12 @@
   "model_profile": "quality",
   "model_defaults": { "mechanical": "haiku", "standard": "sonnet", "complex": "opus" },
   "active_harness": "claude-code",
-  "workflow": { "research": true, "plan_check": true },
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "memory_recall": true,
+    "telemetry": true,
+    "sandbox_verify": true
+  },
   "created": "2026-06-21"
 }
