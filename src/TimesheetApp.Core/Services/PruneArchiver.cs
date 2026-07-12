@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using TimesheetApp.Config;
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 
@@ -9,12 +10,19 @@ namespace TimesheetApp.Services;
 /// <summary>
 /// P12 (RT-03) — concrete <see cref="IPruneArchiver"/> (W2). Before RetentionService prunes a month it
 /// calls this to (a) write per-team markdown for that month to every configured export root, reusing the
-/// P11 builders scoped to a single team, and (b) BLOCKER-1: copy the full live <c>.db</c> into a dedicated
-/// <c>{root}/db/prune-snapshots</c> folder that is NEVER auto-pruned (unlike <see cref="IBackupService"/>
-/// / <see cref="IDbBackupHelper"/>, which prune to a keep-count and would delete the recovery artifact).
-/// Returns the verified snapshot path (<c>File.Exists &amp;&amp; Length&gt;0</c>) on the first root that
-/// succeeded, or <c>null</c> when no root is usable or no snapshot could be written/verified — in which
-/// case RetentionService does NOT prune that month.
+/// P11 builders scoped to a single team, and (b) BLOCKER-1: snapshot the full live <c>.db</c> into a
+/// dedicated <c>{root}/db/prune-snapshots</c> folder that is NEVER auto-pruned (unlike
+/// <see cref="IBackupService"/> / <see cref="IDbBackupHelper"/>, which prune to a keep-count and would
+/// delete the recovery artifact). Returns the VERIFIED snapshot path on the first root that succeeded,
+/// or <c>null</c> when no root is usable or no snapshot could be written/verified — in which case
+/// RetentionService does NOT prune that month.
+///
+/// M8.2 — this is the one that could destroy data. RetentionService PERMANENTLY DELETES the original
+/// rows once this hands back a path, so "verified" has to mean verified. It used to mean
+/// <c>File.Exists &amp;&amp; Length&gt;0</c> on a <c>File.Copy</c> of a live database: under WAL that
+/// check passes for a file whose committed rows are all still in the <c>-wal</c> that was never copied.
+/// Months of real data would be deleted against a backup that cannot restore them, and nobody would find
+/// out until they tried. The snapshot is now an ONLINE backup, verified with <c>PRAGMA integrity_check</c>.
 /// </summary>
 public sealed class PruneArchiver : IPruneArchiver
 {
@@ -148,8 +156,8 @@ public sealed class PruneArchiver : IPruneArchiver
         }
     }
 
-    // BLOCKER-1: plain File.Copy the live .db to {root}/db/prune-snapshots/timesheet_{yyyyMM}_pre-prune_{stamp}.db.
-    // Returns the verified path (exists + non-zero), or null on any failure (so this root won't count).
+    // BLOCKER-1: snapshot the live .db to {root}/db/prune-snapshots/timesheet_{yyyyMM}_pre-prune_{stamp}.db.
+    // Returns the VERIFIED path, or null on any failure (so this root won't count and the month is not pruned).
     private string? WriteSnapshot(string root, string yyyyMM)
     {
         var dbPath = _config.DbPath;
@@ -161,9 +169,18 @@ public sealed class PruneArchiver : IPruneArchiver
         var stamp = _clock.UtcNow.LocalDateTime.ToString("yyyyMMddHHmmssfff");
         var snapPath = Path.Combine(dir, $"timesheet_{yyyyMM}_pre-prune_{stamp}.db");
 
-        File.Copy(dbPath, snapPath, overwrite: false);
+        SqliteOnlineBackup.Copy(dbPath, snapPath); // online: the .db is live and may be in WAL
 
-        return File.Exists(snapPath) && new FileInfo(snapPath).Length > 0 ? snapPath : null;
+        // "Exists && Length > 0" is not proof that a file is a restorable database — six arbitrary bytes
+        // satisfy it. RetentionService deletes the originals for good on the strength of this answer, so
+        // ask SQLite: PRAGMA integrity_check. (The size check is kept — it costs nothing and RetentionService
+        // re-runs it on the returned path.)
+        if (new FileInfo(snapPath).Length > 0 && SqliteOnlineBackup.IsIntact(snapPath))
+            return snapPath;
+
+        // A file that failed verification must not sit in the recovery folder impersonating a snapshot.
+        try { File.Delete(snapPath); } catch { /* best-effort — the null return is what stops the prune */ }
+        return null;
     }
 
     // The set of Mondays whose Mon–Fri week intersects [year-month]. The standup builder is week-scoped

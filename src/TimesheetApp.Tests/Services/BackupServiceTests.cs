@@ -67,14 +67,15 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task BackupNow_creates_timestamped_copy_and_returns_path()
     {
-        File.WriteAllText(_dbPath, "LIVE-DB");
+        TinyDb.Create(_dbPath, "LIVE-DB"); // a REAL database (was a text file: see TinyDb)
         var (svc, _) = Make(Local(2026, 6, 27, 9, 30, 15, 123));
 
         var path = await svc.BackupNowAsync();
 
         Assert.NotNull(path);
         Assert.True(File.Exists(path));
-        Assert.Equal("LIVE-DB", File.ReadAllText(path!));
+        Assert.Equal(new[] { "LIVE-DB" }, TinyDb.ReadAll(path!));
+        Assert.Equal("ok", TinyDb.IntegrityCheck(path!));
         Assert.Equal("timesheet_20260627093015123.db", Path.GetFileName(path!)); // millisecond stamp
         Assert.Equal(_backupFolder, Path.GetDirectoryName(path!));
     }
@@ -82,7 +83,7 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task BackupNow_returns_null_when_no_folder_set()
     {
-        File.WriteAllText(_dbPath, "LIVE-DB");
+        TinyDb.Create(_dbPath, "LIVE-DB"); // a REAL database (was a text file: see TinyDb)
         var (svc, _) = Make(Local(2026, 6, 27, 9, 0, 0), setFolder: false);
 
         Assert.Null(await svc.BackupNowAsync());
@@ -98,7 +99,7 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task BackupNow_prunes_keeping_only_newest_N()
     {
-        File.WriteAllText(_dbPath, "DATA");
+        TinyDb.Create(_dbPath, "DATA");
         const int keep = 3;
         // 5 backups at strictly increasing seconds; only the newest 3 should survive.
         for (var i = 0; i < 5; i++)
@@ -116,7 +117,7 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task Prune_never_deletes_unrelated_files()
     {
-        File.WriteAllText(_dbPath, "DATA");
+        TinyDb.Create(_dbPath, "DATA");
         Directory.CreateDirectory(_backupFolder);
         var unrelated = Path.Combine(_backupFolder, "notes.txt");
         File.WriteAllText(unrelated, "keep me");
@@ -132,7 +133,7 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task ListBackups_parses_timestamps_and_orders_newest_first()
     {
-        File.WriteAllText(_dbPath, "DATA");
+        TinyDb.Create(_dbPath, "DATA");
         await Make(Local(2026, 6, 25, 8, 0, 0), keep: 30).svc.BackupNowAsync();
         await Make(Local(2026, 6, 27, 8, 0, 0), keep: 30).svc.BackupNowAsync();
         await Make(Local(2026, 6, 26, 8, 0, 0), keep: 30).svc.BackupNowAsync();
@@ -157,7 +158,7 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task AutoBackup_creates_one_when_due_and_skips_when_already_done_today()
     {
-        File.WriteAllText(_dbPath, "DATA");
+        TinyDb.Create(_dbPath, "DATA");
         var (svc, cfg) = Make(Local(2026, 6, 27, 9, 0, 0));
         cfg.AutoBackupEnabled = true;
 
@@ -174,7 +175,7 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task AutoBackup_noop_when_disabled()
     {
-        File.WriteAllText(_dbPath, "DATA");
+        TinyDb.Create(_dbPath, "DATA");
         var (svc, cfg) = Make(Local(2026, 6, 27, 9, 0, 0));
         cfg.AutoBackupEnabled = false;
 
@@ -185,26 +186,28 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task Restore_writes_pre_restore_safety_copy_then_swaps_db_contents()
     {
-        File.WriteAllText(_dbPath, "CURRENT-DB");
+        TinyDb.Create(_dbPath, "CURRENT-DB");
         Directory.CreateDirectory(_backupFolder);
         var backupPath = Path.Combine(_backupFolder, "timesheet_20260620080000.db");
-        File.WriteAllText(backupPath, "OLD-BACKUP-DB");
+        TinyDb.Create(backupPath, "OLD-BACKUP-DB");
 
         var (svc, _) = Make(Local(2026, 6, 27, 13, 0, 0));
         await svc.RestoreAsync(backupPath);
 
-        // live db now holds the backup's bytes...
-        Assert.Equal("OLD-BACKUP-DB", File.ReadAllText(_dbPath));
-        // ...and the pre-restore safety copy preserves the previous live db.
+        // live db now holds the backup's rows...
+        Assert.Equal(new[] { "OLD-BACKUP-DB" }, TinyDb.ReadAll(_dbPath));
+        // ...and the pre-restore safety copy preserves the previous live db — as a restorable database,
+        // not just as bytes: it is the file the user reaches for when the restore was the wrong one.
         var safety = Directory.GetFiles(Path.GetDirectoryName(_dbPath)!, "*.pre-restore_*.bak");
         Assert.Single(safety);
-        Assert.Equal("CURRENT-DB", File.ReadAllText(safety[0]));
+        Assert.Equal(new[] { "CURRENT-DB" }, TinyDb.ReadAll(safety[0]));
+        Assert.Equal("ok", TinyDb.IntegrityCheck(safety[0]));
     }
 
     [Fact]
     public async Task Restore_throws_when_backup_unreadable()
     {
-        File.WriteAllText(_dbPath, "CURRENT-DB");
+        TinyDb.Create(_dbPath, "CURRENT-DB");
         var (svc, _) = Make(Local(2026, 6, 27, 13, 0, 0));
         var missing = Path.Combine(_backupFolder, "timesheet_20990101000000.db");
 
@@ -214,14 +217,14 @@ public class BackupServiceTests : IDisposable
     [Fact] // Guard: restoring the live DB onto itself is rejected and leaves the live DB untouched.
     public async Task Restore_rejects_restoring_live_db_onto_itself()
     {
-        File.WriteAllText(_dbPath, "CURRENT-DB");
+        TinyDb.Create(_dbPath, "CURRENT-DB");
         var (svc, _) = Make(Local(2026, 6, 27, 13, 0, 0));
 
         // Pass the same path with different casing to exercise the case-insensitive compare.
         var samePath = _dbPath.ToUpperInvariant();
         await Assert.ThrowsAsync<InvalidOperationException>(() => svc.RestoreAsync(samePath));
 
-        Assert.Equal("CURRENT-DB", File.ReadAllText(_dbPath)); // untouched
+        Assert.Equal(new[] { "CURRENT-DB" }, TinyDb.ReadAll(_dbPath)); // untouched
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(_dbPath)!, "*.pre-restore_*.bak")); // no safety copy made
     }
 
@@ -229,7 +232,7 @@ public class BackupServiceTests : IDisposable
     [Fact]
     public async Task BackupToFolder_copies_db_into_given_folder_and_prunes()
     {
-        File.WriteAllText(_dbPath, "LIVE-DB");
+        TinyDb.Create(_dbPath, "LIVE-DB"); // a REAL database (was a text file: see TinyDb)
         var target = Path.Combine(_root, "exportroot", "db");
 
         // 4 copies into the target with keep=2; only the newest 2 survive.
@@ -243,7 +246,7 @@ public class BackupServiceTests : IDisposable
 
         var files = Directory.GetFiles(target, "timesheet_*.db");
         Assert.Equal(2, files.Length);
-        Assert.Equal("LIVE-DB", File.ReadAllText(files[0]));
+        Assert.Equal(new[] { "LIVE-DB" }, TinyDb.ReadAll(files[0]));
     }
 
     [Fact]
@@ -255,6 +258,7 @@ public class BackupServiceTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+        try { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
+        catch (IOException) { /* temp file briefly held on Windows — leave it for the OS to reap */ }
     }
 }
