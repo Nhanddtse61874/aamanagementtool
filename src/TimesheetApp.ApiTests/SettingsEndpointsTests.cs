@@ -39,9 +39,10 @@ public sealed class SettingsEndpointsTests
 
     private static async Task<int> SeedStandupEntryAsync(
         ApiFactory factory, int userId, int? teamId, DateOnly workDate,
-        string section = StandupSection.Today, string taskText = "Do the thing", string status = "Todo") =>
+        string section = StandupSection.Today, string taskText = "Do the thing", string status = "Todo",
+        int orderIndex = 0) =>
         await factory.Services.GetRequiredService<IStandupRepository>().InsertEntryAsync(new StandupEntry(
-            0, userId, workDate, section, null, "ADHOC-1", taskText, "", null, status, 0,
+            0, userId, workDate, section, null, "ADHOC-1", taskText, "", null, status, orderIndex,
             DateTimeOffset.UtcNow, teamId));
 
     private static async Task<int> SeedStandupIssueAsync(
@@ -538,6 +539,239 @@ public sealed class SettingsEndpointsTests
             .Content.ReadFromJsonAsync<List<SettingsUserStandup>>();
 
         Assert.Contains(board!, u => u.UserId == aliceId && u.Today.Any(e => e.Entry.TaskText == "alice's task"));
+    }
+
+    // ===== Active-team switch (PUT /api/me/active-team) =======================================================
+
+    [Fact]
+    public async Task Switching_to_a_team_im_a_member_of_changes_my_active_team()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var teamA = await factory.SeedTeamAsync("Team A", aliceId);
+        var teamB = await factory.SeedTeamAsync("Team B", aliceId);
+
+        using var alice = await factory.ClientAsync("alice");
+        var before = await (await alice.GetAsync("/api/me")).Content.ReadFromJsonAsync<MeResponse>();
+        Assert.Equal(teamA, before!.ActiveTeamId);   // resolves to the first available team
+
+        var switched = await alice.PutAsJsonAsync("/api/me/active-team", new SettingsActiveTeamRequest(teamB));
+        Assert.Equal(HttpStatusCode.NoContent, switched.StatusCode);
+
+        var after = await (await alice.GetAsync("/api/me")).Content.ReadFromJsonAsync<MeResponse>();
+        Assert.Equal(teamB, after!.ActiveTeamId);
+    }
+
+    /// <summary>Rule 8. Without this gate a user switches themselves into a team they are not in, and every
+    /// subsequent timesheet/standup query then serves them that team's data.</summary>
+    [Fact]
+    public async Task Switching_to_a_team_im_not_a_member_of_is_404_and_leaves_my_active_team_alone()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var teamA = await factory.SeedTeamAsync("Team A", aliceId);
+        var teamB = await factory.SeedTeamAsync("Team B");   // alice is NOT a member
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.PutAsJsonAsync("/api/me/active-team", new SettingsActiveTeamRequest(teamB));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        var after = await (await alice.GetAsync("/api/me")).Content.ReadFromJsonAsync<MeResponse>();
+        Assert.Equal(teamA, after!.ActiveTeamId);
+    }
+
+    /// <summary>THE TRAP the coordinator's "must be in ctx.MemberTeamIds, else 404" rule does not close.
+    ///
+    /// <para><c>MemberTeamIds</c> is every <c>UserTeams</c> row with NO <c>is_active</c> filter;
+    /// <c>ICurrentTeamService.AvailableTeams</c> is memberships INTERSECTED WITH ACTIVE TEAMS — strictly
+    /// narrower. <c>SetActiveTeamAsync</c> THROWS <c>InvalidOperationException</c> outside
+    /// <c>AvailableTeams</c>, and <c>ExceptionMapper</c> maps only <c>ConcurrencyConflictException</c> and
+    /// <c>ArgumentException</c> — so that throw escapes as a 500.</para>
+    ///
+    /// <para>A membership-only check would sail straight into it: the team below is soft-deleted via
+    /// <c>PUT /api/teams/{id}/active</c> (an endpoint in THIS file), and the <c>UserTeams</c> row survives
+    /// the soft-delete. Member: yes. Available: no.</para></summary>
+    [Fact]
+    public async Task Switching_to_a_deactivated_team_im_still_a_member_of_is_400_not_500()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var teamA = await factory.SeedTeamAsync("Team A", aliceId);
+        var teamB = await factory.SeedTeamAsync("Team B", aliceId);
+
+        // Soft-delete Team B. The UserTeams row is untouched, so alice REMAINS a member of it.
+        await factory.Services.GetRequiredService<ITeamRepository>().SetActiveAsync(teamB, isActive: false);
+
+        using var alice = await factory.ClientAsync("alice");
+
+        // The membership check the coordinator specified would PASS here — this is what makes the second
+        // gate load-bearing rather than redundant.
+        var me = await (await alice.GetAsync("/api/me")).Content.ReadFromJsonAsync<MeResponse>();
+        Assert.Contains(teamB, me!.MemberTeamIds);
+
+        var response = await alice.PutAsJsonAsync("/api/me/active-team", new SettingsActiveTeamRequest(teamB));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.InternalServerError, response.StatusCode);
+
+        var after = await (await alice.GetAsync("/api/me")).Content.ReadFromJsonAsync<MeResponse>();
+        Assert.Equal(teamA, after!.ActiveTeamId);
+    }
+
+    // ===== Standup reorder ====================================================================================
+
+    /// <summary>Also proves the route table: "reorder" cannot satisfy the <c>:int</c> constraint on the
+    /// sibling <c>PUT /api/standup/entries/{entryId:int}</c>, so this reaches the reorder handler rather than
+    /// the entry-update handler (or an AmbiguousMatchException).</summary>
+    [Fact]
+    public async Task Reordering_my_own_entries_within_my_day_moves_them()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var teamId = await factory.SeedTeamAsync("Team A", aliceId);
+        var first = await SeedStandupEntryAsync(factory, aliceId, teamId, Today(), taskText: "first", orderIndex: 0);
+        var second = await SeedStandupEntryAsync(factory, aliceId, teamId, Today(), taskText: "second", orderIndex: 1);
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.PutAsJsonAsync(
+            "/api/standup/entries/reorder", new SettingsStandupReorderRequest(DraggedId: second, TargetId: first));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var repo = factory.Services.GetRequiredService<IStandupRepository>();
+        Assert.Equal(0, (await repo.GetEntryAsync(second))!.OrderIndex);   // dragged took the target's slot
+        Assert.Equal(1, (await repo.GetEntryAsync(first))!.OrderIndex);
+    }
+
+    [Fact]
+    public async Task Reordering_an_entry_i_do_not_own_is_400_and_moves_nothing()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var bobId = await factory.SeedUserAsync("bob", ApiFactory.DefaultPassword);
+        var teamId = await factory.SeedTeamAsync("Team A", aliceId, bobId);
+
+        var alices = await SeedStandupEntryAsync(factory, aliceId, teamId, Today(), taskText: "alice's", orderIndex: 0);
+        var bobs = await SeedStandupEntryAsync(factory, bobId, teamId, Today(), taskText: "bob's", orderIndex: 0);
+
+        // bob tries to drag ALICE's entry (same team, so the team gate passes — only the owner gate is left).
+        using var bob = await factory.ClientAsync("bob");
+        var response = await bob.PutAsJsonAsync(
+            "/api/standup/entries/reorder", new SettingsStandupReorderRequest(DraggedId: alices, TargetId: bobs));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var repo = factory.Services.GetRequiredService<IStandupRepository>();
+        Assert.Equal(0, (await repo.GetEntryAsync(alices))!.OrderIndex);
+    }
+
+    [Fact]
+    public async Task Reordering_an_entry_from_a_team_im_not_in_is_404()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        await factory.SeedTeamAsync("Team A", aliceId);
+
+        var carolId = await factory.SeedUserAsync("carol", ApiFactory.DefaultPassword);
+        var teamB = await factory.SeedTeamAsync("Team B", carolId);
+        var e1 = await SeedStandupEntryAsync(factory, carolId, teamB, Today(), taskText: "c1", orderIndex: 0);
+        var e2 = await SeedStandupEntryAsync(factory, carolId, teamB, Today(), taskText: "c2", orderIndex: 1);
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.PutAsJsonAsync(
+            "/api/standup/entries/reorder", new SettingsStandupReorderRequest(DraggedId: e2, TargetId: e1));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    /// <summary>The coordinator's stated reorder threat — "I reorder your team's board by pairing my entry id
+    /// with yours" — does NOT hold, and this proves it rather than asserting it.
+    ///
+    /// <para><c>ReorderEntryAsync</c> builds its write set from
+    /// <c>GetEntriesAsync(me.Id, …)</c> (StandupService.cs:200), so every <c>UpdateEntryAsync</c> it issues
+    /// targets the CALLER's own rows. A colleague's entry id is only ever READ, for its <c>.Section</c> and
+    /// <c>.WorkDate</c>. The team gate on <c>targetId</c> is real defense-in-depth, but it is not what stands
+    /// between an attacker and someone else's rows — the service's own scoping is.</para></summary>
+    [Fact]
+    public async Task Dragging_my_entry_onto_a_colleagues_entry_never_rewrites_the_colleagues_row()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var bobId = await factory.SeedUserAsync("bob", ApiFactory.DefaultPassword);
+        var teamId = await factory.SeedTeamAsync("Team A", aliceId, bobId);
+
+        var alices = await SeedStandupEntryAsync(factory, aliceId, teamId, Today(), taskText: "alice's", orderIndex: 0);
+        var bobs = await SeedStandupEntryAsync(
+            factory, bobId, teamId, Today(), section: StandupSection.Yesterday, taskText: "bob's", orderIndex: 7);
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.PutAsJsonAsync(
+            "/api/standup/entries/reorder", new SettingsStandupReorderRequest(DraggedId: alices, TargetId: bobs));
+
+        // Every gate passes (same team, alice owns the dragged entry, same day), so the service runs.
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Bob's row is byte-for-byte untouched: same section, same order, same text.
+        var stillBobs = await factory.Services.GetRequiredService<IStandupRepository>().GetEntryAsync(bobs);
+        Assert.Equal(StandupSection.Yesterday, stillBobs!.Section);
+        Assert.Equal(7, stillBobs.OrderIndex);
+        Assert.Equal("bob's", stillBobs.TaskText);
+        Assert.Equal(bobId, stillBobs.UserId);
+    }
+
+    // ===== Standup quick-import ================================================================================
+
+    [Fact]
+    public async Task Quick_import_clones_my_source_day_into_my_target_day_with_its_issues()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var teamId = await factory.SeedTeamAsync("Team A", aliceId);
+
+        var yesterday = Today().AddDays(-1);
+        var sourceEntry = await SeedStandupEntryAsync(factory, aliceId, teamId, yesterday, taskText: "carry me over");
+        await SeedStandupIssueAsync(factory, sourceEntry, "blocked on review");
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.PostAsJsonAsync(
+            "/api/standup/quick-import", new SettingsQuickImportRequest(yesterday, Today()));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(1, await response.Content.ReadFromJsonAsync<int>());
+
+        var mine = await (await alice.GetAsync($"/api/standup/entries?date={Iso(Today())}"))
+            .Content.ReadFromJsonAsync<SettingsUserStandup>();
+        var cloned = mine!.Today.Single(e => e.Entry.TaskText == "carry me over");
+        Assert.NotEqual(sourceEntry, cloned.Entry.Id);                       // a COPY, not a move
+        Assert.Contains(cloned.Issues, i => i.IssueText == "blocked on review");
+
+        // The source day is never modified.
+        var source = await factory.Services.GetRequiredService<IStandupRepository>().GetEntryAsync(sourceEntry);
+        Assert.Equal(yesterday, source!.WorkDate);
+    }
+
+    [Fact]
+    public async Task Quick_import_into_a_locked_day_is_400_and_writes_nothing()
+    {
+        using var factory = new ApiFactory();
+        var aliceId = await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+        var teamId = await factory.SeedTeamAsync("Team A", aliceId);
+
+        var yesterday = Today().AddDays(-1);
+        await SeedStandupEntryAsync(factory, aliceId, teamId, yesterday, taskText: "carry me over");
+
+        var lockedTarget = Today().AddDays(-10);
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.PostAsJsonAsync(
+            "/api/standup/quick-import", new SettingsQuickImportRequest(yesterday, lockedTarget));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var onTarget = await factory.Services.GetRequiredService<IStandupRepository>()
+            .GetEntriesAsync(aliceId, lockedTarget);
+        Assert.Empty(onTarget);
     }
 
     // ===== Ops ================================================================================================

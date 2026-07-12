@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using TimesheetApp.Api.Auth;
@@ -70,9 +71,57 @@ public static class SettingsEndpoints
         MapTemplateEndpoints(api);
         MapHolidayEndpoints(api);
         MapDefaultTaskEndpoints(api);
+        MapMeEndpoints(api);
         MapStandupEndpoints(api);
         MapOpsEndpoints(api);
         return api;
+    }
+
+    // ===== The caller's own working scope ===================================================================
+
+    /// <summary>The active-team switcher. Without it a user cannot change teams from the web at all, and
+    /// <c>ActiveTeamId</c> scopes every timesheet and standup query.
+    ///
+    /// <para><c>PUT /api/me/active-team</c> sits under <c>/api/me</c>, which <c>AuthSetup.MapAuthMechanism</c>
+    /// already maps as a <c>GET</c>. Different method AND different path, so there is no
+    /// <c>AmbiguousMatchException</c> — but it is outside W2-D's originally-assigned prefixes, so it is worth
+    /// naming at the merge gate.</para></summary>
+    private static void MapMeEndpoints(IEndpointRouteBuilder api)
+    {
+        api.MapPut("/api/me/active-team", async (
+            [FromBody] SettingsActiveTeamRequest req,
+            IClientContext ctx, ICurrentTeamService currentTeam, IChangeNotifier notifier) =>
+        {
+            // Rule 8: the target team id is attacker-supplied. Not one of MY memberships => 404 (not 403 —
+            // a 403 confirms the team exists). Skip this and a user switches themselves into a team they are
+            // not in, and every subsequent timesheet/standup query serves them that team's data — which is
+            // precisely what moving ActiveTeamId off IAppConfig (M8.2/W4) existed to prevent.
+            if (!ctx.MemberTeamIds.Contains(req.TeamId))
+                return Results.NotFound();
+
+            // NOT redundant with the check above, and this is the trap.
+            //
+            //   ctx.MemberTeamIds  = GetTeamIdsForUserAsync = every UserTeams row, with NO is_active filter.
+            //   AvailableTeams     = GetActiveAsync() ∩ memberships  — strictly NARROWER.
+            //
+            // SetActiveTeamAsync THROWS InvalidOperationException for anything outside AvailableTeams, and
+            // ExceptionMapper maps only ConcurrencyConflictException and ArgumentException — so that throw
+            // escapes as a 500. A user who is still a member of a team an admin has since DEACTIVATED (via
+            // PUT /api/teams/{id}/active, above — the UserTeams rows survive the soft-delete) is exactly
+            // that case: present in MemberTeamIds, absent from AvailableTeams. Membership alone does not
+            // keep this endpoint off the 500 path.
+            //
+            // 400, not 404: the caller IS a member, so naming the reason leaks nothing they do not know.
+            if (!currentTeam.AvailableTeams.Any(t => t.Id == req.TeamId))
+                return Results.BadRequest(new ValidationBody("That team is not active."));
+
+            // Bump-only (rule 9): Users.active_team_id is a system write carrying no client-held version.
+            await currentTeam.SetActiveTeamAsync(req.TeamId);
+
+            // The NEW team id, never 0 — an active-team switch is per-USER state, not a global change.
+            await notifier.DataChangedAsync(DataKind.Teams, req.TeamId, ctx.ConnectionId);
+            return Results.NoContent();
+        });
     }
 
     // ===== Tags (global; hard-delete) ======================================================================
@@ -505,6 +554,67 @@ public static class SettingsEndpoints
                 return Results.NoContent();
             });
 
+        // Drag-reorder. The literal "reorder" cannot satisfy the `:int` constraint on the sibling
+        // PUT /api/standup/entries/{entryId:int}, so the two coexist without an AmbiguousMatchException in
+        // either registration order.
+        api.MapPut("/api/standup/entries/reorder", async (
+            [FromBody] SettingsStandupReorderRequest req,
+            IClientContext ctx, IStandupRepository standupRepo, IStandupService standup,
+            IChangeNotifier notifier) =>
+        {
+            // BOTH ids are attacker-supplied, so BOTH are team-gated.
+            var dragged = await standupRepo.GetEntryAsync(req.DraggedId);
+            if (!TryAuthorizeEntryTeam(dragged, ctx, out var teamId))
+                return Results.NotFound();
+
+            var target = await standupRepo.GetEntryAsync(req.TargetId);
+            if (!TryAuthorizeEntryTeam(target, ctx, out _))
+                return Results.NotFound();
+
+            // ReorderEntryAsync returns void and SILENTLY no-ops on each of its three rejections (owner,
+            // edit-lock, cross-day). Re-checking them here is not a second gate — the service still enforces
+            // every one of them — it only stops a 204 from claiming a write that never happened. `dragged` is
+            // non-null here: TryAuthorizeEntryTeam is [NotNullWhen(true)].
+            if (dragged.UserId != ctx.UserId)
+                return Results.BadRequest(new ValidationBody("Only the entry's owner may reorder it."));
+            if (!standup.CanEditDay(dragged.WorkDate))
+                return Results.BadRequest(new ValidationBody("The day is no longer editable."));
+            if (dragged.WorkDate != target.WorkDate)
+                return Results.BadRequest(new ValidationBody("Entries can only be reordered within one day."));
+
+            await standup.ReorderEntryAsync(req.DraggedId, req.TargetId);
+
+            await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
+            return Results.NoContent();
+        });
+
+        // P18 Quick Import: clone my own source day into my own target day, appending.
+        api.MapPost("/api/standup/quick-import", async (
+            [FromBody] SettingsQuickImportRequest req,
+            IClientContext ctx, IStandupService standup, ICurrentTeamService currentTeam,
+            IChangeNotifier notifier) =>
+        {
+            // No id on the wire, so nothing to team-gate: QuickImportDayAsync reads and writes only the
+            // CURRENT user's own entries, scoped to their own active team. The actor is ctx.UserId by
+            // construction (the service takes it from ICurrentUserService, which ClientContextFilter
+            // resolved from the cookie) — there is no author field a caller could supply.
+            //
+            // The service returns 0 for BOTH "locked target" (a rejection) and "empty source" (a legitimate
+            // no-op). Checking the lock here — CanEditDay is on IStandupService — separates them, so a 0
+            // that survives to the response can only mean the source day was empty.
+            if (!standup.CanEditDay(req.TargetDate))
+                return Results.BadRequest(new ValidationBody(
+                    "Cannot import: the target day is locked (editable only today or yesterday)."));
+
+            var cloned = await standup.QuickImportDayAsync(req.SourceDate, req.TargetDate);
+
+            // Rule 7 is about SUCCESSFUL mutations: nothing copied => nothing changed => nothing to announce.
+            if (cloned > 0)
+                await notifier.DataChangedAsync(DataKind.Standup, currentTeam.ActiveTeamId, ctx.ConnectionId);
+
+            return Results.Ok(cloned);
+        });
+
         // ---- Issues: collaborative (no owner gate), team-gated only. See the class doc for why the team
         // gate has to be established here, from the repository, before the service is ever called. --------
 
@@ -633,8 +743,12 @@ public static class SettingsEndpoints
 
     /// <summary>The entry-level team gate shared by every entry/issue write: null/missing entry, or a
     /// <c>TeamId</c> the caller is not a member of, both resolve to "not found" (never 403 — a 403 would
-    /// confirm the row exists to someone who cannot see it).</summary>
-    private static bool TryAuthorizeEntryTeam(StandupEntry? entry, IClientContext ctx, out int teamId)
+    /// confirm the row exists to someone who cannot see it).
+    ///
+    /// <para><c>[NotNullWhen(true)]</c> is what lets the reorder handler read <c>dragged.UserId</c> without a
+    /// null-forgiving <c>!</c>: a <c>true</c> return provably means the entry was found.</para></summary>
+    private static bool TryAuthorizeEntryTeam(
+        [NotNullWhen(true)] StandupEntry? entry, IClientContext ctx, out int teamId)
     {
         teamId = entry?.TeamId ?? -1;
         return entry is not null && ctx.MemberTeamIds.Contains(teamId);
@@ -694,6 +808,14 @@ internal sealed record SettingsStandupIssueCreateRequest(string IssueText, strin
 
 internal sealed record SettingsStandupIssueUpdateRequest(
     string IssueText, string? SolutionText, string Status, long ExpectedVersion);
+
+internal sealed record SettingsStandupReorderRequest(int DraggedId, int TargetId);
+
+internal sealed record SettingsQuickImportRequest(DateOnly SourceDate, DateOnly TargetDate);
+
+/// <summary>No <c>rowVersion</c>: <c>IUserRepository.SetActiveTeamIdAsync</c> is bump-only by design
+/// (rule 9) — a system write with nobody to race.</summary>
+internal sealed record SettingsActiveTeamRequest(int TeamId);
 
 // ---- Response DTOs (composite read-models with no equivalent in Contracts/Dtos.cs) --------------------------
 
