@@ -1,0 +1,99 @@
+// Uses only the global CSS custom properties (styles.scss), so the dialog follows light/dark automatically
+// rather than hard-coding a palette that would be unreadable in one of the two themes.
+
+.cd-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 38%);
+}
+
+.cd {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 22%);
+}
+
+.cd__title {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.cd__msg {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cd__cell {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.cd__cell-name { color: var(--ink); font-size: 13px; font-weight: 600; }
+.cd__cell-day  { color: var(--faint); font-size: 12px; }
+
+.cd__compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cd__side {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surf2);
+}
+
+.cd__lbl {
+  margin-bottom: 4px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.cd__val { font-size: 18px; font-weight: 650; }
+.cd__val--theirs { color: var(--ok-c); }
+.cd__val--yours  { color: var(--warn-c); }
+
+// The server's identifier for the cell. `id` is 0 for a timesheet cell, so this string is the only thing
+// that says which one -- worth showing, not worth shouting.
+.cd__detail {
+  margin: 0 0 16px;
+  color: var(--faint);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+}
+
+.cd__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+// Overwriting destroys someone else's work. It stays available, but it is never the inviting button.
+.cd__danger {
+  color: var(--danger-c);
+  border-color: var(--danger-bd);
+
+  &:hover { background: var(--danger-bg); }
+}
