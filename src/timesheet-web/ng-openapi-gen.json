@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/ng-openapi-gen/ng-openapi-gen-schema.json",
+  "input": "http://localhost:5080/swagger/v1/swagger.json",
+  "output": "src/app/api",
+
+  "//includeTags": [
+    "M8.4 generates ONLY the routes it actually runs through. That is not merely scope discipline -- it is",
+    "the only way src/app/api/** can be trusted.",
+    "",
+    "These three tags are exactly the 10 routes whose C# declares a response type (.Produces<T>()). The",
+    "other 69 routes carry the default assembly tag 'TimesheetApp.Api' and declare NO response body at all,",
+    "because they return `IResult` via `Results.Ok(x)` and ApiExplorer cannot infer a schema from that.",
+    "Generating them would emit methods typed `void` for endpoints that in fact return data -- a client that",
+    "lies, committed to the repo, that a later wave would reasonably trust.",
+    "",
+    "So a route joins this list when, and only when, its C# gains a .Produces<T>(). Annotate first, then",
+    "generate. Never widen this list to 'fix' a missing method."
+  ],
+  "includeTags": ["Auth", "Timesheet", "SmartFill"],
+
+  "//ignoreUnusedModels": "Keeps the emitted model set to what the included operations actually reference.",
+  "ignoreUnusedModels": true
+}
