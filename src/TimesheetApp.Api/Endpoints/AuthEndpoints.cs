@@ -35,15 +35,14 @@ namespace TimesheetApp.Api.Endpoints;
 /// the interface doc): no checked sibling, no client-held <c>rowVersion</c> to accept or return, so neither
 /// request DTO below carries one.</para>
 ///
-/// <para><b>KNOWN GAP, reported rather than closed privately: no <see cref="IChangeNotifier"/> call after
-/// either write.</b> <c>DataChangedAsync(DataKind, int teamId, …)</c> requires a real team id, but
-/// <c>Users</c> is a GLOBAL entity (no team column — see the <c>SettingsEndpoints</c> header) and
-/// <c>password_hash</c> specifically is never serialized onto any DTO, so there is no client-visible state
-/// for a notification to refresh and no non-guessed <c>teamId</c> to hand the frozen signature. Rather than
-/// invent a convention for global-entity notifications unilaterally (the exact way M8.2 ended up with three
-/// incompatible concurrency APIs), the call is omitted here and the question — what should global entities
-/// pass as <c>teamId</c> — is raised in the wave report for the controller to answer once, centrally, since
-/// it equally affects <c>SettingsEndpoints</c> (Users, Teams, Tags, PcaContacts).</para></summary>
+/// <para><b>NO <see cref="IChangeNotifier"/> CALL AFTER EITHER WRITE — SETTLED, NOT AN OVERSIGHT.</b> W2-A
+/// raised this as an open question; the controller has since ruled, and M8.3/W2.5 pins the ruling with a
+/// test (<c>ChangeNotifierContractTests.Changing_a_password_notifies_nobody</c>). <c>password_hash</c> is
+/// never serialized onto any DTO, so a password change alters NOTHING a client could refresh — there is no
+/// stale view for a notification to fix. (The sibling half of the question — what a GLOBAL entity with no
+/// team column should pass as <c>teamId</c> — was answered separately: the <c>teamId: 0</c> broadcast
+/// sentinel, see the <c>SettingsEndpoints</c> header. It does not apply here, because the trigger for a
+/// notification is client-visible state, and this route changes none.) Do not add one.</para></summary>
 public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder api)
@@ -66,10 +65,15 @@ public static class AuthEndpoints
                 //
                 // ctx.UserName IS THE DISPLAY NAME, NOT THE USERNAME — ClientContextFilter populates it
                 // from User.Name (see IClientContext: "the changedByName on every audited write"). Passing
-                // it to GetCredentialsAsync would be a silent bug of the worst kind: ApiFactory.SeedUserAsync
-                // writes `name` and `username` as the SAME string, so a display-name lookup PASSES EVERY
-                // TEST IN THIS SUITE and fails only in production, where people are called "Alice Nguyen"
-                // and log in as "alice". So resolve the username from the actor id instead.
+                // it to GetCredentialsAsync would be a silent bug of the worst kind. So resolve the username
+                // from the actor id instead.
+                //
+                // M8.3/W2.5 — DO NOT "SIMPLIFY" THE GetByIdAsync ROUND-TRIP AWAY. It looks redundant and it
+                // is not. When this was written, ApiFactory.SeedUserAsync wrote `name` and `username` as the
+                // SAME string, so `GetCredentialsAsync(ctx.UserName)` passed every test in the suite and
+                // would have failed only in production, where people are called "Alice Nguyen" and log in as
+                // "alice". The fixture has since been made honest (name != username), and that substitution
+                // was re-injected and MEASURED: it now fails 6 tests. The guard rail is real — leave it.
                 // ---------------------------------------------------------------------------------------
                 var actor = await users.GetByIdAsync(ctx.UserId);
                 var username = actor?.WindowsUsername;   // the `username` column; the property kept its old name
