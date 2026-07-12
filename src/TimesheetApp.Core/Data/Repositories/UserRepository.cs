@@ -1,4 +1,5 @@
 using Dapper;
+using TimesheetApp.Data;
 using TimesheetApp.Models;
 
 namespace TimesheetApp.Data.Repositories;
@@ -8,8 +9,16 @@ namespace TimesheetApp.Data.Repositories;
 //
 // Schema v10 renamed the column windows_username -> username, and Dapper binds BY COLUMN NAME,
 // so the SQL below and UserRaw's property had to move with it or nothing here would read.
-// The *method* vocabulary (GetByWindowsUsernameAsync / SetWindowsUsernameAsync) still says
-// Windows; renaming that, and the User.WindowsUsername model property, is a later slice's work.
+//
+// M8.2 (Wave 3-C): the *method* vocabulary caught up with the column -- GetByWindowsUsernameAsync /
+// SetWindowsUsernameAsync are now GetByUsernameAsync / SetUsernameAsync (pure rename; the app no
+// longer identifies people by Windows account, the web uses username + password). The
+// User.WindowsUsername model PROPERTY is a separate, much larger blast radius (28+ consumers per
+// M8-PITFALL-RESEARCH) and stays out of scope here.
+//
+// v10 also adds row_version. SetUsernameAsync / UpdateNameAsync are check-and-bump (admin edits
+// from the UI -- low frequency, worth surfacing a conflict). SetActiveAsync (soft-delete) and
+// SetActiveTeamIdAsync (system write, Wave 4) are bump-only: always increment, never compare.
 public sealed class UserRepository : IUserRepository
 {
     private readonly IConnectionFactory _factory;
@@ -20,7 +29,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, username, is_active FROM Users WHERE is_active = 1 ORDER BY name;");
+            "SELECT id, name, username, is_active, row_version FROM Users WHERE is_active = 1 ORDER BY name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -28,7 +37,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, username, is_active FROM Users ORDER BY is_active DESC, name;");
+            "SELECT id, name, username, is_active, row_version FROM Users ORDER BY is_active DESC, name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -36,16 +45,16 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, username, is_active FROM Users WHERE id = @id;", new { id });
+            "SELECT id, name, username, is_active, row_version FROM Users WHERE id = @id;", new { id });
         return row is null ? null : MapUser(row);
     }
 
-    public async Task<User?> GetByWindowsUsernameAsync(string windowsUsername)
+    public async Task<User?> GetByUsernameAsync(string username)
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, username, is_active FROM Users WHERE username = @w;",
-            new { w = windowsUsername });
+            "SELECT id, name, username, is_active, row_version FROM Users WHERE username = @w;",
+            new { w = username });
         return row is null ? null : MapUser(row);
     }
 
@@ -59,31 +68,70 @@ public sealed class UserRepository : IUserRepository
             new { user.Name, user.WindowsUsername, IsActive = user.IsActive ? 1 : 0 });
     }
 
-    public async Task SetWindowsUsernameAsync(int userId, string windowsUsername)
+    // Check-and-bump: admin-driven UI edit (XC-07 persist), low frequency, worth surfacing a conflict.
+    public async Task SetUsernameAsync(int userId, string username, long expectedVersion)
     {
         using var c = _factory.Create();
-        await c.ExecuteAsync(
-            "UPDATE Users SET username = @w WHERE id = @id;",
-            new { w = windowsUsername, id = userId });
+        var rowsAffected = await c.ExecuteAsync(
+            @"UPDATE Users SET username = @w, row_version = row_version + 1
+              WHERE id = @id AND row_version = @expected;",
+            new { w = username, id = userId, expected = expectedVersion });
+
+        if (rowsAffected == 0)
+        {
+            var exists = await c.ExecuteScalarAsync<long>(
+                "SELECT COUNT(1) FROM Users WHERE id = @id;", new { id = userId });
+            throw new ConcurrencyConflictException("Users", userId, expectedVersion, deleted: exists == 0);
+        }
     }
 
+    // Bump-only: soft-delete is a system write, carries no client-observed version.
     public async Task SetActiveAsync(int userId, bool isActive)
     {
         using var c = _factory.Create();
         await c.ExecuteAsync(
-            "UPDATE Users SET is_active = @a WHERE id = @id;",
+            "UPDATE Users SET is_active = @a, row_version = row_version + 1 WHERE id = @id;",
             new { a = isActive ? 1 : 0, id = userId });
     }
 
-    public async Task UpdateNameAsync(int userId, string name)
+    // Check-and-bump: admin-driven UI edit, low frequency, worth surfacing a conflict.
+    public async Task UpdateNameAsync(int userId, string name, long expectedVersion)
+    {
+        using var c = _factory.Create();
+        var rowsAffected = await c.ExecuteAsync(
+            @"UPDATE Users SET name = @n, row_version = row_version + 1
+              WHERE id = @id AND row_version = @expected;",
+            new { n = name, id = userId, expected = expectedVersion });
+
+        if (rowsAffected == 0)
+        {
+            var exists = await c.ExecuteScalarAsync<long>(
+                "SELECT COUNT(1) FROM Users WHERE id = @id;", new { id = userId });
+            throw new ConcurrencyConflictException("Users", userId, expectedVersion, deleted: exists == 0);
+        }
+    }
+
+    // Users.active_team_id (v10). Read side of the accessor pair Wave 4 depends on: it moves
+    // ActiveTeamId out of IAppConfig (per-process -- wrong on a server, where one process serves
+    // everyone) and into here (per-user). See IUserRepository for the fuller why.
+    public async Task<int> GetActiveTeamIdAsync(int userId)
+    {
+        using var c = _factory.Create();
+        return await c.ExecuteScalarAsync<int>(
+            "SELECT active_team_id FROM Users WHERE id = @id;", new { id = userId });
+    }
+
+    // Bump-only: system write, carries no client-observed version.
+    public async Task SetActiveTeamIdAsync(int userId, int teamId)
     {
         using var c = _factory.Create();
         await c.ExecuteAsync(
-            "UPDATE Users SET name = @n WHERE id = @id;", new { n = name, id = userId });
+            "UPDATE Users SET active_team_id = @t, row_version = row_version + 1 WHERE id = @id;",
+            new { t = teamId, id = userId });
     }
 
     private static User MapUser(UserRaw r) =>
-        new((int)r.id, r.name, r.username, r.is_active != 0);
+        new((int)r.id, r.name, r.username, r.is_active != 0, r.row_version);
 
     // SQLite-native shape (long/string) — narrowed at the boundary above (see Task 4 mapping note).
     private sealed class UserRaw
@@ -92,5 +140,6 @@ public sealed class UserRepository : IUserRepository
         public string name { get; set; } = "";
         public string? username { get; set; }   // binds to Users.username (v10 rename)
         public long is_active { get; set; }
+        public long row_version { get; set; }
     }
 }

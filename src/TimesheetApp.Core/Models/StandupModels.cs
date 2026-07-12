@@ -13,9 +13,13 @@ public sealed record StandupEntry(
     int? TeamId = null);   // v8: owning team (null = unassigned, backfilled by bootstrap)
 
 // Zero-or-more per entry (DR-04). SolutionText null/empty = pending discussion.
+// RowVersion: v10 (M8.2) optimistic-concurrency token -- StandupIssues is deliberately
+// collaborative (anyone may edit, DR-04), so StandupRepository.UpdateIssueAsync check-and-bumps
+// it. Default 0 only ever applies to an in-memory issue that was never read from the DB (e.g.
+// freshly constructed for InsertIssueAsync, which does not consult it).
 public sealed record StandupIssue(
     int Id, int EntryId, string IssueText, string? SolutionText, string Status,
-    int OrderIndex, DateTimeOffset CreatedAt)
+    int OrderIndex, DateTimeOffset CreatedAt, long RowVersion = 0)
 {
     // A solved issue (has a solution) renders as "resolved" (green ✓); otherwise as a warning (amber ⚠).
     public bool HasSolution => !string.IsNullOrWhiteSpace(SolutionText);

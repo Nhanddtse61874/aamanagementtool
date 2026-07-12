@@ -3,7 +3,11 @@ namespace TimesheetApp.Models;
 // --- Entities (1:1 with tables). Names are VERBATIM from architecture spec §2. ---
 // 'Task' collides with System.Threading.Tasks.Task -> the entity is named TaskItem.
 
-public sealed record User(int Id, string Name, string? WindowsUsername, bool IsActive);
+// RowVersion: v10 (M8.2) optimistic-concurrency token. SetUsernameAsync / UpdateNameAsync
+// check-and-bump it; SetActiveAsync (soft-delete) bump-only. Default 0 only applies to an
+// in-memory User that was never read from the DB (e.g. freshly constructed for InsertAsync,
+// which does not consult it).
+public sealed record User(int Id, string Name, string? WindowsUsername, bool IsActive, long RowVersion = 0);
 
 // P10 Multi-Team (schema v8). A top-level org entity; soft-deletable via IsActive (mirrors User).
 public sealed record Team(int Id, string Name, bool IsActive, DateTimeOffset CreatedAt);
