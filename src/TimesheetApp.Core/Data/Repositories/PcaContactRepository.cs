@@ -15,7 +15,7 @@ public sealed class PcaContactRepository : IPcaContactRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<PcaContactRaw>(
-            "SELECT id, name, is_active FROM PcaContacts ORDER BY is_active DESC, name;");
+            "SELECT id, name, is_active, row_version FROM PcaContacts ORDER BY is_active DESC, name;");
         return rows.Select(MapContact).ToList();
     }
 
@@ -23,7 +23,7 @@ public sealed class PcaContactRepository : IPcaContactRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<PcaContactRaw>(
-            "SELECT id, name, is_active FROM PcaContacts WHERE is_active = 1 ORDER BY name;");
+            "SELECT id, name, is_active, row_version FROM PcaContacts WHERE is_active = 1 ORDER BY name;");
         return rows.Select(MapContact).ToList();
     }
 
@@ -31,7 +31,7 @@ public sealed class PcaContactRepository : IPcaContactRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<PcaContactRaw>(
-            "SELECT id, name, is_active FROM PcaContacts WHERE id = @id;", new { id });
+            "SELECT id, name, is_active, row_version FROM PcaContacts WHERE id = @id;", new { id });
         return row is null ? null : MapContact(row);
     }
 
@@ -45,28 +45,47 @@ public sealed class PcaContactRepository : IPcaContactRepository
             new { contact.Name, IsActive = contact.IsActive ? 1 : 0 });
     }
 
-    public async Task UpdateNameAsync(int id, string name)
+    // Check-and-bump when the caller supplies expectedVersion (throws on a stale version or a
+    // deleted row); bump-only when it doesn't, so callers not yet wired to carry a version keep
+    // compiling and behaving as before (unconditional success), just with row_version now advancing.
+    public async Task UpdateNameAsync(int id, string name, long? expectedVersion = null)
     {
         using var c = _factory.Create();
-        await c.ExecuteAsync(
-            "UPDATE PcaContacts SET name = @n WHERE id = @id;", new { n = name, id });
+        if (expectedVersion is null)
+        {
+            await c.ExecuteAsync(
+                "UPDATE PcaContacts SET name = @n, row_version = row_version + 1 WHERE id = @id;",
+                new { n = name, id });
+            return;
+        }
+
+        var rows = await c.ExecuteAsync(
+            @"UPDATE PcaContacts SET name = @n, row_version = row_version + 1
+              WHERE id = @id AND row_version = @expected;",
+            new { n = name, id, expected = expectedVersion.Value });
+        if (rows > 0) return;
+
+        var exists = await c.ExecuteScalarAsync<long>("SELECT COUNT(1) FROM PcaContacts WHERE id = @id;", new { id });
+        throw new ConcurrencyConflictException("PcaContacts", id, expectedVersion, deleted: exists == 0);
     }
 
+    // Bump-only: a deactivation doesn't carry a version from the client, and always succeeds.
     public async Task SetActiveAsync(int id, bool isActive)
     {
         using var c = _factory.Create();
         await c.ExecuteAsync(
-            "UPDATE PcaContacts SET is_active = @a WHERE id = @id;",
+            "UPDATE PcaContacts SET is_active = @a, row_version = row_version + 1 WHERE id = @id;",
             new { a = isActive ? 1 : 0, id });
     }
 
     private static PcaContact MapContact(PcaContactRaw r) =>
-        new((int)r.id, r.name, r.is_active != 0);
+        new((int)r.id, r.name, r.is_active != 0, r.row_version);
 
     private sealed class PcaContactRaw
     {
         public long id { get; set; }
         public string name { get; set; } = "";
         public long is_active { get; set; }
+        public long row_version { get; set; }
     }
 }
