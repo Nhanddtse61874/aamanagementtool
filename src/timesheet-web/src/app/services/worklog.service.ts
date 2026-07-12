@@ -7,6 +7,7 @@ import {
 } from '../models/worklog.models';
 
 import { ApiConfiguration } from '../api/api-configuration';
+import { ConnectionIdHttpClient } from '../core/realtime.service';
 import {
   login as loginFn,
   logout as logoutFn,
@@ -43,6 +44,19 @@ import {
 export class WorklogService {
   private readonly http = inject(HttpClient);
   private readonly apiConfig = inject(ApiConfiguration);
+
+  /**
+   * M8.4/W4. The SAME transport, plus one header: `X-Connection-Id`.
+   *
+   * Every MUTATING route calls `IChangeNotifier.DataChangedAsync(kind, teamId, ctx.ConnectionId)`, and the
+   * server uses that connection id to EXCLUDE the caller from its own SignalR broadcast. It can only do so
+   * if we send it. Omit the header and the write echoes straight back to the person who made it: the page
+   * re-fetches the week and CLOBBERS THE CONFLICT DIALOG the 409 just raised, while the user is reading it.
+   *
+   * Reads deliberately keep using the plain `HttpClient` — a read notifies nobody, so there is no echo to
+   * suppress and no reason to widen the header's blast radius.
+   */
+  private readonly mutatingHttp = inject(ConnectionIdHttpClient);
 
   /** `''` — see the class comment. Relative paths, or the auth cookie stops being sent. */
   private get rootUrl(): string { return this.apiConfig.rootUrl; }
@@ -144,7 +158,7 @@ export class WorklogService {
     hours: number,
     expectedVersion: number | null,
   ): Observable<number> {
-    return timesheetSaveCellFn(this.http, this.rootUrl, {
+    return timesheetSaveCellFn(this.mutatingHttp, this.rootUrl, {
       body: { taskId, date: workDate, hours, expectedVersion },
     }).pipe(map(r => requireRowVersion(r.body.rowVersion)));
   }
@@ -155,7 +169,7 @@ export class WorklogService {
    * not already hold a version for.
    */
   clearHours(taskId: number, workDate: string, expectedVersion: number): Observable<void> {
-    return timesheetClearCellFn(this.http, this.rootUrl, {
+    return timesheetClearCellFn(this.mutatingHttp, this.rootUrl, {
       body: { taskId, date: workDate, expectedVersion },
     }).pipe(map(r => r.body));
   }
@@ -180,7 +194,7 @@ export class WorklogService {
   }
 
   smartFillApply(tasks: SmartFillTaskRequest[]): Observable<TimeLogDto[]> {
-    return smartFillApplyFn(this.http, this.rootUrl, { body: { tasks } })
+    return smartFillApplyFn(this.mutatingHttp, this.rootUrl, { body: { tasks } })
       .pipe(map(r => r.body));
   }
 
