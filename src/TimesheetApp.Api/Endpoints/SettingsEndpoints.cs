@@ -55,6 +55,11 @@ namespace TimesheetApp.Api.Endpoints;
 /// SignalR notifier turns <c>teamId == 0</c> into an all-clients send rather than a group send. Standup
 /// entries/issues are team-scoped, so they pass the entry's REAL <c>TeamId</c> instead.</para>
 ///
+/// <para><b>The one mutating route that notifies NOTHING is <c>PUT /api/me/active-team</c></b> — a decision,
+/// not an omission (see the comment on that handler). Switching your own active team changes nobody else's
+/// view, and <c>DataChangedAsync</c> sends to a team group MINUS the caller: every client it would reach is
+/// unaffected, and the only client that cares is the one it excludes.</para>
+///
 /// <para><b>Reads vs. writes.</b> For the global "settings" lists (Tags, Teams, PcaContacts, Users), the
 /// ACTIVE/default list is open to any authenticated user — <c>TaskListViewModel</c> (a non-admin screen)
 /// depends directly on <c>ITagRepository</c>/<c>IPcaContactRepository</c>/<c>IUserRepository</c> for pickers
@@ -90,7 +95,7 @@ public static class SettingsEndpoints
     {
         api.MapPut("/api/me/active-team", async (
             [FromBody] SettingsActiveTeamRequest req,
-            IClientContext ctx, ICurrentTeamService currentTeam, IChangeNotifier notifier) =>
+            IClientContext ctx, ICurrentTeamService currentTeam) =>
         {
             // Rule 8: the target team id is attacker-supplied. Not one of MY memberships => 404 (not 403 —
             // a 403 confirms the team exists). Skip this and a user switches themselves into a team they are
@@ -118,8 +123,18 @@ public static class SettingsEndpoints
             // Bump-only (rule 9): Users.active_team_id is a system write carrying no client-held version.
             await currentTeam.SetActiveTeamAsync(req.TeamId);
 
-            // The NEW team id, never 0 — an active-team switch is per-USER state, not a global change.
-            await notifier.DataChangedAsync(DataKind.Teams, req.TeamId, ctx.ConnectionId);
+            // DELIBERATELY NO IChangeNotifier CALL — do not "helpfully" add one back. Rule 7 says notify
+            // after every successful mutation, and this IS one, but it is the single exception, because
+            // DataChangedAsync(kind, teamId, exceptConnectionId) sends to a TEAM GROUP MINUS THE CALLER —
+            // i.e. to everyone EXCEPT the one person whose scope actually changed. Work through who cares
+            // when Alice switches from Team A to Team B: Alice's own client already knows (it issued this
+            // PUT, and it is exactly the connection we would exclude); Team A's other members see nothing
+            // change (her MEMBERSHIP did not change, only which of her teams is active); Team B's other
+            // members likewise (she was already a member, she merely made it active). Nobody else's view
+            // changes, and the one client that cares already issued the write. Anything sent here is pure
+            // noise, aimed at precisely the wrong set of people. This matches ApiCurrentTeamService's own
+            // recorded decision: "No ActiveTeamChanged, and no DataChangedMessage: per-user state, not a
+            // team-wide event."
             return Results.NoContent();
         });
     }
