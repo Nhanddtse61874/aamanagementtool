@@ -33,9 +33,9 @@ public partial class App : Application
             args.Handled = true;
         };
 
-        // The SelectUserDialog (XC-07) may be shown modally BEFORE MainWindow exists. With the default
-        // OnLastWindowClose, closing/cancelling that dialog would shut the app down before the main
-        // window appears. Hold shutdown explicit during startup; switch to main-window-bound after Show().
+        // A modal shown during startup, BEFORE MainWindow exists, would (under the default
+        // OnLastWindowClose) shut the app down when dismissed. Hold shutdown explicit during startup;
+        // switch to main-window-bound after Show().
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         var sc = new ServiceCollection();
@@ -106,10 +106,9 @@ public partial class App : Application
         }
 
         // Shell startup: resolve MainViewModel and run its InitializeAsync (current-user resolution +
-        // XC-08 conflict scan + best-effort tab loads). The SelectUserDialog is shown from this View/App
-        // layer via the injected selector — the VM stays WPF-free (spec §5/§6, XC-07).
+        // XC-08 conflict scan + best-effort tab loads).
         var mainVm = Services.GetRequiredService<MainViewModel>();
-        await mainVm.InitializeAsync(ShowSelectUserDialog);
+        await mainVm.InitializeAsync();
 
         // XC-09: surface lingering-journal warnings on the shell banner. Marshalled onto the UI thread
         // here (the sink stays System.Windows-free). The singleton sink outlives the VM, so this is safe.
@@ -215,16 +214,5 @@ public partial class App : Application
         sc.AddTransient<SettingsViewModel>();
         sc.AddTransient<DailyReportViewModel>();
         sc.AddTransient<TaskListViewModel>();
-    }
-
-    // View-layer picker passed to MainViewModel on NeedsSelection. Returns the chosen user, or null
-    // when the user cancels.
-    private static User? ShowSelectUserDialog(IReadOnlyList<User> activeUsers)
-    {
-        // Pass the user repository so the dialog can create a user inline, and prefill the new-name
-        // box with the Windows account so an unmapped joiner can just click OK.
-        var dialog = new SelectUserDialog(
-            activeUsers, Services.GetRequiredService<IUserRepository>(), Environment.UserName);
-        return dialog.ShowDialog() == true ? dialog.SelectedUser : null;
     }
 }

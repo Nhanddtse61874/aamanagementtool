@@ -23,16 +23,20 @@ public sealed class TimeLogService : ITimeLogService
     private readonly IAppConfig _config;
     private readonly IJournalWarningSink _journalWarnings;
     private readonly IHolidayRepository _holidays;   // HOL-02: a marked holiday is a non-working day
+    private readonly IWorkingDayCalculator _calc;    // M8.2: the one shared "is this a working day?" rule
 
     public TimeLogService(
         ITimeLogRepository logs, IUserRepository users, ITaskRepository tasks,
         IBacklogRepository requests, ITeamRepository teams, ICurrentTeamService currentTeam,
         IDbBackupHelper backup, IClock clock,
-        IAppConfig config, IJournalWarningSink journalWarnings, IHolidayRepository holidays)
+        IAppConfig config, IJournalWarningSink journalWarnings, IHolidayRepository holidays,
+        // Optional + trailing so DI injects the singleton while the existing tests keep their 11-arg call.
+        IWorkingDayCalculator? calc = null)
     {
         _logs = logs; _users = users; _tasks = tasks; _requests = requests; _teams = teams;
         _currentTeam = currentTeam; _backup = backup; _clock = clock;
         _config = config; _journalWarnings = journalWarnings; _holidays = holidays;
+        _calc = calc ?? new WorkingDayCalculator();
     }
 
     public async Task<SaveResult> SaveCellAsync(int userId, int taskId, DateOnly date, decimal hours)
@@ -242,7 +246,7 @@ public sealed class TimeLogService : ITimeLogService
         var activeTeamId = _currentTeam.ActiveTeamId;
         if (activeTeamId == 0) return Array.Empty<User>();
 
-        var window = LastNWorkingDays(_clock.Today, workdayWindowN); // includes today (RPT-04)
+        var window = await LastNWorkingDaysAsync(_clock.Today, workdayWindowN); // includes today (RPT-04)
         var earliest = window.Min();
         var withLogs = (await _logs.GetUserIdsWithLogsInRangeAsync(earliest, _clock.Today)).ToHashSet();
 
@@ -267,13 +271,17 @@ public sealed class TimeLogService : ITimeLogService
     private static decimal Round1(decimal v) => Math.Round(v, 1, MidpointRounding.AwayFromZero);
     private static bool HasMoreThanOneDecimal(decimal v) => v != Round1(v);
 
-    private static List<DateOnly> LastNWorkingDays(DateOnly today, int n)
+    // M8.2: walk back to the last N WORKING days. This used to exclude weekends only, which contradicted
+    // WorkingDayCalculator (weekends AND holidays) — so the "hasn't logged in N days" banner counted
+    // public holidays against people. It now delegates to the one shared definition of a working day.
+    private async Task<List<DateOnly>> LastNWorkingDaysAsync(DateOnly today, int n)
     {
+        var holidays = (await _holidays.GetAllAsync()).Select(h => h.Date).ToHashSet();
         var days = new List<DateOnly>();
         var d = today;
         while (days.Count < n)
         {
-            if (d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)) days.Add(d);
+            if (_calc.IsWorkingDay(d, holidays)) days.Add(d);
             d = d.AddDays(-1);
         }
         return days;

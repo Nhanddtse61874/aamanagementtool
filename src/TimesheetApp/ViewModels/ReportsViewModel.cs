@@ -22,6 +22,7 @@ public sealed partial class ReportsViewModel : ObservableObject
     private readonly IMessenger _messenger;
     private readonly IExportService? _export;   // EXP-01: wired to the Export to Excel button
     private readonly ICurrentTeamService? _currentTeam;   // v8 (P10): multi-team filter
+    private readonly IHolidayRepository? _holidays;   // M8.2: a holiday is not a working day (DAYS LOGGED)
 
     public ReportsViewModel(
         ITimeLogRepository timeLogs,
@@ -32,7 +33,8 @@ public sealed partial class ReportsViewModel : ObservableObject
         IReportAggregator aggregator,
         IMessenger? messenger = null,
         IExportService? export = null,
-        ICurrentTeamService? currentTeam = null)
+        ICurrentTeamService? currentTeam = null,
+        IHolidayRepository? holidays = null)
     {
         _timeLogs = timeLogs;
         _timeLogService = timeLogService;
@@ -43,6 +45,7 @@ public sealed partial class ReportsViewModel : ObservableObject
         _messenger = messenger ?? WeakReferenceMessenger.Default;
         _export = export;
         _currentTeam = currentTeam;
+        _holidays = holidays;
 
         // P10 (TM-07): the multi-team checkbox filter; reload both grids on a selection/active-team change.
         if (_currentTeam is not null)
@@ -128,14 +131,16 @@ public sealed partial class ReportsViewModel : ObservableObject
     [ObservableProperty] private string _avgPerDayText = "0.0h";
     [ObservableProperty] private string _daysLoggedText = "0 / 5";
 
-    private void RecomputeWeeklyStats()
+    // M8.2: the denominator used to be WeeklyRows.Count — but WeeklyRows only holds days that HAVE logs,
+    // so it moved with the numerator and the stat could only ever read N/N. The working-day count is
+    // business arithmetic, so ReportAggregator owns it now; this method only formats the result.
+    private void RecomputeWeeklyStats(IReadOnlySet<DateOnly> holidays)
     {
         var total = WeeklyRows.Sum(r => r.TotalHours);
-        var logged = WeeklyRows.Count(r => r.TotalHours > 0);
-        var span = WeeklyRows.Count == 0 ? 5 : WeeklyRows.Count;
+        var stat = _aggregator.DaysLogged(WeeklyRows, SelectedWeekMonday, holidays);
         WeekTotalText = $"{total:N1}h";
-        AvgPerDayText = $"{(logged == 0 ? 0m : total / logged):N1}h";
-        DaysLoggedText = $"{logged} / {span}";
+        AvgPerDayText = $"{(stat.Logged == 0 ? 0m : total / stat.Logged):N1}h";
+        DaysLoggedText = $"{stat.Logged} / {stat.WorkingDays}";
     }
 
     /// <summary>
@@ -199,7 +204,12 @@ public sealed partial class ReportsViewModel : ObservableObject
         foreach (var r in _aggregator.WeeklyDayTotals(rows)) WeeklyRows.Add(r);
         WeeklyDetailRows.Clear();
         foreach (var r in _aggregator.WeeklyDetailRows(rows)) WeeklyDetailRows.Add(r);
-        RecomputeWeeklyStats();
+
+        // HOL-02: a holiday is not a working day, so it must not inflate the DAYS LOGGED denominator.
+        var holidays = _holidays is null
+            ? new HashSet<DateOnly>()
+            : (await _holidays.GetAllAsync()).Select(h => h.Date).ToHashSet();
+        RecomputeWeeklyStats(holidays);
     }
 
     [RelayCommand]

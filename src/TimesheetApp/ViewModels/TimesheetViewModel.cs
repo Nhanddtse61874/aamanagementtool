@@ -56,8 +56,11 @@ public sealed partial class TimesheetViewModel : ObservableObject
         // Smart-fill targets whichever user the Entry filter is viewing (defaults to the login user).
         // It looks up a backlog by code + lists its tasks, so it needs the backlog/task repositories.
         // TM-06: pass the active-team id so the search is scoped to the current team (0 => matches none).
+        // M8.2: smartInput was injected here and never used while the panel ran its own copy of the fill
+        // math. It is now handed to the panel, which is the only Smart Fill implementation there is.
         SmartInput = new SmartInputPanelVm(
-            timeLogs, backlogs, tasks, () => EffectiveUserId, () => _currentTeam?.ActiveTeamId ?? 0);
+            timeLogs, backlogs, tasks, smartInput, () => EffectiveUserId,
+            holidays, () => _currentTeam?.ActiveTeamId ?? 0);
         SmartInput.Applied += async () =>
         {
             await ReloadAsync();

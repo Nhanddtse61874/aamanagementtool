@@ -156,4 +156,64 @@ public class ReportAggregatorTests
         Assert.Empty(_agg.MonthlyBacklogTaskTotals(empty));
         Assert.Empty(_agg.BuildProjectTree(empty));
     }
+
+    // ---- M8.2: DAYS LOGGED (moved out of ReportsViewModel) ----
+    //
+    // The denominator is the number of WORKING days in the week, NOT the number of days that carry a
+    // log. ReportsViewModel used WeeklyRows.Count for both, so the stat could only ever read N/N.
+
+    private static readonly DateOnly Monday = new(2026, 6, 15);   // Mon 15 .. Fri 19
+    private static readonly IReadOnlySet<DateOnly> NoHolidays = new HashSet<DateOnly>();
+
+    [Fact]
+    public void DaysLogged_is_logged_days_over_working_days_not_over_logged_days()
+    {
+        var totals = new[]
+        {
+            new WeeklyDayTotal(Monday, 8m),
+            new WeeklyDayTotal(Monday.AddDays(1), 8m),
+            new WeeklyDayTotal(Monday.AddDays(2), 8m),
+        };
+
+        var stat = _agg.DaysLogged(totals, Monday, NoHolidays);
+
+        Assert.Equal(3, stat.Logged);
+        Assert.Equal(5, stat.WorkingDays);   // the old code produced 3 here, so it could only show 3/3
+    }
+
+    [Fact]
+    public void DaysLogged_drops_holidays_from_the_denominator()
+    {
+        var holidays = new HashSet<DateOnly> { Monday.AddDays(2) };   // Wed is a public holiday
+        var totals = new[] { new WeeklyDayTotal(Monday, 8m) };
+
+        var stat = _agg.DaysLogged(totals, Monday, holidays);
+
+        Assert.Equal(1, stat.Logged);
+        Assert.Equal(4, stat.WorkingDays);   // Mon, Tue, Thu, Fri — a holiday is not a working day
+    }
+
+    [Fact]
+    public void DaysLogged_with_no_logs_still_reports_the_full_working_week()
+    {
+        var stat = _agg.DaysLogged(Array.Empty<WeeklyDayTotal>(), Monday, NoHolidays);
+
+        Assert.Equal(0, stat.Logged);
+        Assert.Equal(5, stat.WorkingDays);   // "0 / 5", not "0 / 0"
+    }
+
+    [Fact]
+    public void DaysLogged_ignores_zero_hour_days_in_the_numerator()
+    {
+        var totals = new[]
+        {
+            new WeeklyDayTotal(Monday, 8m),
+            new WeeklyDayTotal(Monday.AddDays(1), 0m),   // present but empty -> not "logged"
+        };
+
+        var stat = _agg.DaysLogged(totals, Monday, NoHolidays);
+
+        Assert.Equal(1, stat.Logged);
+        Assert.Equal(5, stat.WorkingDays);
+    }
 }

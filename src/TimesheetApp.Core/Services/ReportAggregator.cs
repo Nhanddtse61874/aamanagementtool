@@ -2,10 +2,22 @@ using TimesheetApp.Models;
 
 namespace TimesheetApp.Services;
 
+/// <summary>The "DAYS LOGGED" stat: days that HAVE logs, over the working days of the week.</summary>
+// M8.2: <see cref="WorkingDays"/> is the count of Mon–Fri days in the week that are not holidays — NOT
+// the number of days that happen to carry a log. Those are different numbers, and conflating them is
+// what made the stat unable to render anything but N/N.
+public sealed record DaysLoggedStat(int Logged, int WorkingDays);
+
 public interface IReportAggregator
 {
     // RPT-01: one entry per DISTINCT WorkDate present in rows, ascending by date.
     IReadOnlyList<WeeklyDayTotal> WeeklyDayTotals(IReadOnlyList<TimeLogReportRow> rows);
+
+    // M8.2: "3 / 5" = 3 of the week's 5 working days carry a log. The numerator counts day-totals with
+    // hours; the denominator counts Mon–Fri minus holidays. Business arithmetic, so it lives here rather
+    // than in ReportsViewModel — the Angular Reports screen (M8.7) inherits it instead of re-deriving it.
+    DaysLoggedStat DaysLogged(
+        IReadOnlyList<WeeklyDayTotal> dayTotals, DateOnly weekMonday, IReadOnlySet<DateOnly> holidays);
 
     // RPT-01 detail: one entry per (WorkDate, BacklogCode, TaskName), ordered by date then backlog then task.
     IReadOnlyList<WeeklyDetailRow> WeeklyDetailRows(IReadOnlyList<TimeLogReportRow> rows);
@@ -20,11 +32,27 @@ public interface IReportAggregator
 
 public sealed class ReportAggregator : IReportAggregator
 {
+    private readonly IWorkingDayCalculator _calc;
+
+    // Optional ctor param keeps `new ReportAggregator()` (tests) working alongside the DI registration,
+    // matching SmartInputService. WorkingDayCalculator is pure and stateless, so the default is safe.
+    public ReportAggregator(IWorkingDayCalculator? calc = null) => _calc = calc ?? new WorkingDayCalculator();
+
     public IReadOnlyList<WeeklyDayTotal> WeeklyDayTotals(IReadOnlyList<TimeLogReportRow> rows) =>
         rows.GroupBy(r => r.WorkDate)
             .OrderBy(g => g.Key)
             .Select(g => new WeeklyDayTotal(g.Key, g.Sum(r => r.Hours)))
             .ToList();
+
+    public DaysLoggedStat DaysLogged(
+        IReadOnlyList<WeeklyDayTotal> dayTotals, DateOnly weekMonday, IReadOnlySet<DateOnly> holidays)
+    {
+        var monday = DateHelpers.MondayOf(weekMonday);
+        var logged = dayTotals.Count(d => d.TotalHours > 0m);
+        // The week is Mon–Fri (the entry grid's span); weekends and holidays are not working days.
+        var workingDays = _calc.CountWorkingDays(monday, monday.AddDays(4), holidays);
+        return new DaysLoggedStat(logged, workingDays);
+    }
 
     public IReadOnlyList<WeeklyDetailRow> WeeklyDetailRows(IReadOnlyList<TimeLogReportRow> rows) =>
         rows.GroupBy(r => (r.WorkDate, r.BacklogCode, r.Project, r.TaskName))

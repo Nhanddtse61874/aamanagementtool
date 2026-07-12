@@ -11,8 +11,7 @@ namespace TimesheetApp.Tests.ViewModels;
 
 /// <summary>
 /// Unit tests for the shell VM's testable startup logic (XC-07 current-user resolution + XC-08
-/// conflict-copy banner). The SelectUserDialog itself is manual-verify; here the dialog is replaced
-/// by a deterministic selector delegate.
+/// conflict-copy banner). An unmapped Windows account is auto-provisioned - there is no picker.
 /// </summary>
 public sealed class MainViewModelTests
 {
@@ -71,10 +70,6 @@ public sealed class MainViewModelTests
             windowsUserName ?? (() => "tester"), new WeakReferenceMessenger());
     }
 
-    // selector that must NOT be called when the user resolves automatically
-    private static User? NeverCalled(IReadOnlyList<User> _) =>
-        throw new Xunit.Sdk.XunitException("selector should not be invoked when user is Resolved");
-
     [Fact] // XC-07: resolved current user -> CurrentUserName set, no dialog
     public async Task Resolved_user_sets_CurrentUserName_without_prompting()
     {
@@ -82,7 +77,7 @@ public sealed class MainViewModelTests
             .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.Resolved, U(7, "Alice")));
         var vm = CreateVm();
 
-        await vm.InitializeAsync(NeverCalled);
+        await vm.InitializeAsync();
 
         Assert.Equal("Alice", vm.CurrentUserName);
         _users.Verify(u => u.GetActiveAsync(), Times.Never);
@@ -98,7 +93,7 @@ public sealed class MainViewModelTests
         _currentUser.SetupGet(s => s.Current).Returns(U(9, "dana"));
         var vm = CreateVm(windowsUserName: () => "dana");
 
-        await vm.InitializeAsync(NeverCalled); // no picker, even with existing users
+        await vm.InitializeAsync(); // auto-provisioned, even with existing users
 
         _users.Verify(u => u.InsertAsync(It.Is<User>(x => x.Name == "dana" && x.IsActive)), Times.Once);
         _currentUser.Verify(s => s.SetWindowsUsernameAsync(9, "dana"), Times.Once);
@@ -115,7 +110,7 @@ public sealed class MainViewModelTests
         _currentUser.SetupGet(s => s.Current).Returns(U(9, "sam"));
         var vm = CreateVm(windowsUserName: () => "sam");
 
-        await vm.InitializeAsync(NeverCalled); // selector must NOT be invoked on a fresh DB
+        await vm.InitializeAsync(); // auto-provisioned on a fresh DB
 
         _users.Verify(u => u.InsertAsync(It.Is<User>(x => x.Name == "sam" && x.IsActive)), Times.Once);
         _currentUser.Verify(s => s.SetWindowsUsernameAsync(9, "sam"), Times.Once);
@@ -137,7 +132,7 @@ public sealed class MainViewModelTests
 
         try
         {
-            await vm.InitializeAsync(NeverCalled);
+            await vm.InitializeAsync();
 
             Assert.False(string.IsNullOrEmpty(vm.ConflictWarning));
             Assert.Contains("timesheet-DESKTOP-AB12.db", vm.ConflictWarning);
@@ -301,7 +296,7 @@ public sealed class MainViewModelTests
         _config.SetupGet(c => c.ActiveTeamId).Returns(3); // bootstrap persisted the active team
         var vm = CreateVm();
 
-        await vm.InitializeAsync(NeverCalled);
+        await vm.InitializeAsync();
 
         _teams.Verify(t => t.AddMemberAsync(7, 3), Times.Once);          // first-run join (idempotent)
         _currentTeam.Verify(s => s.InitializeAsync(7), Times.Once);      // team context resolved for this user
@@ -321,7 +316,7 @@ public sealed class MainViewModelTests
         _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(1);
         var vm = CreateVm(windowsUserName: () => "sam");
 
-        await vm.InitializeAsync(NeverCalled);
+        await vm.InitializeAsync();
 
         _teams.Verify(t => t.AddMemberAsync(9, 1), Times.Once);
         _currentTeam.Verify(s => s.InitializeAsync(9), Times.Once);
@@ -338,7 +333,7 @@ public sealed class MainViewModelTests
         _config.SetupGet(c => c.ActiveTeamId).Returns(0);
         var vm = CreateVm();
 
-        await vm.InitializeAsync(NeverCalled);
+        await vm.InitializeAsync();
 
         _teams.Verify(t => t.AddMemberAsync(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
         _currentTeam.Verify(s => s.InitializeAsync(4), Times.Once);
@@ -358,7 +353,7 @@ public sealed class MainViewModelTests
 
         try
         {
-            await vm.InitializeAsync(NeverCalled);
+            await vm.InitializeAsync();
             Assert.Equal(string.Empty, vm.ConflictWarning);
         }
         finally
