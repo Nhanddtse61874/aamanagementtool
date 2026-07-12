@@ -155,7 +155,7 @@ public sealed class MainViewModelTests
         var groups = new[]
         {
             new WeekBacklogGroup(1, "REQ-1", "P",
-                new[] { new WeekRow(42, "REQ-1", "New Task", 0, null, null, null, null, null) })
+                new[] { WeekRows.Row(42, "REQ-1", "New Task", 0, null, null, null, null, null) })
         };
         svc.Setup(s => s.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>())).ReturnsAsync(groups);
 

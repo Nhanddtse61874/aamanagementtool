@@ -223,7 +223,12 @@ public sealed class TimeLogService : ITimeLogService
         var byKey = logs.ToLookup(l => l.TaskId);
         var rows = tasks.Select(t =>
         {
-            decimal? On(DateOnly d) => byKey[t.Id].Where(l => l.WorkDate == d).Select(l => (decimal?)l.Hours).FirstOrDefault();
+            // M8.4: the log row IS the cell — carry its row_version, do not project the hours alone.
+            WeekCell On(DateOnly d)
+            {
+                var log = byKey[t.Id].FirstOrDefault(l => l.WorkDate == d);
+                return log is null ? new WeekCell(null, null) : new WeekCell(log.Hours, log.RowVersion);
+            }
             // [ASSUMED] BacklogCode left empty here. GetWeekAsync backs TS-01/02/05 (P3 scope);
             // ITaskRepository.GetActiveForTimesheetAsync (spec §3) returns TaskItem which has no
             // backlog_code. P3 either (a) extends that query to project backlog_code, or (b) the
@@ -243,8 +248,16 @@ public sealed class TimeLogService : ITimeLogService
 
         var logs = await _logs.GetByUserAndRangeAsync(userId, monday, friday);
         var byTask = logs.ToLookup(l => l.TaskId);
+
+        // M8.4: THIS is the read the web grid renders, and it is the ONLY place the client can learn a
+        // cell's row_version — /api/timesheet/week is the only timesheet read route there is. GetByUser-
+        // AndRangeAsync already SELECTs row_version; this projection used to drop it on the floor. Carry it:
+        // the version handed out here is what the client sends straight back as expectedVersion.
         return await BuildGroupsAsync(monday, (taskId, d) =>
-            byTask[taskId].Where(l => l.WorkDate == d).Select(l => (decimal?)l.Hours).FirstOrDefault());
+        {
+            var log = byTask[taskId].FirstOrDefault(l => l.WorkDate == d);
+            return log is null ? new WeekCell(null, null) : new WeekCell(log.Hours, log.RowVersion);
+        });
     }
 
     public async Task<IReadOnlyList<WeekBacklogGroup>> GetWeekGroupedAllUsersAsync(DateOnly mondayOfWeek)
@@ -258,14 +271,34 @@ public sealed class TimeLogService : ITimeLogService
         var summed = rows
             .GroupBy(r => (r.TaskId, r.WorkDate))
             .ToDictionary(g => g.Key, g => g.Sum(r => r.Hours));
+
+        // M8.4 — EVERY VERSION HERE IS null, BY CONSTRUCTION. Not a TODO, not an oversight, and NOT a thing
+        // to "fix" by synthesising a version later.
+        //
+        // Each cell below is a SUM over every user who logged that (task, date): N rows in TimeLogs, N
+        // independent row_versions. There is no single row, so there is no single row_version — and there is
+        // no honest way to invent one. Handing back max(), or the first, would give the client a token that
+        // guards a row it is not editing: the check would pass or fail for reasons unrelated to the number on
+        // screen. That is strictly worse than no token, because it looks like it works.
+        //
+        // This is why THE TEAM VIEW IS READ-ONLY (WPF: TimesheetViewModel.IsTeamView; web: must render no
+        // edit affordance when allUsers=true). The shape enforces it end to end: with Hours set and
+        // RowVersion null, any save the client attempted would assert "I believe this cell is empty" and
+        // correctly 409 against the existing row rather than silently clobbering some colleague's hours.
         return await BuildGroupsAsync(monday, (taskId, d) =>
-            summed.TryGetValue((taskId, d), out var h) ? h : (decimal?)null);
+            summed.TryGetValue((taskId, d), out var h)
+                ? new WeekCell(h, RowVersion: null)      // hours, deliberately unversioned (read-only)
+                : new WeekCell(null, null));
     }
 
     // Shared group shaping: one group per backlog (incl. DEFAULT + empty), tasks ordered, with the
-    // per-(task,day) hours supplied by the caller (single user vs team aggregate).
+    // per-(task,day) CELL supplied by the caller (single user vs team aggregate).
+    //
+    // M8.4: the delegate returns a WeekCell — hours AND row_version — not a bare decimal?. That is the whole
+    // point: the two callers differ precisely in whether a version exists (the self view has one per cell;
+    // the team aggregate cannot have one at all), so the version has to travel with the hours through here.
     private async Task<IReadOnlyList<WeekBacklogGroup>> BuildGroupsAsync(
-        DateOnly monday, Func<int, DateOnly, decimal?> hoursFor)
+        DateOnly monday, Func<int, DateOnly, WeekCell> cellFor)
     {
         // P10 (TM-06): active team's backlogs only (incl. its DEFAULT + empty ones), and its tasks.
         var requests = await _requests.SearchAsync(null, ActiveTeamScope());
@@ -284,9 +317,9 @@ public sealed class TimeLogService : ITimeLogService
                 var rows = tasksByBacklog[r.Id]
                     .OrderBy(t => t.OrderIndex)
                     .Select(t => new WeekRow(t.Id, r.BacklogCode, t.TaskName, t.OrderIndex,
-                        hoursFor(t.Id, monday), hoursFor(t.Id, monday.AddDays(1)),
-                        hoursFor(t.Id, monday.AddDays(2)), hoursFor(t.Id, monday.AddDays(3)),
-                        hoursFor(t.Id, monday.AddDays(4))))
+                        cellFor(t.Id, monday), cellFor(t.Id, monday.AddDays(1)),
+                        cellFor(t.Id, monday.AddDays(2)), cellFor(t.Id, monday.AddDays(3)),
+                        cellFor(t.Id, monday.AddDays(4))))
                     .ToList();
                 var assignee = r.AssigneeUserId is { } uid && userNames.TryGetValue(uid, out var n) ? n : null;
                 return new WeekBacklogGroup(r.Id, r.BacklogCode, r.Project, rows, r.PeriodMonth, r.Type, assignee);

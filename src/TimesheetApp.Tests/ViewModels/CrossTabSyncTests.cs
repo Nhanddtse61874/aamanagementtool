@@ -24,7 +24,7 @@ public sealed class CrossTabSyncTests
         var withTask = new[]
         {
             new WeekBacklogGroup(1, "R1", "P",
-                new[] { new WeekRow(5, "R1", "New Task", 0, null, null, null, null, null) })
+                new[] { WeekRows.Row(5, "R1", "New Task", 0, null, null, null, null, null) })
         };
         svc.SetupSequence(s => s.GetWeekGroupedAsync(It.IsAny<int>(), It.IsAny<DateOnly>()))
             .ReturnsAsync(empty)     // initial load

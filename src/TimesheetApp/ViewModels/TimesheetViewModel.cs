@@ -315,11 +315,14 @@ public sealed partial class TimesheetViewModel : ObservableObject
                     BacklogCode = wr.BacklogCode,
                     Project = grp.Project,
                     TaskName = wr.TaskName,
-                    Mon = wr.Mon,
-                    Tue = wr.Tue,
-                    Wed = wr.Wed,
-                    Thu = wr.Thu,
-                    Fri = wr.Fri
+                    // M8.4: WeekRow's day slots are now WeekCell (hours + per-cell row_version). WPF writes
+                    // through SaveCellAsync (the UNCHECKED, bump-only path) and holds no version, so it takes
+                    // the hours and ignores the token. Purely mechanical — behaviour is unchanged.
+                    Mon = wr.Mon.Hours,
+                    Tue = wr.Tue.Hours,
+                    Wed = wr.Wed.Hours,
+                    Thu = wr.Thu.Hours,
+                    Fri = wr.Fri.Hours
                 };
                 row.DayChanged += OnRowDayChanged;
                 groupVm.Tasks.Add(row);
