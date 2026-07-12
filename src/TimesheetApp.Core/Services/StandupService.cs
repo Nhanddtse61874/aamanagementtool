@@ -234,6 +234,19 @@ public sealed class StandupService : IStandupService
         await _repo.UpdateIssueAsync(issue with { SolutionText = NullIfBlank(issue.SolutionText), IssueText = issue.IssueText.Trim() });
     }
 
+    // M8.3: the version-checked sibling (the web API's write path). Same validation, same normalization,
+    // same order as UpdateIssueAsync — the only difference is the repository write it ends on, which
+    // checks the version instead of blindly bumping it. Bad input still throws ArgumentException (-> 400);
+    // a stale version throws ConcurrencyConflictException (-> 409). Two different failures, two answers.
+    public async Task<long> UpdateIssueCheckedAsync(StandupIssue issue, long expectedVersion)
+    {
+        if (string.IsNullOrWhiteSpace(issue.IssueText)) throw new ArgumentException("issue text required", nameof(issue));
+        if (!StandupIssueStatus.All.Contains(issue.Status)) throw new ArgumentException($"invalid issue status '{issue.Status}'", nameof(issue));
+        return await _repo.UpdateIssueCheckedAsync(
+            issue with { SolutionText = NullIfBlank(issue.SolutionText), IssueText = issue.IssueText.Trim() },
+            expectedVersion);
+    }
+
     public Task DeleteIssueAsync(int issueId) => _repo.DeleteIssueAsync(issueId);
 
     // ---- helpers ----

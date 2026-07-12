@@ -39,4 +39,29 @@ public interface IStandupService
     Task<int> AddIssueAsync(int entryId, string issueText, string? solutionText, string status);
     Task UpdateIssueAsync(StandupIssue issue);
     Task DeleteIssueAsync(int issueId);
+
+    /// <summary>M8.3: the version-checked sibling of <see cref="UpdateIssueAsync"/> — the web API's write
+    /// path. Issues are the one standup table two people can genuinely race: they are collaborative by
+    /// design (DR-04, no owner gate), so anyone may edit anyone's issue and a lost update is reachable.
+    ///
+    /// Validation still runs first and still throws <see cref="ArgumentException"/> (matching
+    /// <see cref="UpdateIssueAsync"/>) — bad input is the caller's fault; a stale version is not.</summary>
+    /// <param name="expectedVersion">Travels SEPARATELY from the record on purpose: a caller that rebuilt
+    /// a StandupIssue from edited fields carries the record's default RowVersion of 0, and a write that
+    /// trusted the record would reject it outright.</param>
+    /// <returns>The row_version AFTER the write — the caller's next expectedVersion.</returns>
+    /// <exception cref="Data.ConcurrencyConflictException">Version moved on, or the issue is gone.</exception>
+    Task<long> UpdateIssueCheckedAsync(StandupIssue issue, long expectedVersion);
+
+    // NO checked sibling for UpdateEntryAsync, and this is deliberate — do not add one. StandupEntry is
+    // NOT versioned (the row has no row_version column at all; any write that tried to bump it would be a
+    // SQL error, not a no-op). It is protected by an OWNER GATE instead — only the entry's owner may touch
+    // it — so two users cannot reach the same row, and last-write-wins is correct BY DESIGN rather than by
+    // omission. Inventing a version for it would add a mechanism to a race that cannot happen.
+    //
+    // Smart Fill (ITimeLogService.ApplySmartFillAsync / ApplySmartInputAsync) has no checked sibling for a
+    // different reason: it BUMPS but does not CHECK. It is a server-side computation, not an echo of a
+    // version a client read, so it has nothing to check against — but it must still bump, or a client
+    // holding the pre-fill version would still match and silently overwrite Smart Fill's result: the exact
+    // lost update this whole mechanism exists to kill, reintroduced by its own exception.
 }

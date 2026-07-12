@@ -62,6 +62,61 @@ public sealed class TimeLogService : ITimeLogService
     public Task ClearCellAsync(int userId, int taskId, DateOnly date)
         => _logs.DeleteAsync(userId, taskId, date); // TS-03 empty=0 => delete
 
+    // --- M8.3: the version-checked siblings (the web API's write path) ---------------------------
+    //
+    // Validation runs FIRST, then the checked write. That ordering is not incidental: it is what lets a
+    // broken rule be a RESULT (Ok=false, nothing written -> HTTP 400) while a stale version is an
+    // EXCEPTION (-> HTTP 409). The rules must still bite here, or the API becomes the one caller that
+    // can log 40 hours on a Sunday holiday.
+    //
+    // Swapping UpsertAsync -> UpsertCheckedAsync is the whole behavioural change, and it is safe for a
+    // reason worth stating: the 8h-cap read filters `l.TaskId != taskId`, so it only ever reads OTHER
+    // tasks' rows, while the write touches only THIS task's cell. The set validation reads and the set
+    // the write mutates are disjoint — validation cannot be invalidated by the write it guards.
+
+    public async Task<SaveCellResult> SaveCellCheckedAsync(
+        int userId, int taskId, DateOnly date, decimal hours, long? expectedVersion)
+    {
+        var (error, rounded) = await ValidateCellAsync(userId, taskId, date, hours);
+        if (error is not null) return new SaveCellResult(false, error, 0);   // rule broken => NOTHING written
+
+        // expectedVersion is passed through UNNORMALIZED: null is a real assertion ("I believe this cell
+        // is empty"), not a missing value, and UpsertCheckedAsync distinguishes it from a version.
+        var newVersion = await _logs.UpsertCheckedAsync(
+            new TimeLog(0, userId, taskId, date, rounded, _clock.UtcNow), expectedVersion);
+        return new SaveCellResult(true, null, newVersion);
+    }
+
+    // Mirrors ClearCellAsync (which validates nothing) — only the repository write differs.
+    public Task ClearCellCheckedAsync(int userId, int taskId, DateOnly date, long expectedVersion)
+        => _logs.DeleteCheckedAsync(userId, taskId, date, expectedVersion);
+
+    // The single-cell rule set, in SaveCellAsync's exact order, returning the first broken rule's message
+    // or the value to write. SaveCellAsync is left byte-for-byte as it is (WPF calls it and WPF must keep
+    // working until M8.10 deletes it), so these rules currently exist in two places. TimeLogServiceCheckedTests
+    // .Checked_and_unchecked_saves_reject_identical_inputs pins them together: any drift fails the suite
+    // loudly rather than silently exempting the web from a rule. Collapse the two when the unchecked
+    // overload dies with WPF.
+    private async Task<(string? Error, decimal Rounded)> ValidateCellAsync(
+        int userId, int taskId, DateOnly date, decimal hours)
+    {
+        if (hours <= 0m) return ("Hours must be greater than 0.", 0m);
+        if (HasMoreThanOneDecimal(hours)) return ("Hours may have at most 1 decimal place.", 0m);
+        if (IsWeekend(date)) return ("Time can only be logged Monday–Friday.", 0m);
+        if (await _holidays.IsHolidayAsync(date)) return ($"{date:yyyy-MM-dd} is a holiday.", 0m); // HOL-02
+
+        var rounded = Round1(hours);
+        if (rounded > DayCap) return ($"A single cell cannot exceed {DayCap}h.", 0m); // XC-02
+
+        // XC-03: the day's OTHER logs (this task's own row is the one being replaced, so it is excluded).
+        var sameDay = await _logs.GetByUserAndRangeAsync(userId, date, date);
+        var otherTasksTotal = sameDay.Where(l => l.TaskId != taskId).Sum(l => l.Hours);
+        if (otherTasksTotal + rounded > DayCap)
+            return ($"Total for {date:yyyy-MM-dd} would be {otherTasksTotal + rounded}h (> {DayCap}h).", 0m);
+
+        return (null, rounded);
+    }
+
     public async Task<SaveResult> ValidateDayTotalsAsync(int userId, IReadOnlyList<CellAssignment> cells, int taskId)
     {
         foreach (var dayGroup in cells.GroupBy(c => c.Date))
