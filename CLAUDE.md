@@ -147,6 +147,8 @@ Record every decision that deviates from the plugin workflow (e.g., using a diff
 
 | Deviation | Rationale | Date |
 |-----------|-----------|------|
+| M8.1 plan carries 5 tasks, not the "max 2-3" in STEP 6 | Every task is one `git mv` plus a 5-second test run — the context cost the limit exists to bound is not present. Splitting a strictly-linear file-move sequence across three plan documents would add ceremony without reducing risk, and would obscure that the five steps are one atomic refactor whose only meaningful gate is at the end. | 2026-07-12 |
+| M8.1 waves are sequential; `parallelization: true` yields no concurrency here | Each wave depends on the previous one *compiling* — `Data/` cannot move to Core before `Models/`, which it references. Dispatching concurrently would only produce agents contending over one tree. Parallelism resumes at M8.2, where schema, auth and endpoints are genuinely separable. | 2026-07-12 |
 <!-- Example row (delete this comment when adding a real entry):
 | Plan X uses Markdown checkbox instead of XML contract | Already authored before deviation discovered | YYYY-MM-DD |
 | `workflow.research: false` for Phase 0 | Foundation phase has no domain research need | YYYY-MM-DD |

@@ -1,9 +1,20 @@
 # ROADMAP — TimesheetApp
 
-**Last updated:** 2026-07-02
+**Last updated:** 2026-07-12
 
 ## Active
-- _(none — P15/P16/P17 merged to `main` `bc4c02f` on 2026-07-02)_
+- **M8 — Migrate WPF → Web (ASP.NET Core 8 + Angular 17)** — started 2026-07-12, **Mode B**, in progress.
+  Why: the WPF UI is defect-prone (nine re-entrancy guards, a hand-drawn Gantt, several binding workarounds), and the app is architected around a SQLite file on a synced shared folder, where two people editing at once silently overwrite each other.
+  **Deployment:** no server exists, so **one designated workstation hosts the API** and the team reaches it over the LAN. That restores the single-writer property SQLite needs. It also puts all company data on one machine's disk, so **hourly online backup to the network share is a `must_have`, not an option**.
+  Scope inventory: `.planning/M8-FEATURE-INVENTORY.md` (7 screens, 8 dialogs, every business rule, 16 tables, ~40 design tokens).
+  - [x] **M8.0** — Research (4 agents). Found 5 blockers, 2 of which would have destroyed production data. `.planning/research/M8-*.md`
+  - [ ] **M8.1** — Extract `TimesheetApp.Core` (net8.0). Pure `git mv`, zero C# changes. Gate: **548/548 green + WPF still launches**. Plan: `docs/superpowers/plans/2026-07-12-M8.1-core-extraction.md`
+  - [ ] **M8.2** — API host + schema v10 + optimistic concurrency + SignalR
+  - [ ] **M8.3** — Auth (username/password, cookie, `is_admin` on 3 destructive endpoints)
+  - [ ] **M8.4–M8.8** — Angular screens (design bundle vendored at `src/timesheet-web/`; covers ~35–45% — the shell, not the behaviour)
+  - [ ] **M8.9** — Export / Backup / Retention moved host-side
+  - [ ] **M8.10** — Delete the WPF project
+  Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (rev. 2, approved).
 
 ## Shipped
 - **P15 / P16 / P17 — Task List card layout + auto-provision user** — MERGED to `main` + pushed (`bc4c02f`, 2026-07-02), build clean, **536 tests green**. **P15** grouped section bands (adaptive Team/Project, collapsible, `Name (count)`). **P16** per-backlog **card** layout (`DataGrid`→grouped `ItemsControl`; tags full-width on top of each card, no horizontal scroll; Type/PCT/PCA → direct TwoWay) + tweaks (External in compact header, "Estimation" label, no-progress defaults to 0%). **P17** auto-provision current user on startup (unmapped Windows account → auto-create + map, no manual add / no picker). Specs+plans: `docs/superpowers/{specs,plans}/2026-07-02-*`. UAT: `.planning/P15-UAT.md`, `.planning/P16-UAT.md`. Summary: `.planning/P15-P16-P17-SUMMARY.md`. Follow-up UAT (non-blocking): live-check Type/PCT/PCA persist + auto-provision.

@@ -2,8 +2,8 @@
 
 ## Current Position
 
-**Phase:** Step 4 — Research (Mode B)
-**Status:** in_progress
+**Phase:** Step 6 — Plan (complete; Plan Checker running)
+**Status:** waiting_for_user
 **Last updated:** 2026-07-12
 
 ## Current Milestone
@@ -17,7 +17,7 @@ Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (appro
 
 ## Next Action
 
-Run STEP 4 Research (Mode B: Stack + Feature + Architecture + Pitfall agents, then Research Synthesizer), then STEP 5 Spec (`phase-discovery-lead` + `phase-architecture-lead`), then STEP 6 Plan with wave assignment.
+M8.1 plan is written (`docs/superpowers/plans/2026-07-12-M8.1-core-extraction.md`) and the Plan Checker is validating it against the 11 dimensions. When it returns: fix any BLOCK findings, get the user's execution-mode choice (subagent-driven vs inline), then run STEP 7 wave by wave. **Baseline measured, not assumed: 548 passed / 0 failed / 0 skipped in 5 s.**
 
 ## Open Blockers
 
@@ -33,6 +33,9 @@ Run STEP 4 Research (Mode B: Stack + Feature + Architecture + Pitfall agents, th
 - 2026-07-12: **Authorization = a single `is_admin` boolean**, gating exactly 3 destructive endpoints (run retention, restore backup, deactivate team). — User does not want edit-level permissions, and that is reasonable for a trusted 10–50 person team. But those three are *destructive*, not merely privileged, and today any user can trigger them.
 - 2026-07-12: **Three surveyed bugs are fixed in Core during migration, not ported.** — Two Smart Fill implementations (only one runs, and it disagrees with its own validator about holidays); `DAYS LOGGED` can never read `3 / 5`; `LastNWorkingDays` ignores holidays. Two of them exist because business logic leaked into WPF ViewModels, where the web client could not reuse it and would be free to reinvent the same mistake.
 - 2026-07-12: **`parallelization: true`.** — User asked for speed via multiple concurrent team agents. Speed comes from parallel execution, **not** from removing human checkpoints: `mode` stays `interactive`, and a stuck or surprising result stops and asks rather than being resolved unilaterally.
+- 2026-07-12: **Deployment — one designated workstation hosts the API; the team reaches it over the LAN.** — The company has **no server and no always-on machine**, only workstations. Rejected: every user running their own API against a shared `.db` (destroys the single-writer premise SQLite depends on — N processes on N hosts over SMB is exactly what sqlite.org warns against, and it kills WAL, SignalR *and* auth-as-a-boundary at once). Consequence, and it is the largest operational risk in the design: **all company data now sits on one workstation's disk**, so hourly online backup to the network share is a `must_have`. See spec §2.
+- 2026-07-12: **HTTP, not HTTPS — knowingly accepted risk.** — User decision; no certificate infrastructure. The session cookie therefore crosses the LAN in plaintext, so anyone who can capture packets can assume any identity, including the admin who can permanently delete three months of data. Recorded rather than hidden. Switching to HTTPS later is a one-line config change; the design does not foreclose it.
+- 2026-07-12: **M8.1 is a pure `git mv` with an exactly-548 gate; the bug fixes are excluded from it.** — Rev. 1 of the spec asked for both, which is impossible: the fixes delete code that existing tests cover. A gate that cannot be met invites the cheapest way out — deleting tests. Separating them keeps a red step trivially diagnosable.
 
 ## Approved Mode
 
