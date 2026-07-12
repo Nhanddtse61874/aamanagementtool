@@ -91,46 +91,87 @@ public sealed class TaskRepository : ITaskRepository
             new { task.BacklogId, task.TaskName, task.OrderIndex, IsActive = task.IsActive ? 1 : 0, task.Status });
     }
 
-    public async Task UpdateAsync(TaskItem task)
+    // M8.2: the number a caller reads, holds while the user edits, then hands back as expectedVersion.
+    public async Task<long?> GetRowVersionAsync(int taskId)
     {
         using var c = _factory.Create();
-        await c.ExecuteAsync(
-            "UPDATE Tasks SET task_name = @TaskName, order_index = @OrderIndex, status = @Status WHERE id = @Id;",
-            new { task.TaskName, task.OrderIndex, task.Status, task.Id });
+        return await c.QuerySingleOrDefaultAsync<long?>(
+            "SELECT row_version FROM Tasks WHERE id = @id;", new { id = taskId });
     }
 
+    // check-and-bump: a user edit of the task's own fields. One statement, so it is already atomic —
+    // no audit rows hang off it, hence no transaction.
+    public async Task UpdateAsync(TaskItem task, long? expectedVersion = null)
+    {
+        using var c = _factory.Create();
+        var rows = await c.ExecuteAsync(
+            @"UPDATE Tasks SET task_name = @TaskName, order_index = @OrderIndex, status = @Status,
+                row_version = row_version + 1
+              WHERE id = @Id AND (@ExpectedVersion IS NULL OR row_version = @ExpectedVersion);",
+            new { task.TaskName, task.OrderIndex, task.Status, task.Id, ExpectedVersion = expectedVersion });
+
+        if (rows == 0 && expectedVersion is not null)
+        {
+            throw new ConcurrencyConflictException("Tasks", task.Id, expectedVersion,
+                deleted: await NotFoundAsync(c, null, task.Id));
+        }
+    }
+
+    // bump-only: a soft-delete carries no version from a client. It must still bump, so that anyone
+    // holding a stale read of this task is told when they next try to write.
     public async Task SetActiveAsync(int taskId, bool isActive)
     {
         using var c = _factory.Create();
         await c.ExecuteAsync(
-            "UPDATE Tasks SET is_active = @a WHERE id = @id;",
+            "UPDATE Tasks SET is_active = @a, row_version = row_version + 1 WHERE id = @id;",
             new { a = isActive ? 1 : 0, id = taskId });
     }
 
+    // bump-only, and it MUST stay that way. TimesheetViewModel.ReorderAsync calls this once per row
+    // over the whole list; under check-and-bump the first row would bump the version and every row
+    // after it would arrive stale, so an ordinary drag-and-drop would 409-storm and the reorder would
+    // fall apart halfway through. A reorder carries no version from a client — it is a system write.
     public async Task SetOrderAsync(int taskId, int orderIndex)
     {
         using var c = _factory.Create();
         await c.ExecuteAsync(
-            "UPDATE Tasks SET order_index = @o WHERE id = @id;",
+            "UPDATE Tasks SET order_index = @o, row_version = row_version + 1 WHERE id = @id;",
             new { o = orderIndex, id = taskId });
     }
 
     // ---- v9 (P13-B3) task-level type/assignee/status edits + audit ----------------------
 
     public async Task UpdateExtendedAsync(int taskId, string? type, int? assigneeUserId,
-        int? changedByUserId = null, string? changedByName = null)
+        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
     {
         using var c = _factory.Create();
+        // M8.2: read -> UPDATE -> N audit INSERTs is ONE unit of work, so it gets ONE transaction.
+        // Untransacted, a rejected write would still leave its audit rows behind — history describing
+        // a change that never happened. Default BeginTransaction() is BEGIN IMMEDIATE (NOT deferred,
+        // which would reintroduce SQLITE_BUSY_SNAPSHOT).
+        using var tx = c.BeginTransaction();
 
         // Pre-read so audited field changes can be diffed (mirrors BacklogRepository.UpdateAsync).
         var before = await c.QuerySingleOrDefaultAsync<TaskRaw>(
             "SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id FROM Tasks WHERE id = @id;",
-            new { id = taskId });
-        if (before is null) return;
+            new { id = taskId }, tx);
+        if (before is null)
+        {
+            // This read IS the existence check the conflict path owes the caller — no second query.
+            if (expectedVersion is not null)
+                throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: true);
+            return;   // bump-only against a row that is gone: unchanged no-op semantics
+        }
 
-        await c.ExecuteAsync(
-            "UPDATE Tasks SET type = @type, assignee_user_id = @uid WHERE id = @id;",
-            new { type, uid = assigneeUserId, id = taskId });
+        var rows = await c.ExecuteAsync(
+            @"UPDATE Tasks SET type = @type, assignee_user_id = @uid, row_version = row_version + 1
+              WHERE id = @id AND (@expected IS NULL OR row_version = @expected);",
+            new { type, uid = assigneeUserId, id = taskId, expected = expectedVersion }, tx);
+
+        // We hold an IMMEDIATE transaction and `before` proved the row exists, so nobody can have
+        // deleted it underneath us — a zero here can only mean the version moved on.
+        if (rows == 0 && expectedVersion is not null)
+            throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: false);
 
         var now = Iso(DateTimeOffset.UtcNow);
 
@@ -142,7 +183,7 @@ public sealed class TaskRepository : ITaskRepository
                     changed_by_user_id, changed_by_name, changed_at)
                   VALUES(@tid, @field, @old, @new, @uid, @uname, @at);",
                 new { tid = taskId, field, old = oldV, @new = newV,
-                      uid = changedByUserId, uname = changedByName, at = now });
+                      uid = changedByUserId, uname = changedByName, at = now }, tx);
         }
 
         await LogAsync("type", before.type, type);
@@ -151,24 +192,38 @@ public sealed class TaskRepository : ITaskRepository
         if (before.assignee_user_id != (assigneeUserId.HasValue ? (long?)assigneeUserId.Value : null))
         {
             async Task<string?> NameOfAsync(int? uid) => uid is null ? null
-                : await c.QuerySingleOrDefaultAsync<string?>("SELECT name FROM Users WHERE id = @id;", new { id = uid });
+                : await c.QuerySingleOrDefaultAsync<string?>("SELECT name FROM Users WHERE id = @id;", new { id = uid }, tx);
             await LogAsync("assignee",
                 await NameOfAsync(before.assignee_user_id is { } b ? (int)b : null),
                 await NameOfAsync(assigneeUserId));
         }
+
+        tx.Commit();
     }
 
     public async Task UpdateStatusAsync(int taskId, string status,
-        int? changedByUserId = null, string? changedByName = null)
+        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
     {
         using var c = _factory.Create();
+        // Same read -> UPDATE -> audit INSERT unit of work as UpdateExtendedAsync; same transaction.
+        using var tx = c.BeginTransaction();
 
         var before = await c.QuerySingleOrDefaultAsync<string?>(
-            "SELECT status FROM Tasks WHERE id = @id;", new { id = taskId });
-        if (before is null) return;
+            "SELECT status FROM Tasks WHERE id = @id;", new { id = taskId }, tx);
+        if (before is null)
+        {
+            if (expectedVersion is not null)
+                throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: true);
+            return;
+        }
 
-        await c.ExecuteAsync(
-            "UPDATE Tasks SET status = @status WHERE id = @id;", new { status, id = taskId });
+        var rows = await c.ExecuteAsync(
+            @"UPDATE Tasks SET status = @status, row_version = row_version + 1
+              WHERE id = @id AND (@expected IS NULL OR row_version = @expected);",
+            new { status, id = taskId, expected = expectedVersion }, tx);
+
+        if (rows == 0 && expectedVersion is not null)
+            throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: false);
 
         if (!string.Equals(before, status, StringComparison.Ordinal))
         {
@@ -177,8 +232,10 @@ public sealed class TaskRepository : ITaskRepository
                     changed_by_user_id, changed_by_name, changed_at)
                   VALUES(@tid, 'status', @old, @new, @uid, @uname, @at);",
                 new { tid = taskId, old = before, @new = status,
-                      uid = changedByUserId, uname = changedByName, at = Iso(DateTimeOffset.UtcNow) });
+                      uid = changedByUserId, uname = changedByName, at = Iso(DateTimeOffset.UtcNow) }, tx);
         }
+
+        tx.Commit();
     }
 
     public async Task<IReadOnlyList<int>> GetTagIdsAsync(int taskId)
@@ -190,12 +247,26 @@ public sealed class TaskRepository : ITaskRepository
     }
 
     public async Task SetTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds,
-        int? changedByUserId = null, string? changedByName = null)
+        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
     {
         // Replace-all in one tx: capture the old set, clear, re-insert the new set (dedup),
         // then write ONE 'tags' audit row when the set actually changed (B3; mirrors BacklogRepository).
         using var c = _factory.Create();
         using var tx = c.BeginTransaction();
+
+        // M8.2: TaskTags carries no row_version of its own, so a tag replace-all checks and bumps the
+        // PARENT task's version (mirrors BacklogRepository.SetTagsAsync). Runs first so a conflict
+        // aborts the tx before any TaskTags row is touched.
+        var bumped = await c.ExecuteAsync(
+            @"UPDATE Tasks SET row_version = row_version + 1
+              WHERE id = @tid AND (@expected IS NULL OR row_version = @expected);",
+            new { tid = taskId, expected = expectedVersion }, tx);
+
+        if (bumped == 0 && expectedVersion is not null)
+        {
+            throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion,
+                deleted: await NotFoundAsync(c, tx, taskId));
+        }
 
         var oldIds = (await c.QueryAsync<long>(
             "SELECT tag_id FROM TaskTags WHERE task_id = @tid ORDER BY tag_id;",
@@ -239,6 +310,13 @@ public sealed class TaskRepository : ITaskRepository
             DateTimeOffset.Parse(a.changed_at, CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal))).ToList();
     }
+
+    // ONE existence check, run only on the conflict path, and only where no pre-read already answered
+    // it. Separates "someone else edited this" from "someone else deleted this" — the two things
+    // rowsAffected == 0 conflates, and the two things the user needs different words for.
+    private static async Task<bool> NotFoundAsync(System.Data.IDbConnection c, System.Data.IDbTransaction? tx, int id) =>
+        await c.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM Tasks WHERE id = @id;", new { id }, tx) == 0;
 
     private static string Iso(DateTimeOffset d) =>
         d.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);

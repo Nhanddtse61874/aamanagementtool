@@ -69,6 +69,14 @@ public sealed class BacklogRepository : IBacklogRepository
         return row is null ? null : MapBacklog(row);
     }
 
+    // M8.2: the number a caller reads, holds while the user edits, then hands back as expectedVersion.
+    public async Task<long?> GetRowVersionAsync(int backlogId)
+    {
+        using var c = _factory.Create();
+        return await c.QuerySingleOrDefaultAsync<long?>(
+            "SELECT row_version FROM Backlogs WHERE id = @id;", new { id = backlogId });
+    }
+
     public async Task<int> InsertAsync(Backlog backlog)
     {
         using var c = _factory.Create();
@@ -100,23 +108,38 @@ public sealed class BacklogRepository : IBacklogRepository
     }
 
     public async Task UpdateAsync(Backlog backlog, int? changedByUserId = null, string? changedByName = null,
-        string? auditNote = null)
+        string? auditNote = null, long? expectedVersion = null)
     {
         using var c = _factory.Create();
 
-        // Read the pre-update row so audited field changes can be diffed.
-        var before = await c.QuerySingleOrDefaultAsync<BacklogRaw>(
-            $"SELECT {Cols} FROM Backlogs WHERE id = @id;", new { id = backlog.Id });
+        // M8.2: read -> UPDATE -> N audit INSERTs is ONE unit of work, so it gets ONE transaction.
+        // This had to land BEFORE the version check could: untransacted, a rejected write still ran
+        // its audit INSERTs (the UPDATE quietly matches zero rows, `before` is not null, and the old
+        // code discarded ExecuteAsync's row count) — leaving history that describes a change which
+        // never happened. Throwing now rolls the whole thing back.
+        //
+        // Default BeginTransaction() is BEGIN IMMEDIATE. NOT deferred — that reintroduces
+        // SQLITE_BUSY_SNAPSHOT (517) when a reader tries to upgrade to a writer mid-transaction.
+        using var tx = c.BeginTransaction();
 
-        await c.ExecuteAsync(
+        // Read the pre-update row so audited field changes can be diffed. Inside the transaction, so
+        // the row it snapshots is provably the row the UPDATE below overwrites.
+        var before = await c.QuerySingleOrDefaultAsync<BacklogRaw>(
+            $"SELECT {Cols} FROM Backlogs WHERE id = @id;", new { id = backlog.Id }, tx);
+
+        // check-and-bump when the caller carries a version, bump-only when it does not. Either way
+        // row_version is incremented: bumping without checking is safe, checking without bumping is
+        // the lost update this whole mechanism exists to prevent.
+        var rows = await c.ExecuteAsync(
             @"UPDATE Backlogs SET backlog_code = @BacklogCode, project = @Project,
                 start_date = @StartDate, end_date = @EndDate, period_month = @PeriodMonth, type = @Type,
                 assignee_user_id = @AssigneeUserId,
                 deadline_internal = @DeadlineInternal, deadline_external = @DeadlineExternal,
                 rough_estimate_hours = @RoughEstimateHours, official_estimate_hours = @OfficialEstimateHours,
                 progress_percent = @ProgressPercent, note = @Note, pca_contact_id = @PcaContactId,
-                team_id = @TeamId
-              WHERE id = @Id;",
+                team_id = @TeamId,
+                row_version = row_version + 1
+              WHERE id = @Id AND (@ExpectedVersion IS NULL OR row_version = @ExpectedVersion);",
             new
             {
                 backlog.BacklogCode,
@@ -135,9 +158,19 @@ public sealed class BacklogRepository : IBacklogRepository
                 backlog.PcaContactId,
                 backlog.TeamId,
                 backlog.Id,
-            });
+                ExpectedVersion = expectedVersion,
+            }, tx);
 
-        if (before is null) return;
+        if (rows == 0 && expectedVersion is not null)
+        {
+            // Rejected. Throwing out of the `using` rolls the transaction back, so not one audit row
+            // survives — nothing below this line ever runs. ONE existence check, only here, to tell
+            // "someone else edited this" apart from "someone else deleted this".
+            throw new ConcurrencyConflictException("Backlogs", backlog.Id, expectedVersion,
+                deleted: await NotFoundAsync(c, tx, backlog.Id));
+        }
+
+        if (before is null) { tx.Commit(); return; }   // row absent + no version to check: unchanged no-op
 
         var now = Iso(DateTimeOffset.UtcNow);
 
@@ -150,7 +183,7 @@ public sealed class BacklogRepository : IBacklogRepository
                     changed_by_user_id, changed_by_name, changed_at, note)
                   VALUES(@bid, @field, @old, @new, @uid, @uname, @at, @note);",
                 new { bid = backlog.Id, field, old = oldV, @new = newV,
-                      uid = changedByUserId, uname = changedByName, at = now, note });
+                      uid = changedByUserId, uname = changedByName, at = now, note }, tx);
         }
 
         // Audit the four v2 fields; one history row per actually-changed field.
@@ -163,7 +196,7 @@ public sealed class BacklogRepository : IBacklogRepository
         if (before.assignee_user_id != backlog.AssigneeUserId)
         {
             async Task<string?> NameOfAsync(int? uid) => uid is null ? null
-                : await c.QuerySingleOrDefaultAsync<string?>("SELECT name FROM Users WHERE id = @id;", new { id = uid });
+                : await c.QuerySingleOrDefaultAsync<string?>("SELECT name FROM Users WHERE id = @id;", new { id = uid }, tx);
             await LogAsync("assignee",
                 await NameOfAsync(before.assignee_user_id is { } b ? (int)b : null),
                 await NameOfAsync(backlog.AssigneeUserId));
@@ -184,11 +217,13 @@ public sealed class BacklogRepository : IBacklogRepository
         if (before.pca_contact_id != backlog.PcaContactId)
         {
             async Task<string?> PcaNameOfAsync(int? id) => id is null ? null
-                : await c.QuerySingleOrDefaultAsync<string?>("SELECT name FROM PcaContacts WHERE id = @id;", new { id });
+                : await c.QuerySingleOrDefaultAsync<string?>("SELECT name FROM PcaContacts WHERE id = @id;", new { id }, tx);
             await LogAsync("pca_contact",
                 await PcaNameOfAsync(before.pca_contact_id is { } p ? (int)p : null),
                 await PcaNameOfAsync(backlog.PcaContactId));
         }
+
+        tx.Commit();
     }
 
     // ---- v7 tag links (TAG-02) -----------------------------------------------------------
@@ -202,11 +237,27 @@ public sealed class BacklogRepository : IBacklogRepository
     }
 
     public async Task SetTagsAsync(int backlogId, IReadOnlyList<int> tagIds,
-        int? changedByUserId = null, string? changedByName = null)
+        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
     {
         // Replace-all in one tx: capture old set for audit diff, then clear + insert new set (dedup).
         using var c = _factory.Create();
         using var tx = c.BeginTransaction();
+
+        // M8.2: BacklogTags has no row_version of its own (schema v10 versions 8 tables; link tables
+        // are not among them), so the version a tag replace-all checks and bumps is the PARENT
+        // backlog's. The user ticks the chips on the card, and two people re-ticking them clobber
+        // each other exactly like any other inline edit. Runs first so a conflict aborts the tx
+        // before any BacklogTags row is touched.
+        var bumped = await c.ExecuteAsync(
+            @"UPDATE Backlogs SET row_version = row_version + 1
+              WHERE id = @bid AND (@expected IS NULL OR row_version = @expected);",
+            new { bid = backlogId, expected = expectedVersion }, tx);
+
+        if (bumped == 0 && expectedVersion is not null)
+        {
+            throw new ConcurrencyConflictException("Backlogs", backlogId, expectedVersion,
+                deleted: await NotFoundAsync(c, tx, backlogId));
+        }
 
         // v9 (B1): read old tag ids before the replace so we can diff for the audit row.
         var oldIds = (await c.QueryAsync<long>(
@@ -307,6 +358,13 @@ public sealed class BacklogRepository : IBacklogRepository
                 note = fromPeriod is null ? null : $"continued from {fromPeriod}",
             });
     }
+
+    // ONE existence check, run only on the conflict path. rowsAffected == 0 conflates "someone else
+    // edited this row" with "someone else deleted it", and the user needs different words for each —
+    // that is what ConcurrencyConflictException.Deleted carries.
+    private static async Task<bool> NotFoundAsync(System.Data.IDbConnection c, System.Data.IDbTransaction? tx, int id) =>
+        await c.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM Backlogs WHERE id = @id;", new { id }, tx) == 0;
 
     private static string Iso(DateTimeOffset d) =>
         d.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
