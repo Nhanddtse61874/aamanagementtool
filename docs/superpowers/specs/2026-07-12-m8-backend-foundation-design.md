@@ -41,7 +41,7 @@ Two findings from the codebase survey drive this design:
 |---|---|---|
 | D1 | **Hosting:** on-prem, internal network, IIS | User requirement |
 | D2 | **Scale:** 10–50 users, multi-team | User requirement |
-| D3 | **DB: keep SQLite**, server-hosted, WAL + pooling | The API is the **only writer process**, so N concurrent users ≠ N concurrent writers. Write contention is solved by architecture, not by engine. Keeps 14 repositories, schema, migrations, and 548 tests intact. `IConnectionFactory` already isolates the choice, so switching to SQL Server later is a contained change, not a rewrite. |
+| D3 | **DB: keep SQLite**, server-hosted, WAL + pooling — **explicitly as an interim database** | There is no Azure/AWS subscription available, so a managed DB is not an option today. This is workable rather than merely tolerable: the API is the **only writer process**, so N concurrent users ≠ N concurrent writers, and write contention is solved by architecture rather than by engine. It keeps the 14 repositories, the schema, the migrations and the 548 tests intact. Because the replacement is *anticipated, not hypothetical*, the SQLite-specific surface is enumerated and contained in **§13** rather than left to be rediscovered later. |
 | D4 | **Concurrency: optimistic (`row_version` + HTTP 409) + SignalR** | The DB engine does **not** solve lost updates — no engine does. Today there is no `version`/`updated_at` column on any of the 16 tables, and Task List commits every inline edit as a bare `UPDATE`, so two users editing the same card silently overwrite each other. This is fixed in the application layer. |
 | D5 | **Auth: username + password, cookie session, on the existing `Users` table** | No Active Directory available, so Windows Auth is off the table. ASP.NET Core **Identity** is rejected: it drags in EF Core (the app is Dapper-only) and creates a second user table (`AspNetUsers`) alongside `Users`. |
 | D6 | **Cookie, not JWT** | "Remember me" is one flag (`IsPersistent`) with cookies vs. a refresh-token rotation scheme with JWT. Cookies are `HttpOnly` (immune to XSS token theft); a JWT in `localStorage` is not. Angular is served same-origin, so there is no cross-origin reason to prefer JWT. |
@@ -98,11 +98,11 @@ Add `row_version INTEGER NOT NULL DEFAULT 1` — **selectively**, not everywhere
 | `Tasks` | ✅ | Type / assignee / status edited inline. |
 | `StandupIssues` | ✅ | **Deliberately collaborative** — issues are not owner-gated (DR-04). |
 | `Users`, `Teams`, `Tags`, `PcaContacts` | ✅ | Admin-edited; low frequency but cheap to include. |
-| `TimeLogs` | ❌ | Natural key `(user_id, task_id, work_date)` already scopes rows to one user, and nobody logs hours on another user's behalf (Log Work's team view is read-only). A cross-user collision is **impossible**. Keep the existing upsert. |
+| **`TimeLogs`** | ✅ | See §6.1.1 — an earlier draft excluded this, on the argument that the natural key `(user_id, task_id, work_date)` scopes each row to one user and nobody logs hours on another user's behalf. That argument rests on a *current behaviour* (Log Work's team view is read-only), not on an invariant. If a manager or admin ever edits someone else's timesheet, the collision becomes real and the design would have to be reopened after the endpoints and the Angular grid already exist. Include it. |
 | `Holidays`, `Settings` | ❌ | Key-value / date-keyed. Overwrite is the correct semantics. |
-| `StandupEntries` | ❌ | Owner-gated: only the owner can add/update/delete/reorder their own entries. |
+| `StandupEntries` | ❌ | Owner-gated in the service layer: only the owner can add/update/delete/reorder their own entries. Unlike `TimeLogs`, this is enforced in code (`StandupService`), not merely absent from the UI. |
 
-Mechanism:
+Mechanism for a plain update:
 
 ```sql
 UPDATE Backlogs
@@ -113,6 +113,21 @@ UPDATE Backlogs
 `rowsAffected == 0` → `ConcurrencyConflictException` → middleware → **`409 Conflict`**, with the current server-side state in the response body.
 
 Angular contract on 409: show *"Someone else just changed this."* with **[See their change]** / **[Overwrite with mine]**. Never resolve silently in either direction.
+
+### 6.1.1 `TimeLogs`: concurrency on an upsert
+
+`TimeLogs` is written through an upsert, not a plain update, so the rule needs one more case. A timesheet cell has three states, and the client says which one it believes it is looking at:
+
+| Client sends | Row on server | Result |
+|---|---|---|
+| `expectedVersion = null` ("cell is empty") | absent | **INSERT**, `row_version = 1` |
+| `expectedVersion = null` | **present** | **409** — someone filled this cell while you were looking at it |
+| `expectedVersion = N` | present, version `N` | **UPDATE**, `row_version = N + 1` |
+| `expectedVersion = N` | present, version `≠ N` | **409** |
+
+`GET /api/timelogs/week` therefore returns each cell's `row_version` (`null` for an empty cell), and `PUT /api/timelogs/cell` echoes it back. Clearing a cell (which is a `DELETE`, not a write of `0` — the codebase treats empty and zero as semantically distinct) is version-checked the same way.
+
+**Smart Fill is a deliberate carve-out.** It is an *explicit bulk overwrite*: the user previews the exact cells and hours, confirms, and the service already re-validates server-side at apply time. Overwriting is the stated intent of the operation, so its writes are not version-checked per cell. What protects it is the re-validation that already exists (`ValidateSmartFillAsync` re-runs against live data inside the apply transaction), which will reject the batch if the day would exceed 8h given whatever other users have since written. Making Smart Fill version-check every cell would mean a preview could go stale between Preview and Confirm and fail for reasons the user cannot act on.
 
 ### 6.2 Auth columns
 
@@ -225,13 +240,15 @@ Two settings from §8.1 will silently break local development unless both are ha
 
 Also: SignalR must be proxied alongside `/api` (WebSocket upgrade), or the hub will silently fall back to long-polling — or fail outright.
 
-## 11. Bugs found during survey — fix here, do not port
+## 11. Bugs found during survey — fix in this slice, do not port
 
-| Bug | Detail |
-|---|---|
-| **Two Smart Fill implementations** | `SmartInputService` is DI-registered and injected into `TimesheetViewModel` but **never used**; the live logic is `SmartInputPanelVm.BuildPlan`. The live one does **not** exclude holidays when building the preview, while `ValidateSmartFillAsync` **does** — so a range containing a holiday renders a cell that then fails validation and blocks Apply. **Unify on one holiday-aware implementation in Core.** |
-| **`DAYS LOGGED` denominator** | `span = WeeklyRows.Count` and `WeeklyRows` only contains days that *have* logs, so the stat is almost always `N / N` and never `3 / 5`. Denominator should be the number of working days in the week. |
-| **`LastNWorkingDays` ignores holidays** | Inconsistent with `WorkingDayCalculator`, which excludes them. |
+All three are fixed **in Core**, not at their current call sites. That distinction is the whole point: two of them exist *because* business logic leaked into a WPF ViewModel, where the web client cannot reuse it and would be free to reinvent the same mistake.
+
+| Bug | Detail | Where the fix lands |
+|---|---|---|
+| **Two Smart Fill implementations** | `SmartInputService` is DI-registered and injected into `TimesheetViewModel` — and then **never used**. The live logic is `SmartInputPanelVm.BuildPlan`, in a ViewModel. The live one does **not** exclude holidays when building the preview, while `ValidateSmartFillAsync` **does** — so a range containing a holiday renders a cell that then fails validation and blocks Apply, with no way for the user to act on the error. | Delete `BuildPlan`; make the already-holiday-aware `SmartInputService` **the** implementation, and have both WPF and the API call it. One source of truth for the arithmetic, covered by tests. |
+| **`DAYS LOGGED` is always `N / N`** | `span = WeeklyRows.Count`, but `WeeklyRows` only contains days that *have* logs — so numerator and denominator move together and the stat can never read `3 / 5`. The denominator should be the number of **working days in the week** (excluding weekends and holidays). | The computation lives in `ReportsViewModel` today. **Move it into `ReportAggregator`** (Core) — it is business arithmetic, not presentation — and fix it there, so the Angular Reports screen (M8.7) inherits the correct version instead of re-deriving it. |
+| **`LastNWorkingDays` ignores holidays** | It excludes weekends but not holidays, contradicting `WorkingDayCalculator`, which excludes both. So the "hasn't logged in N days" banner counts a public holiday against people. | `TimeLogService` (already Core) — delegate to `IWorkingDayCalculator` instead of re-implementing the day walk. |
 
 ## 12. Dead code to drop during extraction
 
@@ -241,7 +258,24 @@ Also: SignalR must be proxied alongside `/api` (WebSocket upgrade), or the hub w
 | `ISmartInputService` / `SmartInputService` | See §11 — resolve by making this the single implementation, not by deleting it. |
 | `TimesheetViewModel.SaveCommand` | No Save button exists (auto-save replaced it). Retained only for tests. |
 
-## 13. Sequencing after this slice
+## 13. Porting surface — when SQLite is replaced
+
+SQLite is an **interim** database (D3), so the cost of leaving it is a number we should know, not discover. Surveyed rather than guessed; the whole surface is 5 constructs across ~15 call sites:
+
+| SQLite-specific | Where | SQL Server equivalent |
+|---|---|---|
+| `ON CONFLICT (…) DO UPDATE` | `TimeLogRepository:132`, `HolidayRepository:52` | `MERGE` (Postgres keeps `ON CONFLICT`) |
+| `INSERT OR REPLACE` | `SettingsRepository:23` | `MERGE` |
+| `INSERT OR IGNORE` | `TeamRepository:112` | `IF NOT EXISTS` / `MERGE` |
+| `last_insert_rowid()` | 10 call sites across 9 repositories | `SCOPE_IDENTITY()` (Postgres: `RETURNING id`) |
+| `PRAGMA user_version` | `DatabaseInitializer` (3 uses) | a `SchemaVersion` table, seeded once from the current value |
+| `INTEGER PRIMARY KEY AUTOINCREMENT`, `REAL` | DDL in `DatabaseInitializer` | `INT IDENTITY`, `FLOAT`/`DECIMAL` |
+
+**What is *not* on this list matters more than what is.** There are **no** SQLite date functions anywhere — no `strftime`, no `julianday`, no `datetime()`. All dates are computed in C# and stored as ISO `TEXT` (`yyyy-MM-dd` / `yyyy-MM-ddTHH:mm:ssZ`). Dialect-specific date arithmetic is normally the single most expensive thing to port, and this codebase never took the dependency. There is also no `LIMIT`/`TOP` (no paging exists — a separate problem, but a portable one).
+
+**Deliberately not abstracted now.** No `ISqlDialect` layer, no query builder. Fifteen enumerated call sites behind an already-abstract `IConnectionFactory` is a bounded piece of work when the day comes; building the abstraction today would be speculative generality, and we would be guessing at the target engine's shape before knowing what it is. What this slice owes the future is (a) this list stays accurate, and (b) **no new SQLite-only construct is introduced** in the v10 work without being added to it.
+
+## 15. Sequencing after this slice
 
 | Slice | Content | Needs UI design? |
 |---|---|---|
