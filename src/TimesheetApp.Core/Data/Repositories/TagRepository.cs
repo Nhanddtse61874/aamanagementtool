@@ -30,27 +30,28 @@ public sealed class TagRepository : ITagRepository
             new { tag.Text, tag.Icon, tag.Color, CreatedAt = Iso(tag.CreatedAt) });
     }
 
-    // Check-and-bump when the caller supplies expectedVersion (throws on a stale version or a
-    // deleted row); bump-only when it doesn't. expectedVersion is deliberately a separate parameter
-    // rather than reading tag.RowVersion: an existing caller building a Tag positionally without
-    // naming RowVersion gets the record's default (1), which would falsely claim "still at v1" on
-    // every edit past the first and start throwing spurious conflicts.
-    public async Task UpdateAsync(Tag tag, long? expectedVersion = null)
+    // BUMP-ONLY: always lands, always bumps, never throws (the Settings tag editor's save path).
+    public async Task UpdateAsync(Tag tag)
     {
         using var c = _factory.Create();
-        if (expectedVersion is null)
-        {
-            await c.ExecuteAsync(
-                "UPDATE Tags SET text = @Text, icon = @Icon, color = @Color, row_version = row_version + 1 WHERE id = @Id;",
-                new { tag.Text, tag.Icon, tag.Color, tag.Id });
-            return;
-        }
+        await c.ExecuteAsync(
+            "UPDATE Tags SET text = @Text, icon = @Icon, color = @Color, row_version = row_version + 1 WHERE id = @Id;",
+            new { tag.Text, tag.Icon, tag.Color, tag.Id });
+    }
 
-        var rows = await c.ExecuteAsync(
+    // CHECK-AND-BUMP. expectedVersion is an explicit argument and is deliberately NOT read off
+    // tag.RowVersion: a caller building a Tag from editor fields rather than from a read carries the
+    // record's default (0), and a write that trusted the record would reject every edit in the app.
+    // RETURNING supplies the caller's next expectedVersion from the same statement that wrote it.
+    public async Task<long> UpdateCheckedAsync(Tag tag, long expectedVersion)
+    {
+        using var c = _factory.Create();
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Tags SET text = @Text, icon = @Icon, color = @Color, row_version = row_version + 1
-              WHERE id = @Id AND row_version = @expected;",
-            new { tag.Text, tag.Icon, tag.Color, tag.Id, expected = expectedVersion.Value });
-        if (rows > 0) return;
+              WHERE id = @Id AND row_version = @expected
+              RETURNING row_version;",
+            new { tag.Text, tag.Icon, tag.Color, tag.Id, expected = expectedVersion });
+        if (newVersion is not null) return newVersion.Value;
 
         var exists = await c.ExecuteScalarAsync<long>("SELECT COUNT(1) FROM Tags WHERE id = @Id;", new { tag.Id });
         throw new ConcurrencyConflictException("Tags", tag.Id, expectedVersion, deleted: exists == 0);

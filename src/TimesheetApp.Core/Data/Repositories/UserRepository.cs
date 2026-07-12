@@ -16,9 +16,10 @@ namespace TimesheetApp.Data.Repositories;
 // User.WindowsUsername model PROPERTY is a separate, much larger blast radius (28+ consumers per
 // M8-PITFALL-RESEARCH) and stays out of scope here.
 //
-// v10 also adds row_version. SetUsernameAsync / UpdateNameAsync are check-and-bump (admin edits
-// from the UI -- low frequency, worth surfacing a conflict). SetActiveAsync (soft-delete) and
-// SetActiveTeamIdAsync (system write, Wave 4) are bump-only: always increment, never compare.
+// v10 also adds row_version. SetUsername / UpdateName each come as a PAIR: the plain method is
+// bump-only (always lands, always bumps, never throws), the *CheckedAsync sibling is check-and-bump
+// and returns the new row_version. SetActiveAsync (soft-delete) and SetActiveTeamIdAsync (system
+// write, Wave 4) are bump-only with no checked sibling: always increment, never compare.
 public sealed class UserRepository : IUserRepository
 {
     private readonly IConnectionFactory _factory;
@@ -68,21 +69,31 @@ public sealed class UserRepository : IUserRepository
             new { user.Name, user.WindowsUsername, IsActive = user.IsActive ? 1 : 0 });
     }
 
-    // Check-and-bump: admin-driven UI edit (XC-07 persist), low frequency, worth surfacing a conflict.
-    public async Task SetUsernameAsync(int userId, string username, long expectedVersion)
+    // BUMP-ONLY (XC-07 persist). Claiming your own Windows identity is a system write, not a contested
+    // user edit: CurrentUserService runs this when Current is null, so it holds no version to check
+    // against, and there is nobody to race — nobody else is claiming your account.
+    public async Task SetUsernameAsync(int userId, string username)
     {
         using var c = _factory.Create();
-        var rowsAffected = await c.ExecuteAsync(
-            @"UPDATE Users SET username = @w, row_version = row_version + 1
-              WHERE id = @id AND row_version = @expected;",
-            new { w = username, id = userId, expected = expectedVersion });
+        await c.ExecuteAsync(
+            "UPDATE Users SET username = @w, row_version = row_version + 1 WHERE id = @id;",
+            new { w = username, id = userId });
+    }
 
-        if (rowsAffected == 0)
-        {
-            var exists = await c.ExecuteScalarAsync<long>(
-                "SELECT COUNT(1) FROM Users WHERE id = @id;", new { id = userId });
-            throw new ConcurrencyConflictException("Users", userId, expectedVersion, deleted: exists == 0);
-        }
+    // CHECK-AND-BUMP: admin-driven UI edit, low frequency, worth surfacing a conflict.
+    public async Task<long> SetUsernameCheckedAsync(int userId, string username, long expectedVersion)
+    {
+        using var c = _factory.Create();
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
+            @"UPDATE Users SET username = @w, row_version = row_version + 1
+              WHERE id = @id AND row_version = @expected
+              RETURNING row_version;",
+            new { w = username, id = userId, expected = expectedVersion });
+        if (newVersion is not null) return newVersion.Value;
+
+        var exists = await c.ExecuteScalarAsync<long>(
+            "SELECT COUNT(1) FROM Users WHERE id = @id;", new { id = userId });
+        throw new ConcurrencyConflictException("Users", userId, expectedVersion, deleted: exists == 0);
     }
 
     // Bump-only: soft-delete is a system write, carries no client-observed version.
@@ -94,21 +105,29 @@ public sealed class UserRepository : IUserRepository
             new { a = isActive ? 1 : 0, id = userId });
     }
 
-    // Check-and-bump: admin-driven UI edit, low frequency, worth surfacing a conflict.
-    public async Task UpdateNameAsync(int userId, string name, long expectedVersion)
+    // BUMP-ONLY: always lands, always bumps, never throws (the Settings rename path).
+    public async Task UpdateNameAsync(int userId, string name)
     {
         using var c = _factory.Create();
-        var rowsAffected = await c.ExecuteAsync(
-            @"UPDATE Users SET name = @n, row_version = row_version + 1
-              WHERE id = @id AND row_version = @expected;",
-            new { n = name, id = userId, expected = expectedVersion });
+        await c.ExecuteAsync(
+            "UPDATE Users SET name = @n, row_version = row_version + 1 WHERE id = @id;",
+            new { n = name, id = userId });
+    }
 
-        if (rowsAffected == 0)
-        {
-            var exists = await c.ExecuteScalarAsync<long>(
-                "SELECT COUNT(1) FROM Users WHERE id = @id;", new { id = userId });
-            throw new ConcurrencyConflictException("Users", userId, expectedVersion, deleted: exists == 0);
-        }
+    // CHECK-AND-BUMP: admin-driven UI edit, low frequency, worth surfacing a conflict.
+    public async Task<long> UpdateNameCheckedAsync(int userId, string name, long expectedVersion)
+    {
+        using var c = _factory.Create();
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
+            @"UPDATE Users SET name = @n, row_version = row_version + 1
+              WHERE id = @id AND row_version = @expected
+              RETURNING row_version;",
+            new { n = name, id = userId, expected = expectedVersion });
+        if (newVersion is not null) return newVersion.Value;
+
+        var exists = await c.ExecuteScalarAsync<long>(
+            "SELECT COUNT(1) FROM Users WHERE id = @id;", new { id = userId });
+        throw new ConcurrencyConflictException("Users", userId, expectedVersion, deleted: exists == 0);
     }
 
     // Users.active_team_id (v10). Read side of the accessor pair Wave 4 depends on: it moves

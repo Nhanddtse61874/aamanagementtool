@@ -26,8 +26,18 @@ public sealed class ConcurrencyConflictException : Exception
 
     /// <summary>Primary key of the row. For <c>TimeLogs</c>, whose key is the natural
     /// <c>(user_id, task_id, work_date)</c> triple rather than an id, this is 0 and
-    /// <see cref="Message"/> carries the detail.</summary>
+    /// <see cref="Detail"/> — which <see cref="Message"/> includes — carries the cell identity.</summary>
     public long Id { get; }
+
+    /// <summary>Human-readable identity of the row when <see cref="Id"/> cannot name it — i.e. for a
+    /// natural-keyed table. <c>null</c> for the id-keyed tables, whose <c>Table #Id</c> already says
+    /// which row this is.</summary>
+    /// <remarks>
+    /// This exists because without it a 409 on a timesheet cell said only "TimeLogs was changed by
+    /// someone else", naming no cell — useless to a user with a week's grid in front of them, and to
+    /// anyone reading the log. <see cref="Id"/> is 0 there, so it could not fill the gap.
+    /// </remarks>
+    public string? Detail { get; }
 
     /// <summary>The <c>row_version</c> the caller believed it was updating.
     /// <c>null</c> means the caller believed the row did not exist yet.</summary>
@@ -38,18 +48,25 @@ public sealed class ConcurrencyConflictException : Exception
     /// 409 body.</summary>
     public bool Deleted { get; }
 
-    public ConcurrencyConflictException(string table, long id, long? expectedVersion, bool deleted)
-        : base(BuildMessage(table, id, expectedVersion, deleted))
+    /// <param name="detail">Identity of the row for a natural-keyed table (see <see cref="Detail"/>).
+    /// Omit for the id-keyed tables — the existing 4-argument shape keeps working unchanged.</param>
+    public ConcurrencyConflictException(string table, long id, long? expectedVersion, bool deleted,
+        string? detail = null)
+        : base(BuildMessage(table, id, expectedVersion, deleted, detail))
     {
         Table = table;
         Id = id;
         ExpectedVersion = expectedVersion;
         Deleted = deleted;
+        Detail = detail;
     }
 
-    private static string BuildMessage(string table, long id, long? expected, bool deleted)
+    private static string BuildMessage(string table, long id, long? expected, bool deleted, string? detail)
     {
+        // id 0 => natural-keyed (TimeLogs): `detail` is the only thing that can name the row, so the
+        // XML doc on Id is only true if it actually lands in the message. It does, here.
         var row = id > 0 ? $"{table} #{id}" : table;
+        if (detail is { Length: > 0 }) row = $"{row} ({detail})";
         return deleted
             ? $"{row} no longer exists — it was deleted by someone else."
             : expected is null

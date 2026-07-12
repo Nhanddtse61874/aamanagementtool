@@ -38,11 +38,13 @@ public sealed class CurrentUserService : ICurrentUserService
 
     public async Task SetWindowsUsernameAsync(int userId, string windowsUsername)
     {
-        // IUserRepository.SetUsernameAsync is check-and-bump (v10/M8.2), so it needs the version
-        // this caller last saw. Current is typically null here (this runs after ResolveAsync
-        // returned NeedsSelection), so it cannot supply it -- fetch userId's row fresh instead.
-        var before = await _users.GetByIdAsync(userId);
-        await _users.SetUsernameAsync(userId, windowsUsername, before?.RowVersion ?? 0);
+        // BUMP-ONLY (M8.2). This runs after ResolveAsync returned NeedsSelection, i.e. when Current is
+        // null, so this service holds no version it could legitimately check against. W3-C fetched the
+        // row first purely to synthesize one — but a version invented immediately before the write
+        // checks nothing: it cannot fail, and the fetch is exactly the racy read-back the checked
+        // methods exist to avoid. Claiming your own Windows identity is a system write, not a
+        // contested user edit — there is no second person racing to claim your account.
+        await _users.SetUsernameAsync(userId, windowsUsername);
         Current = await _users.GetByIdAsync(userId);
     }
 }

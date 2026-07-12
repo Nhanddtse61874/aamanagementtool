@@ -92,11 +92,11 @@ public class TeamRepositoryTests : IAsyncLifetime
         Assert.Equal(1, loaded!.RowVersion);   // fresh insert -> v1
 
         // Both admins open the rename dialog and read v1. Admin A saves first.
-        await _repo.UpdateNameAsync(id, "Renamed by A", loaded.RowVersion);
+        await _repo.UpdateNameCheckedAsync(id, "Renamed by A", loaded.RowVersion);
 
         // Admin B, still holding the stale v1, saves next -> conflict, not silent overwrite.
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => _repo.UpdateNameAsync(id, "Renamed by B", loaded.RowVersion));
+            () => _repo.UpdateNameCheckedAsync(id, "Renamed by B", loaded.RowVersion));
         Assert.Equal("Teams", ex.Table);
         Assert.Equal(id, ex.Id);
         Assert.Equal(1, ex.ExpectedVersion);
@@ -144,11 +144,11 @@ public class TeamRepositoryTests : IAsyncLifetime
         Assert.Equal(1, loaded!.RowVersion);
 
         // Admin A (saw v1) replaces membership with {alice, bob} first.
-        await _repo.SetMembersAsync(team, new[] { alice, bob }, loaded.RowVersion);
+        await _repo.SetMembersCheckedAsync(team, new[] { alice, bob }, loaded.RowVersion);
 
         // Admin B, also holding stale v1, tries {carol} next -> conflict; A's set is untouched.
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => _repo.SetMembersAsync(team, new[] { carol }, loaded.RowVersion));
+            () => _repo.SetMembersCheckedAsync(team, new[] { carol }, loaded.RowVersion));
         Assert.Equal("Teams", ex.Table);
         Assert.False(ex.Deleted);
 

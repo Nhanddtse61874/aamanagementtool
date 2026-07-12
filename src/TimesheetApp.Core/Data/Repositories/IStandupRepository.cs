@@ -27,8 +27,17 @@ public interface IStandupRepository
     Task<IReadOnlyList<StandupIssue>> GetIssuesForEntriesAsync(IReadOnlyList<int> entryIds);
     Task<int> InsertIssueAsync(StandupIssue issue);   // returns new id
 
-    // Check-and-bump (v10/M8.2): issues are collaborative (DR-04, no owner gate), so this throws
-    // ConcurrencyConflictException when issue.RowVersion no longer matches the row (changed or deleted).
+    // v10/M8.2. Issues are collaborative (DR-04, no owner gate), so they are the one standup table two
+    // people can race. Same PAIR as everywhere else (see IBacklogRepository): UpdateIssueAsync is
+    // BUMP-ONLY; UpdateIssueCheckedAsync is CHECK-AND-BUMP and returns the new row_version.
+    //
+    // expectedVersion is an EXPLICIT argument, deliberately not read off issue.RowVersion. A caller
+    // that constructs a StandupIssue from edited fields rather than from a read carries the record's
+    // default (0), and a write that trusted the record would reject it — so the version has to travel
+    // separately from the data it guards.
     Task UpdateIssueAsync(StandupIssue issue);
+    /// <returns>The row_version AFTER the write — the caller's next expectedVersion.</returns>
+    /// <exception cref="ConcurrencyConflictException">Version moved on, or the issue is gone.</exception>
+    Task<long> UpdateIssueCheckedAsync(StandupIssue issue, long expectedVersion);
     Task DeleteIssueAsync(int issueId);
 }

@@ -45,25 +45,26 @@ public sealed class PcaContactRepository : IPcaContactRepository
             new { contact.Name, IsActive = contact.IsActive ? 1 : 0 });
     }
 
-    // Check-and-bump when the caller supplies expectedVersion (throws on a stale version or a
-    // deleted row); bump-only when it doesn't, so callers not yet wired to carry a version keep
-    // compiling and behaving as before (unconditional success), just with row_version now advancing.
-    public async Task UpdateNameAsync(int id, string name, long? expectedVersion = null)
+    // BUMP-ONLY: always lands, always bumps, never throws (the Settings rename path).
+    public async Task UpdateNameAsync(int id, string name)
     {
         using var c = _factory.Create();
-        if (expectedVersion is null)
-        {
-            await c.ExecuteAsync(
-                "UPDATE PcaContacts SET name = @n, row_version = row_version + 1 WHERE id = @id;",
-                new { n = name, id });
-            return;
-        }
+        await c.ExecuteAsync(
+            "UPDATE PcaContacts SET name = @n, row_version = row_version + 1 WHERE id = @id;",
+            new { n = name, id });
+    }
 
-        var rows = await c.ExecuteAsync(
+    // CHECK-AND-BUMP; RETURNING supplies the caller's next expectedVersion from the same statement
+    // that performed the write, so there is no racy read-back.
+    public async Task<long> UpdateNameCheckedAsync(int id, string name, long expectedVersion)
+    {
+        using var c = _factory.Create();
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE PcaContacts SET name = @n, row_version = row_version + 1
-              WHERE id = @id AND row_version = @expected;",
-            new { n = name, id, expected = expectedVersion.Value });
-        if (rows > 0) return;
+              WHERE id = @id AND row_version = @expected
+              RETURNING row_version;",
+            new { n = name, id, expected = expectedVersion });
+        if (newVersion is not null) return newVersion.Value;
 
         var exists = await c.ExecuteScalarAsync<long>("SELECT COUNT(1) FROM PcaContacts WHERE id = @id;", new { id });
         throw new ConcurrencyConflictException("PcaContacts", id, expectedVersion, deleted: exists == 0);

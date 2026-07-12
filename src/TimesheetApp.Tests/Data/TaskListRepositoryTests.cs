@@ -68,11 +68,11 @@ public class TaskListRepositoryTests : IAsyncLifetime
         Assert.Equal(1, loaded.RowVersion);
 
         // Both admins open the tag editor and read v1. Admin A saves first.
-        await tags.UpdateAsync(loaded with { Text = "Hot" }, loaded.RowVersion);
+        await tags.UpdateCheckedAsync(loaded with { Text = "Hot" }, loaded.RowVersion);
 
         // Admin B, still holding stale v1, saves next -> conflict; A's edit is untouched.
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => tags.UpdateAsync(loaded with { Text = "Cold" }, loaded.RowVersion));
+            () => tags.UpdateCheckedAsync(loaded with { Text = "Cold" }, loaded.RowVersion));
         Assert.Equal("Tags", ex.Table);
         Assert.False(ex.Deleted);
 
@@ -105,7 +105,7 @@ public class TaskListRepositoryTests : IAsyncLifetime
         await tags.DeleteAsync(id);   // someone else hard-deletes it (Tags is hard-delete, per contract)
 
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => tags.UpdateAsync(loaded with { Text = "Hot" }, loaded.RowVersion));
+            () => tags.UpdateCheckedAsync(loaded with { Text = "Hot" }, loaded.RowVersion));
         Assert.True(ex.Deleted);
         Assert.Equal("Tags", ex.Table);
     }
@@ -118,10 +118,10 @@ public class TaskListRepositoryTests : IAsyncLifetime
         var loaded = await repo.GetByIdAsync(id);
         Assert.Equal(1, loaded!.RowVersion);
 
-        await repo.UpdateNameAsync(id, "Acme Ltd", loaded.RowVersion);   // Admin A saves first
+        await repo.UpdateNameCheckedAsync(id, "Acme Ltd", loaded.RowVersion);   // Admin A saves first
 
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => repo.UpdateNameAsync(id, "Acme LLC", loaded.RowVersion));   // Admin B, stale v1
+            () => repo.UpdateNameCheckedAsync(id, "Acme LLC", loaded.RowVersion));   // Admin B, stale v1
         Assert.Equal("PcaContacts", ex.Table);
         Assert.False(ex.Deleted);
 

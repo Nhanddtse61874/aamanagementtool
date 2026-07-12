@@ -168,10 +168,10 @@ public sealed class BacklogsViewModelTests
 
         await vm.SaveEditAsync();
 
-        // M8.2: expectedVersion spelled out — an expression tree may not omit an optional argument.
+        // The editor save is a bump-only write (it carries no version), so it lands on UpdateAsync.
         _requests.Verify(r => r.UpdateAsync(
             It.Is<Backlog>(x => x.Id == 5 && x.Project == "New"),
-            It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<long?>()), Times.Once);
+            It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Once);
         _tasks.Verify(t => t.InsertAsync(
             It.Is<TaskItem>(x => x.BacklogId == 5 && x.TaskName == "Added")), Times.Once);
         // existing task NOT re-inserted

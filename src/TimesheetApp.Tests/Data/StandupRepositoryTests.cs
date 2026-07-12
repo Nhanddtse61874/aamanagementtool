@@ -174,10 +174,12 @@ public class StandupRepositoryTests
         Assert.Equal(1, aliceSaw.RowVersion);
         Assert.Equal(1, bobSaw.RowVersion);
 
-        await repo.UpdateIssueAsync(aliceSaw with { SolutionText = "alice's fix", Status = "resolved" });
+        await repo.UpdateIssueCheckedAsync(
+            aliceSaw with { SolutionText = "alice's fix", Status = "resolved" }, aliceSaw.RowVersion);
 
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => repo.UpdateIssueAsync(bobSaw with { SolutionText = "bob's fix", Status = "resolved" }));
+            () => repo.UpdateIssueCheckedAsync(
+                bobSaw with { SolutionText = "bob's fix", Status = "resolved" }, bobSaw.RowVersion));
         Assert.False(ex.Deleted);
         Assert.Equal("StandupIssues", ex.Table);
 
@@ -203,9 +205,37 @@ public class StandupRepositoryTests
         await repo.DeleteIssueAsync(issueId);
 
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => repo.UpdateIssueAsync(loaded with { Status = "resolved" }));
+            () => repo.UpdateIssueCheckedAsync(loaded with { Status = "resolved" }, loaded.RowVersion));
         Assert.True(ex.Deleted);
         Assert.Equal("StandupIssues", ex.Table);
+    }
+
+    // W3.5: UpdateIssueAsync KEPT its one-arg signature but its meaning flipped -- it was check-and-bump
+    // (version read off the record), it is now bump-only. Nothing in the compiler catches a change like
+    // that; every existing call site still built clean. The two tests above only went red because they
+    // assert on the exception. This one locks the new meaning down from the other side: a stale record
+    // must NOT throw here, and the write must still BUMP -- because a bump-only write that failed to
+    // bump would leave the version behind for a later checked write to match, which is precisely the
+    // lost update the whole mechanism exists to prevent.
+    [Fact]
+    public async Task UpdateIssue_BumpOnly_NeverConflicts_AndStillBumps()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new StandupRepository(db);
+        var u = await db.SeedUserAsync();
+        var entryId = await repo.InsertEntryAsync(NewEntry(u, Day));
+        var issueId = await repo.InsertIssueAsync(new StandupIssue(0, entryId, "blocked on API", null, "open", 0,
+            new DateTimeOffset(2026, 6, 25, 9, 0, 0, TimeSpan.Zero)));
+
+        var stale = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        await repo.UpdateIssueCheckedAsync(stale with { Status = "resolved" }, stale.RowVersion);  // row is now v2
+
+        // `stale` still carries v1. The bump-only path must ignore the version entirely.
+        await repo.UpdateIssueAsync(stale with { SolutionText = "system write" });
+
+        var final = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        Assert.Equal("system write", final.SolutionText);
+        Assert.Equal(3, final.RowVersion);   // bumped past the checked write, not left at 2
     }
 
     // P10 (TM-06/07): team_id round-trips on the entry, and GetEntriesForDayAsync filters by team.

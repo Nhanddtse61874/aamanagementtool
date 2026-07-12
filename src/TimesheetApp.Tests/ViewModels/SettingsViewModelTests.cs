@@ -303,7 +303,7 @@ public class SettingsViewModelTests
 
         await vm.SaveTagCommand.ExecuteAsync(null);
 
-        tags.Verify(t => t.UpdateAsync(It.Is<Tag>(x => x.Id == 5 && x.Text == "New"), null), Times.Once);
+        tags.Verify(t => t.UpdateAsync(It.Is<Tag>(x => x.Id == 5 && x.Text == "New")), Times.Once);
         tags.Verify(t => t.InsertAsync(It.IsAny<Tag>()), Times.Never);
     }
 
@@ -376,7 +376,7 @@ public class SettingsViewModelTests
 
         await vm.RenamePcaContactCommand.ExecuteAsync(3);
 
-        pca.Verify(p => p.UpdateNameAsync(3, "Renamed", null), Times.Once);
+        pca.Verify(p => p.UpdateNameAsync(3, "Renamed"), Times.Once);
     }
 
     [Fact]
@@ -466,7 +466,7 @@ public class SettingsViewModelTests
 
         await vm.RenameTeamCommand.ExecuteAsync(3);
 
-        teams.Verify(t => t.UpdateNameAsync(3, "Renamed", null), Times.Once);
+        teams.Verify(t => t.UpdateNameAsync(3, "Renamed"), Times.Once);
     }
 
     [Fact]
@@ -510,8 +510,8 @@ public class SettingsViewModelTests
         teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { new Team(7, "T", true, DateTimeOffset.UtcNow) });
         teams.Setup(t => t.GetByIdAsync(7)).ReturnsAsync(new Team(7, "T", true, DateTimeOffset.UtcNow));
         teams.Setup(t => t.GetUserIdsForTeamAsync(7)).ReturnsAsync(() => stored.ToArray());
-        teams.Setup(t => t.SetMembersAsync(7, It.IsAny<IReadOnlyList<int>>(), It.IsAny<long?>()))
-             .Callback<int, IReadOnlyList<int>, long?>((_, ids, _) => stored = ids.ToList())
+        teams.Setup(t => t.SetMembersAsync(7, It.IsAny<IReadOnlyList<int>>()))
+             .Callback<int, IReadOnlyList<int>>((_, ids) => stored = ids.ToList())
              .Returns(Task.CompletedTask);
         var users = new Mock<IUserRepository>();
         users.Setup(u => u.GetActiveAsync()).ReturnsAsync(new[]
@@ -530,7 +530,7 @@ public class SettingsViewModelTests
         await vm.SaveMembersCommand.ExecuteAsync(null);
 
         teams.Verify(t => t.SetMembersAsync(7, It.Is<IReadOnlyList<int>>(ids =>
-            ids.Count == 1 && ids[0] == 1), It.IsAny<long?>()), Times.Once);
+            ids.Count == 1 && ids[0] == 1)), Times.Once);
         Assert.Null(vm.MembershipEditor); // editor closes on save
 
         // Reopen → reflects the replaced set ({1}).
@@ -555,7 +555,7 @@ public class SettingsViewModelTests
         vm.CancelMembersCommand.Execute(null);
 
         Assert.Null(vm.MembershipEditor);
-        teams.Verify(t => t.SetMembersAsync(It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>(), It.IsAny<long?>()), Times.Never);
+        teams.Verify(t => t.SetMembersAsync(It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>()), Times.Never);
     }
 
     // Helper for team-focused tests that need custom team/user mocks (other deps stubbed minimally).
