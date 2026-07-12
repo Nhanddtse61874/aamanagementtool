@@ -2,12 +2,25 @@
 
 ## Current Position
 
-**Phase:** Step 6 — Plan (M8.3, rev. 2 in Plan Check) · M8.2 **COMPLETE**
+**Phase:** Step 7 — Execute (M8.3 Wave 2, four agents in flight) · M8.2 **COMPLETE**
 **Status:** in_progress
-**Last updated:** 2026-07-12
+**Last updated:** 2026-07-13
 
-**Branch:** `m8.2/w3-integrate` — HEAD `f53cbed`. Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
-**Suite:** **628 passed, 0 failed, 0 warnings** at `6ac5621` (M8.2 gate). ~8 s. Was 548 at the start of M8.2.
+**Branch:** `m8.2/w3-integrate` — HEAD `b8201d2`. Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
+**Suite:** **690 passed, 0 failed, 0 warnings** at `b8201d2` — 656 in `TimesheetApp.Tests` + **34 in the new `TimesheetApp.ApiTests`**. Was 548 at the start of M8.2.
+
+### M8.3 progress
+
+| Wave | Commit | |
+|---|---|---|
+| **W0** — Core prerequisites | `f6c8444` | Credential surface (auth had **nothing** to stand on) + **the version-aware service layer M8.2 stopped one step short of**. 628 → 656. |
+| **W1** — API shell + every shared contract | `b8201d2` | Host boots with scope validation ON · scoped identity · `SqliteProfile.Server` · auth + Data Protection · **three** error channels · OpenAPI. 656 → 690. |
+| **W2** — 4 endpoint agents | 🔄 in flight | `.worktrees/w2-{a,b,c,d}`, all on base `b8201d2` |
+| **W3** — SignalR | ⬜ | |
+
+**Two W1 concerns awaiting a decision (neither blocks W2):**
+1. **Greenfield deadlock (latent).** Migration v10 promotes `MIN(id)` to admin — so a database with **zero users has zero admins**. `AdminBootstrap` then no-ops, nobody can log in, and `/api/users` is admin-gated, so the first user cannot be created over HTTP. **Safe today** (M8.3 targets the existing desktop DB, which always has an admin) but **a fresh install cannot bootstrap itself.** Belongs in the deploy runbook.
+2. **A demoted admin keeps admin for up to 30 days.** `RequireClaim("is_admin","1")` reads the **cookie** claim, fixed at login (30-day sliding). `IClientContext.IsAdmin` is DB-fresh, so the two can disagree. W2-D's brief now requires the four destructive `/api/ops/*` routes to check `ctx.IsAdmin` **as well as** the policy.
 
 ## Current Milestone
 
