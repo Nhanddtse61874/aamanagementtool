@@ -1,23 +1,52 @@
-import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { inject, Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { map, Observable, of } from 'rxjs';
 import {
   Backlog, DailyEntry, LogGroup, Metric, MonthlyRow, Tag, TaskCard,
   TaskTemplate, TeamMember, TreeNode, User, WeeklyRow, DayColumn,
 } from '../models/worklog.models';
 
+import { ApiConfiguration } from '../api/api-configuration';
+import {
+  login as loginFn,
+  logout as logoutFn,
+  me as meFn,
+  smartFillApply as smartFillApplyFn,
+  smartFillValidate as smartFillValidateFn,
+  timesheetClearCell as timesheetClearCellFn,
+  timesheetSaveCell as timesheetSaveCellFn,
+  timesheetWeek as timesheetWeekFn,
+} from '../api/functions';
+import {
+  LoginResponse, MeResponse, SmartFillTaskRequest, TimeLogDto, WeekBacklogGroup,
+} from '../api/models';
+
 /**
  * Central data access for the Worklog app.
  *
- * NOTE: This service intentionally ships NO mock data — every method returns
- * an empty stream. Replace each `of(...)` with a real HttpClient call, e.g.
+ * M8.4 / Wave 2 — the transport under the M8.4 methods is now GENERATED, in `../api/**`, from the API's own
+ * OpenAPI document (`npm run gen:api`). Nothing in `../api/**` is hand-written or hand-editable: it is the
+ * wire contract, and the only way to change it is to change the C# and regenerate.
  *
- *   getBacklogs() { return this.http.get<Backlog[]>('/api/backlogs'); }
+ * `rootUrl` is `''` (ApiConfiguration), so every generated call is a SAME-ORIGIN RELATIVE path (`/api/...`).
+ * That is not cosmetic. `ng serve` (:4200) -> Kestrel (:5080) is cross-site, and a `SameSite=Lax` cookie is
+ * NOT SENT on a cross-site XHR: login would 200, and every call after it would go out anonymous -> 401 ->
+ * redirect loop. The dev proxy makes the whole app same-origin; an absolute `http://localhost:5080/...`
+ * anywhere in this file silently re-breaks it. Never introduce one.
  *
- * Constants that are pure presentation (type/avatar colors) live here so the
- * whole app derives colors from one place.
+ * ONLY the methods M8.4 actually runs through are wired: auth, the week grid, Smart Fill, and the cell write.
+ * The other five screens (backlog, task list, daily report, reports, settings) keep their view models and
+ * their `of(...)` stubs until their own milestone — their routes have no response schema in the OpenAPI
+ * document yet (see ng-openapi-gen.json), so there is nothing honest to generate for them.
  */
 @Injectable({ providedIn: 'root' })
 export class WorklogService {
+  private readonly http = inject(HttpClient);
+  private readonly apiConfig = inject(ApiConfiguration);
+
+  /** `''` — see the class comment. Relative paths, or the auth cookie stops being sent. */
+  private get rootUrl(): string { return this.apiConfig.rootUrl; }
+
   // ---- presentation constants (safe to keep) ----
   readonly TYPE_COLORS: Record<string, { bg: string; c: string }> = {
     Investigate: { bg: '#E8EEFB', c: '#2A5BD7' },
@@ -46,10 +75,127 @@ export class WorklogService {
     return type ? (this.TYPE_COLORS[type] ?? { bg: '#EEF1F0', c: '#5C6560' }) : null;
   }
 
-  // ---- data (connect to API) ----
+  // =====================================================================================================
+  // AUTH — POST /api/auth/login · POST /api/auth/logout · GET /api/me
+  //
+  // There is NO `rememberMe` on the wire: LoginRequest is (Username, Password) and nothing else.
+  // `IsPersistent = true` is UNCONDITIONAL server-side, so "stay logged in across a browser restart" already
+  // holds and there is no flag to send. Do not invent one.
+  // =====================================================================================================
+
+  login(username: string, password: string): Observable<LoginResponse> {
+    return loginFn(this.http, this.rootUrl, { body: { username, password } })
+      .pipe(map(r => r.body));
+  }
+
+  logout(): Observable<void> {
+    return logoutFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** The authenticated caller's own context. 401 here is how the app learns it is logged out. */
+  me(): Observable<MeResponse> {
+    return meFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // THE WEEK GRID — GET /api/timesheet/week
+  //
+  // Returns the Core read model RAW (WeekBacklogGroup[] -> WeekRow[] -> WeekCell), not a DTO. Each day slot
+  // is a WeekCell `{ hours, rowVersion }` — the version is PER CELL, because TimeLogs is keyed by
+  // (user_id, task_id, work_date) and that is exactly what a checked write versions.
+  //
+  // `allUsers: true` is the READ-ONLY team aggregate: it SUMS hours across users, so no single row backs a
+  // cell and every rowVersion comes back NULL, by construction. Do not try to write from that view, and do
+  // not try to synthesise a version for it — there isn't one to synthesise.
+  // =====================================================================================================
+
+  getWeek(monday: string, allUsers = false): Observable<WeekBacklogGroup[]> {
+    return timesheetWeekFn(this.http, this.rootUrl, { monday, allUsers })
+      .pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // THE CELL WRITE — PUT /api/timesheet/cell
+  //
+  // ⚠️ SIGNATURE CHANGED IN M8.4/W2, DELIBERATELY. The old `saveHours(key: string, value: string)` took the
+  // vendored grid's `${groupIndex}-${taskIndex}-${dayIndex}` key and returned `Observable<void>`. That shape
+  // CANNOT EXPRESS THE CONTRACT, in two independent ways:
+  //
+  //   1. It has nowhere to put `expectedVersion`. The only value it could send is `null` — and null is not
+  //      "I don't know", it DELIBERATELY ASSERTS "I believe this cell is EMPTY". Against a cell that already
+  //      has hours that is a lie, and the checked write 409s. Every edit of a pre-existing cell, every user,
+  //      forever. (And `0` is not a safe stand-in either: under the five-case table it is a DIFFERENT
+  //      assertion again, which either 409s spuriously or silently overwrites someone.)
+  //   2. Returning `void` throws away the new row_version — which is precisely the caller's NEXT
+  //      expectedVersion. STORE WHAT THE WRITE RETURNS; never re-read it. A read-back is racy: another client
+  //      can write in between, and you would then hold THEIR version with YOUR data and silently overwrite
+  //      them on the next save. That is the lost update this whole mechanism exists to prevent.
+  //
+  // So: `expectedVersion` is `number | null` and the caller MUST pass the cell's actual rowVersion when the
+  // cell has hours, and `null` ONLY when it genuinely has none. The return is the new version.
+  //
+  // 400 (8h cap / holiday / weekend / >1 decimal) and 409 (conflict) and 404 (task deleted or not your team)
+  // all arrive as HttpErrorResponse — they are the caller's to handle, not this transport's to swallow.
+  // =====================================================================================================
+
+  saveHours(
+    taskId: number,
+    workDate: string,
+    hours: number,
+    expectedVersion: number | null,
+  ): Observable<number> {
+    return timesheetSaveCellFn(this.http, this.rootUrl, {
+      body: { taskId, date: workDate, hours, expectedVersion },
+    }).pipe(map(r => requireRowVersion(r.body.rowVersion)));
+  }
+
+  /**
+   * DELETE /api/timesheet/cell. Unlike a save, a clear has no "I believe it's empty" case, so
+   * `expectedVersion` is REQUIRED here (the C# takes a non-nullable `long`) — you cannot clear a cell you do
+   * not already hold a version for.
+   */
+  clearHours(taskId: number, workDate: string, expectedVersion: number): Observable<void> {
+    return timesheetClearCellFn(this.http, this.rootUrl, {
+      body: { taskId, date: workDate, expectedVersion },
+    }).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // SMART FILL — POST /api/smartfill/validate · POST /api/smartfill/apply
+  //
+  // 🔴 `apply` returns a FLAT TimeLogDto[] — NOT a week grid — and it spans only min..max OF THE FILLED
+  // DATES. The caller MERGES it into the cell map by (taskId, workDate), patching hours + rowVersion per
+  // returned row.
+  //
+  //   - Never REPLACE grid state from it: fill Wed–Thu only and a replace wipes Mon/Tue/Fri off the screen,
+  //     and a flat list cannot reconstruct the backlog grouping anyway.
+  //   - Never IGNORE it either: the caller is excluded from its own SignalR echo, so this response is the one
+  //     and only place it learns the new versions. Drop them and your next inline edit sends a stale version
+  //     and 409s against your own Smart Fill, on the happy path, every time.
+  // =====================================================================================================
+
+  smartFillValidate(tasks: SmartFillTaskRequest[]): Observable<void> {
+    return smartFillValidateFn(this.http, this.rootUrl, { body: { tasks } })
+      .pipe(map(r => r.body));
+  }
+
+  smartFillApply(tasks: SmartFillTaskRequest[]): Observable<TimeLogDto[]> {
+    return smartFillApplyFn(this.http, this.rootUrl, { body: { tasks } })
+      .pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // NOT YET ON THE WIRE — the five screens outside M8.4.
+  //
+  // These keep returning empty streams ON PURPOSE. Their routes exist in C# but declare no response schema
+  // in the OpenAPI document (they return `IResult` via `Results.Ok(x)`, which ApiExplorer cannot infer a type
+  // from), so there is nothing honest to generate for them — a generated method would be typed `void` for an
+  // endpoint that in fact returns data. Each screen's own milestone annotates its C# with `.Produces<T>()`,
+  // regenerates, and wires these up. Until then an empty stream is the truthful answer.
+  // =====================================================================================================
   getUsers(): Observable<User[]> { return of([]); }                 // TODO: GET /api/users
   getBacklogs(): Observable<Backlog[]> { return of([]); }           // TODO: GET /api/backlogs
-  getLogGroups(): Observable<LogGroup[]> { return of([]); }         // TODO: GET /api/logwork?week=
+  getLogGroups(): Observable<LogGroup[]> { return of([]); }         // TODO: superseded by getWeek() in W4
   getTaskCards(): Observable<TaskCard[]> { return of([]); }         // TODO: GET /api/tasklist
   getDailyEntries(date: string): Observable<DailyEntry[]> { return of([]); }   // TODO
   getTeamBoard(date: string): Observable<TeamMember[]> { return of([]); }      // TODO
@@ -64,9 +210,29 @@ export class WorklogService {
   getTeams(): Observable<string[]> { return of([]); }               // TODO
   getHolidays(): Observable<string[]> { return of([]); }            // TODO: ISO date strings
 
-  // ---- mutations (connect to API) ----
-  saveHours(key: string, value: string): Observable<void> { return of(void 0); }        // TODO
+  // ---- mutations still to connect ----
   saveProgress(key: string, pct: number): Observable<void> { return of(void 0); }        // TODO
   toggleUser(name: string): Observable<void> { return of(void 0); }                      // TODO
   toggleHoliday(iso: string): Observable<void> { return of(void 0); }                    // TODO
+}
+
+/**
+ * Narrow the wire's `rowVersion?: number` to the `number` the caller must have.
+ *
+ * The field is optional in the generated model only because Swashbuckle does not emit `required` for C#
+ * records; `SavedBody(long RowVersion)` is non-nullable and always serialises. But this is the network
+ * boundary, and a 200 whose body is not the body we asked for (a proxy's HTML error page, a version skew, a
+ * misrouted response) is not an impossible scenario. Failing loudly here is the whole point: a silent
+ * fallback to `0` or `null` would feed a WRONG expectedVersion into the next save, which under the five-case
+ * table either 409s spuriously or silently overwrites another user. Losing the version is worse than losing
+ * the request.
+ */
+function requireRowVersion(rowVersion: number | undefined): number {
+  if (typeof rowVersion !== 'number') {
+    throw new Error(
+      'The API accepted the write but returned no rowVersion. Refusing to continue: the next save would ' +
+      'send a wrong expectedVersion and could silently overwrite another user.',
+    );
+  }
+  return rowVersion;
 }
