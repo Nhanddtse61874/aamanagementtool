@@ -1,288 +1,469 @@
 # M8 Backend Foundation — Design
 
-**Date:** 2026-07-12
-**Milestone:** M8 — Migrate WPF → Web (ASP.NET Core 8 + Angular)
+**Date:** 2026-07-12 (rev. 2 — after STEP 4 research)
+**Milestone:** M8 — Migrate WPF → Web
 **Slice:** M8.1 (Core extraction) + M8.2 (API host, DB, concurrency) + M8.3 (Auth)
-**Status:** Approved (pending spec review)
-**Inputs:** `.planning/M8-FEATURE-INVENTORY.md` (as-built inventory of the WPF app)
+**Status:** Revised after research; awaiting approval
+**Inputs:** `.planning/M8-FEATURE-INVENTORY.md` · `.planning/research/M8-{STACK,ARCHITECTURE,PITFALL}-RESEARCH.md` · `.planning/research/FEATURE-RESEARCH-concurrency.md`
+
+> **Rev. 2 exists because research falsified five things rev. 1 asserted.** Each is called out inline as **[REV2]**. Two of them — the backup/WAL interaction and the missing fifth case in the concurrency table — would have destroyed data in production.
 
 ---
 
 ## 1. Context
 
-TimesheetApp is a WPF (.NET 8, MVVM, Dapper + SQLite) internal tool. It is being migrated to a web app (ASP.NET Core 8 API + Angular SPA) because the WPF UI is buggy and hard to use. The WPF project will be deleted at the end of M8.
+TimesheetApp is a WPF (.NET 8, MVVM, Dapper + SQLite) internal tool being migrated to a web app (ASP.NET Core 8 + Angular 17). The WPF project is deleted at the end of M8.
 
-Two findings from the codebase survey drive this design:
+Two facts drive the design, both verified against the code:
 
-1. **The business layer is already portable.** Of 50 files in `Services/`, exactly **one** (`ThemeService.cs`) references WPF. `Data/` (29 files) and `Models/` (3 files) are 100% WPF-free. `IConnectionFactory.Create() → IDbConnection` abstracts the database; repositories never see `SqliteConnection`. Packages (Dapper, Microsoft.Data.Sqlite, MS.Extensions.DI, ClosedXML) are all cross-platform.
-   → The migration is mostly **wrapping an API around business logic that already exists**, not rewriting it.
+1. **The business layer is already portable.** Of 50 files in `Services/`, exactly **one** (`ThemeService.cs`) has a real `using System.Windows` — the other grep hits are comments *boasting* about being WPF-free. `Data/` (29) and `Models/` (3) are entirely clean. Every Core-bound file uses a file-scoped namespace, so **moving a file between assemblies cannot change its namespace: the extraction is a `git mv`, not a refactor, and not one `using` changes.**
+2. **The data layer is architected around SQLite living on a shared folder.** `Pooling=false`, `journal_mode=DELETE`, plus conflict-copy detection (XC-08), journal-gone checks (XC-09) and backup-before-every-bulk-write (XC-10). Those are load-bearing *for that topology* and become wrong under a different one.
 
-2. **The data layer is architected around SQLite-on-OneDrive.** `SqliteConnectionFactory` sets `Pooling=false` and `PRAGMA journal_mode=DELETE`, and there is a whole scaffold of OneDrive defences: conflict-copy detection (XC-08), journal-gone checks (XC-09), backup-before-every-bulk-write (XC-10).
-   → On a server these are obsolete. WAL + pooling become available.
+## 2. Deployment model — decided, and it changes everything downstream
 
-## 2. Goals
+The company has **no server, no always-on machine, and no cloud subscription** — only company-issued workstations.
 
-- `TimesheetApp.Core` (net8.0) exists; WPF and the new API both consume it; **548 existing tests stay green**.
-- A running ASP.NET Core 8 API over that Core.
+**Chosen: one designated machine acts as the host.** It runs the API; everyone else reaches it over the LAN at `http://<host>:5000`. The database lives on **that machine's local disk**.
+
+This is the decision the rest of the spec hangs on, because it restores the single premise that makes SQLite viable: **exactly one process writes the database.** N concurrent users are not N concurrent writers. Write contention is solved by architecture rather than by engine.
+
+The two alternatives were considered and rejected:
+
+| Rejected | Why |
+|---|---|
+| Every user runs their own API against a shared `.db` on the network | Destroys the single-writer premise. N processes on N hosts writing one SQLite file over SMB is the exact configuration [sqlite.org/faq](https://www.sqlite.org/faq.html) warns about: *"file locking of network files is very buggy and is not dependable."* WAL becomes impossible, SignalR becomes impossible, and auth stops being a boundary. |
+| Keep the live `.db` on the network share | `WAL does not work over a network filesystem` ([sqlite.org/wal](https://www.sqlite.org/wal.html)) — the wal-index lives in shared memory, which cannot cross hosts. |
+
+### 2.1 The risk this creates, and the mitigation that is therefore mandatory
+
+**All company timesheet data now lives on one workstation's disk.** If that machine dies, is lost, or is reimaged, everything is gone.
+
+This is not a footnote — it is the single largest operational risk in the design, and it is created *by* the deployment choice. The mitigation is a `must_have`, not an option:
+
+```
+host machine:  D:\Worklog\timesheet.db          ← live DB. Local disk, WAL, safe writes.
+                        │
+                        └── hourly ──►  \\share\worklog-backup\timesheet_<stamp>.db
+                                        ↑ IT backs this up. Host dies → lose ≤ 1 hour.
+```
+
+`BackupService` already implements the machinery (auto-backup, retention count, user-chosen destination folder). The changes are: point the destination at the share, move the cadence from daily to hourly, and **replace `File.Copy` with an online backup** (§9).
+
+### 2.2 Host runbook (M8.2 deliverable)
+
+Each of these fails **silently** if skipped, and each will be misdiagnosed as an application bug:
+
+| Step | Symptom if skipped |
+|---|---|
+| Disable sleep/hibernate (`powercfg`) | Machine sleeps → every client's requests hang. No error anywhere. |
+| Open the port in Windows Firewall | The host can reach the app; **nobody else can.** Looks like the app is broken. |
+| Run as a Windows Service, not a console app | Host logs out → API dies with the session. |
+| Static IP or DHCP reservation | There is **no Active Directory**, so LAN name resolution is not guaranteed. A DHCP lease change silently moves the app. |
+| Grant Modify on the **directory**, not just the file | WAL creates `-wal`/`-shm` *next to* the `.db`. File-only permission gives a clean startup and then **fails on the first write**. [H4] |
+
+## 3. Goals
+
+- `TimesheetApp.Core` (net8.0) exists; WPF and the API both consume it; **the 548 existing tests stay green**.
+- A running ASP.NET Core 8 API over that Core, hosted on the designated machine.
 - **Concurrent updates never silently overwrite each other.**
-- Users log in with username + password, and stay logged in across browser restarts.
+- Users log in with username + password and stay logged in across browser restarts.
 - Three destructive operations are admin-only.
+- The live database is never more than an hour from a copy on backed-up infrastructure.
 
-## 3. Non-goals (this slice)
+## 4. Non-goals (this slice)
 
-- Any Angular UI beyond what is needed to prove auth works. Screens land in M8.4–M8.8.
-- Deleting the WPF project (M8.10).
-- Moving export/backup/retention to server-side storage (M8.9).
-- Password reset, email, MFA, account lockout, self-registration. **YAGNI** for a 10–50 person internal tool.
+Angular UI beyond proving auth works (M8.4–M8.8) · deleting WPF (M8.10) · moving export/retention to server storage (M8.9) · password reset, email, MFA, lockout, self-registration (**YAGNI** for 10–50 trusted internal users).
 
-## 4. Decisions (locked)
+## 5. Decisions
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | **Hosting:** on-prem, internal network, IIS | User requirement |
-| D2 | **Scale:** 10–50 users, multi-team | User requirement |
-| D3 | **DB: keep SQLite**, server-hosted, WAL + pooling — **explicitly as an interim database** | There is no Azure/AWS subscription available, so a managed DB is not an option today. This is workable rather than merely tolerable: the API is the **only writer process**, so N concurrent users ≠ N concurrent writers, and write contention is solved by architecture rather than by engine. It keeps the 14 repositories, the schema, the migrations and the 548 tests intact. Because the replacement is *anticipated, not hypothetical*, the SQLite-specific surface is enumerated and contained in **§13** rather than left to be rediscovered later. |
-| D4 | **Concurrency: optimistic (`row_version` + HTTP 409) + SignalR** | The DB engine does **not** solve lost updates — no engine does. Today there is no `version`/`updated_at` column on any of the 16 tables, and Task List commits every inline edit as a bare `UPDATE`, so two users editing the same card silently overwrite each other. This is fixed in the application layer. |
-| D5 | **Auth: username + password, cookie session, on the existing `Users` table** | No Active Directory available, so Windows Auth is off the table. ASP.NET Core **Identity** is rejected: it drags in EF Core (the app is Dapper-only) and creates a second user table (`AspNetUsers`) alongside `Users`. |
-| D6 | **Cookie, not JWT** | "Remember me" is one flag (`IsPersistent`) with cookies vs. a refresh-token rotation scheme with JWT. Cookies are `HttpOnly` (immune to XSS token theft); a JWT in `localStorage` is not. Angular is served same-origin, so there is no cross-origin reason to prefer JWT. |
-| D7 | **Authorization: a single `is_admin` boolean**, gating exactly 3 endpoints | User explicitly does not want edit-level permissions. But Run-retention / Restore-backup / Deactivate-team are **destructive**, not merely privileged, and today *any* user can trigger them. One column and one policy is near-zero cost. |
+| D1 | **One designated host machine**, LAN-only, HTTP | §2. No server exists; this is the cheapest way to recover the single-writer property. |
+| D2 | 10–50 users, multiple teams | Given. |
+| D3 | **SQLite on the host's local disk**, WAL + pooling — **interim** | Single writer process (§2). No managed DB is available. Because replacement is *anticipated, not hypothetical*, the SQLite-specific surface is enumerated in **§15** rather than left to be rediscovered. |
+| D4 | **Optimistic concurrency (`row_version` + HTTP 409) + SignalR** | No table has a version column today, and Task List commits every inline edit as a bare `UPDATE` — concurrent editors silently overwrite each other **right now**. No database engine fixes this; it is an application-layer problem. |
+| D5 | **Auth: username + password, cookie session, on the existing `Users` table** | No Active Directory, so Windows Auth is out. ASP.NET Core **Identity** rejected: it drags in EF Core (the app is Dapper-only) and creates a second user table. Research confirmed `PasswordHasher<T>` can be used **standalone** from `Microsoft.Extensions.Identity.Core` — 3 transitive packages, **no EF Core**, nothing auto-registered. |
+| D6 | **Cookie, not JWT** | "Remember me" is one flag (`IsPersistent`) versus a refresh-token scheme; an `HttpOnly` cookie is not readable by XSS. Research bonus: **SignalR sends cookies to the hub automatically, zero config** — the real payoff of this choice. |
+| D7 | **Authorization: a single `is_admin` boolean**, gating exactly 3 endpoints | The user does not want edit-level permissions, which is reasonable for a trusted team. But run-retention / restore-backup / deactivate-team are **destructive**, not merely privileged, and today *any* user can trigger them. |
+| D8 | **HTTP, not HTTPS** — accepted risk | User decision. `SecurePolicy = SameAsRequest`. **The session cookie travels the LAN in plaintext**, so anyone who can capture packets can assume any identity — including the admin who can permanently delete three months of data. This is recorded as a knowingly accepted risk, not an oversight. Switching to HTTPS later is a one-line config change; the design does not foreclose it. |
 
-## 5. Solution structure
+## 6. Solution structure
 
 ```
 src/TimesheetApp.sln
-├── TimesheetApp.Core/     net8.0            ← NEW
-│     Services/   49 files  (all except ThemeService + IThemeService)
-│     Data/       29 files  (14 repositories + IConnectionFactory + DatabaseInitializer)
-│     Models/      3 files
-│     Config/     IAppConfig (interface only)
-├── TimesheetApp.Api/      net8.0            ← NEW (ASP.NET Core 8)
-├── TimesheetApp/          net8.0-windows    ← WPF: ViewModels, Views, ThemeService,
-│                                               file-based AppConfig → references Core
-└── TimesheetApp.Tests/                      → references Core
+├── TimesheetApp.Core/        net8.0            ← NEW
+│     Services/  48 files  (50 minus ThemeService + IThemeService)   [REV2: was "49"]
+│     Data/      29 files
+│     Models/     3 files
+│     Config/     IAppConfig + JsonAppConfig     [REV2: impl moves too]
+├── TimesheetApp.Api/         net8.0            ← NEW (ASP.NET Core 8)
+├── TimesheetApp.ApiTests/    net8.0            ← NEW (integration tests)   [REV2]
+├── TimesheetApp/             net8.0-windows    ← WPF → references Core
+└── TimesheetApp.Tests/       net8.0-windows    ← references Core AND WPF   [REV2]
 ```
 
-### 5.1 The `IAppConfig` seam
+### 6.1 [REV2] The test project does **not** move to Core
 
-`IAppConfig` currently reads `%APPDATA%\TimesheetApp\appsettings.json`. Core keeps **only the interface**. WPF keeps the file-based implementation unchanged. The API supplies an implementation backed by ASP.NET configuration. No service among the 49 changes.
+Rev. 1 said `TimesheetApp.Tests → references Core`. **False, and it would have broken the plan in wave 1.** 23 of 61 test files need WPF: 13 ViewModel tests, 8 **STA render tests** (`WpfStaCollection.cs` exists because WPF permits exactly one `Application` per AppDomain), and `DependencyInjectionTests`, which calls `App.ConfigureServices`. Roughly **200 of 511 test attributes (~40%) cannot live in a `net8.0` assembly.**
 
-### 5.2 Connection policy is per-host
+The test project therefore stays `net8.0-windows` and references **both** Core and WPF. It is not retargeted, not split, and not touched during the extraction. A separate `TimesheetApp.ApiTests` (net8.0, Web SDK) is created for `WebApplicationFactory` integration tests.
 
-Core is shared by WPF (SQLite on OneDrive) and the API (SQLite on a server) — and these need **opposite** settings. `SqliteConnectionFactory` therefore takes options:
+### 6.2 [REV2] `IAppConfig` is frozen — and it leaks user state
 
-| Setting | WPF profile (today) | API profile (server) |
+Two independent findings, both verified:
+
+**It cannot gain members.** Four test files (`BackupServiceTests`, `ExportHubServiceTests`, `PruneArchiverTests`, `RetentionServiceTests`) **hand-implement `IAppConfig`**. Adding *any* member breaks compilation and all 548 tests fail. This rules out hanging `SqliteOptions` off it.
+
+**It carries per-user state, and on a server that is a cross-user data leak.** `IAppConfig.ActiveTeamId` is read and written *by Core services*: `CurrentTeamService:72,94` and `TeamBootstrapService:66,76` call `SetActiveTeamId`; `TimeLogService` (4 sites) and `StandupService` (7 sites) read `ActiveTeamId` to scope every query. The original authors documented the hazard themselves in `IAppConfig.cs:24-27`:
+
+> *"the active team is an app-local, **per-machine/user** UI preference — never in the shared DB, else two users fight over one active team"*
+
+That reasoning is correct **for WPF, where one process serves one user.** In an API, one process serves everyone: user A switches team → the singleton now says team X for **everybody** → user B's next request reads `ActiveTeamId = X` and is served team X's timesheets. This violates the R6 no-leak rule the whole codebase is built around.
+
+**Fix:** remove `ActiveTeamId` / `SetActiveTeamId` from `IAppConfig`; add **`Users.active_team_id`** (schema v10, already being touched); make `ICurrentTeamService` **scoped per-request** in the API, resolving from the authenticated user. The root defect is that `IAppConfig` mixes per-**app** state (`DbPath`, `BackupFolderPath`, `ExportRoot*`) with per-**user** state. On a desktop those coincide; on a server they do not. WPF benefits too — two people sharing a machine stop overwriting each other's active team.
+
+### 6.3 Connection policy is per-host
+
+Core is shared by WPF (SQLite on a synced folder) and the API (SQLite on the host's local disk), and they need **opposite** settings.
+
+| Setting | WPF profile (**default**) | API profile (explicit) |
 |---|---|---|
-| `Pooling` | `false` | **`true`** |
+| `Pooling` | `false` | `true` |
 | `journal_mode` | `DELETE` | **`WAL`** |
-| `busy_timeout` | — | **`5000`** |
-| `synchronous` | default | **`NORMAL`** |
+| `busy_timeout` | — | **`1000`** |
+| `DefaultTimeout` | — | **`5`** ← see §8.4 |
+| `synchronous` | default | `NORMAL` |
 | `foreign_keys` | `ON` | `ON` |
 
-The OneDrive scaffolding (XC-08 conflict copies, XC-09 journal checks, XC-10 backup-before-bulk-write) **stays in Core** while WPF still runs, and is deleted in M8.10.
+**[REV2] Mechanism: an optional constructor parameter on `SqliteConnectionFactory`, not `IOptions<T>` and not `IAppConfig`.** Verified by building a probe against MS.DI 8.0.1: an optional ctor param works on all three call paths — unregistered (WPF → desktop default), registered (API → WAL), and direct `new SqliteConnectionFactory(cfg)` (the test fixtures) — with **zero test changes**. `IOptions<T>` breaks the three direct-`new` sites. And `SqliteConnectionFactoryTests` hard-asserts `journal_mode=delete`, no `-wal`/`-shm`, pooling-off, so **the WPF profile must remain the default** [H7].
 
-### 5.3 Acceptance gate for M8.1
+**[REV2] `PRAGMA journal_mode=WAL` cannot be set inside a transaction** [B4], so it stays in `Create()` alongside `foreign_keys`.
 
-`dotnet test` → **548/548 green**, and the WPF app still launches and works. If not, stop; do not proceed to M8.2.
+### 6.4 Extraction sequence — every step ends with 548 green
 
-## 6. Schema v10
+Baseline verified: **548/548 in 5 seconds.** At that speed there is no excuse for skipping a gate.
 
-One migration covers both concurrency and auth.
+0. Baseline.
+1. Create empty `Core` (net8.0). Wire all three project references and **both** `InternalsVisibleTo` — `TimesheetApp` *and* `TimesheetApp.Tests`. **Nothing moves yet.** (`DateHelpers`/`FormatHelpers` are `internal static` and used by both Core-bound services *and* WPF ViewModels; without this, the move is a hard `CS0122`. [M1])
+2. `git mv Models/` (3 files).
+3. `git mv Config/` (2 files — **including `JsonAppConfig`**: it is `System.IO` + `System.Text.Json` only, and is `new`-ed at 25 call sites across 9 test files, 8 of which are otherwise pure-Core. Leaving it in WPF would make Core's tests transitively depend on the WPF assembly for no benefit; the API simply doesn't register it).
+4. `git mv Data/` (29 files).
+5. `git mv Services/` minus `ThemeService.cs` + `IThemeService.cs` (48 files).
+6. Hygiene: drop now-dead packages from the WPF csproj.
+   **← M8.1 GATE: 548/548 green + WPF still launches.**
+7. `SqliteOptions` (§6.3).
+8. *(not M8.1)* the §13 bug fixes.
 
-### 6.1 Optimistic concurrency
+**Steps 2–5 are pure `git mv` + csproj edits — zero C# changes.** Do not mix the bug fixes in. A pure move that goes red is trivially diagnosable; a move plus three behaviour changes is not.
 
-Add `row_version INTEGER NOT NULL DEFAULT 1` — **selectively**, not everywhere:
+**[REV2] `CommunityToolkit.Mvvm` does not go to Core.** `DataChangedMessage.cs` has zero package imports (a bare enum + record). The only `IMessenger` consumer is `CurrentTeamService`, and `TimeLogService`/`StandupService` depend on the *interface* only. So: move `ICurrentTeamService` + `DataChangedMessage` to Core, **leave the messenger implementation in WPF**. Free, zero code change. Rev. 1 floated an `IDataChangeNotifier` abstraction — rejected: no Core service needs to *send* messages, so it is speculative generality.
 
-| Table | `row_version`? | Reason |
+### 6.5 [REV2] The M8.1 gate is "548 green", and that is only achievable because the bug fixes are excluded
+
+Rev. 1 said the 548 tests move to Core and stay green while §13 *deletes code those tests cover* (`SmartInputPanelVm.BuildPlan` — 9 attributes; `SelectUserDialog` — 1). Those two claims cannot both hold. A gate that cannot be met is worse than no gate: **the cheapest way to turn a red gate green is to delete tests.**
+
+So M8.1 is a pure move with an exactly-548 gate, and the bug fixes land afterwards as their own step, whose test-count change is stated up front and reviewed.
+
+## 7. Schema v10
+
+### 7.1 Optimistic concurrency
+
+`row_version INTEGER NOT NULL DEFAULT 1`, on **8 tables** [REV2 — rev. 1 said 7 and listed 8]:
+
+| Table | Reason |
+|---|---|
+| `Backlogs` | Task List lets **multiple people** edit one card inline (PCT, Type, PCA, both deadlines, progress, tags). |
+| `Tasks` | Type / assignee / status edited inline. |
+| `StandupIssues` | **Deliberately collaborative** — not owner-gated (DR-04). |
+| **`TimeLogs`** | **[REV2 — reversed.]** Rev. 1 excluded it, arguing a cross-user collision was impossible because the natural key scopes rows to one user and nobody logs hours for anyone else. That rests on *current behaviour* (Log Work's team view is read-only), **not on an enforced invariant** — unlike `StandupEntries`, which really is owner-gated in `StandupService`. The user asked what happens if someone *can* edit another person's hours. Retrofitting after the endpoints and the Angular grid exist costs far more than one column in a migration we are already writing. |
+| `Users`, `Teams`, `Tags`, `PcaContacts` | Admin-edited; low frequency, cheap to include. |
+| `Holidays`, `Settings` | **No** — date/key-keyed; overwrite is the correct semantics. |
+| `StandupEntries` | **No** — owner-gated *in code*, not merely absent from the UI. |
+
+### 7.2 [REV2] Two update templates, not one
+
+There are **22 `UPDATE` sites**, and **10 of the 16 on versioned tables have no client-supplied version** — soft-deletes, reorders, admin edits. Rev. 1's single template applied to `TaskRepository.SetOrderAsync` (`:114`), which is called **once per row during a drag**, would **409-storm on an ordinary reorder**.
+
+| Template | Used by | SQL |
 |---|---|---|
-| `Backlogs` | ✅ | Highest risk. Task List lets **multiple people** edit the same card inline (PCT, Type, PCA, both deadlines, progress, tags). |
-| `Tasks` | ✅ | Type / assignee / status edited inline. |
-| `StandupIssues` | ✅ | **Deliberately collaborative** — issues are not owner-gated (DR-04). |
-| `Users`, `Teams`, `Tags`, `PcaContacts` | ✅ | Admin-edited; low frequency but cheap to include. |
-| **`TimeLogs`** | ✅ | See §6.1.1 — an earlier draft excluded this, on the argument that the natural key `(user_id, task_id, work_date)` scopes each row to one user and nobody logs hours on another user's behalf. That argument rests on a *current behaviour* (Log Work's team view is read-only), not on an invariant. If a manager or admin ever edits someone else's timesheet, the collision becomes real and the design would have to be reopened after the endpoints and the Angular grid already exist. Include it. |
-| `Holidays`, `Settings` | ❌ | Key-value / date-keyed. Overwrite is the correct semantics. |
-| `StandupEntries` | ❌ | Owner-gated in the service layer: only the owner can add/update/delete/reorder their own entries. Unlike `TimeLogs`, this is enforced in code (`StandupService`), not merely absent from the UI. |
+| **check-and-bump** | user edits carrying an `expectedVersion` | `SET …, row_version = row_version + 1 WHERE id = @id AND row_version = @expected` |
+| **bump-only** | reorders, soft-deletes, system writes | `SET …, row_version = row_version + 1 WHERE id = @id` |
 
-Mechanism for a plain update:
+The rule is: **always bump; check selectively.** A write that bumps without checking is safe. A write that checks without bumping is the bug in §7.4.
 
-```sql
-UPDATE Backlogs
-   SET …, row_version = row_version + 1
- WHERE id = @id AND row_version = @expected;
-```
+Note also `TeamBootstrapService.cs:94`, which writes to `Backlogs` from **outside** `Data/Repositories/` — the "14 repositories" framing misses it.
 
-`rowsAffected == 0` → `ConcurrencyConflictException` → middleware → **`409 Conflict`**, with the current server-side state in the response body.
+### 7.3 [REV2] `TimeLogs`: the upsert has **five** cases, not four
 
-Angular contract on 409: show *"Someone else just changed this."* with **[See their change]** / **[Overwrite with mine]**. Never resolve silently in either direction.
-
-### 6.1.1 `TimeLogs`: concurrency on an upsert
-
-`TimeLogs` is written through an upsert, not a plain update, so the rule needs one more case. A timesheet cell has three states, and the client says which one it believes it is looking at:
+Rev. 1's table had four. The fifth silently destroys data:
 
 | Client sends | Row on server | Result |
 |---|---|---|
-| `expectedVersion = null` ("cell is empty") | absent | **INSERT**, `row_version = 1` |
-| `expectedVersion = null` | **present** | **409** — someone filled this cell while you were looking at it |
-| `expectedVersion = N` | present, version `N` | **UPDATE**, `row_version = N + 1` |
+| `expectedVersion = null` | absent | INSERT, `row_version = 1` |
+| `expectedVersion = null` | **present** | **409** — someone filled this cell while you looked at it |
+| `expectedVersion = N` | present, version `N` | UPDATE, `row_version = N + 1` |
 | `expectedVersion = N` | present, version `≠ N` | **409** |
+| **`expectedVersion = N`** | **absent (deleted)** | **409** ← **missing from rev. 1** |
 
-`GET /api/timelogs/week` therefore returns each cell's `row_version` (`null` for an empty cell), and `PUT /api/timelogs/cell` echoes it back. Clearing a cell (which is a `DELETE`, not a write of `0` — the codebase treats empty and zero as semantically distinct) is version-checked the same way.
+The naive `INSERT … ON CONFLICT … DO UPDATE … WHERE row_version = @expected` gets the last case **wrong**: with no row there is no conflict, so the `WHERE` never runs, the `INSERT` succeeds, and the row is **resurrected at v=1 with HTTP 200**. Alice deletes a cell; Bob, holding v=3, types a number; **Alice's delete evaporates with no 409 and no trace.** That is precisely the bug class this slice exists to eliminate — the `WHERE` guards the UPDATE branch, not the INSERT branch.
 
-**Smart Fill is a deliberate carve-out.** It is an *explicit bulk overwrite*: the user previews the exact cells and hours, confirms, and the service already re-validates server-side at apply time. Overwriting is the stated intent of the operation, so its writes are not version-checked per cell. What protects it is the re-validation that already exists (`ValidateSmartFillAsync` re-runs against live data inside the apply transaction), which will reject the batch if the day would exceed 8h given whatever other users have since written. Making Smart Fill version-check every cell would mean a preview could go stale between Preview and Confirm and fail for reasons the user cannot act on.
+The fix makes the **INSERT itself conditional**, and returns the new version in the same statement (verified 5/5 cases; 12 threads racing one empty cell → exactly 1 winner, 11 × 409, 0 exceptions):
 
-### 6.2 Auth columns
+```sql
+INSERT INTO TimeLogs (user_id, task_id, work_date, hours, created_at, row_version)
+SELECT @UserId, @TaskId, @WorkDate, @Hours, @CreatedAt, 1
+ WHERE @Expected IS NULL
+    OR EXISTS (SELECT 1 FROM TimeLogs
+                WHERE user_id = @UserId AND task_id = @TaskId
+                  AND work_date = @WorkDate AND row_version = @Expected)
+    ON CONFLICT(user_id, task_id, work_date) DO UPDATE
+   SET hours = excluded.hours, row_version = TimeLogs.row_version + 1
+ WHERE TimeLogs.row_version = @Expected
+RETURNING row_version;
+```
+
+`RETURNING` emits **zero rows** when the `DO UPDATE`'s `WHERE` turns it into a no-op — the SQLite docs are silent on this; it was measured. So one statement both detects the conflict and returns the new version: `QueryFirstOrDefaultAsync<long?>` → `null` means 409. No `changes()` call is needed — Dapper's `ExecuteAsync` **is** `changes()`.
+
+**Clearing a cell** is a `DELETE` (empty ≠ zero, semantically). RFC 9110 §9.3.5 discourages DELETE-with-body, so clear is modelled as `PUT { hours: null, expectedVersion }` [G6].
+
+### 7.4 [REV2] Smart Fill must **bump** even though it does not **check**
+
+Rev. 1 carved Smart Fill out of version *checking* and never said what happens to the version. Both the pitfall and the concurrency agent independently found the hole:
+
+```
+A reads a cell at v3  →  Smart Fill overwrites it (no bump — still v3)
+                      →  A saves with expected=3  →  MATCHES  →  silently overwrites Smart Fill
+```
+
+That is the lost update the feature exists to prevent, reintroduced by its own exception. **Smart Fill bumps `row_version` on every cell it writes.** Its protection remains the server-side re-validation that already runs inside the apply transaction (`ValidateSmartFillAsync`), which rejects the batch if the day would exceed 8h given whatever anyone else has since written.
+
+### 7.5 [REV2] `BacklogRepository.UpdateAsync` needs a transaction before it can be version-checked
+
+`:140-192` currently does read → `UPDATE` → N× audit `INSERT`, **with no transaction**. Bolt a version check onto that and a 409 still writes the audit rows — the history would describe a change that never happened. Wrap it first.
+
+### 7.6 Why 409 and not `If-Match` / 412
+
+RFC 9110 §13.1.1 names `If-Match` as *the* standard tool for the lost-update problem, so this deserves an explicit answer rather than silence. `GET /api/timelogs/week` returns ~35 cells, **each with its own version**, and HTTP permits exactly **one** `ETag` per response. The versions must therefore live in the body on the read path; once they do, moving them to a header on the write path yields a hybrid that is worse than either. And 412 is defined in terms of *request header fields* (§15.5.13) — with the version in the body, **409 is the correct code, not a compromise.**
+
+### 7.7 Auth columns
 
 ```sql
 ALTER TABLE Users RENAME COLUMN windows_username TO username;  -- values preserved
 ALTER TABLE Users ADD COLUMN password_hash TEXT;
 ALTER TABLE Users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE Users ADD COLUMN active_team_id INTEGER NOT NULL DEFAULT 0;   -- §6.2
 ```
 
-`windows_username` already holds bare usernames (`nhan`, `chi.le`, …). Renaming the column means **no data migration** and people log in with the name they already use. No account is orphaned.
+`windows_username` already holds bare usernames (`nhan`, `chi.le`, …), so the rename is **not a data migration** and nobody's history is orphaned — people log in with the name they already use.
 
-`password_hash` is nullable: existing rows have no password until an admin sets one (§8.2).
+**[REV2] Blast radius of the rename is larger than rev. 1 said, and one part of it fails silently.** It is **6** SQL statements, not 5. Beyond `UserRepository`:
 
-**Blast radius of the rename.** `windows_username` appears in 5 SQL statements in `UserRepository`, plus `IUserRepository.GetByWindowsUsernameAsync` / `SetWindowsUsernameAsync`. Because Core is shared, renaming the column and its repository members updates **both** WPF and the API in one move — WPF keeps working, since its `CurrentUserService` maps `Environment.UserName` to whatever that column is now called. Rename the repository members to `GetByUsernameAsync` / `SetUsernameAsync` in the same change; leaving `Windows` in the name of a method that no longer has anything to do with Windows is how stale vocabulary calcifies (the codebase already carries one such scar: files named `Requests*` that contain classes named `Backlogs*`, three migrations after the rename).
+| Site | Failure if missed |
+|---|---|
+| `TestDb.cs:54` seeds `INSERT INTO Users(name, windows_username, …)` | **Every DB-backed test dies at once.** |
+| `DatabaseInitializerTests.cs:144` asserts the old column name | Fails loudly (fine). |
+| **`UserRepository.cs:88` — `UserRaw.windows_username`** binds by column name | Rename the column but not the DTO and **Dapper silently returns `null`**: no exception, no log, **broken login**. |
 
-## 7. API
+Rename the repository members too (`GetByUsernameAsync` / `SetUsernameAsync`). Leaving `Windows` in the name of a method that has nothing to do with Windows is how stale vocabulary calcifies — this codebase already carries that scar (files named `Requests*` containing classes named `Backlogs*`, three migrations after the rename).
 
-### 7.1 Shape
+**[REV2] The `CreateTables` DDL at `DatabaseInitializer.cs:43` must keep saying `windows_username` forever** [B4]. `RunMigrations` replays every step on a fresh database, so "tidying" the baseline DDL to the new name breaks **fresh installs only** — the worst kind of bug to find. Leave it, with a comment saying why. (Good news: the whole of `InitializeAsync` including the `user_version` bump is one transaction, so a mid-migration failure rolls back cleanly.)
 
-Thin controllers over the existing Core services. No business logic in controllers — Core already holds it, and it is covered by the 548 tests.
+## 8. API
 
-Error contract:
+### 8.1 [REV2] The error contract does not work out of the box
+
+Rev. 1's table assumed ASP.NET returns 401 when unauthenticated. **On .NET 8 it does not.** Reading `CookieAuthenticationEvents.cs` on `release/8.0`: the *only* trigger for a 401 is the literal request header `X-Requested-With: XMLHttpRequest`. Everything else gets `Response.Redirect(...)` → **302 → `/Account/Login`** → which does not exist → **Angular sees 404, never 401**. Microsoft changed this default only in **.NET 10**.
+
+The twist that will waste a day: **the SignalR JS client *does* send that header**, so the hub 401s correctly while the API 404s. The asymmetry sends you looking in the wrong place.
+
+```csharp
+o.Events.OnRedirectToLogin        = ctx => { ctx.Response.StatusCode = 401; return Task.CompletedTask; };
+o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
+```
 
 | Condition | Status |
 |---|---|
-| Validation failure (`TimeLogService` rules, etc.) | `400` + message |
-| Not authenticated | `401` |
-| Authenticated but not admin (3 endpoints) | `403` |
-| Optimistic-concurrency conflict | **`409`** + current server state |
+| Validation failure (`TimeLogService` rules) | `400` + message |
+| Not authenticated | `401` (only after the override above) |
+| Authenticated, not admin | `403` |
+| Concurrency conflict | **`409`** + current server state **+ `deleted: bool`** |
 
-### 7.2 SignalR replaces `DataChangedMessage`
+**[REV2] The 409 body needs `deleted`** [G4]: `rowsAffected == 0` conflates "your version is stale" with "the row is gone", and the user-facing wording differs. Related limitation to design around: **`TimeLogs` has no `changed_by` column**, so the API *cannot name who* changed a cell. The "Someone else just changed this" dialog can name the person for `Backlogs` (via `BacklogAudit`) but not for timesheet cells.
 
-The WPF app uses `WeakReferenceMessenger` to broadcast `DataChangedMessage(DataKind)` — in-process only, so two users never see each other's changes without reloading.
+### 8.2 [REV2] `FallbackPolicy` locks the user out of the login page
 
-- Hub at `/hubs/data`, clients joined to a **group per team** (this preserves the existing R6 no-leak rule).
-- After every successful mutation, broadcast `DataChanged(DataKind, teamId)`.
-- `DataKind` keeps all 11 values (`Backlogs, Tasks, Users, Logs, Templates, DefaultTasks, Standup, Tags, PcaContacts, Holidays, Teams`); the listener table in the inventory (§0.3) ports 1:1.
-- Angular invalidates the matching queries.
+`FallbackPolicy = DefaultPolicy` applies to *"requests served by other middleware after the authorization middleware, **such as static files**"*. So a logged-out user requesting Angular's `index.html` gets **401**, and can never reach the form that would log them in. It also blocks `MapFallbackToFile` and health checks — and `/api/auth/login` itself, which rev. 1 never marked `[AllowAnonymous]`.
 
-## 8. Auth
+Required: `[AllowAnonymous]` on login, and `.AllowAnonymous()` on the SPA fallback and static files. (SignalR's `negotiate` being blocked is correct — leave it.)
 
-### 8.1 Mechanism
+### 8.3 SignalR
 
-Password hashing uses `PasswordHasher<User>` taken **standalone** from `Microsoft.AspNetCore.Identity` (PBKDF2) — the hasher class only, without the Identity stack, its schema, or EF Core.
+Replaces `DataChangedMessage` (`WeakReferenceMessenger` — in-process only, so today two users never see each other's changes without reloading).
+
+- Hub at `/hubs/data`; clients joined to a **group per team** (preserving the R6 no-leak rule).
+- After each successful mutation, broadcast `DataChanged(DataKind, teamId)`.
+- `DataKind` keeps all 11 values; the listener table in the inventory (§0.3) ports 1:1.
+
+**[REV2] Two hub facts that bite silently:**
+- **Group membership is lost on every reconnect.** Rejoin in `OnConnectedAsync`, or cross-user sync dies after any Wi-Fi blip — and *appears* to work until then.
+- **`IHubContext` has no `Others`.** The editing user receives their own `DataChanged` echo, which can re-fetch and clobber the very conflict dialog §7.3 just raised. Exclude the caller's connection.
+
+### 8.4 [REV2] `busy_timeout` does not bound how long a request hangs
+
+Microsoft.Data.Sqlite **auto-retries** busy/locked errors up to `CommandTimeout` — **default 30 s**. Measured with rev. 1's exact settings: a blocked writer failed after **33,940 ms**, not 5,000. Add **`DefaultTimeout=5`** to the connection string (a valid keyword; it flows into every Dapper call, so no repository changes) and lower `busy_timeout` to 1000 → worst-case hang ≈ 5.2 s.
+
+Also: `BeginTransaction()` already defaults to **`BEGIN IMMEDIATE`**, not deferred, so `UpsertBatchAsync` is already free of the lock-upgrade trap. **Never use the `deferred: true` overload** — it reproduces `SQLITE_BUSY_SNAPSHOT` (517), which hangs for the full timeout on a conflict that can never resolve.
+
+`RetentionService` is the outlier: it holds one `BEGIN IMMEDIATE` across six bulk DELETEs, blocking every writer app-wide. One admin click can 500 everyone else. It must run in a maintenance window, or be moved out of the request path.
+
+## 9. [REV2] BLOCKER — backup is incompatible with the WAL decision
+
+This is the finding that most justifies having done the research. `BackupService.cs:9` states its own safety precondition verbatim:
+
+> *"File-level `File.Copy` **is safe at idle** — the app uses **short connections + journal_mode=DELETE**."*
+
+**§6.3 deletes both premises.** Five sites `File.Copy` the live `.db`: `BackupService:47,103,105`, `DbBackupHelper:36` (**runs before every bulk write**), and `PruneArchiver:164`.
+
+[sqlite.org/wal](https://www.sqlite.org/wal.html): copying a WAL database **without its `-wal` file** means *"transactions that were previously committed … might be lost, or the database file might become corrupted."*
+
+And `PruneArchiver` validates its snapshot like this:
+
+```csharp
+File.Copy(dbPath, snapPath, overwrite: false);
+return File.Exists(snapPath) && new FileInfo(snapPath).Length > 0 ? snapPath : null;
+```
+
+Exists, non-empty → **"snapshot OK"** → `RetentionService` then **permanently DELETEs** the originals it just "archived". Under WAL that snapshot can be stale or corrupt, and nothing checks. **Three months of real data destroyed, with a backup that cannot restore it.** Nobody finds out until they try.
+
+**Fixes:**
+- Replace every live-DB `File.Copy` with **`SqliteConnection.BackupDatabase()`** (the SQLite online-backup API; 3.41.2 is bundled) or `VACUUM INTO`.
+- **Restore must be offline.** With pooling on, `File.Copy(backup, dbPath, overwrite:true)` throws `IOException` on the pooled handles, or replays a stale `-wal` onto the new file. Restore-while-serving cannot be done by file copy at all.
+- **[REV2/H5] The OneDrive scaffolding is not inert.** `IDbBackupHelper` and `IJournalWarningSink` are **constructor-injected** into `TimeLogService`, `RetentionService`, `TeamBootstrapService`, `DefaultTaskSyncService` and `PruneArchiver`. Left alone on the host, that means a **full-database copy on every Smart Fill request**, and an XC-09 journal check that passes forever because it looks for a `-journal` file that WAL never creates. The API registers **no-op implementations** of both — a DI swap, zero service changes. WPF keeps the real ones until M8.10.
+
+## 10. Auth
+
+### 10.1 Mechanism
+
+`PasswordHasher<User>` used **standalone** from `Microsoft.Extensions.Identity.Core` — the hasher class only, no Identity stack, no schema, no EF Core. .NET 8 defaults: PBKDF2 / HMAC-SHA512 / **100,000 iterations**, 128-bit salt, 256-bit subkey. It needs no DI (`new PasswordHasher<User>()`; the `user` argument is ignored in the method bodies).
 
 ```csharp
 services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
         .AddCookie(o => {
-            o.ExpireTimeSpan    = TimeSpan.FromDays(30);
-            o.SlidingExpiration = true;
-            o.Cookie.HttpOnly   = true;
-            o.Cookie.SameSite   = SameSiteMode.Lax;
-            o.Cookie.SecurePolicy = CookieSecurePolicy.Always;   // → dev must also run HTTPS, see §10
+            o.ExpireTimeSpan      = TimeSpan.FromDays(30);
+            o.SlidingExpiration   = true;
+            o.Cookie.HttpOnly     = true;
+            o.Cookie.SameSite     = SameSiteMode.Lax;
+            o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;   // D8: HTTP, accepted risk
+            o.Events.OnRedirectToLogin        = ctx => { ctx.Response.StatusCode = 401; return Task.CompletedTask; };
+            o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
         });
 services.AddAuthorization(o => {
-    o.FallbackPolicy = o.DefaultPolicy;                       // every endpoint requires auth…
-    o.AddPolicy("Admin", p => p.RequireClaim("is_admin", "1"));
+    o.FallbackPolicy = o.DefaultPolicy;
+    o.AddPolicy("Admin", p => p.RequireClaim("is_admin", "1"));   // see §10.2
 });
 ```
 
-`POST /api/auth/login { username, password, rememberMe }` → verify hash → `SignInAsync` with `IsPersistent = rememberMe`. That flag **is** the "stay logged in" mechanism; nothing else is needed.
+`POST /api/auth/login { username, password, rememberMe }` → verify hash → **check `is_active`** → `SignInAsync` with `IsPersistent = rememberMe`. That flag *is* the "stay logged in" mechanism.
 
-`POST /api/auth/logout`, `GET /api/auth/me` complete the surface.
+**[REV2] Login must check `is_active`.** Rev. 1 omitted it: a soft-deleted (deactivated) user who still has a password could log in.
 
-`CurrentUserService` is **not modified**. It already takes its identity through a `Func<string>` seam:
-
+`CurrentUserService` is **not modified** — it already takes its identity through a `Func<string>` seam:
 ```csharp
-// WPF  (unchanged)
-new CurrentUserService(users, () => Environment.UserName)
-// API
-new CurrentUserService(users, () => ctx.HttpContext!.User.Identity!.Name!)
+new CurrentUserService(users, () => Environment.UserName)                      // WPF, unchanged
+new CurrentUserService(users, () => ctx.HttpContext!.User.Identity!.Name!)     // API
 ```
 
-### 8.2 Setting initial passwords
+### 10.2 [REV2] Two silent auth failures
 
-The existing Users screen already has *Add user*. Extend it with a password field, and add a *Set password* action for existing rows. An admin sets the initial password and passes it to the person. No email, no reset flow, no self-registration.
+**Data Protection is missing from the design entirely** — the highest-severity gap research found, because it is invisible until production. The cookie is encrypted with a Data Protection key ring. Unconfigured, that ring lives **in memory**, so **every app restart logs everyone out**. On the host machine — a workstation that reboots, updates, and recycles — that is mass logouts, roughly daily, **with nothing in the logs**, directly defeating the "stay logged in" goal in §3. Persist the key ring to disk (`PersistKeysToFileSystem`) in a folder that survives restarts and is backed up with the database.
 
-**Bootstrap (closes a chicken-and-egg).** Migration v10 promotes the first user (lowest `id`) to `is_admin = 1`, so the system is never left with zero admins. But that user has no `password_hash` either, so nobody could log in and nobody could set one.
+**`RequireClaim("is_admin", "1")` compares with `StringComparer.Ordinal`.** If the claim is written from a `bool` (`.ToString()` → `"True"`), the policy **always fails** and the admin gets a **silent 403** with nothing logged. Write the claim value as the literal `"1"`, and test that a real admin passes.
 
-Resolution: on startup, if the designated admin's `password_hash IS NULL`, the API hashes a bootstrap password read from configuration (`Bootstrap:AdminPassword`, supplied via environment variable or `appsettings.Production.json` by whoever deploys) and writes it in. The admin logs in with it, changes it, then sets everyone else's password.
+### 10.3 Setting initial passwords
+
+The Users screen already has *Add user*. Extend it with a password field and a *Set password* action.
+
+**Bootstrap.** Migration v10 promotes the first user (lowest `id`) to `is_admin = 1`, but they have no `password_hash` either — so nobody could log in and nobody could set one.
+
+**[REV2] Resolution — no persistent secret.** Rev. 1 read a bootstrap password from configuration; that puts a credential in a file that tends to get committed. Instead: on startup, if the designated admin's `password_hash IS NULL`, the API **generates a random password, applies it, and writes it once to the console/log**. The operator reads it, logs in, changes it. There is no secret to leak, because it exists only in that one log line.
 
 Constraints:
-- The bootstrap password is applied **only** when `password_hash IS NULL` — it can never overwrite a real password, so leaving the setting in place is harmless but pointless.
-- If `Bootstrap:AdminPassword` is absent and no user has a password, the API **fails to start** with an explicit message. It must never fall back to a hardcoded default, and it must never start in a state where nobody can log in.
-- Users other than the bootstrap admin get their password from the admin. There is deliberately **no** "first login claims the account" flow: on a trusted-but-shared internal network, that would let anyone claim a colleague's account before they do.
+- Applied **only** when `password_hash IS NULL`, as a single atomic `UPDATE … WHERE password_hash IS NULL` — which also neutralises the race under an overlapped service restart.
+- No "first login claims the account" flow: on a shared internal network that lets anyone claim a colleague's account before they do.
 
-### 8.3 Admin-only endpoints
+### 10.4 Admin-only endpoints
 
-Exactly three, chosen because they are **destructive**, not merely privileged:
+Three, chosen because they are **destructive**, not merely privileged:
 
 | Endpoint | Damage if mis-clicked |
 |---|---|
-| `POST /api/ops/retention/run` | Permanently deletes all timesheet/standup/task data older than N months |
-| `POST /api/ops/backup/restore` | Overwrites the entire database — everyone loses work since the backup |
-| `PATCH /api/teams/{id}/deactivate` | The team disappears from every screen |
+| `POST /api/ops/retention/run` | Permanently deletes all data older than N months |
+| `POST /api/ops/backup/restore` | Overwrites the whole database |
+| `PATCH /api/teams/{id}/deactivate` | The team vanishes from every screen |
 
-Everything else — logging hours, editing backlogs, standup, task list, reports — is open to any authenticated user, matching today's behaviour.
+Everything else — logging hours, editing backlogs, standup, task list, reports — stays open to any authenticated user, matching today's behaviour.
 
-## 9. Testing
+## 11. Testing
 
-- **548 existing tests** move to Core and must stay **100% green**. This is the real safety net for the extraction, not a formality.
-- New: optimistic-concurrency tests (two concurrent updates → exactly one gets a conflict), WAL behaviour under concurrent writers, auth (login / bad password / persistent cookie / admin policy denies non-admin), API integration tests via `WebApplicationFactory`.
+- The **548 existing tests** stay in `TimesheetApp.Tests` (`net8.0-windows`, referencing Core **and** WPF) and must stay **100% green** through the extraction (§6.4). This is the real safety net, not a formality.
+- New in `TimesheetApp.ApiTests` (net8.0, Web SDK): auth (login, bad password, inactive user, persistent cookie, admin policy denies non-admin), concurrency, `WebApplicationFactory` integration.
 
-## 10. Known friction — the dev-time cookie trap
+**[REV2] Two testing traps:**
 
-Two settings from §8.1 will silently break local development unless both are handled up front. Both fail the same way: a 401 with no error, which reads like a bug in the auth code rather than a transport problem.
+- **The concurrency test does not need threads.** The conflict window *is* the stale version number, so "two simultaneous updates" reproduces perfectly sequentially: both clients read v=1; apply A (succeeds); apply B with expected=1 (409); assert A's value survived. Deterministic, fast, never flaky. A `Barrier`-based parallel test is a supplementary safety net that asserts the *invariant*, not timing.
+- **Never use `:memory:` for a concurrency test.** Each connection gets its **own** database, so a conflict can never occur — the test passes while asserting nothing. The existing 548 already use temp-file databases; keep that convention.
+- `ClearAllPools()` is process-global and appears in three teardowns. Harmless today (`Pooling=false`); a flake factory the moment pooling is on [H6].
 
-1. **Cross-origin.** Angular's dev server runs on `:4200` and the API on its own port. The browser will not attach the auth cookie across origins. → Use Angular CLI `proxy.conf.json` to proxy `/api` and `/hubs` to the backend, so the browser sees one origin.
-2. **`SecurePolicy = Always`** means the cookie is only ever sent over HTTPS. Serving the dev API over plain HTTP would therefore drop it on every request. → Run the dev API over **HTTPS** (`dotnet dev-certs https --trust`), the ASP.NET default. Do **not** weaken the cookie policy per-environment to work around this: an insecure-cookie path that exists only in dev is exactly the kind of thing that leaks into production config.
+## 12. [REV2] Development friction
 
-Also: SignalR must be proxied alongside `/api` (WebSocket upgrade), or the hub will silently fall back to long-polling — or fail outright.
+Rev. 1's advice to "run dev over HTTPS" is void — D8 chose HTTP throughout, which removes both the certificate problem and the `WebApplicationFactory` trap where a `Secure` cookie is silently dropped over `http://localhost`.
 
-## 11. Bugs found during survey — fix in this slice, do not port
+What remains: Angular's dev server runs on `:4200` and the API on its own port, so the browser will not attach the cookie across origins. Use Angular CLI `proxy.conf.json` to proxy `/api` **and `/hubs`** — the latter needs `"ws": true` for the WebSocket upgrade, or SignalR silently degrades to long-polling.
 
-All three are fixed **in Core**, not at their current call sites. That distinction is the whole point: two of them exist *because* business logic leaked into a WPF ViewModel, where the web client cannot reuse it and would be free to reinvent the same mistake.
+## 13. Bugs found during survey — fixed in this slice, in Core
 
-| Bug | Detail | Where the fix lands |
+All three are fixed **in Core**, not at their current call sites. That distinction is the point: two of them exist *because* business logic leaked into a WPF ViewModel, where the web client cannot reuse it and is free to reinvent the same mistake.
+
+| Bug | Detail | Fix lands in |
 |---|---|---|
-| **Two Smart Fill implementations** | `SmartInputService` is DI-registered and injected into `TimesheetViewModel` — and then **never used**. The live logic is `SmartInputPanelVm.BuildPlan`, in a ViewModel. The live one does **not** exclude holidays when building the preview, while `ValidateSmartFillAsync` **does** — so a range containing a holiday renders a cell that then fails validation and blocks Apply, with no way for the user to act on the error. | Delete `BuildPlan`; make the already-holiday-aware `SmartInputService` **the** implementation, and have both WPF and the API call it. One source of truth for the arithmetic, covered by tests. |
-| **`DAYS LOGGED` is always `N / N`** | `span = WeeklyRows.Count`, but `WeeklyRows` only contains days that *have* logs — so numerator and denominator move together and the stat can never read `3 / 5`. The denominator should be the number of **working days in the week** (excluding weekends and holidays). | The computation lives in `ReportsViewModel` today. **Move it into `ReportAggregator`** (Core) — it is business arithmetic, not presentation — and fix it there, so the Angular Reports screen (M8.7) inherits the correct version instead of re-deriving it. |
-| **`LastNWorkingDays` ignores holidays** | It excludes weekends but not holidays, contradicting `WorkingDayCalculator`, which excludes both. So the "hasn't logged in N days" banner counts a public holiday against people. | `TimeLogService` (already Core) — delegate to `IWorkingDayCalculator` instead of re-implementing the day walk. |
+| **Two Smart Fill implementations** | `SmartInputService` is DI-registered, injected into `TimesheetViewModel`, and **never used**. The live logic is `SmartInputPanelVm.BuildPlan` — in a ViewModel. It does **not** exclude holidays when building the preview, while `ValidateSmartFillAsync` **does**, so a range containing a holiday renders a cell that then fails validation and blocks Apply, with no way for the user to act on the error. | Delete `BuildPlan`; make the already-holiday-aware `SmartInputService` **the** implementation. |
+| **`DAYS LOGGED` can never read `3 / 5`** | `span = WeeklyRows.Count`, and `WeeklyRows` only holds days that *have* logs — numerator and denominator move together. **It has zero test coverage**, which is how a statistic that can only display `N / N` reached production. | Move the computation from `ReportsViewModel` into `ReportAggregator` (it is business arithmetic, not presentation) and fix it there, so M8.7 inherits the correct version. |
+| **`LastNWorkingDays` ignores holidays** | Contradicts `WorkingDayCalculator`, so the "hasn't logged in N days" banner counts public holidays against people. | `TimeLogService` — delegate to `IWorkingDayCalculator`. It already injects `IHolidayRepository`, so **no constructor change** and no cascade through the 26 `TimeLogServiceTests`. |
 
-## 12. Dead code to drop during extraction
+## 14. Dead code dropped during extraction
 
 | Item | Status |
 |---|---|
 | `SelectUserDialog` | Wired in `App.xaml.cs` but `selectUser` is never invoked (auto-provision replaced it). The dialog can never appear. |
-| `ISmartInputService` / `SmartInputService` | See §11 — resolve by making this the single implementation, not by deleting it. |
 | `TimesheetViewModel.SaveCommand` | No Save button exists (auto-save replaced it). Retained only for tests. |
 
-## 13. Porting surface — when SQLite is replaced
+## 15. Porting surface — when SQLite is replaced
 
-SQLite is an **interim** database (D3), so the cost of leaving it is a number we should know, not discover. Surveyed rather than guessed; the whole surface is 5 constructs across ~15 call sites:
+SQLite is **interim** (D3), so the exit cost is a number we know rather than discover. Surveyed, not guessed:
 
 | SQLite-specific | Where | SQL Server equivalent |
 |---|---|---|
 | `ON CONFLICT (…) DO UPDATE` | `TimeLogRepository:132`, `HolidayRepository:52` | `MERGE` (Postgres keeps `ON CONFLICT`) |
+| **`INSERT … SELECT … WHERE … ON CONFLICT`** | §7.3 — **new in v10** | `MERGE` with a matched/not-matched predicate |
 | `INSERT OR REPLACE` | `SettingsRepository:23` | `MERGE` |
-| `INSERT OR IGNORE` | `TeamRepository:112` | `IF NOT EXISTS` / `MERGE` |
-| `last_insert_rowid()` | 10 call sites across 9 repositories | `SCOPE_IDENTITY()` (Postgres: `RETURNING id`) |
-| `PRAGMA user_version` | `DatabaseInitializer` (3 uses) | a `SchemaVersion` table, seeded once from the current value |
-| `INTEGER PRIMARY KEY AUTOINCREMENT`, `REAL` | DDL in `DatabaseInitializer` | `INT IDENTITY`, `FLOAT`/`DECIMAL` |
+| `INSERT OR IGNORE` | `TeamRepository:112` | `IF NOT EXISTS` |
+| `last_insert_rowid()` | 10 sites across 9 repositories | `SCOPE_IDENTITY()` (Postgres: `RETURNING id`) |
+| `RETURNING` | §7.3 | `OUTPUT` |
+| `PRAGMA user_version` | `DatabaseInitializer` (3 uses) | a `SchemaVersion` table |
+| `INTEGER PRIMARY KEY AUTOINCREMENT`, `REAL` | DDL | `INT IDENTITY`, `FLOAT` |
 
-**What is *not* on this list matters more than what is.** There are **no** SQLite date functions anywhere — no `strftime`, no `julianday`, no `datetime()`. All dates are computed in C# and stored as ISO `TEXT` (`yyyy-MM-dd` / `yyyy-MM-ddTHH:mm:ssZ`). Dialect-specific date arithmetic is normally the single most expensive thing to port, and this codebase never took the dependency. There is also no `LIMIT`/`TOP` (no paging exists — a separate problem, but a portable one).
+**What is absent matters more.** There are **no** SQLite date functions anywhere — no `strftime`, no `julianday`, no `datetime()`. Every date is computed in C# and stored as ISO `TEXT`. Dialect-specific date arithmetic is normally the most expensive thing to port, and this codebase never took the dependency.
 
-**Deliberately not abstracted now.** No `ISqlDialect` layer, no query builder. Fifteen enumerated call sites behind an already-abstract `IConnectionFactory` is a bounded piece of work when the day comes; building the abstraction today would be speculative generality, and we would be guessing at the target engine's shape before knowing what it is. What this slice owes the future is (a) this list stays accurate, and (b) **no new SQLite-only construct is introduced** in the v10 work without being added to it.
+**Deliberately not abstracted now.** No `ISqlDialect`, no query builder: an enumerated list of call sites behind an already-abstract `IConnectionFactory` is bounded work when the day comes, whereas building the abstraction today would be guessing at the shape of an engine we have not chosen. What this slice owes the future is that the list above **stays accurate** — and per rev. 1's own commitment, §7.3's new construct has been added to it.
 
-## 15. Sequencing after this slice
+## 16. Sequencing after this slice
 
 | Slice | Content | Needs UI design? |
 |---|---|---|
-| M8.4 | Angular shell + Log Work (week grid, Smart fill) | ✅ |
+| M8.4 | Angular shell + Log Work · **plus** `TeamFilter`, `TagPicker`, login screen, 409-conflict UX, and OpenAPI-generated TS models (the vendored bundle's models are UI-shaped: `User` has no `id`, `TaskCard` has no `ScheduleState`, and `HoursMap` is keyed by array index) | ✅ |
 | M8.5 | Backlog + Task List (cards, tags, holidays, Gantt, continue) | ✅ |
 | M8.6 | Daily Report (Input + Board) | ✅ |
 | M8.7 | Reports | ✅ |
 | M8.8 | Admin (Users + Settings) | ✅ |
-| M8.9 | Export / Backup / Retention → server-side | ⚠️ minimal |
-| M8.10 | Delete the WPF project; drop the OneDrive scaffolding from Core | ❌ |
+| M8.9 | Export / Backup / Retention → host-side | ⚠️ minimal |
+| M8.10 | Delete WPF; drop the OneDrive scaffolding from Core | ❌ |
