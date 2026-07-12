@@ -25,7 +25,7 @@ public sealed class CurrentUserService : ICurrentUserService
     public async Task<CurrentUserResult> ResolveAsync()
     {
         var name = _windowsUserName();
-        var user = await _users.GetByWindowsUsernameAsync(name);
+        var user = await _users.GetByUsernameAsync(name);
         if (user is null)
         {
             Current = null;
@@ -38,7 +38,11 @@ public sealed class CurrentUserService : ICurrentUserService
 
     public async Task SetWindowsUsernameAsync(int userId, string windowsUsername)
     {
-        await _users.SetWindowsUsernameAsync(userId, windowsUsername);
+        // IUserRepository.SetUsernameAsync is check-and-bump (v10/M8.2), so it needs the version
+        // this caller last saw. Current is typically null here (this runs after ResolveAsync
+        // returned NeedsSelection), so it cannot supply it -- fetch userId's row fresh instead.
+        var before = await _users.GetByIdAsync(userId);
+        await _users.SetUsernameAsync(userId, windowsUsername, before?.RowVersion ?? 0);
         Current = await _users.GetByIdAsync(userId);
     }
 }

@@ -1,17 +1,25 @@
 using System.Globalization;
 using Dapper;
+using TimesheetApp.Data;
 using TimesheetApp.Models;
 
 namespace TimesheetApp.Data.Repositories;
 
 // Daily Report (Standup) data access — DR-02..04, DR-09. Dates stored as TEXT (ISO, culture-neutral);
 // DateOnly/DateTimeOffset parsed at the boundary. One short connection per method (OneDrive-safe policy).
+//
+// v10 (M8.2): StandupIssues gets row_version. It is deliberately collaborative -- anyone may edit
+// an issue (DR-04), no owner gate -- so UpdateIssueAsync is check-and-bump: it throws
+// ConcurrencyConflictException when the caller's StandupIssue.RowVersion no longer matches the row.
+// StandupEntries is deliberately NOT versioned -- it is owner-gated in StandupService (only the
+// entry's owner may add/update/delete/reorder it), a protection enforced in code, not merely
+// absent from the UI -- so UpdateEntryAsync is untouched.
 public sealed class StandupRepository : IStandupRepository
 {
     private const string EntryCols =
         "id, user_id, work_date, section, backlog_id, backlog_code, task_text, description, deadline, status, order_index, created_at, team_id";
     private const string IssueCols =
-        "id, entry_id, issue_text, solution_text, status, order_index, created_at";
+        "id, entry_id, issue_text, solution_text, status, order_index, created_at, row_version";
 
     private readonly IConnectionFactory _factory;
 
@@ -153,15 +161,27 @@ public sealed class StandupRepository : IStandupRepository
             });
     }
 
+    // Check-and-bump: StandupIssues is collaborative (DR-04, no owner gate), so two people can
+    // race to edit the same issue. rowsAffected == 0 means either someone else changed it first
+    // (stale RowVersion) or the issue is gone -- the existence check on the conflict path only
+    // tells the two apart.
     public async Task UpdateIssueAsync(StandupIssue i)
     {
         using var c = _factory.Create();
-        await c.ExecuteAsync(
+        var rowsAffected = await c.ExecuteAsync(
             @"UPDATE StandupIssues SET
                   issue_text = @IssueText, solution_text = @SolutionText,
-                  status = @Status, order_index = @OrderIndex
-              WHERE id = @Id;",
-            new { i.IssueText, i.SolutionText, i.Status, i.OrderIndex, i.Id });
+                  status = @Status, order_index = @OrderIndex,
+                  row_version = row_version + 1
+              WHERE id = @Id AND row_version = @RowVersion;",
+            new { i.IssueText, i.SolutionText, i.Status, i.OrderIndex, i.Id, i.RowVersion });
+
+        if (rowsAffected == 0)
+        {
+            var exists = await c.ExecuteScalarAsync<long>(
+                "SELECT COUNT(1) FROM StandupIssues WHERE id = @id;", new { id = i.Id });
+            throw new ConcurrencyConflictException("StandupIssues", i.Id, i.RowVersion, deleted: exists == 0);
+        }
     }
 
     public async Task DeleteIssueAsync(int issueId)
@@ -191,7 +211,7 @@ public sealed class StandupRepository : IStandupRepository
 
     private static StandupIssue MapIssue(IssueRaw r) => new(
         (int)r.id, (int)r.entry_id, r.issue_text, r.solution_text, r.status,
-        (int)r.order_index, ParseIso(r.created_at));
+        (int)r.order_index, ParseIso(r.created_at), r.row_version);
 
     // SQLite-native shapes (long/string) — typed records mapped at the boundary above.
     private sealed class EntryRaw
@@ -220,5 +240,6 @@ public sealed class StandupRepository : IStandupRepository
         public string status { get; set; } = "";
         public long order_index { get; set; }
         public string created_at { get; set; } = "";
+        public long row_version { get; set; }
     }
 }

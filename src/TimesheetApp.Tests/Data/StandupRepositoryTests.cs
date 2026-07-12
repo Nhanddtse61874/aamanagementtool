@@ -1,3 +1,4 @@
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Tests.Data;
@@ -152,6 +153,59 @@ public class StandupRepositoryTests
         using var db = await TestDb.CreateAsync();
         var repo = new StandupRepository(db);
         Assert.Empty(await repo.GetIssuesForEntriesAsync(Array.Empty<int>()));
+    }
+
+    // v10/M8.2: StandupIssues is check-and-bump (collaborative, DR-04 -- anybody may edit an issue).
+    // Deterministic, no threads: the conflict window IS the stale version number (M8.2 plan §Wave 3).
+    // Both "clients" read row_version 1; A saves first (succeeds); B saves second still holding 1
+    // (conflicts); A's write must survive untouched.
+    [Fact]
+    public async Task UpdateIssue_TwoConcurrentEdits_FirstWinsSecondConflicts()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new StandupRepository(db);
+        var u = await db.SeedUserAsync();
+        var entryId = await repo.InsertEntryAsync(NewEntry(u, Day));
+        var issueId = await repo.InsertIssueAsync(new StandupIssue(0, entryId, "blocked on API", null, "open", 0,
+            new DateTimeOffset(2026, 6, 25, 9, 0, 0, TimeSpan.Zero)));
+
+        var aliceSaw = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        var bobSaw = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        Assert.Equal(1, aliceSaw.RowVersion);
+        Assert.Equal(1, bobSaw.RowVersion);
+
+        await repo.UpdateIssueAsync(aliceSaw with { SolutionText = "alice's fix", Status = "resolved" });
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => repo.UpdateIssueAsync(bobSaw with { SolutionText = "bob's fix", Status = "resolved" }));
+        Assert.False(ex.Deleted);
+        Assert.Equal("StandupIssues", ex.Table);
+
+        var final = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        Assert.Equal("alice's fix", final.SolutionText);   // Bob did NOT silently overwrite it
+        Assert.Equal(2, final.RowVersion);                  // bumped exactly once
+    }
+
+    // OT-2: a client holding a stale version must not be able to silently resurrect an issue someone
+    // else deleted -- rowsAffected == 0 alone conflates "changed" and "deleted"; the existence check
+    // on the conflict path must tell them apart via ConcurrencyConflictException.Deleted.
+    [Fact]
+    public async Task UpdateIssue_OnDeletedIssue_ConflictsWithDeletedTrue()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new StandupRepository(db);
+        var u = await db.SeedUserAsync();
+        var entryId = await repo.InsertEntryAsync(NewEntry(u, Day));
+        var issueId = await repo.InsertIssueAsync(new StandupIssue(0, entryId, "blocked on API", null, "open", 0,
+            new DateTimeOffset(2026, 6, 25, 9, 0, 0, TimeSpan.Zero)));
+
+        var loaded = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        await repo.DeleteIssueAsync(issueId);
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => repo.UpdateIssueAsync(loaded with { Status = "resolved" }));
+        Assert.True(ex.Deleted);
+        Assert.Equal("StandupIssues", ex.Table);
     }
 
     // P10 (TM-06/07): team_id round-trips on the entry, and GetEntriesForDayAsync filters by team.

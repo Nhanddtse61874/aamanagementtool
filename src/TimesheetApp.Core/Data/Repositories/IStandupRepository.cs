@@ -26,6 +26,9 @@ public interface IStandupRepository
     // Issues for a set of entries (board/input both load issues in one round-trip).
     Task<IReadOnlyList<StandupIssue>> GetIssuesForEntriesAsync(IReadOnlyList<int> entryIds);
     Task<int> InsertIssueAsync(StandupIssue issue);   // returns new id
+
+    // Check-and-bump (v10/M8.2): issues are collaborative (DR-04, no owner gate), so this throws
+    // ConcurrencyConflictException when issue.RowVersion no longer matches the row (changed or deleted).
     Task UpdateIssueAsync(StandupIssue issue);
     Task DeleteIssueAsync(int issueId);
 }
