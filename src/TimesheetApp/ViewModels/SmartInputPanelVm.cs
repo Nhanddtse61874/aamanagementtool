@@ -8,7 +8,8 @@ using TimesheetApp.Services;
 
 namespace TimesheetApp.ViewModels;
 
-public enum SmartInputMode { DistributeEven, FillFull8h }
+// SmartInputMode now lives in TimesheetApp.Services (Core) alongside ISmartInputService — the fill
+// contract belongs with the fill math, not in a WPF ViewModel.
 
 /// One selectable task in the smart-fill task list (checkbox).
 public sealed partial class SmartTaskItem : ObservableObject
@@ -26,11 +27,11 @@ public sealed record SmartPreviewRow(string TaskName, DateOnly Date, decimal Hou
 /// 8h/day cap are spread across ALL checked tasks; apply is atomic (SI-05).
 public sealed partial class SmartInputPanelVm : ObservableObject
 {
-    private const int DayCapTenths = 80; // 8.0h
-
     private readonly ITimeLogService _timeLogs;
     private readonly IBacklogRepository? _backlogs;
     private readonly ITaskRepository _tasks;
+    private readonly ISmartInputService _smartInput;   // M8.2: the ONE fill implementation (holiday-aware)
+    private readonly IHolidayRepository? _holidays;    // HOL-02: a marked holiday is not a working day
     private readonly Func<int> _currentUserId;
     private readonly Func<int>? _currentTeamId;   // TM-06: scope the backlog search to the active team
 
@@ -38,11 +39,14 @@ public sealed partial class SmartInputPanelVm : ObservableObject
 
     public SmartInputPanelVm(
         ITimeLogService timeLogs, IBacklogRepository? backlogs, ITaskRepository tasks,
-        Func<int> currentUserId, Func<int>? currentTeamId = null)
+        ISmartInputService smartInput, Func<int> currentUserId,
+        IHolidayRepository? holidays = null, Func<int>? currentTeamId = null)
     {
         _timeLogs = timeLogs;
         _backlogs = backlogs;
         _tasks = tasks;
+        _smartInput = smartInput;
+        _holidays = holidays;
         _currentUserId = currentUserId;
         _currentTeamId = currentTeamId;
     }
@@ -122,9 +126,16 @@ public sealed partial class SmartInputPanelVm : ObservableObject
         var selected = Tasks.Where(t => t.IsChecked).ToList();
         if (selected.Count == 0) { PreviewError = "Select at least one task."; return; }
 
-        var (plan, error) = BuildPlan(selected);
-        if (error is not null) { PreviewError = error; return; }
-        _planned = plan;
+        // HOL-02: preview the SAME working days the apply-side validator enforces. Passing the holiday
+        // set here is what stops a holiday from being previewed as a cell and then rejected on Apply.
+        var holidays = _holidays is null
+            ? new HashSet<DateOnly>()
+            : (await _holidays.GetAllAsync()).Select(h => h.Date).ToHashSet();
+
+        var result = _smartInput.BuildPlan(
+            Mode, From, To, TotalHours, selected.Select(s => s.TaskId).ToList(), holidays);
+        if (!result.Ok) { PreviewError = result.Error; return; }
+        _planned = result.Tasks.ToList();
 
         foreach (var t in _planned)
         {
@@ -153,60 +164,4 @@ public sealed partial class SmartInputPanelVm : ObservableObject
         Applied?.Invoke();
     }
 
-    // Distribute either the total hours (Split evenly) or 8h/day (Full 8h) across the checked tasks ×
-    // working days, in integer tenths to avoid float drift. Returns one SmartFillTask per task.
-    private (List<SmartFillTask> Plan, string? Error) BuildPlan(List<SmartTaskItem> selected)
-    {
-        var days = WorkingDays(From, To);
-        if (days.Count == 0) return (new(), "No working days in the selected range.");
-        var n = selected.Count;
-
-        // Per-task total tenths (Split evenly) — the grand total split across the checked tasks.
-        int[]? perTaskTenths = null;
-        if (Mode == SmartInputMode.DistributeEven)
-        {
-            if (TotalHours <= 0m) return (new(), "Total hours must be greater than 0.");
-            if (TotalHours != Math.Round(TotalHours, 1, MidpointRounding.AwayFromZero))
-                return (new(), "Total hours may have at most 1 decimal place.");
-            var totalTenths = (int)Math.Round(TotalHours * 10m, MidpointRounding.AwayFromZero);
-            var b = totalTenths / n;
-            var r = totalTenths % n;
-            perTaskTenths = Enumerable.Range(0, n).Select(i => b + (i < r ? 1 : 0)).ToArray();
-        }
-
-        var plan = new List<SmartFillTask>();
-        for (var i = 0; i < n; i++)
-        {
-            var cells = new List<CellAssignment>();
-            if (Mode == SmartInputMode.DistributeEven)
-            {
-                var tt = perTaskTenths![i];
-                var db = tt / days.Count;
-                var dr = tt % days.Count;
-                for (var j = 0; j < days.Count; j++)
-                {
-                    var tenths = db + (j == days.Count - 1 ? dr : 0); // remainder on the last working day
-                    if (tenths > 0) cells.Add(new CellAssignment(days[j], tenths / 10m));
-                }
-            }
-            else // Full 8h: each working day fills to 8h, split equally across the checked tasks
-            {
-                var perDay = DayCapTenths / n + (i < DayCapTenths % n ? 1 : 0);
-                if (perDay > 0)
-                    foreach (var d in days) cells.Add(new CellAssignment(d, perDay / 10m));
-            }
-            if (cells.Count > 0) plan.Add(new SmartFillTask(selected[i].TaskId, cells));
-        }
-
-        return plan.Count == 0 ? (new(), "Nothing to distribute.") : (plan, null);
-    }
-
-    private static List<DateOnly> WorkingDays(DateOnly from, DateOnly to)
-    {
-        var days = new List<DateOnly>();
-        for (var d = from; d <= to; d = d.AddDays(1))
-            if (d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))
-                days.Add(d);
-        return days;
-    }
 }

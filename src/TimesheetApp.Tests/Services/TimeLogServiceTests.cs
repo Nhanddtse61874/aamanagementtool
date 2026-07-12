@@ -287,6 +287,30 @@ public class TimeLogServiceTests
         Assert.Equal(2, missing[0].Id);
     }
 
+    // M8.2 bug 3: the window used to exclude weekends but NOT holidays, contradicting WorkingDayCalculator
+    // — so the "hasn't logged in N days" banner counted public holidays against people. Today is Wed 17th
+    // and Tue 16th is a holiday, so the 2-working-day window is [Wed 17, Mon 15] and must reach back to
+    // Mon 15. The old code stopped at Tue 16 (the holiday) and treated it as a day you failed to log.
+    [Fact]
+    public async Task GetUsersMissingLogs_window_skips_holidays_not_just_weekends()  // RPT-04 + HOL-02
+    {
+        var today = new DateOnly(2026, 6, 17);   // Wednesday
+        var tue = new DateOnly(2026, 6, 16);
+        var mon = new DateOnly(2026, 6, 15);
+        _holidays.Setup(h => h.GetAllAsync()).ReturnsAsync(new[] { new Holiday(tue, "Public holiday") });
+        _users.Setup(r => r.GetActiveAsync()).ReturnsAsync(new[] { new User(1, "NoLogs", null, true) });
+        _teams.Setup(r => r.GetUserIdsForTeamAsync(1)).ReturnsAsync(new[] { 1 });
+        _logs.Setup(r => r.GetUserIdsWithLogsInRangeAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>()))
+             .ReturnsAsync(Array.Empty<int>());
+        var svc = Make(today);
+
+        await svc.GetUsersMissingLogsAsync(2);
+
+        // The 2-working-day window skips the holiday and reaches Mon 15 — it does not stop at Tue 16.
+        _logs.Verify(r => r.GetUserIdsWithLogsInRangeAsync(mon, today), Times.Once);
+        _logs.Verify(r => r.GetUserIdsWithLogsInRangeAsync(tue, today), Times.Never);
+    }
+
     [Fact]
     public async Task GetUsersMissingLogs_excludes_users_outside_the_active_team()  // RPT-04 team scope
     {
