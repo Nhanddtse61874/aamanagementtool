@@ -8,6 +8,9 @@ obj/
 .vs/
 *.rsuser
 
+## CodeRush (DevExpress)
+.cr/
+
 ## NuGet
 *.nupkg
 *.snupkg
