@@ -36,4 +36,26 @@ public interface IUserRepository
 
     Task<int> GetActiveTeamIdAsync(int userId);        // Users.active_team_id (Wave 4)
     Task SetActiveTeamIdAsync(int userId, int teamId); // bump-only (system write)
+
+    // --- M8.3: credentials (Users.password_hash / is_admin, added by v10 and until now unread) ---
+
+    /// <summary>Resolves the login surface for a username. Returns <c>null</c> when no such user exists.
+    /// A user with a NULL <see cref="UserCredentials.PasswordHash"/> has never had a password set — the
+    /// caller must treat that as "cannot log in", never as "any password matches".</summary>
+    Task<UserCredentials?> GetCredentialsAsync(string username);
+
+    /// <summary>Sets (or replaces) a user's password hash. BUMP-ONLY: a password change carries no
+    /// client-held row_version to check against, and nobody else is racing to set your password.</summary>
+    Task SetPasswordHashAsync(int userId, string hash);
+
+    /// <summary>Atomically claims the password slot of a user who has none: a single
+    /// <c>UPDATE ... WHERE password_hash IS NULL</c>, so the check and the write cannot be split.
+    /// Returns <c>true</c> only for the caller that actually landed the write.
+    ///
+    /// The WHERE clause is load-bearing. Startup bootstrap is the one place two processes genuinely race
+    /// (an overlapped service restart runs it twice): a read-then-write would let both see NULL and both
+    /// write, leaving the admin with whichever password lost the race and the operator holding the other.
+    /// This produces one winner and one no-op instead. It is also why bootstrap can never silently
+    /// OVERWRITE an existing password — a user with a hash is simply not matched.</summary>
+    Task<bool> TryBootstrapAdminPasswordAsync(int userId, string hash);
 }
