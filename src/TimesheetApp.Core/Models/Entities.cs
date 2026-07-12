@@ -15,7 +15,22 @@ namespace TimesheetApp.Models;
 // row_version INTEGER NOT NULL DEFAULT 1, so no row in the database is ever at 0. A 0 that leaks
 // into a check therefore matches nothing and raises a loud conflict. A default of 1 would fail OPEN —
 // it would silently match a freshly-inserted row.
-public sealed record User(int Id, string Name, string? WindowsUsername, bool IsActive, long RowVersion = 0);
+// IsAdmin (v10 column is_admin) is appended AFTER RowVersion, not inserted next to IsActive, purely so
+// every existing construction keeps compiling: 34 call sites build a User positionally and none of them
+// would survive a parameter being spliced into the middle. Position carries no meaning here.
+public sealed record User(int Id, string Name, string? WindowsUsername, bool IsActive, long RowVersion = 0, bool IsAdmin = false);
+
+// M8.3: the credential surface for login (schema v10 gave Users password_hash + is_admin, and until now
+// NOTHING read them — no repository method, no entity property, so nobody could log in and nobody could
+// set a password).
+//
+// The hash deliberately does NOT go on `User`. `User` is returned by a dozen endpoints, and a password
+// hash must never be one careless projection away from a DTO. Only the auth path resolves this record.
+//
+// IsActive rides along so the caller can reject a soft-deleted user's login WITHOUT a second read; the
+// repository does not filter on it, because "unknown user" and "deactivated user" are the caller's
+// decision to conflate (or not), not the repository's.
+public sealed record UserCredentials(int Id, string Name, string? PasswordHash, bool IsAdmin, bool IsActive);
 
 // P10 Multi-Team (schema v8). A top-level org entity; soft-deletable via IsActive (mirrors User).
 public sealed record Team(int Id, string Name, bool IsActive, DateTimeOffset CreatedAt, long RowVersion = 0);

@@ -30,7 +30,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, username, is_active, row_version FROM Users WHERE is_active = 1 ORDER BY name;");
+            "SELECT id, name, username, is_active, is_admin, row_version FROM Users WHERE is_active = 1 ORDER BY name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -38,7 +38,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, username, is_active, row_version FROM Users ORDER BY is_active DESC, name;");
+            "SELECT id, name, username, is_active, is_admin, row_version FROM Users ORDER BY is_active DESC, name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -46,7 +46,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, username, is_active, row_version FROM Users WHERE id = @id;", new { id });
+            "SELECT id, name, username, is_active, is_admin, row_version FROM Users WHERE id = @id;", new { id });
         return row is null ? null : MapUser(row);
     }
 
@@ -54,7 +54,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, username, is_active, row_version FROM Users WHERE username = @w;",
+            "SELECT id, name, username, is_active, is_admin, row_version FROM Users WHERE username = @w;",
             new { w = username });
         return row is null ? null : MapUser(row);
     }
@@ -149,8 +149,46 @@ public sealed class UserRepository : IUserRepository
             new { t = teamId, id = userId });
     }
 
+    // --- M8.3: credentials (Users.password_hash / is_admin) ---
+
+    // Deliberately does NOT filter on is_active: it projects is_active instead, so the auth path can tell
+    // "no such user" (null) apart from "deactivated user" (IsActive == false) and choose what to say.
+    public async Task<UserCredentials?> GetCredentialsAsync(string username)
+    {
+        using var c = _factory.Create();
+        var row = await c.QuerySingleOrDefaultAsync<CredentialsRaw>(
+            "SELECT id, name, password_hash, is_admin, is_active FROM Users WHERE username = @u;",
+            new { u = username });
+        return row is null
+            ? null
+            : new UserCredentials((int)row.id, row.name, row.password_hash, row.is_admin != 0, row.is_active != 0);
+    }
+
+    // BUMP-ONLY: a password change carries no client-held version and has nobody to race.
+    public async Task SetPasswordHashAsync(int userId, string hash)
+    {
+        using var c = _factory.Create();
+        await c.ExecuteAsync(
+            "UPDATE Users SET password_hash = @h, row_version = row_version + 1 WHERE id = @id;",
+            new { h = hash, id = userId });
+    }
+
+    // ATOMIC CLAIM. The `WHERE password_hash IS NULL` makes the check and the write one statement, so two
+    // processes racing a bootstrap (an overlapped service restart) produce ONE winner and one no-op rather
+    // than two passwords. It is also what stops bootstrap from ever overwriting a password that already
+    // exists: a user with a hash simply matches no row, and this returns false.
+    public async Task<bool> TryBootstrapAdminPasswordAsync(int userId, string hash)
+    {
+        using var c = _factory.Create();
+        var rows = await c.ExecuteAsync(
+            @"UPDATE Users SET password_hash = @h, row_version = row_version + 1
+               WHERE id = @id AND password_hash IS NULL;",
+            new { h = hash, id = userId });
+        return rows == 1;
+    }
+
     private static User MapUser(UserRaw r) =>
-        new((int)r.id, r.name, r.username, r.is_active != 0, r.row_version);
+        new((int)r.id, r.name, r.username, r.is_active != 0, r.row_version, r.is_admin != 0);
 
     // SQLite-native shape (long/string) — narrowed at the boundary above (see Task 4 mapping note).
     private sealed class UserRaw
@@ -159,6 +197,18 @@ public sealed class UserRepository : IUserRepository
         public string name { get; set; } = "";
         public string? username { get; set; }   // binds to Users.username (v10 rename)
         public long is_active { get; set; }
+        public long is_admin { get; set; }      // v10; projected so /api/users can show who is an admin
         public long row_version { get; set; }
+    }
+
+    // SQLite-native shape for the credential read. password_hash is nullable (a user who has never had
+    // a password set); is_admin/is_active are INTEGER 0/1.
+    private sealed class CredentialsRaw
+    {
+        public long id { get; set; }
+        public string name { get; set; } = "";
+        public string? password_hash { get; set; }
+        public long is_admin { get; set; }
+        public long is_active { get; set; }
     }
 }
