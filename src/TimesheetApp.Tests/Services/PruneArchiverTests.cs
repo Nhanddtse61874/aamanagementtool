@@ -31,7 +31,10 @@ public sealed class PruneArchiverTests : IDisposable
         Directory.CreateDirectory(_root2);
         Directory.CreateDirectory(_dbDir);
         _dbPath = Path.Combine(_dbDir, "timesheet.db");
-        File.WriteAllBytes(_dbPath, new byte[] { 9, 9, 9, 9, 9, 9 }); // non-zero live db
+        // A REAL database. This used to be six 0x09 bytes — "non-zero live db" — which passed the old
+        // `Exists && Length > 0` snapshot check while being no database at all. That fixture is what
+        // let File.Copy + a length check look like a verified recovery artifact.
+        TinyDb.Create(_dbPath, "live-row");
     }
 
     public void Dispose()
@@ -167,6 +170,24 @@ public sealed class PruneArchiverTests : IDisposable
         Assert.NotNull(snap);
         Assert.True(File.Exists(snap));
         Assert.False(File.Exists(Path.Combine(_root, "Empty", "db", "202601_pruned.md")));
+    }
+
+    [Fact] // M8.2: the pre-prune snapshot is the ONE artifact RetentionService trusts before it deletes
+           // real rows for good. Taken from a WAL database with a hot -wal, File.Copy hands back a file
+           // that exists and is non-zero but has none of the committed data in it.
+    public async Task Snapshot_taken_from_a_WAL_database_is_a_complete_verified_database()
+    {
+        using var live = TinyDb.OpenWal(_dbPath);        // open -> the WAL is never checkpointed
+        TinyDb.Seed(live, "alpha", "beta", "gamma");     // committed, and living in the -wal
+
+        var cfg = new StubConfig { DbPath = _dbPath, ExportRoot1Path = _root };
+        var archiver = MakeArchiver(cfg, Teams(new Team(1, "Alpha", true, default)).Object);
+
+        var snap = await archiver.ArchiveMonthForPruneAsync(2026, 1);
+
+        Assert.NotNull(snap);
+        Assert.Equal("ok", TinyDb.IntegrityCheck(snap!));
+        Assert.Equal(new[] { "live-row", "alpha", "beta", "gamma" }, TinyDb.ReadAll(snap!));
     }
 
     [Fact] // Inactive teams are included (GetAllAsync), and a team WITH data gets a file.

@@ -28,14 +28,15 @@ public class DbBackupHelperTests : IDisposable
     [Fact]
     public async Task BackupAsync_copies_db_to_timestamped_file()
     {
-        File.WriteAllText(_dbPath, "SQLITE-DATA");
+        TinyDb.Create(_dbPath, "SQLITE-DATA"); // a REAL database (was a text file: see TinyDb)
         var helper = Make(new DateTimeOffset(2026, 6, 21, 9, 30, 15, 123, TimeSpan.Zero));
 
         var backupPath = await helper.BackupAsync();
 
         Assert.NotNull(backupPath);
         Assert.True(File.Exists(backupPath));
-        Assert.Equal("SQLITE-DATA", File.ReadAllText(backupPath!));
+        Assert.Equal(new[] { "SQLITE-DATA" }, TinyDb.ReadAll(backupPath!));
+        Assert.Equal("ok", TinyDb.IntegrityCheck(backupPath!));
         Assert.Contains("20260621093015123", Path.GetFileName(backupPath!));
         Assert.EndsWith(".bak", backupPath!);
     }
@@ -43,7 +44,7 @@ public class DbBackupHelperTests : IDisposable
     [Fact] // XC-10: the DB folder must not grow unbounded — only the newest N .bak files are kept.
     public async Task BackupAsync_prunes_old_backups_keeping_only_the_newest_N()
     {
-        File.WriteAllText(_dbPath, "DATA");
+        TinyDb.Create(_dbPath, "DATA");
         var baseTime = new DateTimeOffset(2026, 6, 21, 0, 0, 0, TimeSpan.Zero);
         var total = DbBackupHelper.KeepBackups + 5;
         for (var i = 0; i < total; i++)
@@ -69,6 +70,7 @@ public class DbBackupHelperTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+        try { if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true); }
+        catch (IOException) { /* temp file briefly held on Windows — leave it for the OS to reap */ }
     }
 }

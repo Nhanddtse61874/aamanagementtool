@@ -1,13 +1,19 @@
 using System.IO;
 using System.Linq;
 using TimesheetApp.Config;
+using TimesheetApp.Data;
 
 namespace TimesheetApp.Services;
 
-/// <summary>Makes a timestamped one-shot <c>File.Copy</c> of the configured .db before a
-/// bulk write (smart-input apply, DefaultTasks seed/sync). No-op when the .db is absent. (XC-10)
+/// <summary>Makes a timestamped one-shot snapshot of the configured .db before a bulk write
+/// (smart-input apply, DefaultTasks seed/sync). No-op when the .db is absent. (XC-10)
 /// After each backup it prunes old .bak siblings down to <see cref="KeepBackups"/> so the DB
-/// folder does not grow unbounded.</summary>
+/// folder does not grow unbounded.
+///
+/// M8.2: the snapshot is an ONLINE backup (<see cref="SqliteOnlineBackup"/>), not a <c>File.Copy</c>.
+/// This runs immediately before a bulk write on a database the app has open — under WAL the committed
+/// rows are in the <c>-wal</c>, so a file copy would hand back a .bak missing exactly the data the
+/// caller is about to overwrite.</summary>
 public sealed class DbBackupHelper : IDbBackupHelper
 {
     // How many timestamped .bak files to retain in the DB folder (newest kept, older deleted).
@@ -33,7 +39,7 @@ public sealed class DbBackupHelper : IDbBackupHelper
         // Off the caller's thread — this runs before every bulk write (smart-input apply / sync).
         await Task.Run(() =>
         {
-            File.Copy(dbPath, backupPath, overwrite: false);
+            SqliteOnlineBackup.Copy(dbPath, backupPath); // online: the .db is live and may be in WAL
             PruneOldBackups(dbPath);
         });
         return backupPath;
