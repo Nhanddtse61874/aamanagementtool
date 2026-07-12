@@ -208,21 +208,30 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>
     /// P10 (TM-05/TM-09, architecture §6b): resolve the active-team context for the just-resolved
     /// user and populate the sidebar switcher. The startup bootstrap (App.OnStartup) already created
-    /// the team(s) and persisted the active id in <see cref="IAppConfig.ActiveTeamId"/>; here we make
-    /// sure the resolved user is a member of that team (idempotent INSERT OR IGNORE — a no-op for an
-    /// already-migrated user, the actual first-run join for a freshly auto-created one), then init the
-    /// current-team service so AvailableTeams includes the just-joined team and refresh the switcher.
+    /// the team(s); here we make sure the resolved user is a member of the bootstrap team (idempotent
+    /// INSERT OR IGNORE — a no-op for an already-migrated user, the actual first-run join for a
+    /// freshly auto-created one), then init the current-team service so AvailableTeams includes the
+    /// just-joined team and refresh the switcher.
+    /// <para>
+    /// M8.2 (Wave 4): the bootstrap team used to be read from IAppConfig.ActiveTeamId. That is gone —
+    /// the active team is now per-USER (Users.active_team_id), and a per-process config value cannot
+    /// answer "which team should a brand-new user join". The bootstrap team is instead derived from
+    /// the DB as the lowest-id team, which is the SAME rule TeamBootstrapService uses to detect an
+    /// existing bootstrap. Bonus: the join target is now machine-independent — it no longer depends on
+    /// whichever team the last user of this PC happened to switch to.
+    /// </para>
     /// </summary>
     private async Task InitializeActiveTeamAsync(User? user)
     {
         if (user is null) return; // user cancelled selection — no team context to resolve
 
-        // First-run join: ensure the resolved user is a member of the bootstrapped active team. Safe
-        // to call for any resolved user (idempotent). Guarded against an unset (0) active id so we
-        // never insert a bogus membership before bootstrap has run.
-        var activeTeamId = _config.ActiveTeamId;
-        if (activeTeamId > 0)
-            await _teams.AddMemberAsync(user.Id, activeTeamId);
+        // First-run join: bootstrap's own user sweep only saw the users that existed when it ran, so a
+        // user auto-provisioned just now (ResolveCurrentUserAsync) has no membership yet. Idempotent,
+        // so it is a no-op for everyone else. Guarded on "no team at all" so we never insert a bogus
+        // membership before bootstrap has run.
+        var bootstrapTeam = (await _teams.GetAllAsync()).OrderBy(t => t.Id).FirstOrDefault();
+        if (bootstrapTeam is not null)
+            await _teams.AddMemberAsync(user.Id, bootstrapTeam.Id);
 
         // Resolve AvailableTeams + active team for this user (now including the just-joined team),
         // then push the result into the switcher.

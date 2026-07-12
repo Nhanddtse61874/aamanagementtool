@@ -28,6 +28,11 @@ public sealed class MainViewModelTests
     {
         // Default team context: no teams unless a test overrides this (Moq last-setup-wins).
         _currentTeam.SetupGet(s => s.AvailableTeams).Returns(System.Array.Empty<Team>());
+        // Same, for the bootstrap-team lookup InitializeActiveTeamAsync now does (M8.2/W4). Required,
+        // not cosmetic: Moq does NOT auto-empty a Task<IReadOnlyList<T>> — an unconfigured GetAllAsync
+        // returns a task whose RESULT IS NULL, which the OrderBy would then throw on. The real
+        // TeamRepository never returns null, so this is a fixture default, not a production guard.
+        _teams.Setup(t => t.GetAllAsync()).ReturnsAsync(System.Array.Empty<Team>());
     }
 
     // TaskListViewModel has no behaviour exercised by these shell tests; build a mock-backed instance
@@ -288,18 +293,57 @@ public sealed class MainViewModelTests
 
     // ===== W9: first-run user->team join + current-team init (TM-09, architecture §6b) =====
 
-    [Fact] // After init the resolved user is joined to the bootstrapped active team and the team service is initialized
-    public async Task Init_joins_resolved_user_to_active_team_and_initializes_team_service()
+    // M8.2 (Wave 4): the join target is the bootstrap team read from the DB (lowest id), not
+    // IAppConfig.ActiveTeamId — that member is gone, because a per-process config value cannot say
+    // which team a brand-new user belongs to once the active team is per-user.
+    [Fact] // After init the resolved user is joined to the bootstrapped team and the team service is initialized
+    public async Task Init_joins_resolved_user_to_bootstrap_team_and_initializes_team_service()
     {
         _currentUser.Setup(s => s.ResolveAsync())
             .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.Resolved, U(7, "Alice")));
-        _config.SetupGet(c => c.ActiveTeamId).Returns(3); // bootstrap persisted the active team
+        _teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { T(3, "Architect Improvement") });
         var vm = CreateVm();
 
         await vm.InitializeAsync();
 
         _teams.Verify(t => t.AddMemberAsync(7, 3), Times.Once);          // first-run join (idempotent)
         _currentTeam.Verify(s => s.InitializeAsync(7), Times.Once);      // team context resolved for this user
+    }
+
+    // The bootstrap team is the LOWEST-id team — the same rule TeamBootstrapService uses to re-detect an
+    // existing bootstrap. Pinning it here so the two cannot drift apart.
+    [Fact]
+    public async Task Init_joins_new_user_to_the_lowest_id_team()
+    {
+        _currentUser.Setup(s => s.ResolveAsync())
+            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.Resolved, U(7, "Alice")));
+        _teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { T(9, "Later"), T(2, "Bootstrap"), T(5, "Mid") });
+        var vm = CreateVm();
+
+        await vm.InitializeAsync();
+
+        _teams.Verify(t => t.AddMemberAsync(7, 2), Times.Once);
+        _teams.Verify(t => t.AddMemberAsync(7, 9), Times.Never);
+    }
+
+    // Startup ORDER is load-bearing (W4): the active team is per-user now, so the user must be resolved
+    // BEFORE the team context is initialized — otherwise there is no user id to scope the team to.
+    [Fact]
+    public async Task Init_resolves_the_user_before_initializing_the_team_context()
+    {
+        var order = new List<string>();
+        _currentUser.Setup(s => s.ResolveAsync())
+            .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.Resolved, U(7, "Alice")))
+            .Callback(() => order.Add("user"));
+        _teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { T(3, "Team") });
+        _currentTeam.Setup(s => s.InitializeAsync(It.IsAny<int>()))
+            .Returns(Task.CompletedTask)
+            .Callback<int>(_ => order.Add("team"));
+        var vm = CreateVm();
+
+        await vm.InitializeAsync();
+
+        Assert.Equal(new[] { "user", "team" }, order);
     }
 
     [Fact] // Fresh-DB auto-created user is also joined to the active team and the switcher is populated
@@ -310,7 +354,7 @@ public sealed class MainViewModelTests
         _users.Setup(u => u.GetActiveAsync()).ReturnsAsync(System.Array.Empty<User>());
         _users.Setup(u => u.InsertAsync(It.IsAny<User>())).ReturnsAsync(9);
         _currentUser.SetupGet(s => s.Current).Returns(U(9, "sam"));
-        _config.SetupGet(c => c.ActiveTeamId).Returns(1);
+        _teams.Setup(t => t.GetAllAsync()).ReturnsAsync(new[] { T(1, "My Team") });
         // After the join + InitializeAsync the service exposes the joined team as available + active.
         _currentTeam.SetupGet(s => s.AvailableTeams).Returns(new[] { T(1, "My Team") });
         _currentTeam.SetupGet(s => s.ActiveTeamId).Returns(1);
@@ -325,12 +369,12 @@ public sealed class MainViewModelTests
         Assert.Equal(1, vm.ActiveTeam!.Id);
     }
 
-    [Fact] // Unset active team (0) -> never insert a bogus membership, but still init the team service
-    public async Task Init_unsetActiveTeam_skips_join_but_initializes_team_service()
+    [Fact] // No team exists yet (bootstrap has not run) -> never insert a bogus membership, but still init the team service
+    public async Task Init_noBootstrapTeam_skips_join_but_initializes_team_service()
     {
         _currentUser.Setup(s => s.ResolveAsync())
             .ReturnsAsync(new CurrentUserResult(CurrentUserOutcome.Resolved, U(4, "Dana")));
-        _config.SetupGet(c => c.ActiveTeamId).Returns(0);
+        _teams.Setup(t => t.GetAllAsync()).ReturnsAsync(Array.Empty<Team>());
         var vm = CreateVm();
 
         await vm.InitializeAsync();

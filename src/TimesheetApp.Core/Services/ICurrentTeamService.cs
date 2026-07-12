@@ -16,8 +16,13 @@ public interface ICurrentTeamService
 
     // Load AvailableTeams for the current user and resolve the active team. Runs AFTER current-user
     // resolution (needs the user id). Never throws on a stale/deleted persisted id (R5).
+    //
+    // M8.2 (Wave 4): the user id passed here is also the id every persist is written against — the
+    // active team lives in Users.active_team_id (per USER), not IAppConfig (per PROCESS). An API
+    // serves every user from one process, so a per-process active team would let one user's switch
+    // re-scope another user's next request (cross-user leak, R6).
     Task InitializeAsync(int currentUserId);
 
-    // Persist + raise ActiveTeamChanged + broadcast DataChangedMessage(DataKind.Teams).
+    // Persist to the current user's row + raise ActiveTeamChanged + broadcast DataChangedMessage(DataKind.Teams).
     Task SetActiveTeamAsync(int teamId);
 }
