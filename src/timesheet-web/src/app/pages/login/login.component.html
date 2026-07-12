@@ -1,0 +1,29 @@
+<div class="login">
+  <form class="login__card card card--pad" [formGroup]="form" (ngSubmit)="submit()">
+    <div class="login__brand">
+      <div class="login__logo">W</div>
+      <div>
+        <div class="login__title">Worklog</div>
+        <div class="login__subtitle">Sign in to continue</div>
+      </div>
+    </div>
+
+    @if (error(); as msg) {
+      <div class="login__error" role="alert">{{ msg }}</div>
+    }
+
+    <label class="login__field">
+      <span>Username</span>
+      <input class="input" type="text" formControlName="username" autocomplete="username" />
+    </label>
+
+    <label class="login__field">
+      <span>Password</span>
+      <input class="input" type="password" formControlName="password" autocomplete="current-password" />
+    </label>
+
+    <button type="submit" class="btn btn-primary login__submit" [disabled]="form.invalid || submitting()">
+      {{ submitting() ? 'Signing in…' : 'Sign in' }}
+    </button>
+  </form>
+</div>
