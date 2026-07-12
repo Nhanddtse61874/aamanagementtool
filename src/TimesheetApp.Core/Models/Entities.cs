@@ -6,7 +6,8 @@ namespace TimesheetApp.Models;
 public sealed record User(int Id, string Name, string? WindowsUsername, bool IsActive);
 
 // P10 Multi-Team (schema v8). A top-level org entity; soft-deletable via IsActive (mirrors User).
-public sealed record Team(int Id, string Name, bool IsActive, DateTimeOffset CreatedAt);
+// RowVersion (schema v10, M8.2): optimistic-concurrency token; defaulted so existing ctors keep compiling.
+public sealed record Team(int Id, string Name, bool IsActive, DateTimeOffset CreatedAt, long RowVersion = 1);
 
 // Extra fields (start/end/period month/status) added in schema v2. Optional with defaults so existing
 // constructors keep compiling; PeriodMonth is "yyyy-MM" (the fixed month a ticket belongs to).
@@ -71,10 +72,12 @@ public sealed record DefaultTask(int Id, string TaskName, int OrderIndex, bool I
 // --- P8 Task List entities (schema v7) ---
 
 // User-defined tag (TAG-01): free-text label with an icon glyph/emoji and a hex color. Hard-deletable.
-public sealed record Tag(int Id, string Text, string Icon, string Color, DateTimeOffset CreatedAt);
+// RowVersion (schema v10, M8.2): optimistic-concurrency token; defaulted so existing ctors keep compiling.
+public sealed record Tag(int Id, string Text, string Icon, string Color, DateTimeOffset CreatedAt, long RowVersion = 1);
 
 // External (PCA) contact (TL-11). Soft-deletable via IsActive, mirroring User.
-public sealed record PcaContact(int Id, string Name, bool IsActive);
+// RowVersion (schema v10, M8.2): optimistic-concurrency token; defaulted so existing ctors keep compiling.
+public sealed record PcaContact(int Id, string Name, bool IsActive, long RowVersion = 1);
 
 // A manually-marked non-working day (HOL-01). Date is the natural key.
 public sealed record Holiday(DateOnly Date, string? Description);

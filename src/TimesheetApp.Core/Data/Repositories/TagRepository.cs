@@ -7,7 +7,7 @@ namespace TimesheetApp.Data.Repositories;
 // Tag data access (TAG-01). SQL + Dapper only; one short connection per method (XC-01).
 public sealed class TagRepository : ITagRepository
 {
-    private const string Cols = "id, text, icon, color, created_at";
+    private const string Cols = "id, text, icon, color, created_at, row_version";
 
     private readonly IConnectionFactory _factory;
 
@@ -30,12 +30,30 @@ public sealed class TagRepository : ITagRepository
             new { tag.Text, tag.Icon, tag.Color, CreatedAt = Iso(tag.CreatedAt) });
     }
 
-    public async Task UpdateAsync(Tag tag)
+    // Check-and-bump when the caller supplies expectedVersion (throws on a stale version or a
+    // deleted row); bump-only when it doesn't. expectedVersion is deliberately a separate parameter
+    // rather than reading tag.RowVersion: an existing caller building a Tag positionally without
+    // naming RowVersion gets the record's default (1), which would falsely claim "still at v1" on
+    // every edit past the first and start throwing spurious conflicts.
+    public async Task UpdateAsync(Tag tag, long? expectedVersion = null)
     {
         using var c = _factory.Create();
-        await c.ExecuteAsync(
-            "UPDATE Tags SET text = @Text, icon = @Icon, color = @Color WHERE id = @Id;",
-            new { tag.Text, tag.Icon, tag.Color, tag.Id });
+        if (expectedVersion is null)
+        {
+            await c.ExecuteAsync(
+                "UPDATE Tags SET text = @Text, icon = @Icon, color = @Color, row_version = row_version + 1 WHERE id = @Id;",
+                new { tag.Text, tag.Icon, tag.Color, tag.Id });
+            return;
+        }
+
+        var rows = await c.ExecuteAsync(
+            @"UPDATE Tags SET text = @Text, icon = @Icon, color = @Color, row_version = row_version + 1
+              WHERE id = @Id AND row_version = @expected;",
+            new { tag.Text, tag.Icon, tag.Color, tag.Id, expected = expectedVersion.Value });
+        if (rows > 0) return;
+
+        var exists = await c.ExecuteScalarAsync<long>("SELECT COUNT(1) FROM Tags WHERE id = @Id;", new { tag.Id });
+        throw new ConcurrencyConflictException("Tags", tag.Id, expectedVersion, deleted: exists == 0);
     }
 
     public async Task DeleteAsync(int tagId)
@@ -56,7 +74,8 @@ public sealed class TagRepository : ITagRepository
     private static Tag MapTag(TagRaw r) => new(
         (int)r.id, r.text, r.icon, r.color,
         DateTimeOffset.Parse(r.created_at, CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal));
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+        r.row_version);
 
     private sealed class TagRaw
     {
@@ -65,5 +84,6 @@ public sealed class TagRepository : ITagRepository
         public string icon { get; set; } = "";
         public string color { get; set; } = "";
         public string created_at { get; set; } = "";
+        public long row_version { get; set; }
     }
 }

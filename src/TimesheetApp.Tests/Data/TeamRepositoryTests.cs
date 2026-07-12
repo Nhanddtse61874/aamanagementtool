@@ -1,3 +1,4 @@
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using Xunit;
@@ -79,5 +80,91 @@ public class TeamRepositoryTests : IAsyncLifetime
         await _repo.AddMemberAsync(alice, team);   // re-add must not throw or duplicate
 
         Assert.Single(await _repo.GetUserIdsForTeamAsync(team));
+    }
+
+    // ---- M8.2 optimistic concurrency (no threads needed: the stale version IS the race window) ----
+
+    [Fact]
+    public async Task UpdateName_TwoAdmins_SecondWithStaleVersionConflicts_FirstSurvives()
+    {
+        var id = await _repo.InsertAsync(New("Original"));
+        var loaded = await _repo.GetByIdAsync(id);
+        Assert.Equal(1, loaded!.RowVersion);   // fresh insert -> v1
+
+        // Both admins open the rename dialog and read v1. Admin A saves first.
+        await _repo.UpdateNameAsync(id, "Renamed by A", loaded.RowVersion);
+
+        // Admin B, still holding the stale v1, saves next -> conflict, not silent overwrite.
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => _repo.UpdateNameAsync(id, "Renamed by B", loaded.RowVersion));
+        Assert.Equal("Teams", ex.Table);
+        Assert.Equal(id, ex.Id);
+        Assert.Equal(1, ex.ExpectedVersion);
+        Assert.False(ex.Deleted);
+
+        var current = await _repo.GetByIdAsync(id);
+        Assert.Equal("Renamed by A", current!.Name);   // A's write survives, B's is rejected
+        Assert.Equal(2, current.RowVersion);
+    }
+
+    [Fact]
+    public async Task UpdateName_NoExpectedVersion_IsBumpOnly_NeverThrows()
+    {
+        var id = await _repo.InsertAsync(New("Team X"));
+
+        await _repo.UpdateNameAsync(id, "Team Y");   // existing 2-arg call shape: no version carried
+
+        var after = await _repo.GetByIdAsync(id);
+        Assert.Equal("Team Y", after!.Name);
+        Assert.Equal(2, after.RowVersion);            // still bumped, just never checked
+    }
+
+    [Fact]
+    public async Task SetActive_IsBumpOnly_NeedsNoVersionAndNeverThrows()
+    {
+        var id = await _repo.InsertAsync(New("Team Z"));
+        Assert.Equal(1, (await _repo.GetByIdAsync(id))!.RowVersion);
+
+        await _repo.SetActiveAsync(id, false);        // deactivation carries no version at all
+
+        var after = await _repo.GetByIdAsync(id);
+        Assert.False(after!.IsActive);
+        Assert.Equal(2, after.RowVersion);             // bumped even though nothing was checked
+    }
+
+    [Fact]
+    public async Task SetMembers_TwoAdmins_SecondWithStaleVersionConflicts_FirstSurvives()
+    {
+        var team = await _repo.InsertAsync(New("Squad"));
+        var alice = await _db.SeedUserAsync("Alice");
+        var bob = await _db.SeedUserAsync("Bob");
+        var carol = await _db.SeedUserAsync("Carol");
+
+        var loaded = await _repo.GetByIdAsync(team);
+        Assert.Equal(1, loaded!.RowVersion);
+
+        // Admin A (saw v1) replaces membership with {alice, bob} first.
+        await _repo.SetMembersAsync(team, new[] { alice, bob }, loaded.RowVersion);
+
+        // Admin B, also holding stale v1, tries {carol} next -> conflict; A's set is untouched.
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => _repo.SetMembersAsync(team, new[] { carol }, loaded.RowVersion));
+        Assert.Equal("Teams", ex.Table);
+        Assert.False(ex.Deleted);
+
+        var members = await _repo.GetUserIdsForTeamAsync(team);
+        Assert.Equal(new[] { alice, bob }.OrderBy(x => x), members.OrderBy(x => x));
+        Assert.Equal(2, (await _repo.GetByIdAsync(team))!.RowVersion);
+    }
+
+    [Fact]
+    public async Task SetMembers_NoExpectedVersion_IsBumpOnly_NeverThrowsButStillBumps()
+    {
+        var team = await _repo.InsertAsync(New("Squad"));
+        var alice = await _db.SeedUserAsync("Alice");
+
+        await _repo.SetMembersAsync(team, new[] { alice });   // existing 2-arg call shape
+
+        Assert.Equal(2, (await _repo.GetByIdAsync(team))!.RowVersion);   // bumped, never checked
     }
 }
