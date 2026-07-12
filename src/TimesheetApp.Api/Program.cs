@@ -1,5 +1,6 @@
 using TimesheetApp.Api.Auth;
 using TimesheetApp.Api.Endpoints;
+using TimesheetApp.Api.Hubs;
 using TimesheetApp.Api.Infrastructure;
 using TimesheetApp.Config;
 using TimesheetApp.Data;
@@ -130,8 +131,15 @@ builder.Services.AddScoped<ITimeLogService, TimeLogService>();
 builder.Services.AddScoped<IStandupService, StandupService>();
 builder.Services.AddScoped<IBacklogContinuationService, BacklogContinuationService>();
 
-// Wave 3 replaces this implementation with the real SignalR hub and touches NO endpoint file.
-builder.Services.AddSingleton<IChangeNotifier, NoopChangeNotifier>();
+// =====================================================================================================
+// Wave 3 — the real cross-user push. DataHub resolves the caller and joins per-team SignalR groups
+// itself (hubs do not run endpoint filters, so IClientContext is unavailable there — see DataHub.cs).
+// SignalRChangeNotifier sends to those same groups, or AllExcept for the teamId: 0 global sentinel,
+// replacing the in-process, single-tab-only WeakReferenceMessenger the WPF app uses. Touches NO
+// endpoint file — the entire point of shipping IChangeNotifier as a seam back in Wave 1.
+// =====================================================================================================
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IChangeNotifier, SignalRChangeNotifier>();
 
 // --- Auth: cookie + Data Protection key ring + the "Admin" policy + FallbackPolicy --------------------
 builder.Services.AddApiAuth(keyRingPath);
@@ -200,6 +208,12 @@ api.MapAuthEndpoints();       // W2-A
 api.MapTimesheetEndpoints();  // W2-B
 api.MapBacklogEndpoints();    // W2-C
 api.MapSettingsEndpoints();   // W2-D
+
+// OUTSIDE the `api` group on purpose: SignalR hubs do not run endpoint filters, so
+// ClientContextFilter would never fire for it anyway. DataHub authenticates and resolves the
+// caller's teams itself (see DataHub.cs). [Authorize] on the hub requires the connection be
+// authenticated the same way every other route under FallbackPolicy does.
+app.MapHub<DataHub>("/hubs/data");
 
 app.Run();
 
