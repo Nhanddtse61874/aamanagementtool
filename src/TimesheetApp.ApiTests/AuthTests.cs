@@ -21,8 +21,34 @@ public sealed class AuthTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<LoginResponse>();
         Assert.Equal(userId, body!.Id);
-        Assert.Equal("alice", body.Username);
+
+        // LoginResponse carries BOTH strings, and they are different things. Pinning only one of them left
+        // the two fields swappable without a single test noticing, because the fixture used to write the
+        // same string into both columns.
+        Assert.Equal("alice", body.Username);                              // the login username
+        Assert.Equal(ApiFactory.DisplayNameFor("alice"), body.Name);       // the display name
         Assert.False(body.IsAdmin);
+    }
+
+    /// <summary>The display name is NOT a credential. Logging in with it must fail exactly as any unknown
+    /// username does — <c>GetCredentialsAsync</c> is keyed by the <c>username</c> column, and nothing else
+    /// may be accepted in its place.
+    ///
+    /// <para>This test was IMPOSSIBLE TO WRITE before W2.5: the fixture wrote <c>name</c> and
+    /// <c>username</c> as the same string, so "log in with the display name" and "log in with the username"
+    /// were the same request.</para></summary>
+    [Fact]
+    public async Task The_display_name_is_not_a_login_username()
+    {
+        using var factory = new ApiFactory();
+        await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);
+
+        using var client = factory.AnonymousClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest(ApiFactory.DisplayNameFor("alice"), ApiFactory.DefaultPassword));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

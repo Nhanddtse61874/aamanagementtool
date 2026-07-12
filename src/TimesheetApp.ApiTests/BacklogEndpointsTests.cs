@@ -141,7 +141,11 @@ public sealed class BacklogEndpointsTests
         var editor = await db.ExecuteScalarAsync<string?>(
             "SELECT changed_by_name FROM BacklogAudit WHERE backlog_id = @id AND field = 'note' ORDER BY id DESC LIMIT 1;",
             new { id = backlogId });
-        Assert.Equal("alice", editor);
+        // The DISPLAY name ("Alice Nguyen"), not the login username ("alice") — IClientContext.UserName is
+        // "the changedByName on every audited write". Asserting the literal "alice" here proved NOTHING
+        // until W2.5: the fixture wrote both columns as the same string, so an endpoint that had audited
+        // the username by mistake passed this assertion too.
+        Assert.Equal(ApiFactory.DisplayNameFor("alice"), editor);
     }
 
     [Fact]
@@ -463,7 +467,11 @@ public sealed class BacklogEndpointsTests
         var editor = await db.ExecuteScalarAsync<string?>(
             "SELECT changed_by_name FROM TaskAudit WHERE task_id = @id AND field = 'status' ORDER BY id DESC LIMIT 1;",
             new { id = taskId });
-        Assert.Equal("alice", editor);
+        // The DISPLAY name ("Alice Nguyen"), not the login username ("alice") — IClientContext.UserName is
+        // "the changedByName on every audited write". Asserting the literal "alice" here proved NOTHING
+        // until W2.5: the fixture wrote both columns as the same string, so an endpoint that had audited
+        // the username by mistake passed this assertion too.
+        Assert.Equal(ApiFactory.DisplayNameFor("alice"), editor);
     }
 
     [Fact]
@@ -486,7 +494,11 @@ public sealed class BacklogEndpointsTests
         var editor = await db.ExecuteScalarAsync<string?>(
             "SELECT changed_by_name FROM TaskAudit WHERE task_id = @id AND field = 'type' ORDER BY id DESC LIMIT 1;",
             new { id = taskId });
-        Assert.Equal("alice", editor);
+        // The DISPLAY name ("Alice Nguyen"), not the login username ("alice") — IClientContext.UserName is
+        // "the changedByName on every audited write". Asserting the literal "alice" here proved NOTHING
+        // until W2.5: the fixture wrote both columns as the same string, so an endpoint that had audited
+        // the username by mistake passed this assertion too.
+        Assert.Equal(ApiFactory.DisplayNameFor("alice"), editor);
     }
 
     [Fact]

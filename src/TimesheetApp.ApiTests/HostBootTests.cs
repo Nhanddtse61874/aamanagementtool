@@ -106,7 +106,9 @@ public sealed class HostBootTests
 
         Assert.NotNull(me);
         Assert.Equal(userId, me!.Id);
-        Assert.Equal("alice", me.Name);
+        // MeResponse.Name is the DISPLAY name ("Alice Nguyen"), not the login username ("alice"): it comes
+        // from IClientContext.UserName, which ClientContextFilter populates from User.Name.
+        Assert.Equal(ApiFactory.DisplayNameFor("alice"), me.Name);
         Assert.False(me.IsAdmin);
 
         // The AUTHORIZATION BOUND was loaded (from ITeamRepository.GetTeamIdsForUserAsync).
