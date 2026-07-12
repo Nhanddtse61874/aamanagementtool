@@ -8,13 +8,19 @@ namespace TimesheetApp.Config;
 public sealed class JsonAppConfig : IAppConfig
 {
     // Nullable backup keys default to null in old config files -> tolerated (defaults applied on load).
+    //
+    // M8.2 (Wave 4): ActiveTeamId was REMOVED from this record (it moved to Users.active_team_id).
+    // Every already-installed appsettings.json still carries an "ActiveTeamId" key. System.Text.Json
+    // SKIPS unmapped members by default (UnmappedMemberHandling.Skip), so the stale key deserializes
+    // harmlessly and the next Save() drops it. This is load-bearing: LoadModel swallows JsonException
+    // and returns null, which would silently reset DbPath to the default — i.e. point every upgrading
+    // user at an EMPTY database. Locked down by Legacy_ActiveTeamId_Key_Is_Ignored_And_DbPath_Survives.
     private sealed record Model(
         string DbPath,
         string? ArchivePath = null,
         string? BackupFolderPath = null,
         bool? AutoBackupEnabled = null,
         int? BackupKeepCount = null,
-        int? ActiveTeamId = null,
         string? ExportRoot1Path = null,
         string? ExportRoot2Path = null,
         bool? RetentionEnabled = null,
@@ -33,7 +39,6 @@ public sealed class JsonAppConfig : IAppConfig
     private string _backupFolderPath;
     private bool _autoBackupEnabled;
     private int _backupKeepCount;
-    private int _activeTeamId;
     private string _exportRoot1Path;
     private string _exportRoot2Path;
     private bool _retentionEnabled;
@@ -54,7 +59,6 @@ public sealed class JsonAppConfig : IAppConfig
         _backupFolderPath = model?.BackupFolderPath ?? "";
         _autoBackupEnabled = model?.AutoBackupEnabled ?? false;
         _backupKeepCount = model?.BackupKeepCount ?? DefaultBackupKeepCount;
-        _activeTeamId = model?.ActiveTeamId ?? 0;
         _exportRoot1Path = model?.ExportRoot1Path ?? "";
         _exportRoot2Path = model?.ExportRoot2Path ?? "";
         _retentionEnabled = model?.RetentionEnabled ?? false;
@@ -67,7 +71,6 @@ public sealed class JsonAppConfig : IAppConfig
     public string BackupFolderPath => _backupFolderPath;
     public bool AutoBackupEnabled => _autoBackupEnabled;
     public int BackupKeepCount => _backupKeepCount;
-    public int ActiveTeamId => _activeTeamId;
     public string ExportRoot1Path => _exportRoot1Path;
     public string ExportRoot2Path => _exportRoot2Path;
     public bool RetentionEnabled => _retentionEnabled;
@@ -101,12 +104,6 @@ public sealed class JsonAppConfig : IAppConfig
     public void SetBackupKeepCount(int keepCount)
     {
         _backupKeepCount = keepCount;
-        Save();
-    }
-
-    public void SetActiveTeamId(int teamId)
-    {
-        _activeTeamId = teamId;
         Save();
     }
 
@@ -150,7 +147,6 @@ public sealed class JsonAppConfig : IAppConfig
             string.IsNullOrWhiteSpace(_backupFolderPath) ? null : _backupFolderPath,
             _autoBackupEnabled,
             _backupKeepCount,
-            _activeTeamId,
             string.IsNullOrWhiteSpace(_exportRoot1Path) ? null : _exportRoot1Path,
             string.IsNullOrWhiteSpace(_exportRoot2Path) ? null : _exportRoot2Path,
             _retentionEnabled,

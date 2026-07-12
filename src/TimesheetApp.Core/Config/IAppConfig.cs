@@ -21,12 +21,14 @@ public interface IAppConfig
     int BackupKeepCount { get; }
     void SetBackupKeepCount(int keepCount);
 
-    // P10 (TM-05): the active team is an app-local, per-machine/user UI preference (DATA-07 locality
-    // split — never in the shared OneDrive DB, else two users fight over one active team). 0 = unset
-    // (resolved to first available membership on startup). Backward-compatible: old config files
-    // missing the key default to 0.
-    int ActiveTeamId { get; }
-    void SetActiveTeamId(int teamId);
+    // M8.2 (Wave 4): ActiveTeamId USED TO LIVE HERE. It now lives in Users.active_team_id, reached via
+    // IUserRepository.Get/SetActiveTeamIdAsync. The original note ("never in the shared DB, else two
+    // users fight over one active team") was right about WPF and backwards for a server: IAppConfig is
+    // per-PROCESS, and on a desktop one process serves one user, so per-process == per-user. In an API
+    // one process serves EVERYONE — user A switching team would re-scope user B's next request to team
+    // A. That is a cross-user data leak (violates R6), not a UI preference. The real defect was that
+    // IAppConfig mixed per-APP state (DbPath, BackupFolderPath, ExportRoot*) with per-USER state; the
+    // two only coincide on a desktop. Per-user state belongs on the user row. Do not re-add it here.
 
     // P11 (EX-01): two structured-export roots — a shared/SharePoint folder + a local folder.
     // Persisted app-locally (DATA-07) alongside DbPath/ArchivePath; default "" = that root is

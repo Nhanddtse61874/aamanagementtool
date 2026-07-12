@@ -1,6 +1,5 @@
 using Dapper;
 using Moq;
-using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
@@ -10,12 +9,18 @@ using Xunit;
 namespace TimesheetApp.Tests.Services;
 
 // P10 W2: ITeamBootstrapService migration + first-run (architecture §1d, spec §3, R3).
+//
+// M8.2 (Wave 4): bootstrap no longer takes IAppConfig. It used to end with
+// _config.SetActiveTeamId(teamId) — a per-PROCESS write — but the active team is now per-USER
+// (Users.active_team_id), and bootstrap runs BEFORE any user is resolved, so it has no "current user"
+// to write for. It instead seeds active_team_id for every user that exists at bootstrap time, in the
+// same sweep that already joins them to the team. So "sets it active" is now asserted against the DB
+// rather than against a mock.
 public class TeamBootstrapServiceTests : IAsyncLifetime
 {
     private TestDb _db = null!;
     private TeamRepository _teams = null!;
     private Mock<IDbBackupHelper> _backup = null!;
-    private Mock<IAppConfig> _config = null!;
     private FixedClock _clock = null!;
     private TeamBootstrapService _svc = null!;
 
@@ -31,9 +36,8 @@ public class TeamBootstrapServiceTests : IAsyncLifetime
         _teams = new TeamRepository(_db);
         _backup = new Mock<IDbBackupHelper>();
         _backup.Setup(b => b.BackupAsync()).ReturnsAsync((string?)null);
-        _config = new Mock<IAppConfig>();
         _clock = new FixedClock();
-        _svc = new TeamBootstrapService(_teams, _db, _backup.Object, _clock, _config.Object);
+        _svc = new TeamBootstrapService(_teams, _db, _backup.Object, _clock);
     }
 
     public Task DisposeAsync()
@@ -84,8 +88,13 @@ public class TeamBootstrapServiceTests : IAsyncLifetime
         // Both users joined the team.
         Assert.Equal(2, await CountAsync($"SELECT COUNT(*) FROM UserTeams WHERE team_id = {t};"));
 
-        // Active team persisted + backup taken first (XC-10).
-        _config.Verify(c => c.SetActiveTeamId(t), Times.Once);
+        // Active team persisted PER USER (M8.2/W4) — every migrated user gets the bootstrap team on
+        // their own row, rather than one process-wide config slot shared by everyone.
+        Assert.Equal(2, await CountAsync($"SELECT COUNT(*) FROM Users WHERE active_team_id = {t};"));
+        Assert.Equal((long)t, await ScalarAsync($"SELECT active_team_id FROM Users WHERE id = {u1};"));
+        Assert.Equal((long)t, await ScalarAsync($"SELECT active_team_id FROM Users WHERE id = {u2};"));
+
+        // Backup taken first (XC-10).
         _backup.Verify(b => b.BackupAsync(), Times.Once);
     }
 
@@ -93,17 +102,43 @@ public class TeamBootstrapServiceTests : IAsyncLifetime
     public async Task Migration_is_idempotent_second_run_is_a_noop()
     {
         await _db.SeedRequestAsync("REQ-001", "ARCS");
-        await _db.SeedUserAsync("Alice");
+        var alice = await _db.SeedUserAsync("Alice");
 
         await _svc.EnsureBootstrappedAsync();
         var teamsAfterFirst = (await _teams.GetAllAsync()).Count;
+        var versionAfterFirst = await ScalarAsync($"SELECT row_version FROM Users WHERE id = {alice};");
 
         await _svc.EnsureBootstrappedAsync(); // guard -> no-op
 
         Assert.Equal(teamsAfterFirst, (await _teams.GetAllAsync()).Count);
         Assert.Equal(1, teamsAfterFirst);
-        // SetActiveTeamId only called on the first (real) run.
-        _config.Verify(c => c.SetActiveTeamId(It.IsAny<int>()), Times.Once);
+        // The active-team seed is bump-only but GUARDED (WHERE active_team_id = 0), so a re-run does not
+        // touch a user who already has one. This matters: the self-healing path re-runs the backfill on
+        // EVERY startup, so an unguarded UPDATE would bump row_version for every user, every launch.
+        Assert.Equal(versionAfterFirst, await ScalarAsync($"SELECT row_version FROM Users WHERE id = {alice};"));
+    }
+
+    // M8.2 (Wave 4) REGRESSION GUARD: the backfill re-runs on every startup (self-healing, I2). It must
+    // never reset a team the user deliberately switched to — otherwise every launch would silently drag
+    // everyone back to the bootstrap team. `WHERE active_team_id = 0` is what prevents that.
+    [Fact]
+    public async Task Rerun_does_not_clobber_a_user_who_already_switched_team()
+    {
+        await _db.SeedRequestAsync("REQ-001", "ARCS");
+        var alice = await _db.SeedUserAsync("Alice");
+        await _svc.EnsureBootstrappedAsync();
+
+        // Alice switches to a second team she also belongs to.
+        var other = await _db.SeedTeamAsync("Other Team");
+        using (var c = _db.Create())
+        {
+            await c.ExecuteAsync(
+                "UPDATE Users SET active_team_id = @t WHERE id = @id;", new { t = other, id = alice });
+        }
+
+        await _svc.EnsureBootstrappedAsync(); // self-healing re-run
+
+        Assert.Equal((long)other, await ScalarAsync($"SELECT active_team_id FROM Users WHERE id = {alice};"));
     }
 
     // ---- First-run path: fresh DB (only the seeded DEFAULT, no business data) -> "My Team" ----
@@ -117,7 +152,11 @@ public class TeamBootstrapServiceTests : IAsyncLifetime
         var single = Assert.Single(all);
         Assert.Equal("My Team", single.Name);
         Assert.True(single.IsActive);
-        _config.Verify(c => c.SetActiveTeamId(single.Id), Times.Once);
+        // No SetActiveTeamId assertion here any more, and deliberately so: a fresh DB has NO users
+        // (that is what makes it "fresh"), so there is no user row to seed an active team onto. The
+        // first user is auto-provisioned later by MainViewModel, which joins them to this team;
+        // CurrentTeamService then resolves it as their active team (first-available fallback).
+        Assert.Equal(0, await CountAsync("SELECT COUNT(*) FROM Users;"));
         // First-run takes no backup (no migration write needed for the empty-DB repoint).
         _backup.Verify(b => b.BackupAsync(), Times.Never);
     }

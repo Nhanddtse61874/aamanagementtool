@@ -1,6 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.Messaging;
 using Moq;
-using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
@@ -9,12 +8,17 @@ using Xunit;
 namespace TimesheetApp.Tests.Services;
 
 // P10 W2: ICurrentTeamService resolution + SetActiveTeamAsync contract (architecture Â§3, R5).
+//
+// M8.2 (Wave 4): the persistence seam is IUserRepository (Users.active_team_id), not IAppConfig — the
+// active team is per-USER, not per-PROCESS. The persist assertions below now name the user id, so they
+// prove the write landed on the RIGHT user's row and not on a process-wide slot. The cross-user
+// guarantee itself is proven end-to-end against a real DB in CurrentTeamPerUserTests.
 public class CurrentTeamServiceTests
 {
     private static Team T(int id, string name = "T", bool active = true) =>
         new(id, name, active, DateTimeOffset.UtcNow);
 
-    private static (CurrentTeamService Svc, Mock<IAppConfig> Cfg, WeakReferenceMessenger Bus, Mock<ITeamRepository> Teams) Build(
+    private static (CurrentTeamService Svc, Mock<IUserRepository> Users, WeakReferenceMessenger Bus, Mock<ITeamRepository> Teams) Build(
         int userId,
         IReadOnlyList<int> userTeamIds,
         IReadOnlyList<Team> activeTeams,
@@ -24,13 +28,14 @@ public class CurrentTeamServiceTests
         teams.Setup(t => t.GetTeamIdsForUserAsync(userId)).ReturnsAsync(userTeamIds);
         teams.Setup(t => t.GetActiveAsync()).ReturnsAsync(activeTeams);
 
-        var cfg = new Mock<IAppConfig>();
-        cfg.SetupGet(c => c.ActiveTeamId).Returns(persistedActiveTeamId);
-        cfg.Setup(c => c.SetActiveTeamId(It.IsAny<int>()))
-            .Callback<int>(id => cfg.SetupGet(c => c.ActiveTeamId).Returns(id));
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetActiveTeamIdAsync(userId)).ReturnsAsync(persistedActiveTeamId);
+        users.Setup(u => u.SetActiveTeamIdAsync(It.IsAny<int>(), It.IsAny<int>()))
+            .Callback<int, int>((uid, tid) => users.Setup(u => u.GetActiveTeamIdAsync(uid)).ReturnsAsync(tid))
+            .Returns(Task.CompletedTask);
 
         var bus = new WeakReferenceMessenger();
-        return (new CurrentTeamService(teams.Object, cfg.Object, bus), cfg, bus, teams);
+        return (new CurrentTeamService(teams.Object, users.Object, bus), users, bus, teams);
     }
 
     [Fact]
@@ -100,7 +105,7 @@ public class CurrentTeamServiceTests
     [Fact]
     public async Task SetActiveTeamAsync_persists_raises_event_and_broadcasts()
     {
-        var (svc, cfg, bus, _) = Build(1, new[] { 10, 20 }, new[] { T(10), T(20) }, persistedActiveTeamId: 10);
+        var (svc, users, bus, _) = Build(1, new[] { 10, 20 }, new[] { T(10), T(20) }, persistedActiveTeamId: 10);
         await svc.InitializeAsync(1);
 
         var raised = false;
@@ -111,7 +116,7 @@ public class CurrentTeamServiceTests
         await svc.SetActiveTeamAsync(20);
 
         Assert.Equal(20, svc.ActiveTeamId);
-        cfg.Verify(c => c.SetActiveTeamId(20), Times.Once);
+        users.Verify(u => u.SetActiveTeamIdAsync(1, 20), Times.Once); // persisted to USER 1's row
         Assert.True(raised);
         Assert.Equal(1, got);
     }
@@ -119,12 +124,12 @@ public class CurrentTeamServiceTests
     [Fact]
     public async Task SetActiveTeamAsync_rejects_a_team_outside_membership()
     {
-        var (svc, cfg, _, _) = Build(1, new[] { 10 }, new[] { T(10) }, persistedActiveTeamId: 10);
+        var (svc, users, _, _) = Build(1, new[] { 10 }, new[] { T(10) }, persistedActiveTeamId: 10);
         await svc.InitializeAsync(1);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SetActiveTeamAsync(99));
         Assert.Equal(10, svc.ActiveTeamId);
-        cfg.Verify(c => c.SetActiveTeamId(99), Times.Never);
+        users.Verify(u => u.SetActiveTeamIdAsync(It.IsAny<int>(), 99), Times.Never);
     }
 
     // I3: a DataKind.Teams broadcast (e.g. new membership) re-resolves AvailableTeams live; an active
@@ -155,7 +160,7 @@ public class CurrentTeamServiceTests
     [Fact]
     public async Task Teams_broadcast_falls_back_when_active_team_deactivated()
     {
-        var (svc, cfg, _, teams) = Build(1, new[] { 10, 20 }, new[] { T(10), T(20) }, persistedActiveTeamId: 10);
+        var (svc, users, _, teams) = Build(1, new[] { 10, 20 }, new[] { T(10), T(20) }, persistedActiveTeamId: 10);
         await svc.InitializeAsync(1);
         Assert.Equal(10, svc.ActiveTeamId);
 
@@ -171,6 +176,6 @@ public class CurrentTeamServiceTests
         Assert.Single(svc.AvailableTeams);
         Assert.Equal(20, svc.ActiveTeamId);          // fell back to the remaining team
         Assert.True(raised);
-        cfg.Verify(c => c.SetActiveTeamId(20), Times.Once);
+        users.Verify(u => u.SetActiveTeamIdAsync(1, 20), Times.Once);
     }
 }

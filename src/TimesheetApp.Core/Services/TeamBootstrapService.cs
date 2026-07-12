@@ -1,6 +1,5 @@
 using System.Data;
 using Dapper;
-using TimesheetApp.Config;
 using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
@@ -9,7 +8,8 @@ namespace TimesheetApp.Services;
 
 /// <summary>Post-init bootstrap (architecture §1d, spec §3). On an EXISTING DB with business data it
 /// creates team "Architect Improvement", backfills team_id on every legacy backlog/standup row and
-/// joins every user to it, then sets it active. On a FRESH DB it creates an active "My Team". Backup
+/// joins every user to it, then makes it each of those users' active team (Users.active_team_id —
+/// per-user since M8.2/W4). On a FRESH DB it creates an active "My Team". Backup
 /// first (XC-10); bulk writes run in their own transaction, OUTSIDE the initializer's transaction.
 /// Idempotent + self-healing: when a team already exists it still re-runs the (no-op-when-done)
 /// backfill so a migration interrupted between team-create and backfill completes on next startup
@@ -24,17 +24,21 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
     private readonly IConnectionFactory _factory;
     private readonly IDbBackupHelper _backup;
     private readonly IClock _clock;
-    private readonly IAppConfig _config;
 
+    // M8.2 (Wave 4): IAppConfig is gone from this service. It used to end bootstrap with
+    // _config.SetActiveTeamId(teamId) — a per-PROCESS write. The active team is now per-USER
+    // (Users.active_team_id), and bootstrap runs in App.OnStartup BEFORE any user is resolved, so it
+    // has no "current user" to write for and could not do this correctly even if it wanted to. What it
+    // CAN do — and now does, inside BackfillTeamAsync — is seed active_team_id for every user that
+    // exists at bootstrap time, in the same sweep that already joins them to the team.
     public TeamBootstrapService(
         ITeamRepository teams, IConnectionFactory factory,
-        IDbBackupHelper backup, IClock clock, IAppConfig config)
+        IDbBackupHelper backup, IClock clock)
     {
         _teams = teams;
         _factory = factory;
         _backup = backup;
         _clock = clock;
-        _config = config;
     }
 
     public async Task EnsureBootstrappedAsync()
@@ -63,7 +67,6 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
     {
         var teamId = await EnsureTeamAsync(MigratedTeamName);
         await BackfillTeamAsync(teamId, backupFirst: true);
-        _config.SetActiveTeamId(teamId);
     }
 
     // Fresh DB (no business data): create the renamable default team and make it active. The
@@ -73,7 +76,6 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
     {
         var teamId = await EnsureTeamAsync(FreshTeamName);
         await BackfillTeamAsync(teamId, backupFirst: false);
-        _config.SetActiveTeamId(teamId);
     }
 
     // Idempotent backfill: repoint every team-less backlog/standup row to the bootstrap team and
@@ -108,6 +110,19 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
         // Every existing user becomes a member (idempotent via PK).
         await c.ExecuteAsync(
             "INSERT OR IGNORE INTO UserTeams(user_id, team_id) SELECT id, @t FROM Users;",
+            new { t = teamId }, tx);
+        // M8.2 (Wave 4): this REPLACES the old `_config.SetActiveTeamId(teamId)` — the same intent
+        // ("the bootstrap team is the active team"), moved from a per-PROCESS home to a per-USER one.
+        // Bootstrap has no current user, so it seeds every user that exists right now; a user
+        // auto-provisioned LATER is joined + resolved by MainViewModel/CurrentTeamService instead.
+        //
+        // WHERE active_team_id = 0 is what makes this idempotent AND non-destructive: it seeds only
+        // users who have never had an active team, so a re-run (the self-healing path above calls this
+        // on EVERY startup) never clobbers a team a user deliberately switched to, and never churns
+        // row_version. Users is a versioned table -> bump; system write with no client-supplied
+        // version -> bump-only, nothing to check.
+        await c.ExecuteAsync(
+            "UPDATE Users SET active_team_id = @t, row_version = row_version + 1 WHERE active_team_id = 0;",
             new { t = teamId }, tx);
         tx.Commit();
     }

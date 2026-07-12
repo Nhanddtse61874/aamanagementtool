@@ -1,18 +1,24 @@
 using CommunityToolkit.Mvvm.Messaging;
-using TimesheetApp.Config;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 
 namespace TimesheetApp.Services;
 
 /// <summary>Holds the active-team context for the resolved current user (TM-05). Resolves the
-/// persisted ActiveTeamId if it is still one of the user's active memberships, else falls back to
+/// persisted active team if it is still one of the user's active memberships, else falls back to
 /// the first available team (or 0 when the user is in zero teams — R5/F-Q8). Never throws on a
-/// stale/deleted id.</summary>
+/// stale/deleted id.
+/// <para>
+/// M8.2 (Wave 4): the active team persists to <c>Users.active_team_id</c> (per USER), not to
+/// IAppConfig (per PROCESS). On a desktop the two coincide; in an API one process serves everyone,
+/// so a per-process active team would let user A's team switch re-scope user B's next request — a
+/// cross-user data leak, not a UI preference. The user id is captured at <see cref="InitializeAsync"/>
+/// and every persist is written against it.
+/// </para></summary>
 public sealed class CurrentTeamService : ICurrentTeamService
 {
     private readonly ITeamRepository _teams;
-    private readonly IAppConfig _config;
+    private readonly IUserRepository _users;
     private readonly IMessenger _messenger;
 
     private IReadOnlyList<Team> _available = Array.Empty<Team>();
@@ -20,10 +26,10 @@ public sealed class CurrentTeamService : ICurrentTeamService
     private bool _initialized;         // ignore broadcasts until the first InitializeAsync
     private bool _suppressReentry;     // SetActiveTeamAsync sends DataKind.Teams -> don't re-resolve self
 
-    public CurrentTeamService(ITeamRepository teams, IAppConfig config, IMessenger messenger)
+    public CurrentTeamService(ITeamRepository teams, IUserRepository users, IMessenger messenger)
     {
         _teams = teams;
-        _config = config;
+        _users = users;
         _messenger = messenger;
 
         // Live refresh: a team create/rename/deactivate/membership change elsewhere broadcasts
@@ -50,7 +56,8 @@ public sealed class CurrentTeamService : ICurrentTeamService
         await ResolveAvailableAsync(currentUserId);
 
         // Resolve: persisted id if still available, else first available, else 0 (zero-team edge).
-        var persisted = _config.ActiveTeamId;
+        // Read from THIS user's row — a second user on the same DB resolves their own team.
+        var persisted = await _users.GetActiveTeamIdAsync(currentUserId);
         ActiveTeamId = _available.Any(t => t.Id == persisted)
             ? persisted
             : (_available.Count > 0 ? _available[0].Id : 0);
@@ -69,14 +76,15 @@ public sealed class CurrentTeamService : ICurrentTeamService
                 $"Team {teamId} is not one of the current user's available teams.");
 
         ActiveTeamId = teamId;
-        _config.SetActiveTeamId(teamId);
+        // Persist against THIS user's row. Bump-only (system write: switching your own active team
+        // carries no client-supplied version, so there is nothing to check — see IUserRepository).
+        await _users.SetActiveTeamIdAsync(_currentUserId, teamId);
         ActiveTeamChanged?.Invoke(this, EventArgs.Empty);
 
         // Broadcast the change without re-resolving ourselves on the echo (feedback-loop guard, I3).
         _suppressReentry = true;
         try { _messenger.Send(new DataChangedMessage(DataKind.Teams)); }
         finally { _suppressReentry = false; }
-        await Task.CompletedTask;
     }
 
     // Re-resolve AvailableTeams on a DataKind.Teams broadcast. Only changes the active team when the
@@ -91,7 +99,7 @@ public sealed class CurrentTeamService : ICurrentTeamService
         if (_available.Any(t => t.Id == ActiveTeamId)) return;   // still valid -> nothing to do
 
         ActiveTeamId = _available.Count > 0 ? _available[0].Id : 0;
-        _config.SetActiveTeamId(ActiveTeamId);
+        await _users.SetActiveTeamIdAsync(_currentUserId, ActiveTeamId);
         ActiveTeamChanged?.Invoke(this, EventArgs.Empty);
     }
 
