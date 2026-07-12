@@ -56,25 +56,27 @@ public sealed class TeamRepository : ITeamRepository
             new { team.Name, IsActive = team.IsActive ? 1 : 0, CreatedAt = Iso(team.CreatedAt) });
     }
 
-    // Check-and-bump when the caller supplies expectedVersion (throws on a stale version or a
-    // deleted row); bump-only when it doesn't, so callers not yet wired to carry a version keep
-    // compiling and behaving as before (unconditional success), just with row_version now advancing.
-    public async Task UpdateNameAsync(int id, string name, long? expectedVersion = null)
+    // BUMP-ONLY: always lands, always bumps, never throws (every existing WPF call site).
+    public async Task UpdateNameAsync(int id, string name)
     {
         using var c = _factory.Create();
-        if (expectedVersion is null)
-        {
-            await c.ExecuteAsync(
-                "UPDATE Teams SET name = @n, row_version = row_version + 1 WHERE id = @id;",
-                new { n = name, id });
-            return;
-        }
+        await c.ExecuteAsync(
+            "UPDATE Teams SET name = @n, row_version = row_version + 1 WHERE id = @id;",
+            new { n = name, id });
+    }
 
-        var rows = await c.ExecuteAsync(
+    // CHECK-AND-BUMP. RETURNING hands back the post-write version from the SAME statement that wrote
+    // it, and emits zero rows when the WHERE matched nothing — so one round-trip both detects the
+    // conflict and supplies the caller's next expectedVersion, with no racy read-back in between.
+    public async Task<long> UpdateNameCheckedAsync(int id, string name, long expectedVersion)
+    {
+        using var c = _factory.Create();
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Teams SET name = @n, row_version = row_version + 1
-              WHERE id = @id AND row_version = @expected;",
-            new { n = name, id, expected = expectedVersion.Value });
-        if (rows > 0) return;
+              WHERE id = @id AND row_version = @expected
+              RETURNING row_version;",
+            new { n = name, id, expected = expectedVersion });
+        if (newVersion is not null) return newVersion.Value;
 
         var exists = await c.ExecuteScalarAsync<long>("SELECT COUNT(1) FROM Teams WHERE id = @id;", new { id });
         throw new ConcurrencyConflictException("Teams", id, expectedVersion, deleted: exists == 0);
@@ -109,34 +111,32 @@ public sealed class TeamRepository : ITeamRepository
 
     // Replace-all in one tx: clear this team's links, then insert the new set (dedup). UserTeams
     // carries no row_version of its own (pure join table, PK is the (user_id, team_id) pair -- no
-    // field to contend over), so a concurrent membership save is gated on the team's own
-    // row_version instead: check-and-bump when expectedVersion is supplied, bump-only when it
-    // isn't. Either way Teams.row_version advances, so anything polling the team can see that its
+    // field to contend over), so a concurrent membership save is gated on the team's own row_version
+    // instead. Either way Teams.row_version advances, so anything polling the team can see that its
     // membership changed even without itself participating in the check.
-    public async Task SetMembersAsync(int teamId, IReadOnlyList<int> userIds, long? expectedVersion = null)
+    public Task SetMembersAsync(int teamId, IReadOnlyList<int> userIds) =>
+        SetMembersCoreAsync(teamId, userIds, null);
+
+    public Task<long> SetMembersCheckedAsync(int teamId, IReadOnlyList<int> userIds, long expectedVersion) =>
+        SetMembersCoreAsync(teamId, userIds, expectedVersion);
+
+    private async Task<long> SetMembersCoreAsync(int teamId, IReadOnlyList<int> userIds, long? expectedVersion)
     {
         using var c = _factory.Create();
         using var tx = c.BeginTransaction();
 
-        if (expectedVersion is null)
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
+            @"UPDATE Teams SET row_version = row_version + 1
+              WHERE id = @tid AND (@expected IS NULL OR row_version = @expected)
+              RETURNING row_version;",
+            new { tid = teamId, expected = expectedVersion }, tx);
+
+        if (newVersion is null && expectedVersion is not null)
         {
-            await c.ExecuteAsync(
-                "UPDATE Teams SET row_version = row_version + 1 WHERE id = @tid;",
-                new { tid = teamId }, tx);
-        }
-        else
-        {
-            var bumped = await c.ExecuteAsync(
-                @"UPDATE Teams SET row_version = row_version + 1
-                  WHERE id = @tid AND row_version = @expected;",
-                new { tid = teamId, expected = expectedVersion.Value }, tx);
-            if (bumped == 0)
-            {
-                var exists = await c.ExecuteScalarAsync<long>(
-                    "SELECT COUNT(1) FROM Teams WHERE id = @tid;", new { tid = teamId }, tx);
-                tx.Rollback();
-                throw new ConcurrencyConflictException("Teams", teamId, expectedVersion, deleted: exists == 0);
-            }
+            var exists = await c.ExecuteScalarAsync<long>(
+                "SELECT COUNT(1) FROM Teams WHERE id = @tid;", new { tid = teamId }, tx);
+            tx.Rollback();
+            throw new ConcurrencyConflictException("Teams", teamId, expectedVersion, deleted: exists == 0);
         }
 
         await c.ExecuteAsync("DELETE FROM UserTeams WHERE team_id = @tid;", new { tid = teamId }, tx);
@@ -148,6 +148,7 @@ public sealed class TeamRepository : ITeamRepository
         }
 
         tx.Commit();
+        return newVersion ?? 0;
     }
 
     public async Task AddMemberAsync(int userId, int teamId)

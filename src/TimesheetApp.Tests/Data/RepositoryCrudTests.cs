@@ -18,8 +18,8 @@ public class RepositoryCrudTests : IAsyncLifetime
         var repo = new UserRepository(_db);
         var id = await repo.InsertAsync(new User(0, "Alice", null, true));
 
-        // row_version starts at 1 (schema v10 default); SetUsernameAsync is check-and-bump.
-        await repo.SetUsernameAsync(id, "DOMAIN\\alice", expectedVersion: 1);
+        // row_version starts at 1 (schema v10 default); SetUsernameCheckedAsync is check-and-bump.
+        await repo.SetUsernameCheckedAsync(id, "DOMAIN\\alice", 1);
         Assert.Equal(id, (await repo.GetByUsernameAsync("DOMAIN\\alice"))!.Id);
 
         await repo.SetActiveAsync(id, false);
@@ -41,10 +41,11 @@ public class RepositoryCrudTests : IAsyncLifetime
         var aliceSaw = (await repo.GetByIdAsync(id))!.RowVersion;   // 1
         var bobSaw = (await repo.GetByIdAsync(id))!.RowVersion;     // 1
 
-        await repo.SetUsernameAsync(id, "DOMAIN\\bob1", aliceSaw);  // succeeds, row_version -> 2
+        var next = await repo.SetUsernameCheckedAsync(id, "DOMAIN\\bob1", aliceSaw);  // succeeds
+        Assert.Equal(2, next);   // the checked write RETURNS the new version — no racy read-back
 
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => repo.SetUsernameAsync(id, "DOMAIN\\bob2", bobSaw));
+            () => repo.SetUsernameCheckedAsync(id, "DOMAIN\\bob2", bobSaw));
         Assert.False(ex.Deleted);
 
         var final = await repo.GetByIdAsync(id);
@@ -60,7 +61,7 @@ public class RepositoryCrudTests : IAsyncLifetime
         var repo = new UserRepository(_db);
 
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => repo.UpdateNameAsync(999_999, "Ghost", expectedVersion: 1));
+            () => repo.UpdateNameCheckedAsync(999_999, "Ghost", 1));
 
         Assert.True(ex.Deleted);
         Assert.Equal("Users", ex.Table);

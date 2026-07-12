@@ -18,32 +18,41 @@ public interface ITaskRepository
     Task<int> InsertAsync(TaskItem task);                          // REQ-02/REQ-03/SET-04
 
     // ---- M8.2 optimistic concurrency ---------------------------------------------------------
-    // expectedVersion non-null => check-and-bump (user edit; ConcurrencyConflictException on a stale
-    // version). null => bump-only (never throws). BOTH always bump row_version.
+    // Every versioned write comes as a PAIR (see IBacklogRepository for the full rationale):
+    //   <Verb>Async        -> BUMP-ONLY.     Always lands, always bumps row_version, never throws.
+    //   <Verb>CheckedAsync -> CHECK-AND-BUMP. Lands only at expectedVersion, else throws; RETURNS the
+    //                        new row_version, so the caller never re-reads it (a read-back is racy).
+    // The version travels only as the explicit argument — never read off TaskItem.RowVersion.
     //
-    // SetActiveAsync and SetOrderAsync are bump-only by design and take no expectedVersion at all.
-    // SetOrderAsync in particular runs ONCE PER ROW during a drag (TimesheetViewModel.ReorderAsync
-    // loops it over the whole list): under check-and-bump the first row would bump the version and
-    // every later row would arrive stale, so an ordinary drag-and-drop would 409-storm. A reorder
-    // carries no version from a client — it is a system write.
+    // SetActiveAsync and SetOrderAsync are bump-only with NO checked sibling, by design. SetOrderAsync
+    // in particular runs ONCE PER ROW during a drag (TimesheetViewModel.ReorderAsync loops it over the
+    // whole list): under check-and-bump the first row would bump the version and every later row would
+    // arrive stale, so an ordinary drag-and-drop would 409-storm. A reorder carries no version from a
+    // client — it is a system write.
+    //
+    // (There is no GetRowVersionAsync: the version now arrives on TaskItem from the SELECT.)
 
-    Task UpdateAsync(TaskItem task, long? expectedVersion = null);  // name + order_index + status
+    Task UpdateAsync(TaskItem task);                               // name + order_index + status
+    Task<long> UpdateCheckedAsync(TaskItem task, long expectedVersion);
     Task SetActiveAsync(int taskId, bool isActive);                // soft delete (REQ-04/SET-04) — bump-only
     Task SetOrderAsync(int taskId, int orderIndex);                // drag-reorder — bump-only, see above
 
-    // Current row_version, or null when the task is gone (see IBacklogRepository.GetRowVersionAsync).
-    Task<long?> GetRowVersionAsync(int taskId);
-
     // v9 (P13-B3): task-level type/assignee update + diff-audit (assignee audited by NAME).
     Task UpdateExtendedAsync(int taskId, string? type, int? assigneeUserId,
-        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null);
+        int? changedByUserId = null, string? changedByName = null);
+    Task<long> UpdateExtendedCheckedAsync(int taskId, string? type, int? assigneeUserId, long expectedVersion,
+        int? changedByUserId = null, string? changedByName = null);
     // v9: task status change + audit (the sub-row Status dropdown path).
     Task UpdateStatusAsync(int taskId, string status,
-        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null);
+        int? changedByUserId = null, string? changedByName = null);
+    Task<long> UpdateStatusCheckedAsync(int taskId, string status, long expectedVersion,
+        int? changedByUserId = null, string? changedByName = null);
     // v9 task tag links (mirror the BacklogRepository tag methods). TaskTags carries no row_version,
     // so the version checked/bumped is the PARENT task's.
     Task<IReadOnlyList<int>> GetTagIdsAsync(int taskId);
     Task SetTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds,
-        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null);   // audited (B3)
+        int? changedByUserId = null, string? changedByName = null);   // audited (B3)
+    Task<long> SetTaskTagsCheckedAsync(int taskId, IReadOnlyList<int> tagIds, long expectedVersion,
+        int? changedByUserId = null, string? changedByName = null);
     Task<IReadOnlyList<TaskAuditEntry>> GetAuditAsync(int taskId);
 }

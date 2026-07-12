@@ -17,7 +17,7 @@ public sealed class TaskRepository : ITaskRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<TaskRaw>(
-            @"SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id
+            @"SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id, row_version
               FROM Tasks
               WHERE backlog_id = @b AND is_active = 1
               ORDER BY order_index;",
@@ -32,7 +32,7 @@ public sealed class TaskRepository : ITaskRepository
         // grouped by backlog_id. ORDER BY backlog_id, order_index keeps each group ordered like
         // the single-backlog query. Mirrors the column list + MapTask of GetActiveByBacklogAsync.
         var rows = await c.QueryAsync<TaskRaw>(
-            @"SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id
+            @"SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id, row_version
               FROM Tasks
               WHERE backlog_id IN @ids AND is_active = 1
               ORDER BY backlog_id, order_index;",
@@ -52,7 +52,7 @@ public sealed class TaskRepository : ITaskRepository
         // a teamId filters via b.team_id (teamId 0 yields no rows — empty, R6).
         var noTeam = teamId is null;
         var rows = await c.QueryAsync<TaskRaw>(
-            @"SELECT t.id, t.backlog_id, t.task_name, t.order_index, t.is_active, t.status, t.type, t.assignee_user_id
+            @"SELECT t.id, t.backlog_id, t.task_name, t.order_index, t.is_active, t.status, t.type, t.assignee_user_id, t.row_version
               FROM Tasks t
               JOIN Backlogs b ON b.id = t.backlog_id
               WHERE t.is_active = 1
@@ -66,7 +66,7 @@ public sealed class TaskRepository : ITaskRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<TaskRaw>(
-            "SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id FROM Tasks WHERE id = @id;",
+            "SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id, row_version FROM Tasks WHERE id = @id;",
             new { id });
         return row is null ? null : MapTask(row);
     }
@@ -75,7 +75,7 @@ public sealed class TaskRepository : ITaskRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<TaskRaw>(
-            @"SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id
+            @"SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id, row_version
               FROM Tasks WHERE backlog_id = @b AND task_name = @n;",
             new { b = backlogId, n = taskName });
         return row is null ? null : MapTask(row);
@@ -91,30 +91,31 @@ public sealed class TaskRepository : ITaskRepository
             new { task.BacklogId, task.TaskName, task.OrderIndex, IsActive = task.IsActive ? 1 : 0, task.Status });
     }
 
-    // M8.2: the number a caller reads, holds while the user edits, then hands back as expectedVersion.
-    public async Task<long?> GetRowVersionAsync(int taskId)
-    {
-        using var c = _factory.Create();
-        return await c.QuerySingleOrDefaultAsync<long?>(
-            "SELECT row_version FROM Tasks WHERE id = @id;", new { id = taskId });
-    }
+    // BUMP-ONLY: always lands, always bumps, never throws (every existing WPF call site).
+    public Task UpdateAsync(TaskItem task) => UpdateCoreAsync(task, null);
 
-    // check-and-bump: a user edit of the task's own fields. One statement, so it is already atomic —
-    // no audit rows hang off it, hence no transaction.
-    public async Task UpdateAsync(TaskItem task, long? expectedVersion = null)
+    // CHECK-AND-BUMP: a user edit of the task's own fields. Returns the new row_version.
+    public Task<long> UpdateCheckedAsync(TaskItem task, long expectedVersion) =>
+        UpdateCoreAsync(task, expectedVersion);
+
+    // One statement, so it is already atomic — no audit rows hang off it, hence no transaction.
+    private async Task<long> UpdateCoreAsync(TaskItem task, long? expectedVersion)
     {
         using var c = _factory.Create();
-        var rows = await c.ExecuteAsync(
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Tasks SET task_name = @TaskName, order_index = @OrderIndex, status = @Status,
                 row_version = row_version + 1
-              WHERE id = @Id AND (@ExpectedVersion IS NULL OR row_version = @ExpectedVersion);",
+              WHERE id = @Id AND (@ExpectedVersion IS NULL OR row_version = @ExpectedVersion)
+              RETURNING row_version;",
             new { task.TaskName, task.OrderIndex, task.Status, task.Id, ExpectedVersion = expectedVersion });
 
-        if (rows == 0 && expectedVersion is not null)
+        if (newVersion is null && expectedVersion is not null)
         {
             throw new ConcurrencyConflictException("Tasks", task.Id, expectedVersion,
                 deleted: await NotFoundAsync(c, null, task.Id));
         }
+
+        return newVersion ?? 0;
     }
 
     // bump-only: a soft-delete carries no version from a client. It must still bump, so that anyone
@@ -141,8 +142,17 @@ public sealed class TaskRepository : ITaskRepository
 
     // ---- v9 (P13-B3) task-level type/assignee/status edits + audit ----------------------
 
-    public async Task UpdateExtendedAsync(int taskId, string? type, int? assigneeUserId,
-        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
+    // BUMP-ONLY / CHECK-AND-BUMP pair (see ITaskRepository).
+    public Task UpdateExtendedAsync(int taskId, string? type, int? assigneeUserId,
+        int? changedByUserId = null, string? changedByName = null) =>
+        UpdateExtendedCoreAsync(taskId, type, assigneeUserId, null, changedByUserId, changedByName);
+
+    public Task<long> UpdateExtendedCheckedAsync(int taskId, string? type, int? assigneeUserId,
+        long expectedVersion, int? changedByUserId = null, string? changedByName = null) =>
+        UpdateExtendedCoreAsync(taskId, type, assigneeUserId, expectedVersion, changedByUserId, changedByName);
+
+    private async Task<long> UpdateExtendedCoreAsync(int taskId, string? type, int? assigneeUserId,
+        long? expectedVersion, int? changedByUserId, string? changedByName)
     {
         using var c = _factory.Create();
         // M8.2: read -> UPDATE -> N audit INSERTs is ONE unit of work, so it gets ONE transaction.
@@ -153,24 +163,25 @@ public sealed class TaskRepository : ITaskRepository
 
         // Pre-read so audited field changes can be diffed (mirrors BacklogRepository.UpdateAsync).
         var before = await c.QuerySingleOrDefaultAsync<TaskRaw>(
-            "SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id FROM Tasks WHERE id = @id;",
+            "SELECT id, backlog_id, task_name, order_index, is_active, status, type, assignee_user_id, row_version FROM Tasks WHERE id = @id;",
             new { id = taskId }, tx);
         if (before is null)
         {
             // This read IS the existence check the conflict path owes the caller — no second query.
             if (expectedVersion is not null)
                 throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: true);
-            return;   // bump-only against a row that is gone: unchanged no-op semantics
+            return 0;   // bump-only against a row that is gone: unchanged no-op semantics
         }
 
-        var rows = await c.ExecuteAsync(
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Tasks SET type = @type, assignee_user_id = @uid, row_version = row_version + 1
-              WHERE id = @id AND (@expected IS NULL OR row_version = @expected);",
+              WHERE id = @id AND (@expected IS NULL OR row_version = @expected)
+              RETURNING row_version;",
             new { type, uid = assigneeUserId, id = taskId, expected = expectedVersion }, tx);
 
         // We hold an IMMEDIATE transaction and `before` proved the row exists, so nobody can have
-        // deleted it underneath us — a zero here can only mean the version moved on.
-        if (rows == 0 && expectedVersion is not null)
+        // deleted it underneath us — a null here can only mean the version moved on.
+        if (newVersion is null && expectedVersion is not null)
             throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: false);
 
         var now = Iso(DateTimeOffset.UtcNow);
@@ -199,10 +210,20 @@ public sealed class TaskRepository : ITaskRepository
         }
 
         tx.Commit();
+        return newVersion ?? 0;
     }
 
-    public async Task UpdateStatusAsync(int taskId, string status,
-        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
+    // BUMP-ONLY / CHECK-AND-BUMP pair (see ITaskRepository).
+    public Task UpdateStatusAsync(int taskId, string status,
+        int? changedByUserId = null, string? changedByName = null) =>
+        UpdateStatusCoreAsync(taskId, status, null, changedByUserId, changedByName);
+
+    public Task<long> UpdateStatusCheckedAsync(int taskId, string status, long expectedVersion,
+        int? changedByUserId = null, string? changedByName = null) =>
+        UpdateStatusCoreAsync(taskId, status, expectedVersion, changedByUserId, changedByName);
+
+    private async Task<long> UpdateStatusCoreAsync(int taskId, string status,
+        long? expectedVersion, int? changedByUserId, string? changedByName)
     {
         using var c = _factory.Create();
         // Same read -> UPDATE -> audit INSERT unit of work as UpdateExtendedAsync; same transaction.
@@ -214,15 +235,16 @@ public sealed class TaskRepository : ITaskRepository
         {
             if (expectedVersion is not null)
                 throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: true);
-            return;
+            return 0;
         }
 
-        var rows = await c.ExecuteAsync(
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Tasks SET status = @status, row_version = row_version + 1
-              WHERE id = @id AND (@expected IS NULL OR row_version = @expected);",
+              WHERE id = @id AND (@expected IS NULL OR row_version = @expected)
+              RETURNING row_version;",
             new { status, id = taskId, expected = expectedVersion }, tx);
 
-        if (rows == 0 && expectedVersion is not null)
+        if (newVersion is null && expectedVersion is not null)
             throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion, deleted: false);
 
         if (!string.Equals(before, status, StringComparison.Ordinal))
@@ -236,6 +258,7 @@ public sealed class TaskRepository : ITaskRepository
         }
 
         tx.Commit();
+        return newVersion ?? 0;
     }
 
     public async Task<IReadOnlyList<int>> GetTagIdsAsync(int taskId)
@@ -246,8 +269,17 @@ public sealed class TaskRepository : ITaskRepository
         return ids.Select(i => (int)i).ToList();
     }
 
-    public async Task SetTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds,
-        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
+    // BUMP-ONLY / CHECK-AND-BUMP pair (see ITaskRepository).
+    public Task SetTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds,
+        int? changedByUserId = null, string? changedByName = null) =>
+        SetTaskTagsCoreAsync(taskId, tagIds, null, changedByUserId, changedByName);
+
+    public Task<long> SetTaskTagsCheckedAsync(int taskId, IReadOnlyList<int> tagIds, long expectedVersion,
+        int? changedByUserId = null, string? changedByName = null) =>
+        SetTaskTagsCoreAsync(taskId, tagIds, expectedVersion, changedByUserId, changedByName);
+
+    private async Task<long> SetTaskTagsCoreAsync(int taskId, IReadOnlyList<int> tagIds,
+        long? expectedVersion, int? changedByUserId, string? changedByName)
     {
         // Replace-all in one tx: capture the old set, clear, re-insert the new set (dedup),
         // then write ONE 'tags' audit row when the set actually changed (B3; mirrors BacklogRepository).
@@ -257,12 +289,13 @@ public sealed class TaskRepository : ITaskRepository
         // M8.2: TaskTags carries no row_version of its own, so a tag replace-all checks and bumps the
         // PARENT task's version (mirrors BacklogRepository.SetTagsAsync). Runs first so a conflict
         // aborts the tx before any TaskTags row is touched.
-        var bumped = await c.ExecuteAsync(
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Tasks SET row_version = row_version + 1
-              WHERE id = @tid AND (@expected IS NULL OR row_version = @expected);",
+              WHERE id = @tid AND (@expected IS NULL OR row_version = @expected)
+              RETURNING row_version;",
             new { tid = taskId, expected = expectedVersion }, tx);
 
-        if (bumped == 0 && expectedVersion is not null)
+        if (newVersion is null && expectedVersion is not null)
         {
             throw new ConcurrencyConflictException("Tasks", taskId, expectedVersion,
                 deleted: await NotFoundAsync(c, tx, taskId));
@@ -294,6 +327,7 @@ public sealed class TaskRepository : ITaskRepository
         }
 
         tx.Commit();
+        return newVersion ?? 0;
     }
 
     public async Task<IReadOnlyList<TaskAuditEntry>> GetAuditAsync(int taskId)
@@ -323,7 +357,8 @@ public sealed class TaskRepository : ITaskRepository
 
     private static TaskItem MapTask(TaskRaw r) =>
         new((int)r.id, (int)r.backlog_id, r.task_name, (int)r.order_index, r.is_active != 0,
-            r.status ?? "Todo", r.type, r.assignee_user_id is { } a ? (int)a : null);
+            r.status ?? "Todo", r.type, r.assignee_user_id is { } a ? (int)a : null,
+            r.row_version);
 
     // SQLite-native shape (long/string) — narrowed at the boundary above.
     private sealed class TaskRaw
@@ -337,6 +372,9 @@ public sealed class TaskRepository : ITaskRepository
         // v9
         public string? type { get; set; }
         public long? assignee_user_id { get; set; }
+        // v10. Dapper binds by EXACT column name onto this snake_case shape; it does NOT map
+        // row_version -> RowVersion on the record. MapTask above is what carries it across.
+        public long row_version { get; set; }
     }
 
     private sealed class AuditRaw

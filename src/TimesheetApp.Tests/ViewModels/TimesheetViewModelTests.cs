@@ -101,11 +101,13 @@ public class TimesheetViewModelTests
 
         await vm.MoveMonthCommand.ExecuteAsync(5);
 
-        // M8.2: expectedVersion is spelled out because an expression tree may not omit an optional
-        // argument. The ViewModel passes none — a month roll is a bump-only write.
+        // A month roll is a bump-only write: it carries no version, so it lands on UpdateAsync, not
+        // UpdateCheckedAsync. (W3.5: the optional expectedVersion parameter that once forced this
+        // expression tree to spell out an extra argument — CS0854 — is gone, so this is the original
+        // call shape again.)
         requests.Verify(r => r.UpdateAsync(
-            It.Is<Backlog>(x => x.Id == 5 && x.PeriodMonth == "2026-07"), 7, "Nhan", It.IsAny<string?>(),
-            It.IsAny<long?>()), Times.Once);
+            It.Is<Backlog>(x => x.Id == 5 && x.PeriodMonth == "2026-07"), 7, "Nhan", It.IsAny<string?>()),
+            Times.Once);
     }
 
     [Fact]

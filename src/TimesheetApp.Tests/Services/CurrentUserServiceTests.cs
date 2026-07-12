@@ -43,15 +43,17 @@ public class CurrentUserServiceTests
     [Fact]
     public async Task SetWindowsUsernameAsync_persists_and_refreshes_Current()
     {
-        var picked = new User(3, "Picked", null, true);   // RowVersion defaults to 0
+        var picked = new User(3, "Picked", null, true);
         _users.Setup(r => r.GetByIdAsync(3)).ReturnsAsync(picked with { WindowsUsername = "DOMAIN\\pk" });
         var svc = Make("DOMAIN\\pk");
 
         await svc.SetWindowsUsernameAsync(3, "DOMAIN\\pk");
 
-        // check-and-bump: the service reads the row's current RowVersion (0, from the mock) before
-        // writing, so that is what it must pass as expectedVersion.
-        _users.Verify(r => r.SetUsernameAsync(3, "DOMAIN\\pk", 0), Times.Once);
+        // BUMP-ONLY (W3.5). This runs when Current is null, so the service holds no version it could
+        // legitimately check against. W3-C pre-fetched the row to synthesize one — but a version
+        // invented immediately before the write checks nothing, and the fetch is the very read-back
+        // the checked methods exist to avoid. Claiming your own identity is a system write.
+        _users.Verify(r => r.SetUsernameAsync(3, "DOMAIN\\pk"), Times.Once);
         Assert.Equal(3, svc.Current!.Id);
         Assert.Equal("DOMAIN\\pk", svc.Current!.WindowsUsername);
     }

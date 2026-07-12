@@ -90,8 +90,19 @@ public sealed class TeamBootstrapService : ITeamBootstrapService
         using var c = _factory.Create();
         using var tx = c.BeginTransaction();
         // Repoint every team-less backlog (incl. the seeded global DEFAULT -> becomes this team's DEFAULT).
+        //
+        // M8.2: this is a raw-SQL write to a VERSIONED table, so it must bump row_version — bump-only,
+        // since a backfill carries no client version to check. Per the project rule: bumping without
+        // checking is safe; checking without bumping is the lost update this mechanism exists to
+        // prevent. Without the bump, a client that read a backlog before bootstrap would still match on
+        // version afterwards and could silently overwrite the team_id this just assigned.
         await c.ExecuteAsync(
-            "UPDATE Backlogs SET team_id = @t WHERE team_id IS NULL;", new { t = teamId }, tx);
+            "UPDATE Backlogs SET team_id = @t, row_version = row_version + 1 WHERE team_id IS NULL;",
+            new { t = teamId }, tx);
+        // StandupEntries deliberately has NO row_version column (schema v10 versions 8 tables and this
+        // is not one of them — entries are owner-gated in StandupService, so two users cannot reach the
+        // same row). Adding a bump here is not a no-op, it is a hard SQLite error: "no such column:
+        // row_version". Measured, not assumed.
         await c.ExecuteAsync(
             "UPDATE StandupEntries SET team_id = @t WHERE team_id IS NULL;", new { t = teamId }, tx);
         // Every existing user becomes a member (idempotent via PK).

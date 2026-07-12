@@ -9,8 +9,10 @@ namespace TimesheetApp.Data.Repositories;
 // v2: start_date / end_date / period_month / type columns + BacklogAudit change history.
 public sealed class BacklogRepository : IBacklogRepository
 {
+    // row_version is projected by EVERY read (M8.2). Without it the entity arrives at RowVersion 0 and
+    // the caller has no version to hand to a checked write — the mechanism would be unreachable.
     private const string Cols = "id, backlog_code, project, created_at, start_date, end_date, period_month, type, assignee_user_id, " +
-        "deadline_internal, deadline_external, rough_estimate_hours, official_estimate_hours, progress_percent, note, pca_contact_id, team_id";
+        "deadline_internal, deadline_external, rough_estimate_hours, official_estimate_hours, progress_percent, note, pca_contact_id, team_id, row_version";
 
     private readonly IConnectionFactory _factory;
 
@@ -69,14 +71,6 @@ public sealed class BacklogRepository : IBacklogRepository
         return row is null ? null : MapBacklog(row);
     }
 
-    // M8.2: the number a caller reads, holds while the user edits, then hands back as expectedVersion.
-    public async Task<long?> GetRowVersionAsync(int backlogId)
-    {
-        using var c = _factory.Create();
-        return await c.QuerySingleOrDefaultAsync<long?>(
-            "SELECT row_version FROM Backlogs WHERE id = @id;", new { id = backlogId });
-    }
-
     public async Task<int> InsertAsync(Backlog backlog)
     {
         using var c = _factory.Create();
@@ -107,8 +101,24 @@ public sealed class BacklogRepository : IBacklogRepository
             });
     }
 
-    public async Task UpdateAsync(Backlog backlog, int? changedByUserId = null, string? changedByName = null,
-        string? auditNote = null, long? expectedVersion = null)
+    // BUMP-ONLY. Always lands, always bumps, never throws — the shape every existing WPF call site
+    // uses (none of them carries a version).
+    public Task UpdateAsync(Backlog backlog, int? changedByUserId = null, string? changedByName = null,
+        string? auditNote = null) =>
+        UpdateCoreAsync(backlog, null, changedByUserId, changedByName, auditNote);
+
+    // CHECK-AND-BUMP. Returns the new row_version so the caller never has to re-read it (a read-back
+    // is racy — see IBacklogRepository). expectedVersion is non-nullable: a plain UPDATE needs the row
+    // to already exist, so "I expect no row" is not a case this can express.
+    public Task<long> UpdateCheckedAsync(Backlog backlog, long expectedVersion,
+        int? changedByUserId = null, string? changedByName = null, string? auditNote = null) =>
+        UpdateCoreAsync(backlog, expectedVersion, changedByUserId, changedByName, auditNote);
+
+    // One body, because the SQL and the ~40 lines of audit diffing below are identical either way;
+    // only the WHERE clause and the zero-rows reaction differ. Returns the row_version after the
+    // write (0 when a bump-only write no-op'd against a row that is gone).
+    private async Task<long> UpdateCoreAsync(Backlog backlog, long? expectedVersion,
+        int? changedByUserId, string? changedByName, string? auditNote)
     {
         using var c = _factory.Create();
 
@@ -130,7 +140,11 @@ public sealed class BacklogRepository : IBacklogRepository
         // check-and-bump when the caller carries a version, bump-only when it does not. Either way
         // row_version is incremented: bumping without checking is safe, checking without bumping is
         // the lost update this whole mechanism exists to prevent.
-        var rows = await c.ExecuteAsync(
+        //
+        // RETURNING hands back the post-write version from the SAME statement that performed the
+        // write, so there is no window in which another writer could change it before we read it.
+        // It emits ZERO rows when the write matched nothing (measured, see ConcurrencyConflictTests).
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Backlogs SET backlog_code = @BacklogCode, project = @Project,
                 start_date = @StartDate, end_date = @EndDate, period_month = @PeriodMonth, type = @Type,
                 assignee_user_id = @AssigneeUserId,
@@ -139,7 +153,8 @@ public sealed class BacklogRepository : IBacklogRepository
                 progress_percent = @ProgressPercent, note = @Note, pca_contact_id = @PcaContactId,
                 team_id = @TeamId,
                 row_version = row_version + 1
-              WHERE id = @Id AND (@ExpectedVersion IS NULL OR row_version = @ExpectedVersion);",
+              WHERE id = @Id AND (@ExpectedVersion IS NULL OR row_version = @ExpectedVersion)
+              RETURNING row_version;",
             new
             {
                 backlog.BacklogCode,
@@ -161,7 +176,7 @@ public sealed class BacklogRepository : IBacklogRepository
                 ExpectedVersion = expectedVersion,
             }, tx);
 
-        if (rows == 0 && expectedVersion is not null)
+        if (newVersion is null && expectedVersion is not null)
         {
             // Rejected. Throwing out of the `using` rolls the transaction back, so not one audit row
             // survives — nothing below this line ever runs. ONE existence check, only here, to tell
@@ -170,7 +185,7 @@ public sealed class BacklogRepository : IBacklogRepository
                 deleted: await NotFoundAsync(c, tx, backlog.Id));
         }
 
-        if (before is null) { tx.Commit(); return; }   // row absent + no version to check: unchanged no-op
+        if (before is null) { tx.Commit(); return 0; }   // row absent + no version to check: unchanged no-op
 
         var now = Iso(DateTimeOffset.UtcNow);
 
@@ -224,6 +239,7 @@ public sealed class BacklogRepository : IBacklogRepository
         }
 
         tx.Commit();
+        return newVersion ?? 0;
     }
 
     // ---- v7 tag links (TAG-02) -----------------------------------------------------------
@@ -236,8 +252,18 @@ public sealed class BacklogRepository : IBacklogRepository
         return ids.Select(i => (int)i).ToList();
     }
 
-    public async Task SetTagsAsync(int backlogId, IReadOnlyList<int> tagIds,
-        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null)
+    // BUMP-ONLY (the WPF editor's save path — it carries no version).
+    public Task SetTagsAsync(int backlogId, IReadOnlyList<int> tagIds,
+        int? changedByUserId = null, string? changedByName = null) =>
+        SetTagsCoreAsync(backlogId, tagIds, null, changedByUserId, changedByName);
+
+    // CHECK-AND-BUMP against the PARENT backlog's version; returns that version after the write.
+    public Task<long> SetTagsCheckedAsync(int backlogId, IReadOnlyList<int> tagIds, long expectedVersion,
+        int? changedByUserId = null, string? changedByName = null) =>
+        SetTagsCoreAsync(backlogId, tagIds, expectedVersion, changedByUserId, changedByName);
+
+    private async Task<long> SetTagsCoreAsync(int backlogId, IReadOnlyList<int> tagIds,
+        long? expectedVersion, int? changedByUserId, string? changedByName)
     {
         // Replace-all in one tx: capture old set for audit diff, then clear + insert new set (dedup).
         using var c = _factory.Create();
@@ -248,12 +274,13 @@ public sealed class BacklogRepository : IBacklogRepository
         // backlog's. The user ticks the chips on the card, and two people re-ticking them clobber
         // each other exactly like any other inline edit. Runs first so a conflict aborts the tx
         // before any BacklogTags row is touched.
-        var bumped = await c.ExecuteAsync(
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE Backlogs SET row_version = row_version + 1
-              WHERE id = @bid AND (@expected IS NULL OR row_version = @expected);",
+              WHERE id = @bid AND (@expected IS NULL OR row_version = @expected)
+              RETURNING row_version;",
             new { bid = backlogId, expected = expectedVersion }, tx);
 
-        if (bumped == 0 && expectedVersion is not null)
+        if (newVersion is null && expectedVersion is not null)
         {
             throw new ConcurrencyConflictException("Backlogs", backlogId, expectedVersion,
                 deleted: await NotFoundAsync(c, tx, backlogId));
@@ -293,6 +320,7 @@ public sealed class BacklogRepository : IBacklogRepository
         }
 
         tx.Commit();
+        return newVersion ?? 0;
     }
 
     public async Task<IReadOnlyDictionary<int, IReadOnlyList<int>>> GetTagIdsForAllAsync()
@@ -389,7 +417,8 @@ public sealed class BacklogRepository : IBacklogRepository
         r.progress_percent is { } pp ? (int)pp : null,
         r.note,
         r.pca_contact_id is { } pca ? (int)pca : null,
-        r.team_id is { } team ? (int)team : null);
+        r.team_id is { } team ? (int)team : null,
+        r.row_version);
 
     private static DateOnly? ParseDay(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null
@@ -417,6 +446,10 @@ public sealed class BacklogRepository : IBacklogRepository
         public long? pca_contact_id { get; set; }
         // v8
         public long? team_id { get; set; }
+        // v10. Dapper binds by EXACT column name onto this snake_case Raw shape; it does NOT map
+        // row_version -> RowVersion on the record (MatchNamesWithUnderscores is off, and this
+        // codebase never enables it — measured). The hand-map below is what carries it across.
+        public long row_version { get; set; }
     }
 
     private sealed class AuditRaw

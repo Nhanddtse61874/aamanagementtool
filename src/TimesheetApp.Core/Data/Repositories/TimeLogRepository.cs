@@ -58,8 +58,11 @@ public sealed class TimeLogRepository : ITimeLogRepository
             @"SELECT COUNT(*) FROM TimeLogs
                WHERE user_id = @u AND task_id = @t AND work_date = @d;",
             new { u = userId, t = taskId, d = Iso(workDate) }) > 0;
-        // id 0: TimeLogs is keyed by the natural (user_id, task_id, work_date) triple, not an id.
-        return new ConcurrencyConflictException("TimeLogs", 0, expected, deleted: !exists);
+        // id 0: TimeLogs is keyed by the natural (user_id, task_id, work_date) triple, not an id — so
+        // `detail` carries the cell identity instead. Without it the 409 said only "TimeLogs was
+        // changed by someone else", naming no cell, which is no use to a user looking at a week grid.
+        return new ConcurrencyConflictException("TimeLogs", 0, expected, deleted: !exists,
+            detail: $"user {userId}, task {taskId}, {Iso(workDate)}");
     }
 
     public async Task<IReadOnlyList<TimeLog>> GetByUserAndRangeAsync(int userId, DateOnly from, DateOnly to)
@@ -68,7 +71,7 @@ public sealed class TimeLogRepository : ITimeLogRepository
         // Read raw (SQLite-native) types, then map decimal/DateOnly at the boundary — Dapper's
         // positional-record path does not narrow long->int / convert double->decimal on its own.
         var rows = await c.QueryAsync<TimeLogRaw>(
-            @"SELECT id, user_id, task_id, work_date, hours, created_at
+            @"SELECT id, user_id, task_id, work_date, hours, created_at, row_version
               FROM TimeLogs
               WHERE user_id = @u AND work_date >= @from AND work_date <= @to
               ORDER BY work_date, task_id;",
@@ -229,7 +232,8 @@ public sealed class TimeLogRepository : ITimeLogRepository
         (int)r.id, (int)r.user_id, (int)r.task_id,
         DateOnly.ParseExact(r.work_date, "yyyy-MM-dd", CultureInfo.InvariantCulture),
         (decimal)r.hours,
-        DateTimeOffset.Parse(r.created_at, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal));
+        DateTimeOffset.Parse(r.created_at, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+        r.row_version);
 
     private static TimeLogReportRow MapReportRow(ReportRaw r) => new(
         (int)r.user_id, r.user_name,
@@ -248,6 +252,7 @@ public sealed class TimeLogRepository : ITimeLogRepository
         public string work_date { get; set; } = "";
         public double hours { get; set; }
         public string created_at { get; set; } = "";
+        public long row_version { get; set; }
     }
 
     private sealed class HoursByBacklogRaw

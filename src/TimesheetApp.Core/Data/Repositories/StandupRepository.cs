@@ -9,11 +9,13 @@ namespace TimesheetApp.Data.Repositories;
 // DateOnly/DateTimeOffset parsed at the boundary. One short connection per method (OneDrive-safe policy).
 //
 // v10 (M8.2): StandupIssues gets row_version. It is deliberately collaborative -- anyone may edit
-// an issue (DR-04), no owner gate -- so UpdateIssueAsync is check-and-bump: it throws
-// ConcurrencyConflictException when the caller's StandupIssue.RowVersion no longer matches the row.
-// StandupEntries is deliberately NOT versioned -- it is owner-gated in StandupService (only the
-// entry's owner may add/update/delete/reorder it), a protection enforced in code, not merely
-// absent from the UI -- so UpdateEntryAsync is untouched.
+// an issue (DR-04), no owner gate -- so it gets the bump-only / check-and-bump pair
+// (UpdateIssueAsync / UpdateIssueCheckedAsync).
+//
+// StandupEntries is deliberately NOT versioned and HAS NO row_version COLUMN -- it is owner-gated in
+// StandupService (only the entry's owner may add/update/delete/reorder it), a protection enforced in
+// code, not merely absent from the UI. So UpdateEntryAsync is untouched, and any write to
+// StandupEntries that tries to bump row_version is a SQL error ("no such column"), not a no-op.
 public sealed class StandupRepository : IStandupRepository
 {
     private const string EntryCols =
@@ -161,27 +163,38 @@ public sealed class StandupRepository : IStandupRepository
             });
     }
 
-    // Check-and-bump: StandupIssues is collaborative (DR-04, no owner gate), so two people can
-    // race to edit the same issue. rowsAffected == 0 means either someone else changed it first
-    // (stale RowVersion) or the issue is gone -- the existence check on the conflict path only
-    // tells the two apart.
-    public async Task UpdateIssueAsync(StandupIssue i)
+    // BUMP-ONLY: always lands, always bumps, never throws (every existing caller).
+    public Task UpdateIssueAsync(StandupIssue i) => UpdateIssueCoreAsync(i, null);
+
+    // CHECK-AND-BUMP: StandupIssues is collaborative (DR-04, no owner gate), so two people can race to
+    // edit the same issue. Returns the new row_version. Note expectedVersion is a PARAMETER, not
+    // i.RowVersion — the version must not ride on the same record as the data it guards, or a caller
+    // that rebuilt the record from edited fields would carry the default 0 and be rejected outright.
+    public Task<long> UpdateIssueCheckedAsync(StandupIssue i, long expectedVersion) =>
+        UpdateIssueCoreAsync(i, expectedVersion);
+
+    private async Task<long> UpdateIssueCoreAsync(StandupIssue i, long? expectedVersion)
     {
         using var c = _factory.Create();
-        var rowsAffected = await c.ExecuteAsync(
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
             @"UPDATE StandupIssues SET
                   issue_text = @IssueText, solution_text = @SolutionText,
                   status = @Status, order_index = @OrderIndex,
                   row_version = row_version + 1
-              WHERE id = @Id AND row_version = @RowVersion;",
-            new { i.IssueText, i.SolutionText, i.Status, i.OrderIndex, i.Id, i.RowVersion });
+              WHERE id = @Id AND (@expected IS NULL OR row_version = @expected)
+              RETURNING row_version;",
+            new { i.IssueText, i.SolutionText, i.Status, i.OrderIndex, i.Id, expected = expectedVersion });
 
-        if (rowsAffected == 0)
+        if (newVersion is null && expectedVersion is not null)
         {
+            // A null means either someone else changed it first (stale version) or the issue is gone;
+            // the existence check on the conflict path only tells the two apart.
             var exists = await c.ExecuteScalarAsync<long>(
                 "SELECT COUNT(1) FROM StandupIssues WHERE id = @id;", new { id = i.Id });
-            throw new ConcurrencyConflictException("StandupIssues", i.Id, i.RowVersion, deleted: exists == 0);
+            throw new ConcurrencyConflictException("StandupIssues", i.Id, expectedVersion, deleted: exists == 0);
         }
+
+        return newVersion ?? 0;
     }
 
     public async Task DeleteIssueAsync(int issueId)
