@@ -29,9 +29,41 @@ public sealed record SmartFillTask(int TaskId, IReadOnlyList<CellAssignment> Cel
 // Shaped week for the Timesheet grid (one row per active task, 5 day slots). Shapes VERBATIM
 // from architecture spec §2. (TS-01/02/05)
 public sealed record WeekGrid(DateOnly Monday, IReadOnlyList<WeekRow> Rows);
+
+// One day slot: the hours, AND the optimistic-concurrency token for that cell (M8.4).
+//
+// The version is per (task, date) — per CELL, not per row — because that is exactly what TimeLogs is
+// keyed by (user_id, task_id, work_date), and therefore exactly what UpsertCheckedAsync versions. A
+// row-level version would be a lie: the five day slots on one WeekRow are five independent TimeLogs rows,
+// each with its own row_version, each editable without touching the others.
+//
+// This type exists because the week read USED to project `decimal?` and throw the row_version away. That
+// left the web client holding hours and no version, so `PUT /api/timesheet/cell` had nothing to send as
+// expectedVersion — and null is not a safe stand-in: null deliberately asserts "I believe this cell is
+// EMPTY" (see ITimeLogRepository.UpsertCheckedAsync's five-case table), so every edit of a pre-existing
+// cell would 409, for every user, forever.
+//
+//   Hours == null  =>  the cell is empty  =>  RowVersion is null: there is no row, so there is nothing to
+//                      version — and null is precisely the expectedVersion that asserts "still empty".
+//   Hours != null  =>  a row exists and RowVersion is ITS row_version — the caller's next expectedVersion.
+//
+// The ONE legitimate exception is hours-without-a-version, and it is not an oversight: the read-only team
+// aggregate (TimeLogService.GetWeekGroupedAllUsersAsync) SUMS hours across users, so no single row backs
+// the cell and no single version can exist. See the comment there before trying to "fix" it.
+public readonly record struct WeekCell(decimal? Hours, long? RowVersion);
+
+// EXACTLY ONE CONSTRUCTOR — deliberately, and do not add a second.
+//
+// This type is the wire contract for GET /api/timesheet/week (the endpoint serialises it straight onto the
+// response; there is no week DTO), so System.Text.Json must be able to pick a SINGULAR parameterized
+// constructor to deserialize it. An hours-only convenience overload — the obvious way to spare the older
+// positional test fixtures — makes that ambiguous and STJ throws NotSupportedException on every week read.
+// It is also, independently, a constructor that builds a WeekRow with no versions: the exact silent
+// version-drop this milestone exists to eliminate. Tests that only care about hours use the `WeekRows.Row`
+// builder in the test project instead — terseness belongs there, not in the contract.
 public sealed record WeekRow(
     int TaskId, string BacklogCode, string TaskName, int OrderIndex,
-    decimal? Mon, decimal? Tue, decimal? Wed, decimal? Thu, decimal? Fri);  // null = empty = 0h
+    WeekCell Mon, WeekCell Tue, WeekCell Wed, WeekCell Thu, WeekCell Fri);
 
 // Grouped-by-backlog shape for the Timesheet tab: EVERY backlog item (incl. DEFAULT and empty ones)
 // becomes one collapsible group; Tasks may be empty so an empty backlog still renders + is loggable.

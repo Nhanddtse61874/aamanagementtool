@@ -174,8 +174,8 @@ public class TimesheetViewModelTests
     public async Task Groups_ShapedFromWeek_OneGroupPerRequest_TasksUnderEach()
     {
         var groups = Groups(
-            new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, 3m, null, null),
-            new WeekRow(9, "DEFAULT", "Annual Leave", 0, null, null, null, null, 8m));
+            WeekRows.Row(7, "REQ-001", "Implement", 0, 4m, null, 3m, null, null),
+            WeekRows.Row(9, "DEFAULT", "Annual Leave", 0, null, null, null, null, 8m));
         var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
@@ -191,9 +191,9 @@ public class TimesheetViewModelTests
     public async Task AreInSameGroup_TrueWithinGroup_FalseAcrossGroupsOrUnknown()  // reorder cursor honesty
     {
         var groups = Groups(
-            new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null),
-            new WeekRow(8, "REQ-001", "Review", 1, null, null, null, null, null),
-            new WeekRow(9, "DEFAULT", "Annual Leave", 0, null, null, null, null, null));
+            WeekRows.Row(7, "REQ-001", "Implement", 0, null, null, null, null, null),
+            WeekRows.Row(8, "REQ-001", "Review", 1, null, null, null, null, null),
+            WeekRows.Row(9, "DEFAULT", "Annual Leave", 0, null, null, null, null, null));
         var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
@@ -219,8 +219,8 @@ public class TimesheetViewModelTests
     public async Task ColumnTotals_SumAllTasksAcrossGroups_AndUpdateOnCellChange()
     {
         var groups = Groups(
-            new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, null, null, null),
-            new WeekRow(9, "DEFAULT", "Meeting", 1, 2m, null, null, null, null));
+            WeekRows.Row(7, "REQ-001", "Implement", 0, 4m, null, null, null, null),
+            WeekRows.Row(9, "DEFAULT", "Meeting", 1, 2m, null, null, null, null));
         var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
         Assert.Equal(6m, vm.MonTotal);
@@ -233,8 +233,8 @@ public class TimesheetViewModelTests
     public async Task Save_DisabledWhenAnyColumnExceedsEight()
     {
         var groups = Groups(
-            new WeekRow(7, "REQ-001", "Implement", 0, 5m, null, null, null, null),
-            new WeekRow(9, "DEFAULT", "Meeting", 1, 4m, null, null, null, null)); // Mon = 9 > 8
+            WeekRows.Row(7, "REQ-001", "Implement", 0, 5m, null, null, null, null),
+            WeekRows.Row(9, "DEFAULT", "Meeting", 1, 4m, null, null, null, null)); // Mon = 9 > 8
         var (vm, _, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
         Assert.False(vm.SaveCommand.CanExecute(null));
@@ -246,7 +246,7 @@ public class TimesheetViewModelTests
     [Fact] // Editing a cell auto-saves it (no Save button): value -> upsert on the natural key.
     public async Task EditingCell_AutoSaves_UpsertsOnNaturalKey()
     {
-        var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null));
+        var groups = Groups(WeekRows.Row(7, "REQ-001", "Implement", 0, null, null, null, null, null));
         var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
@@ -261,7 +261,7 @@ public class TimesheetViewModelTests
     [Fact] // Clearing a cell auto-deletes its log (empty = 0h), never upserts.
     public async Task ClearingCell_AutoDeletesLog()
     {
-        var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, 4m, null, null, null, null));
+        var groups = Groups(WeekRows.Row(7, "REQ-001", "Implement", 0, 4m, null, null, null, null));
         var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
@@ -275,7 +275,7 @@ public class TimesheetViewModelTests
     [Fact] // A red (invalid) cell is left on screen but NEVER written to storage; status flags it.
     public async Task EditingInvalidCell_DoesNotPersist_AndFlagsStatus()
     {
-        var groups = Groups(new WeekRow(7, "REQ-001", "Implement", 0, null, null, null, null, null));
+        var groups = Groups(WeekRows.Row(7, "REQ-001", "Implement", 0, null, null, null, null, null));
         var (vm, tl, _) = Make(groups);
         await vm.LoadCommand.ExecuteAsync(null);
 
