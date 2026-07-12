@@ -43,6 +43,32 @@ public static class AuthSetup
 
     public static string HashPassword(string password) => Hasher.HashPassword(HashUser, password);
 
+    /// <summary>Verifies a candidate password against a stored hash, through THE SAME hasher instance that
+    /// <see cref="HashPassword"/> and the login path use. Verification cannot be done by re-hashing and
+    /// comparing strings: <see cref="HashPassword"/> salts randomly on every call, so the same password
+    /// hashes to a different string every time and a string compare would never match, for anyone.
+    ///
+    /// <para><b>FAIL CLOSED on a null/empty hash.</b> A null <c>password_hash</c> means "has never had a
+    /// password set" — the state EVERY user is in on a freshly migrated v10 database — and it must NEVER
+    /// verify, for ANY candidate, including null and empty string. Treating it as "any password matches" is
+    /// an authentication bypass. The guard has to live here because <c>VerifyHashedPassword</c> THROWS
+    /// <c>ArgumentNullException</c> on a null hash rather than returning <c>Failed</c> — so a caller that
+    /// forgets to pre-check gets a safe <c>false</c> from this method instead of an exception.</para>
+    ///
+    /// <para><b><c>SuccessRehashNeeded</c> IS A SUCCESS.</b> <c>VerifyHashedPassword</c> has THREE outcomes,
+    /// not two. A hash written under older options — an <c>IdentityV2</c> format marker, or a lower
+    /// iteration count — verifies correctly but asks to be re-hashed. Comparing <c>== Success</c> would
+    /// reject it, locking out every pre-existing user the day the hasher's options are ever changed. Hence
+    /// <c>!= Failed</c>, which is exactly what the login path in <see cref="MapAuthMechanism"/> does; the
+    /// two must not drift apart.</para></summary>
+    public static bool VerifyPassword(string? hash, string? password)
+    {
+        if (string.IsNullOrEmpty(hash) || password is null)
+            return false;
+
+        return Hasher.VerifyHashedPassword(HashUser, hash, password) != PasswordVerificationResult.Failed;
+    }
+
     public static IServiceCollection AddApiAuth(this IServiceCollection services, string keyRingPath)
     {
         // ---------------------------------------------------------------------------------------------
