@@ -2,21 +2,39 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute (M8.3 Wave 2, four agents in flight) · M8.2 **COMPLETE**
+**Phase:** Step 6 — Plan (M8.4) · M8.2 **COMPLETE** · M8.3 **COMPLETE**
 **Status:** in_progress
 **Last updated:** 2026-07-13
 
-**Branch:** `m8.2/w3-integrate` — HEAD `b8201d2`. Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
-**Suite:** **690 passed, 0 failed, 0 warnings** at `b8201d2` — 656 in `TimesheetApp.Tests` + **34 in the new `TimesheetApp.ApiTests`**. Was 548 at the start of M8.2.
+**Branch:** `m8.2/w3-integrate`. Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
+**Suite:** **809 passed, 0 failed, 0 warnings** — 656 in `TimesheetApp.Tests` + **153 in `TimesheetApp.ApiTests`**. Was 548 at the start of M8.2.
 
-### M8.3 progress
+### M8.3 — COMPLETE. The API exists, is authenticated, team-scoped, conflict-aware and live.
 
-| Wave | Commit | |
+| Wave | | |
 |---|---|---|
-| **W0** — Core prerequisites | `f6c8444` | Credential surface (auth had **nothing** to stand on) + **the version-aware service layer M8.2 stopped one step short of**. 628 → 656. |
-| **W1** — API shell + every shared contract | `b8201d2` | Host boots with scope validation ON · scoped identity · `SqliteProfile.Server` · auth + Data Protection · **three** error channels · OpenAPI. 656 → 690. |
-| **W2** — 4 endpoint agents | 🔄 in flight | `.worktrees/w2-{a,b,c,d}`, all on base `b8201d2` |
-| **W3** — SignalR | ⬜ | |
+| **W0** — Core prerequisites | ✅ | Credential surface (auth had **nothing** to stand on: `password_hash`/`is_admin` were columns *nothing read*) + **the version-aware service layer M8.2 stopped one step short of**. 628 → 656. |
+| **W1** — API shell + every shared contract | ✅ | Host boots with scope validation ON · scoped identity · `SqliteProfile.Server` · auth + Data Protection · **three** error channels · OpenAPI. 656 → 690. |
+| **W2** — 4 endpoint agents in parallel | ✅ | **79 routes, zero collisions.** 690 → 795. |
+| **W2.5** — honest fixtures | ✅ | **Mutation-tested: 5 kills, 0 false alarms.** 795 → 805. |
+| **W3** — SignalR | ✅ | Group per team · rejoin on reconnect (**proven**: a forced reconnect yields a new `ConnectionId` and the message still arrives) · no self-echo. 805 → **809**. |
+
+**79 API routes. 153 API tests.** OpenAPI is exposed — M8.4 generates its TypeScript client from it.
+
+### The four traps M8.3 paid for (all found by an agent RUNNING it, none by reasoning)
+
+1. **`[FromQuery] int[]?` never binds to `null`.** Minimal-API array binding turns *both* "key absent" and "key present but empty" into an **empty array**. So `teamIds is null ? memberships : intersect(...)` is **always false** → an empty list reaches the repository → matches nothing → **every unfiltered list endpoint silently returns zero rows.** Compiles clean. Found only because an *unrelated* search test failed with "the collection was empty."
+2. **`teamIds = null` means EVERY TEAM.** `GetExportRowsAsync` has **no `userId` parameter at all**, and `ExportFilter.TeamIds` is a *trailing optional* — so the 4-arg ctor every WPF call site uses **compiles, looks complete, and exports the whole company**. On the wire the filter is attacker-controlled; `TM-06` doesn't catch it because it tests the WPF path, where the filter is membership-bounded by construction.
+3. **A whole-record update overwrites every column.** `UpdateCheckedAsync(Backlog, …)` writes all 15, including `team_id`. A DTO that merely *omits* `teamId` → `team_id = NULL` → **the backlog drops out of every team and is invisible to everyone, permanently** — and every test still passes.
+4. **`ApiFactory` cannot prove SignalR delivery.** It replaces `IChangeNotifier` with a recording double (correct, and necessary for the contract tests) — which means **no test built on it can ever observe the real hub firing.** The honest fixture for one layer is a lying fixture for the layer beneath it. W3 needed a second factory.
+
+### Open, recorded, not blocking
+
+- **A fresh install cannot bootstrap itself.** v10 promotes `MIN(id)` to admin, so a database with **zero users has zero admins** → `AdminBootstrap` no-ops → nobody can log in → and `/api/users` is admin-gated, so the first user cannot be created over HTTP. Safe today (M8.3 targets the *existing* desktop DB, which always has an admin). **Belongs in the deploy runbook.**
+- **A demoted admin keeps admin for up to 30 days** — `RequireClaim("is_admin","1")` reads the *cookie* claim, fixed at login. The four destructive `/api/ops/*` routes additionally check `ctx.IsAdmin` (DB-fresh), so the blast radius is bounded.
+- **`RestoreAsync` is deliberately NOT exposed.** It overwrites the live `.db` in place under open connections — it corrupts live readers. Needs its own design.
+- **Retention runs on a bare `Task.Run`**, not a hosted queue (a queue needs `Program.cs`, which Wave 2 was forbidden). No shutdown awareness.
+- **An unreproduced test flake** (~1 run in 4, a *different* test each time, never reproduces in isolation). `TestDb`'s process-global `ClearAllPools()` was removed — it was a **no-op there** (`Pooling=false`) that still reached into every other pool. `ApiFactory` still calls it, and there the call **is** load-bearing (`Pooling=true`; it releases the file handle). **Hypothesis, not evidence** — nobody has reproduced the flake, so nothing further was changed on a hunch.
 
 **Two W1 concerns awaiting a decision (neither blocks W2):**
 1. **Greenfield deadlock (latent).** Migration v10 promotes `MIN(id)` to admin — so a database with **zero users has zero admins**. `AdminBootstrap` then no-ops, nobody can log in, and `/api/users` is admin-gated, so the first user cannot be created over HTTP. **Safe today** (M8.3 targets the existing desktop DB, which always has an admin) but **a fresh install cannot bootstrap itself.** Belongs in the deploy runbook.
