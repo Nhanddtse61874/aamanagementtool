@@ -16,19 +16,34 @@ public interface ITaskRepository
     Task<TaskItem?> GetByIdAsync(int id);
     Task<TaskItem?> GetByNameInBacklogAsync(int backlogId, string taskName); // DEFAULT sync match by name (DATA-03/SET-04)
     Task<int> InsertAsync(TaskItem task);                          // REQ-02/REQ-03/SET-04
-    Task UpdateAsync(TaskItem task);                               // name + order_index
-    Task SetActiveAsync(int taskId, bool isActive);                // soft delete (REQ-04/SET-04)
-    Task SetOrderAsync(int taskId, int orderIndex);                // drag-reorder within a backlog group
+
+    // ---- M8.2 optimistic concurrency ---------------------------------------------------------
+    // expectedVersion non-null => check-and-bump (user edit; ConcurrencyConflictException on a stale
+    // version). null => bump-only (never throws). BOTH always bump row_version.
+    //
+    // SetActiveAsync and SetOrderAsync are bump-only by design and take no expectedVersion at all.
+    // SetOrderAsync in particular runs ONCE PER ROW during a drag (TimesheetViewModel.ReorderAsync
+    // loops it over the whole list): under check-and-bump the first row would bump the version and
+    // every later row would arrive stale, so an ordinary drag-and-drop would 409-storm. A reorder
+    // carries no version from a client — it is a system write.
+
+    Task UpdateAsync(TaskItem task, long? expectedVersion = null);  // name + order_index + status
+    Task SetActiveAsync(int taskId, bool isActive);                // soft delete (REQ-04/SET-04) — bump-only
+    Task SetOrderAsync(int taskId, int orderIndex);                // drag-reorder — bump-only, see above
+
+    // Current row_version, or null when the task is gone (see IBacklogRepository.GetRowVersionAsync).
+    Task<long?> GetRowVersionAsync(int taskId);
 
     // v9 (P13-B3): task-level type/assignee update + diff-audit (assignee audited by NAME).
     Task UpdateExtendedAsync(int taskId, string? type, int? assigneeUserId,
-        int? changedByUserId = null, string? changedByName = null);
+        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null);
     // v9: task status change + audit (the sub-row Status dropdown path).
     Task UpdateStatusAsync(int taskId, string status,
-        int? changedByUserId = null, string? changedByName = null);
-    // v9 task tag links (mirror the BacklogRepository tag methods).
+        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null);
+    // v9 task tag links (mirror the BacklogRepository tag methods). TaskTags carries no row_version,
+    // so the version checked/bumped is the PARENT task's.
     Task<IReadOnlyList<int>> GetTagIdsAsync(int taskId);
     Task SetTaskTagsAsync(int taskId, IReadOnlyList<int> tagIds,
-        int? changedByUserId = null, string? changedByName = null);   // audited (B3)
+        int? changedByUserId = null, string? changedByName = null, long? expectedVersion = null);   // audited (B3)
     Task<IReadOnlyList<TaskAuditEntry>> GetAuditAsync(int taskId);
 }
