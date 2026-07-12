@@ -2,12 +2,12 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute (M8.2 Wave 3.5, in flight)
+**Phase:** Step 6 — Plan (M8.3, rev. 2 in Plan Check) · M8.2 **COMPLETE**
 **Status:** in_progress
 **Last updated:** 2026-07-12
 
-**Branch:** `m8.2/w3-integrate` — HEAD `3a89801` (all four W3 agents merged). Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
-**Suite:** **616 passed, 0 failed, 0 warnings** at `3a89801` (last gated merge). ~7 s.
+**Branch:** `m8.2/w3-integrate` — HEAD `f53cbed`. Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
+**Suite:** **628 passed, 0 failed, 0 warnings** at `6ac5621` (M8.2 gate). ~8 s. Was 548 at the start of M8.2.
 
 ## Current Milestone
 
@@ -21,9 +21,10 @@
 | **M8.2 W1** — schema v10 | ✅ **DONE** (`4b00e66`). 560 green. |
 | **M8.2 W2** — WAL profile · backup blocker · 3 bug fixes | ✅ **DONE, merged, gated** (`fe794c2`). **583 green.** 3 agents in parallel, 0 conflicts. |
 | **M8.2 W3** — `row_version` across 8 repositories | ✅ **DONE, merged, gated** (`3a89801`). **616 green.** 4 agents in parallel, **0 merge conflicts** — but they built **two incompatible APIs**; see W3.5. |
-| **M8.2 W3.5** — consolidation | 🔄 **IN FLIGHT — see "Resume here" below** |
-| **M8.2 W4** — `ActiveTeamId` per-user | ⬜ Unblocked (W3-C merged). Run **after** W3.5 — do not parallelize, they collide on ViewModel test files. |
-| **M8.3** — API + auth + SignalR | ⬜ |
+| **M8.2 W3.5** — consolidation | ✅ **DONE, merged, gated** (`49cb9d0`). 621 green. One API; `row_version` reachable end to end. |
+| **M8.2 W4** — `ActiveTeamId` per-user | ✅ **DONE, merged, gated** (`6ac5621`). **628 green.** |
+| **M8.2** | ✅ **COMPLETE.** 548 → 628. Gate OT-1..OT-7 green; **OT-8 (WPF still launches) is a MANUAL check the user must do.** |
+| **M8.3** — API + auth + SignalR | 🔄 **Step 6.** Plan rev. 2 written (`f53cbed`) after Plan Checker returned **BLOCK** on rev. 1. Re-check in flight. |
 | **M8.4** — Angular shell + Log Work | ⬜ **First slice the user can actually click.** |
 
 Plan: `docs/superpowers/plans/2026-07-12-M8.2-core-hardening.md`
@@ -33,33 +34,31 @@ Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (rev. 
 
 ## ▶ RESUME HERE
 
-### Wave 3 is closed. All four agents merged into `m8.2/w3-integrate` (`3a89801`), 616 green, zero conflicts.
+### M8.2 is CLOSED. 628 green on `m8.2/w3-integrate`.
 
-| Agent | Commit | Scope |
+| Wave | Commit | What |
 |---|---|---|
-| W3-A | `7f969f4` | TimeLogs |
-| W3-B | `cea0da3` | Backlogs, Tasks |
-| W3-C | `7a7c363` | Standup, Users |
-| W3-D | `281128e` | Teams, Tags, PcaContacts |
+| W1 | `4b00e66` | schema v10 |
+| W2 | `fe794c2` | WAL profile · the backup blocker · 3 bug fixes |
+| W3 (A/B/C/D) | `3a89801` | `row_version` across 8 repositories — 4 agents, 0 merge conflicts |
+| W3.5 | `49cb9d0` | consolidation — **one** concurrency API; `row_version` reachable end to end |
+| W4 | `6ac5621` | `ActiveTeamId` → `Users.active_team_id` |
 
-### Wave 3.5 is IN FLIGHT — one agent, worktree `.worktrees/w35`, branch `m8.2/w35`, base `3a89801`
+**The one gate item still open: OT-8 — "the WPF app still launches and works."** No test proves it; **the user must click it.** Everything else (OT-1..OT-7) is green and automated.
 
-```bash
-git -C .worktrees/w35 log -1 --format='%h %s'   # still 3a89801 = agent didn't finish
-```
-If it did not finish, **inspect the worktree; if the work is incomplete, discard and re-dispatch** from the W3.5 brief. Do not commit a half-done consolidation — a red step is only diagnosable if each wave gates green.
+### Next: M8.3 — API + auth + SignalR. Currently at STEP 6.
 
-**When it lands:** merge `m8.2/w35`, gate on the suite, then run **Wave 4** (`ActiveTeamId` → per-user). Wave 4 is unblocked but must run **after** W3.5, not beside it — both touch the ViewModel test files.
+Plan: `docs/superpowers/plans/2026-07-12-M8.3-api-auth-signalr.md` (**rev. 2**, `f53cbed`).
 
-### Why W3.5 exists (do not skip it)
+**Rev. 1 was BLOCKED by the Plan Checker** — six BLOCKs. Read the rev.-2 preamble before executing; it lists the four false premises rev. 1 rested on. Waves: **W0** (Core credential methods — auth has *nothing* to stand on today) → **W1a** (host boots, scoped identity, no captive deps) → **W1b** (auth, 409 contract, DTOs, OpenAPI) → **W2** (4 endpoint agents) → **W3** (SignalR).
 
-Four parallel agents each solved their own repositories correctly, and in doing so produced **two incompatible concurrency APIs** plus a shared file nobody would touch:
+**Do not start W2 before W0 and W1 are merged and green.** Every one of the six BLOCKs was a thing W2's four agents would have needed and none would have owned.
 
-- **W3-A** returned the new `row_version` from the checked write (`Task<long>`).
-- **W3-B and W3-D** returned `void` and offered `GetRowVersionAsync` to re-read it. **That read-back is racy** — between your write committing and your re-read, someone else can write; you pick up *their* version while holding *your* data, and your next save passes the check and silently overwrites them. The lost update, laundered through the read-back.
-- **`Models/Entities.cs` was left half-done.** `User`/`StandupIssue` got `RowVersion = 0`; `Team`/`Tag`/`PcaContact` got `= 1`; **`Backlog`, `TaskItem` and `TimeLog` got nothing at all** — the three the app actually contends on. W3-A and W3-B both, correctly, refused to edit a file four agents shared. So it stayed empty.
+### The three lessons M8.2 paid for. Do not re-learn them.
 
-**User-approved ruling (2026-07-12): normalize on W3-A's shape** — a separate `<Verb>CheckedAsync` returning `Task<long>`, bump-only keeps its original signature, `GetRowVersionAsync` is deleted. Unify `RowVersion = 0` (fail-closed sentinel: no real row is ever at 0). Project `row_version` in every SELECT.
+1. **A file that N parallel agents need is a file the controller writes FIRST.** `ConcurrencyConflictException` was done right (controller wrote it up front). `Models/Entities.cs` was not — four agents each needed it, none owned it, so `Backlog`/`TaskItem`/`TimeLog` got no `RowVersion` at all and the whole mechanism was unreachable. That cost an entire consolidation wave.
+2. **A decision in `STATE.md` is NOT a decision an agent knows.** "The checked methods are additive; originals stay bump-only" was recorded *before* Wave 3 ran. W3-A followed it. W3-B, W3-C and W3-D each re-derived a *different* API — not from disagreement, but because their briefs never repeated it. **Restate every cross-cutting decision verbatim in every brief that could touch it.**
+3. **Route overlap is invisible to a file-overlap check.** M8.3 rev. 1 gave `tags` to two agents in two different files. Zero file overlap — and both would map `/api/tags`, giving `AmbiguousMatchException` → 500 on every tags request, found only at the merge gate. **Own routes, not just files.**
 
 **The lesson, again:** a file shared by N parallel agents will be edited by none of them. Hand it to the controller *before* the fan-out, not after.
 
@@ -90,12 +89,15 @@ ls .worktrees/<name>/src/TimesheetApp.Core   # must exist
 
 Every agent prompt should open with a **Step 0** that re-verifies the base and stops if it is wrong.
 
-### Five of my own claims turned out false — all caught by agents *running* them
+### EIGHT of my own claims turned out false — all caught by agents *running* them
 
-This is the most important lesson in this file. Do not trust a claim about **how a failure presents** unless it has been executed.
+This is the most important lesson in this file. Do not trust a claim about **how a failure presents** unless it has been executed. Note the rate: this did not stop after I noticed it. It kept happening, and every time it was caught by an agent that ran the thing instead of believing me.
 
 | I claimed | Truth, measured |
 |---|---|
+| `TeamBootstrapService`'s backfill must bump `StandupEntries.row_version` (I put it in a brief) | **`StandupEntries` has no `row_version` column.** v10 versions 8 tables and that is not one. An agent obeying me would have shipped `UPDATE StandupEntries SET row_version = row_version + 1` → **`no such column`** → **every user's app crashes at startup, every launch.** The agent checked the schema instead of trusting the brief. |
+| "A checked write never takes an optional param and never returns void" — I wrote this as a **rule in a brief four agents were about to follow** | **False for the entity that matters most.** `UpsertCheckedAsync(TimeLog log, long? expectedVersion)` is nullable **by design** (the five-case table), and `DeleteCheckedAsync(...)` returns `Task`, not `Task<long>`. An agent obeying the rule would have "normalized" `TimeLogRepository` and **destroyed the five-case behaviour W3-A established by measurement.** |
+| "Four test files hand-implement `IAppConfig` — that is the risk when removing a member" | **Right fact, wrong risk.** Those four fakes compiled untouched (an extra public member is legal). The actual breakage was **Moq mocks** — `SetupGet(c => c.ActiveTeamId)` — in four *different* files. "Run the full suite" was the right instruction for the wrong reason. |
 | Dapper fails **silently** (returns `null`) if the column is renamed without the DTO | **Throws.** `SqliteException: no such column`, 28 tests red. **This was the sole reason the `UserRepository` fix was scheduled a wave *later* than the migration** — which would have committed a red tree and handed three parallel agents a broken baseline. Schema rename and the SQL that reads it are **atomically coupled**. |
 | `busy_timeout` / `synchronous` are connection-string settings | **Not valid keywords.** Silently swallowed. They must be `PRAGMA`s. |
 | `IDbBackupHelper` is ctor-injected into **5** services | **4.** (`IJournalWarningSink`: **2**.) `PruneArchiver` injects neither. M8.3's DI registration must use the real list. |
