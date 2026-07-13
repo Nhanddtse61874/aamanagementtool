@@ -1,12 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Observable } from 'rxjs';
 
 import { WorklogService } from './worklog.service';
 import { CONNECTION_ID_HEADER, RealtimeService } from '../core/realtime.service';
 import {
-  BacklogCreateRequest, BacklogDto, BacklogUpdateRequest, TaskItemDto, TaskUpdateRequest, TimeLogDto,
-  WeekBacklogGroup,
+  ArchivedFileDto, BacklogCreateRequest, BacklogDto, BacklogUpdateRequest, MissingLogWarning, SettingDto,
+  TaskItemDto, TaskUpdateRequest, TimeLogDto, TimesheetWeeklyReportResponse, WeekBacklogGroup,
 } from '../api/models';
 
 describe('WorklogService (generated transport)', () => {
@@ -468,9 +469,18 @@ describe('WorklogService — the backlog screen (M8.6)', () => {
 
   // ===================================================================================================
   // 🔴 `/api/users/names`, NEVER `/api/users/all`. The `/all` route is AdminPolicy-gated: an ordinary user
-  // reading it gets a 403, which takes the screen's whole forkJoin down with it. It is deliberately absent
-  // from the generated client and a C# contract test keeps it absent. `/names` is the route that exists so a
-  // DEACTIVATED assignee's name can still render on a record she is already on — `/api/users` omits her.
+  // reading it gets a 403, which takes the screen's whole forkJoin down with it — and the BACKLOG EDITOR is
+  // a screen an ordinary user can reach. `/names` is the route that exists so a DEACTIVATED assignee's name
+  // can still render on a record she is already on — `/api/users` omits her.
+  //
+  // 🔴 UPDATED M9 P5. This test's original comment said `/all` was "deliberately absent from the generated
+  // client, and a C# contract test keeps it absent". THAT IS NO LONGER TRUE: M9 P2a tagged both `/all` routes
+  // and they ARE in the client now (as `getUsersAll()` / `getPcaContactsAll()`), because the Users and
+  // Settings screens cannot list a DEACTIVATED row without them. The old contract test is gone, replaced by
+  // `SettingsEndpointsTests.The_admin_gated_full_list_is_403_for_a_NON_admin`.
+  //
+  // The ASSERTION below is unchanged and still exactly right — it is now the only thing pinning the backlog
+  // editor off the admin route, so it matters MORE than it did, not less.
   // ===================================================================================================
   it('resolves assignee names from /api/users/names — the admin-gated /all would 403 an ordinary user', () => {
     service.getUserNames().subscribe();
@@ -566,5 +576,636 @@ describe('WorklogService — the backlog screen (M8.6)', () => {
 
     expect(created!.id).toBe(12);
     expect(created!.rowVersion).toBe(1);
+  });
+});
+
+// =====================================================================================================
+// M9 P5 — THE REMAINING TRANSPORT. Task List, Reports, the file exports, the tag joins, Users, Teams,
+// Tags, PCA, Templates, Holidays, Default tasks, Standup, Settings, Ops, active-team.
+//
+// 🔴 A CONNECTED HUB, FOR THE FIFTH TIME, AND FOR THE FIFTH TIME IT IS NOT BOILERPLATE — it is the ONLY
+// thing that makes ANY of the client assertions below mean anything, in BOTH directions.
+//
+// `ConnectionIdHttpClient` stamps `X-Connection-Id` only when there IS a connection id. In the plain TestBed
+// at the top of this file there is none, so the header is omitted from EVERYTHING — and a write sent on the
+// READ client (`this.http`) would emit a BYTE-IDENTICAL request there. Every body-only assertion would pass
+// against the very bug it exists to catch. That is why the mutations below are asserted HERE, with a live
+// id, and why the reads are asserted NEGATIVELY here too: a read pushed onto `mutatingHttp` widens the
+// header's blast radius for a call that notifies nobody, and only a connected hub can catch that either.
+// =====================================================================================================
+describe('WorklogService — M9 P5: the remaining READS ride the PLAIN client', () => {
+  const CONN = 'hub-conn-5';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  const READS: { name: string; call: (s: WorklogService) => void; url: string; body?: unknown }[] = [
+    { name: 'getTaskListScreen', call: s => s.getTaskListScreen(2026, 7).subscribe(), url: '/api/tasklist', body: {} },
+    { name: 'exportTaskListMarkdown', call: s => s.exportTaskListMarkdown(2026, 7).subscribe(), url: '/api/tasklist/export', body: '# md' },
+    { name: 'getWeeklyReport', call: s => s.getWeeklyReport('2026-07-06').subscribe(), url: '/api/reports/weekly', body: {} },
+    { name: 'getMonthlyReport', call: s => s.getMonthlyReport(2026, 7).subscribe(), url: '/api/reports/monthly', body: {} },
+    { name: 'getMissingLogs', call: s => s.getMissingLogs().subscribe(), url: '/api/reports/missing-logs' },
+    { name: 'getBacklogTags', call: s => s.getBacklogTags(7).subscribe(), url: '/api/backlogs/7/tags' },
+    { name: 'getTask', call: s => s.getTask(42).subscribe(), url: '/api/tasks/42', body: {} },
+    { name: 'getTaskTags', call: s => s.getTaskTags(42).subscribe(), url: '/api/tasks/42/tags' },
+    { name: 'getUsersAll', call: s => s.getUsersAll().subscribe(), url: '/api/users/all' },
+    { name: 'getTeamsActive', call: s => s.getTeamsActive().subscribe(), url: '/api/teams' },
+    { name: 'getTeamsAll', call: s => s.getTeamsAll().subscribe(), url: '/api/teams/all' },
+    { name: 'getTeamMembers', call: s => s.getTeamMembers(3).subscribe(), url: '/api/teams/3/members' },
+    { name: 'getTagList', call: s => s.getTagList().subscribe(), url: '/api/tags' },
+    { name: 'getPcaContactsAll', call: s => s.getPcaContactsAll().subscribe(), url: '/api/pca-contacts/all' },
+    { name: 'getTemplateList', call: s => s.getTemplateList().subscribe(), url: '/api/templates' },
+    { name: 'getHolidayList', call: s => s.getHolidayList().subscribe(), url: '/api/holidays' },
+    { name: 'getDefaultTasks', call: s => s.getDefaultTasks().subscribe(), url: '/api/default-tasks' },
+    { name: 'getStandupMyDay', call: s => s.getStandupMyDay().subscribe(), url: '/api/standup/entries', body: {} },
+    { name: 'getStandupBoard', call: s => s.getStandupBoard().subscribe(), url: '/api/standup/board' },
+    { name: 'getSetting', call: s => s.getSetting('MissingLogsNDays').subscribe(), url: '/api/settings/MissingLogsNDays', body: {} },
+  ];
+
+  READS.forEach(({ name, call, url, body }) => {
+    it(`${name} GETs ${url} on the PLAIN client — a read notifies nobody, so it must not carry the header`, () => {
+      call(service);
+
+      const req = httpMock.expectOne(r => r.url === url);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.url.startsWith('http')).toBeFalse();   // same-origin, or the auth cookie stops being sent
+      expect(req.request.headers.has(CONNECTION_ID_HEADER)).toBeFalse();
+
+      req.flush(body ?? []);
+    });
+  });
+});
+
+// =====================================================================================================
+// 🔴 EVERY MUTATION, ON THE MUTATING CLIENT. This is the block the whole connected-hub dance exists for.
+//
+// The server excludes the caller from its own SignalR broadcast using the `X-Connection-Id` we send. Omit it
+// and the write echoes straight back to the person who made it: their screen re-fetches and clobbers itself,
+// mid-edit. Every write below is one `this.http` typo away from that, and the request would look IDENTICAL.
+// =====================================================================================================
+describe('WorklogService — M9 P5: every mutation rides the MUTATING client', () => {
+  const CONN = 'hub-conn-6';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  const WRITES: { name: string; call: (s: WorklogService) => void; url: string; method: string }[] = [
+    // ---- backlog + task extras ----
+    { name: 'setBacklogTags', call: s => s.setBacklogTags(7, [1, 2], 3).subscribe(), url: '/api/backlogs/7/tags', method: 'PUT' },
+    { name: 'continueBacklog', call: s => s.continueBacklog(7, '2026-08').subscribe(), url: '/api/backlogs/7/continue', method: 'POST' },
+    { name: 'setTaskStatus', call: s => s.setTaskStatus(42, 'Done', 9).subscribe(), url: '/api/tasks/42/status', method: 'PUT' },
+    { name: 'setTaskExtended', call: s => s.setTaskExtended(42, { type: 'IT', assigneeUserId: 3, expectedVersion: 9 }).subscribe(), url: '/api/tasks/42/extended', method: 'PUT' },
+    { name: 'setTaskTags', call: s => s.setTaskTags(42, [1], 9).subscribe(), url: '/api/tasks/42/tags', method: 'PUT' },
+    // ---- users [ADMIN] ----
+    { name: 'createUser', call: s => s.createUser('Zoe').subscribe(), url: '/api/users', method: 'POST' },
+    { name: 'renameUser', call: s => s.renameUser(3, 'Zoe Q', 1).subscribe(), url: '/api/users/3', method: 'PUT' },
+    { name: 'setUserUsername', call: s => s.setUserUsername(3, 'zoe', 1).subscribe(), url: '/api/users/3/username', method: 'PUT' },
+    { name: 'setUserAdmin', call: s => s.setUserAdmin(3, true, 1).subscribe(), url: '/api/users/3/admin', method: 'PUT' },
+    { name: 'setUserActive', call: s => s.setUserActive(3, true).subscribe(), url: '/api/users/3/active', method: 'PUT' },
+    { name: 'adminSetPassword', call: s => s.adminSetPassword(3, 'pw').subscribe(), url: '/api/auth/users/3/set-password', method: 'POST' },
+    // ---- teams [ADMIN] ----
+    { name: 'createTeam', call: s => s.createTeam('Alpha').subscribe(), url: '/api/teams', method: 'POST' },
+    { name: 'renameTeam', call: s => s.renameTeam(3, 'Beta', 1).subscribe(), url: '/api/teams/3', method: 'PUT' },
+    { name: 'setTeamMembers', call: s => s.setTeamMembers(3, [1, 2], 1).subscribe(), url: '/api/teams/3/members', method: 'PUT' },
+    { name: 'setTeamActive', call: s => s.setTeamActive(3, false).subscribe(), url: '/api/teams/3/active', method: 'PUT' },
+    // ---- tags [ADMIN] ----
+    { name: 'createTag', call: s => s.createTag({ text: 'bug', color: '#f00', icon: 'b' }).subscribe(), url: '/api/tags', method: 'POST' },
+    { name: 'updateTag', call: s => s.updateTag(1, { text: 'bug', expectedVersion: 2 }).subscribe(), url: '/api/tags/1', method: 'PUT' },
+    { name: 'deleteTag', call: s => s.deleteTag(1).subscribe(), url: '/api/tags/1', method: 'DELETE' },
+    // ---- pca contacts [ADMIN] ----
+    { name: 'createPcaContact', call: s => s.createPcaContact('Pat').subscribe(), url: '/api/pca-contacts', method: 'POST' },
+    { name: 'renamePcaContact', call: s => s.renamePcaContact(1, 'Pat Q', 1).subscribe(), url: '/api/pca-contacts/1', method: 'PUT' },
+    { name: 'setPcaContactActive', call: s => s.setPcaContactActive(1, false).subscribe(), url: '/api/pca-contacts/1/active', method: 'PUT' },
+    // ---- templates [ADMIN] ----
+    { name: 'createTemplate', call: s => s.createTemplate({ templateName: 'T', taskName: 'row', orderIndex: 0 }).subscribe(), url: '/api/templates', method: 'POST' },
+    { name: 'deleteTemplate', call: s => s.deleteTemplate(1).subscribe(), url: '/api/templates/1', method: 'DELETE' },
+    { name: 'deleteTemplateByName', call: s => s.deleteTemplateByName('T').subscribe(), url: '/api/templates', method: 'DELETE' },
+    // ---- holidays [ADMIN] ----
+    { name: 'upsertHoliday', call: s => s.upsertHoliday('2026-01-01', 'New Year').subscribe(), url: '/api/holidays', method: 'POST' },
+    { name: 'deleteHoliday', call: s => s.deleteHoliday('2026-01-01').subscribe(), url: '/api/holidays/2026-01-01', method: 'DELETE' },
+    // ---- default tasks [ADMIN] ----
+    { name: 'createDefaultTask', call: s => s.createDefaultTask('Standup', 0).subscribe(), url: '/api/default-tasks', method: 'POST' },
+    { name: 'setDefaultTaskActive', call: s => s.setDefaultTaskActive(1, false).subscribe(), url: '/api/default-tasks/1/active', method: 'PUT' },
+    { name: 'syncDefaultTasks', call: s => s.syncDefaultTasks().subscribe(), url: '/api/default-tasks/sync', method: 'POST' },
+    // ---- standup ----
+    { name: 'createStandupEntry', call: s => s.createStandupEntry({ workDate: '2026-07-06', taskText: 'x' }).subscribe(), url: '/api/standup/entries', method: 'POST' },
+    { name: 'updateStandupEntry', call: s => s.updateStandupEntry(1, { taskText: 'y' }).subscribe(), url: '/api/standup/entries/1', method: 'PUT' },
+    { name: 'deleteStandupEntry', call: s => s.deleteStandupEntry(1).subscribe(), url: '/api/standup/entries/1', method: 'DELETE' },
+    { name: 'reorderStandupEntry', call: s => s.reorderStandupEntry(1, 2).subscribe(), url: '/api/standup/entries/reorder', method: 'PUT' },
+    { name: 'quickImportStandup', call: s => s.quickImportStandup('2026-07-06', '2026-07-07').subscribe(), url: '/api/standup/quick-import', method: 'POST' },
+    { name: 'createStandupIssue', call: s => s.createStandupIssue(1, { issueText: 'i' }).subscribe(), url: '/api/standup/entries/1/issues', method: 'POST' },
+    { name: 'updateStandupIssue', call: s => s.updateStandupIssue(1, 2, { issueText: 'i', expectedVersion: 4 }).subscribe(), url: '/api/standup/entries/1/issues/2', method: 'PUT' },
+    { name: 'deleteStandupIssue', call: s => s.deleteStandupIssue(1, 2).subscribe(), url: '/api/standup/entries/1/issues/2', method: 'DELETE' },
+    { name: 'archiveStandupWeek', call: s => s.archiveStandupWeek('2026-07-06').subscribe(), url: '/api/standup/archive', method: 'POST' },
+    // ---- settings k/v [ADMIN] ----
+    { name: 'setSetting', call: s => s.setSetting('MissingLogsNDays', '5').subscribe(), url: '/api/settings/MissingLogsNDays', method: 'PUT' },
+    // ---- ops [ADMIN] ----
+    { name: 'runBackup', call: s => s.runBackup().subscribe(), url: '/api/ops/backup/run', method: 'POST' },
+    { name: 'runExport', call: s => s.runExport().subscribe(), url: '/api/ops/export/run', method: 'POST' },
+    { name: 'previewRetention', call: s => s.previewRetention().subscribe(), url: '/api/ops/retention/preview', method: 'POST' },
+    { name: 'runRetention', call: s => s.runRetention().subscribe(), url: '/api/ops/retention/run', method: 'POST' },
+    // ---- me ----
+    { name: 'setActiveTeam', call: s => s.setActiveTeam(3).subscribe(), url: '/api/me/active-team', method: 'PUT' },
+  ];
+
+  WRITES.forEach(({ name, call, url, method }) => {
+    it(`${name} ${method}s ${url} on the MUTATING client — on the plain one it would echo back and clobber the screen`, () => {
+      call(service);
+
+      const req = httpMock.expectOne(r => r.url === url);
+      expect(req.request.method).toBe(method);
+      expect(req.request.url.startsWith('http')).toBeFalse();
+
+      // 🔴 THE assertion. The header the server EXCLUDES us from its own SignalR broadcast by. Without a
+      // connected hub (see the block comment) this would pass even if the call rode `this.http`.
+      expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+      req.flush({});
+    });
+  });
+});
+
+// =====================================================================================================
+// 🔴 THE TEAM FILTER. The single most dangerous parameter added in M9, and it fails in the WORST direction.
+//
+// `teamIds: []` reads like "no teams". It is not. The generated RequestBuilder serialises a query array with
+// explode:true — ONE `?teamIds=` entry PER ELEMENT — so an EMPTY array appends NOTHING and the key is
+// ABSENT from the URL. And the server reads an ABSENT key as `ctx.MemberTeamIds`: EVERY TEAM YOU BELONG TO.
+//
+// So "filter to nothing" shows EVERYTHING. These tests pin that inversion in place so a future reader cannot
+// talk themselves into "[] must surely mean empty".
+// =====================================================================================================
+describe('WorklogService — M9 P5: the team filter inverts on an empty array', () => {
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('sends ONE ?teamIds= entry PER TEAM — the repeated-key shape the server intersects against membership', () => {
+    service.getTaskListScreen(2026, 7, [4, 9]).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasklist');
+    // NOT "4,9" in a single entry: the server int.TryParses each entry and silently DROPS what does not
+    // parse, so a comma-joined value would intersect to the empty set — no rows, no error, no clue.
+    expect(req.request.params.getAll('teamIds')).toEqual(['4', '9']);
+    expect(req.request.params.get('year')).toBe('2026');
+    expect(req.request.params.get('month')).toBe('7');
+    req.flush({});
+  });
+
+  it('🔴 an EMPTY teamIds array is BYTE-IDENTICAL to omitting it — and the server reads that as ALL MY TEAMS', () => {
+    service.getTaskListScreen(2026, 7, []).subscribe();
+    service.getTaskListScreen(2026, 7, undefined).subscribe();
+
+    const reqs = httpMock.match(r => r.url === '/api/tasklist');
+    expect(reqs.length).toBe(2);
+
+    // The key is not merely empty — it is ABSENT. There is NO value the client can send through this
+    // parameter that means "no teams", which is exactly why the SCREEN must render its empty state locally
+    // instead of calling with [].
+    expect(reqs[0].request.params.has('teamIds')).toBeFalse();
+    expect(reqs[0].request.urlWithParams).toBe(reqs[1].request.urlWithParams);
+
+    reqs.forEach(r => r.flush({}));
+  });
+
+  it('inverts the same way on the weekly report, the monthly report and the standup board', () => {
+    service.getWeeklyReport('2026-07-06', { teamIds: [] }).subscribe();
+    service.getMonthlyReport(2026, 7, { teamIds: [] }).subscribe();
+    service.getStandupBoard('2026-07-06', []).subscribe();
+
+    const weekly = httpMock.expectOne(r => r.url === '/api/reports/weekly');
+    const monthly = httpMock.expectOne(r => r.url === '/api/reports/monthly');
+    const board = httpMock.expectOne(r => r.url === '/api/standup/board');
+
+    expect(weekly.request.params.has('teamIds')).toBeFalse();
+    expect(monthly.request.params.has('teamIds')).toBeFalse();
+    expect(board.request.params.has('teamIds')).toBeFalse();
+
+    weekly.flush({});
+    monthly.flush({});
+    board.flush([]);
+  });
+
+  it('passes a real selection through verbatim, inventing no sentinel', () => {
+    service.getWeeklyReport('2026-07-06', { userId: 3, project: 'Apollo', teamIds: [1] }).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/reports/weekly');
+    expect(req.request.params.get('monday')).toBe('2026-07-06');
+    expect(req.request.params.get('userId')).toBe('3');
+    expect(req.request.params.get('project')).toBe('Apollo');
+    expect(req.request.params.getAll('teamIds')).toEqual(['1']);
+    req.flush({});
+  });
+});
+
+// =====================================================================================================
+// THE TWO HAND-WRITTEN FILE EXPORTS — GET /api/export/excel · GET /api/export/markdown
+//
+// NOT generated, deliberately: both routes return binary / raw text, which ng-openapi-gen cannot type, so
+// "Export" is kept out of includeTags on purpose. Hand-written means hand-tested — in particular the two
+// things the generator would otherwise have got right for free: a SAME-ORIGIN relative URL, and the
+// repeated-key teamIds shape.
+// =====================================================================================================
+describe('WorklogService — M9 P5: the hand-written file exports', () => {
+  const CONN = 'hub-conn-7';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('requests the xlsx as a BLOB, on a same-origin RELATIVE path, on the PLAIN client', () => {
+    let got: Blob | undefined;
+    service.exportExcel(2026, 7).subscribe(b => (got = b));
+
+    const req = httpMock.expectOne(r => r.url === '/api/export/excel');
+    expect(req.request.method).toBe('GET');
+
+    // 🔴 NEVER an absolute URL. `http://localhost:5080/...` is CROSS-SITE, and a SameSite=Lax cookie is not
+    // sent on a cross-site request — the download would go out anonymous and 401.
+    expect(req.request.url.startsWith('http')).toBeFalse();
+    expect(req.request.url).toBe('/api/export/excel');
+
+    // A spreadsheet is not JSON. responseType must be blob or HttpClient will try to parse it.
+    expect(req.request.responseType).toBe('blob');
+
+    // A download notifies nobody, so it stays on the plain client (the hub IS connected here — see above).
+    expect(req.request.headers.has(CONNECTION_ID_HEADER)).toBeFalse();
+
+    const blob = new Blob(['xlsx-bytes']);
+    req.flush(blob);
+    expect(got).toBe(blob);
+  });
+
+  it('requests the markdown as a BLOB too — it is a download, not a preview', () => {
+    service.exportMarkdown(2026, 7).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/export/markdown');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.url.startsWith('http')).toBeFalse();
+    expect(req.request.responseType).toBe('blob');
+    req.flush(new Blob(['# md']));
+  });
+
+  it('sends year, month and the optional filter — and ONE ?teamIds= entry per team', () => {
+    service.exportExcel(2026, 7, { userId: 3, project: 'Apollo', teamIds: [4, 9] }).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/export/excel');
+    expect(req.request.params.get('year')).toBe('2026');
+    expect(req.request.params.get('month')).toBe('7');
+    expect(req.request.params.get('userId')).toBe('3');
+    expect(req.request.params.get('project')).toBe('Apollo');
+
+    // `append`, not `set`. The server hand-reads the raw query and int.TryParses each entry; a comma-joined
+    // "4,9" would parse to nothing and intersect to the empty set.
+    expect(req.request.params.getAll('teamIds')).toEqual(['4', '9']);
+    req.flush(new Blob(['x']));
+  });
+
+  it('🔴 omits teamIds entirely when the filter is empty — the same ALL-MY-TEAMS inversion as the generated calls', () => {
+    service.exportExcel(2026, 7, { teamIds: [] }).subscribe();
+    service.exportMarkdown(2026, 7).subscribe();
+
+    const excel = httpMock.expectOne(r => r.url === '/api/export/excel');
+    const md = httpMock.expectOne(r => r.url === '/api/export/markdown');
+
+    // `EffectiveTeamIds` reads an ABSENT key as ctx.MemberTeamIds — every team the caller belongs to. The
+    // stakes are highest on the markdown route, whose teamIds is NULLABLE server-side (null = EVERY TEAM).
+    expect(excel.request.params.has('teamIds')).toBeFalse();
+    expect(md.request.params.has('teamIds')).toBeFalse();
+
+    // And no userId / project keys when they were not asked for.
+    expect(md.request.params.has('userId')).toBeFalse();
+    expect(md.request.params.has('project')).toBeFalse();
+
+    excel.flush(new Blob(['x']));
+    md.flush(new Blob(['y']));
+  });
+
+  it('reads the Task List month export as TEXT via the GENERATED client — a string, not a blob', () => {
+    let got: string | undefined;
+    service.exportTaskListMarkdown(2026, 7).subscribe(m => (got = m));
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasklist/export');
+    // Unlike the two /api/export/* routes, THIS one IS generated: text/markdown types cleanly as a string,
+    // and taskListExport already sets responseType 'text' itself. There was nothing to hand-write.
+    expect(req.request.responseType).toBe('text');
+    req.flush('# July');
+
+    expect(got).toBe('# July');
+  });
+});
+
+// =====================================================================================================
+// THE BODIES. Transport is pinned above; this block pins what actually goes IN each request and what comes
+// back out — the parts a wrong body would corrupt SILENTLY.
+// =====================================================================================================
+describe('WorklogService — M9 P5: request bodies and response shapes', () => {
+  const CONN = 'hub-conn-8';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('sends expectedVersion on every CHECKED write — without it the server cannot detect a lost update', () => {
+    service.setBacklogTags(7, [1, 2], 3).subscribe();
+    const tags = httpMock.expectOne(r => r.url === '/api/backlogs/7/tags');
+    expect(tags.request.body).toEqual({ tagIds: [1, 2], expectedVersion: 3 });
+    tags.flush({ rowVersion: 4 });
+
+    service.setTaskStatus(42, 'Done', 9).subscribe();
+    const status = httpMock.expectOne(r => r.url === '/api/tasks/42/status');
+    expect(status.request.body).toEqual({ status: 'Done', expectedVersion: 9 });
+    status.flush({ rowVersion: 10 });
+
+    service.setTeamMembers(3, [1, 2], 5).subscribe();
+    const members = httpMock.expectOne(r => r.url === '/api/teams/3/members');
+    expect(members.request.body).toEqual({ userIds: [1, 2], expectedVersion: 5 });
+    members.flush({ rowVersion: 6 });
+
+    service.setUserAdmin(3, true, 1).subscribe();
+    const admin = httpMock.expectOne(r => r.url === '/api/users/3/admin');
+    expect(admin.request.body).toEqual({ isAdmin: true, expectedVersion: 1 });
+    admin.flush({ rowVersion: 2 });
+  });
+
+  it('sends ONLY isActive on the four bump-only soft-delete routes — no version, in either direction', () => {
+    const calls: { call: () => void; url: string }[] = [
+      { call: () => service.setUserActive(3, true).subscribe(), url: '/api/users/3/active' },
+      { call: () => service.setTeamActive(3, false).subscribe(), url: '/api/teams/3/active' },
+      { call: () => service.setPcaContactActive(1, false).subscribe(), url: '/api/pca-contacts/1/active' },
+      { call: () => service.setDefaultTaskActive(1, true).subscribe(), url: '/api/default-tasks/1/active' },
+    ];
+
+    calls.forEach(({ call, url }) => {
+      call();
+      const req = httpMock.expectOne(r => r.url === url);
+      expect('expectedVersion' in req.request.body).toBeFalse();
+      expect('rowVersion' in req.request.body).toBeFalse();
+      // The flag is PASSED THROUGH, never hard-coded: `true` RESTORES through the same route.
+      expect(Object.keys(req.request.body)).toEqual(['isActive']);
+      req.flush(null, { status: 204, statusText: 'No Content' });
+    });
+  });
+
+  it('sends templateName as a QUERY param on the delete-whole-template route, not a path segment', () => {
+    service.deleteTemplateByName('Sprint').subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/templates');
+    expect(req.request.method).toBe('DELETE');
+    expect(req.request.params.get('templateName')).toBe('Sprint');
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('puts the holiday date in the PATH on delete and in the BODY on upsert — there is no holiday id', () => {
+    service.upsertHoliday('2026-01-01', 'New Year').subscribe();
+    const up = httpMock.expectOne(r => r.url === '/api/holidays');
+    expect(up.request.method).toBe('POST');
+    expect(up.request.body).toEqual({ date: '2026-01-01', description: 'New Year' });
+    up.flush(null, { status: 204, statusText: 'No Content' });
+
+    service.deleteHoliday('2026-01-01').subscribe();
+    const del = httpMock.expectOne(r => r.url === '/api/holidays/2026-01-01');
+    expect(del.request.method).toBe('DELETE');
+    del.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('sends the standup archive date as a QUERY param and hands back a SERVER path, not a download', () => {
+    let got: ArchivedFileDto | undefined;
+    service.archiveStandupWeek('2026-07-06').subscribe(a => (got = a));
+
+    const req = httpMock.expectOne(r => r.url === '/api/standup/archive');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.params.get('date')).toBe('2026-07-06');
+
+    req.flush({ path: 'C:\\share\\standup\\2026-W28.md' });
+
+    // 🔴 A path on the SERVER. The browser cannot open it — it is there to be SHOWN, not fetched.
+    expect(got!.path).toBe('C:\\share\\standup\\2026-W28.md');
+  });
+
+  it('hands back the new id from the two standup creates — the caller needs it and must not re-read', () => {
+    let entryId: number | undefined;
+    service.createStandupEntry({ workDate: '2026-07-06', taskText: 'x' }).subscribe(id => (entryId = id));
+    httpMock.expectOne(r => r.url === '/api/standup/entries').flush(77);
+    expect(entryId).toBe(77);
+
+    let issueId: number | undefined;
+    service.createStandupIssue(77, { issueText: 'blocked' }).subscribe(id => (issueId = id));
+    httpMock.expectOne(r => r.url === '/api/standup/entries/77/issues').flush(5);
+    expect(issueId).toBe(5);
+  });
+
+  // ===================================================================================================
+  // 🔴 THE FOUR REPORTS STAT CARDS ARE CLIENT-SIDE ARITHMETIC. There is NO /api/reports/metrics — the API
+  // has exactly three /api/reports/* routes and this is what they carry. `getMetrics()`'s old TODO comment
+  // named a route that never existed; this test is what makes the alternative concrete.
+  // ===================================================================================================
+  it('carries everything the stat cards need on the WEEKLY response — no metrics route is needed, or exists', () => {
+    const wire: TimesheetWeeklyReportResponse = {
+      dayTotals: [
+        { date: '2026-07-06', totalHours: 8 },
+        { date: '2026-07-07', totalHours: 6 },
+      ],
+      daysLogged: { logged: 2, workingDays: 5 },
+      detailRows: [],
+    };
+
+    let got: TimesheetWeeklyReportResponse | undefined;
+    service.getWeeklyReport('2026-07-06').subscribe(r => (got = r));
+    httpMock.expectOne(r => r.url === '/api/reports/weekly').flush(wire);
+
+    // Total hours, days logged, working days — three of the four cards, all derivable from this ONE response.
+    expect(got!.dayTotals!.reduce((sum, d) => sum + (d.totalHours ?? 0), 0)).toBe(14);
+    expect(got!.daysLogged!.logged).toBe(2);
+    expect(got!.daysLogged!.workingDays).toBe(5);
+  });
+
+  it('returns missing logs as MissingLogWarning[] — a bare userName, deliberately no id — and takes no params', () => {
+    const wire: MissingLogWarning[] = [{ userName: 'Zoe' }, { userName: 'Pat' }];
+
+    let got: MissingLogWarning[] | undefined;
+    service.getMissingLogs().subscribe(m => (got = m));
+
+    const req = httpMock.expectOne(r => r.url === '/api/reports/missing-logs');
+    // The route accepts NO client parameters at all: N is a server-side setting (a client-supplied N would
+    // let anyone request an arbitrarily large scan window) and the team scope is internal.
+    expect(req.request.params.keys().length).toBe(0);
+    req.flush(wire);
+
+    // The 4th stat card is just this length.
+    expect(got!.length).toBe(2);
+    expect(got![0].userName).toBe('Zoe');
+  });
+
+  it('returns the tag JOINS as bare id arrays — resolve them against getTagList()', () => {
+    let backlogTags: number[] | undefined;
+    service.getBacklogTags(7).subscribe(t => (backlogTags = t));
+    httpMock.expectOne(r => r.url === '/api/backlogs/7/tags').flush([3, 8]);
+    expect(backlogTags).toEqual([3, 8]);
+
+    let taskTags: number[] | undefined;
+    service.getTaskTags(42).subscribe(t => (taskTags = t));
+    httpMock.expectOne(r => r.url === '/api/tasks/42/tags').flush([3]);
+    expect(taskTags).toEqual([3]);
+  });
+
+  it('reads an UNSET setting as a 200 with a null value — not a 404, and not an error', () => {
+    let got: SettingDto | undefined;
+    service.getSetting('MissingLogsNDays').subscribe(s => (got = s));
+
+    // Every key is unset on a fresh database. The caller falls back to the documented default; treating this
+    // as a failure would break every settings form on first run.
+    httpMock.expectOne(r => r.url === '/api/settings/MissingLogsNDays')
+      .flush({ key: 'MissingLogsNDays', value: null });
+
+    expect(got!.value).toBeNull();
+  });
+});
+
+// =====================================================================================================
+// 🔴 THE ONE RULE OF M9 PHASE 1: ADD METHODS. RETYPE NOTHING. DELETE NOTHING.
+//
+// Every stub below is STILL BOUND by a Phase-2 component that has not been rewritten yet (users, task-list,
+// daily-report, reports, settings), all of which bind the VENDORED view models under strictTemplates.
+// Retyping one here does not "wire up a screen" — it breaks the build of a component this phase is not
+// allowed to touch. Each Phase-2 agent deletes the stub IT orphans, when it moves its own component over.
+//
+// This block is the regression guard for that rule. If a later agent "tidies up" by deleting a stub whose
+// component still binds it, or quietly retypes one in place, THIS goes red.
+// =====================================================================================================
+describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  // No request may be made by ANY stub — they are `of(...)`, not transport.
+  afterEach(() => httpMock.verify());
+
+  it('still exposes every stub, still empty, and still making NO http call', () => {
+    const empties: Observable<unknown[]>[] = [
+      service.getUsers(),
+      service.getLogGroups(),
+      service.getTaskCards(),
+      service.getDailyEntries('2026-07-06'),
+      service.getTeamBoard('2026-07-06'),
+      service.getMetrics(),
+      service.getMissing(),
+      service.getWeekly(),
+      service.getMonthly(),
+      service.getTags(),
+      service.getTemplates(),
+      service.getContacts(),
+      service.getTeams(),
+      service.getHolidays(),
+    ];
+
+    empties.forEach(o => o.subscribe(v => expect(v).toEqual([])));
+
+    // The odd one out: a null, not an empty array.
+    service.getDrilldown().subscribe(v => expect(v).toBeNull());
+
+    // And the three stub mutations, which must also stay inert.
+    service.saveProgress('0-0-0', 50).subscribe(v => expect(v).toBeUndefined());
+    service.toggleUser('Zoe').subscribe(v => expect(v).toBeUndefined());
+    service.toggleHoliday('2026-01-01').subscribe(v => expect(v).toBeUndefined());
+
+    // httpMock.verify() in afterEach proves none of the above touched the network. A stub "helpfully" wired
+    // to a real route would fail HERE, loudly, rather than silently changing a screen's behaviour in a phase
+    // that is not allowed to.
+  });
+
+  it('keeps each real method and its stub as SEPARATE, DIFFERENTLY-NAMED members', () => {
+    // The convention, asserted: `getTagList` is real, `getTags` is the vendored stub, and BOTH exist. This is
+    // what M8.6 did with getBacklogList()/getBacklogs(), and it is why Phase 1 can end green.
+    const pairs: [keyof WorklogService, keyof WorklogService][] = [
+      ['getTagList', 'getTags'],
+      ['getTemplateList', 'getTemplates'],
+      ['getHolidayList', 'getHolidays'],
+      ['getTeamsActive', 'getTeams'],
+      ['getUsersAll', 'getUsers'],
+      ['getStandupMyDay', 'getDailyEntries'],
+      ['getStandupBoard', 'getTeamBoard'],
+      ['getTaskListScreen', 'getTaskCards'],
+      ['getWeeklyReport', 'getWeekly'],
+      ['getMonthlyReport', 'getMonthly'],
+      ['getMissingLogs', 'getMissing'],
+      ['getPcaContactsActive', 'getContacts'],
+    ];
+
+    pairs.forEach(([real, stub]) => {
+      expect(typeof service[real]).toBe('function');
+      expect(typeof service[stub]).toBe('function');
+      expect(service[real]).not.toBe(service[stub]);
+    });
   });
 });
