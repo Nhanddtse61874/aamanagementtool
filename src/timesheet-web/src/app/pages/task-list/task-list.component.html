@@ -1,55 +1,288 @@
 <section class="page" style="max-width:1500px;">
   <div class="page-head">
-    <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m8 11 2.5 2.5L16 8"/></svg></div>
+    <div class="icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="2"/><path d="m8 11 2.5 2.5L16 8"/>
+      </svg>
+    </div>
     <div><h1>Task List</h1><p>Backlogs with tasks &amp; tags</p></div>
   </div>
 
-  <div class="cards">
-    @for (c of cards(); track c.code; let ci = $index) {
-      <div class="card tcard">
-        <div class="tcard__top">
-          <span class="code">{{ c.code }}</span>
-          <span class="badge" [style.background]="typeColor(c.type)?.bg" [style.color]="typeColor(c.type)?.c">{{ c.type }}</span>
-        </div>
-        <div class="tcard__meta">
-          <span class="muted">{{ c.project }}</span>
-          <span class="asg"><span class="avatar" [style.background]="avatar(c.assignee)" style="width:20px;height:20px;font-size:9px;">{{ c.assignee[0] }}</span>{{ c.assignee }}</span>
-        </div>
-        <div class="tags">
-          @for (t of c.tags; track t) {
-            <span class="tag" [style.background]="tagColor(t) + '22'" [style.color]="tagColor(t)"><span class="d" [style.background]="tagColor(t)"></span>{{ t }}</span>
-          }
-        </div>
+  <!-- ============================ TOOLBAR ============================ -->
+  <div class="card card--pad tl-bar">
+    <label class="tl-field">
+      <span>Month</span>
+      <select [value]="month()" (change)="onMonth($event)">
+        @for (m of MONTHS; track m) {
+          <option [value]="m">{{ m === ALL_MONTHS ? 'All months' : m }}</option>
+        }
+      </select>
+    </label>
 
-        <div class="ov">
-          <span class="ov__lbl">TASKS · {{ doneCount(ci) }}/{{ c.tasks.length }} done</span>
-          <span class="ov__val">{{ overall(ci) }}% overall</span>
-        </div>
-        <div class="bar bar--lg"><div class="bar__fill" [style.width.%]="overall(ci)"></div></div>
+    <label class="tl-field">
+      <span>Year</span>
+      <select [value]="year()" (change)="onYear($event)">
+        @for (y of YEARS; track y) { <option [value]="y">{{ y }}</option> }
+      </select>
+    </label>
 
-        <div class="tasks">
-          @for (t of c.tasks; track t; let ti = $index) {
-            <div class="tk">
-              <div class="tk__row">
-                <span class="tk__name" [class.done]="pct(ci,ti) >= 100">
-                  <span class="tk__dot" [class.on]="pct(ci,ti) >= 100">{{ pct(ci,ti) >= 100 ? '✓' : '' }}</span>{{ t }}
-                </span>
-                <span class="tk__pct">
-                  <input type="number" min="0" max="100" inputmode="numeric"
-                    [ngModel]="pct(ci,ti)" (ngModelChange)="setPct(ci,ti,$event)" />
-                  <span>%</span>
-                </span>
+    <app-team-filter (selectionChange)="onTeams($event)" />
+
+    <span class="tl-spacer"></span>
+
+    <button type="button" class="btn btn-ghost btn-sm" (click)="toggleView()">
+      {{ view() === 'grid' ? '▦ Grid' : '▤ Gantt' }}
+    </button>
+
+    @if (view() === 'gantt') {
+      <button type="button" class="btn btn-ghost btn-sm" (click)="toggleChart()">
+        {{ chartCollapsed() ? 'Show chart' : 'Hide chart' }}
+      </button>
+    }
+
+    <!-- The markdown overview is MONTH-scoped: there is no such document for "All months". -->
+    <button type="button" class="btn btn-soft btn-sm"
+            [disabled]="!concreteMonth() || saving()"
+            (click)="exportMonth()">
+      ⬇ Export this month
+    </button>
+  </div>
+
+  <!-- ==========================================================================================
+       🔴 THE EMPTY-TEAM STATE IS RENDERED HERE, LOCALLY, AND NO CALL WAS MADE TO GET IT.
+       `teamIds: []` on the wire means ALL MY TEAMS — the exact inverse of what it looks like. See
+       `teamIds` in the component.
+       ========================================================================================== -->
+  @if (noTeams()) {
+    <div class="card card--pad tl-empty">
+      <div class="tl-empty__title">No teams selected</div>
+      <div class="tl-empty__sub">Tick at least one team to see its backlogs.</div>
+    </div>
+  } @else if (loading()) {
+    <div class="card card--pad tl-empty"><div class="tl-empty__sub">Loading…</div></div>
+  } @else if (error()) {
+    <div class="card card--pad tl-empty">
+      <div class="tl-empty__title">The task list could not be loaded</div>
+      <div class="tl-empty__sub">{{ error() }}</div>
+    </div>
+  } @else if (rows().length === 0) {
+    <div class="card card--pad tl-empty">
+      <div class="tl-empty__title">Nothing here</div>
+      <div class="tl-empty__sub">No backlogs in this period.</div>
+    </div>
+  } @else if (view() === 'gantt') {
+
+    <!-- ============================ GANTT ============================
+         🔴 The server's model, rendered. The axis is already working days only (weekends AND holidays
+         excluded server-side) and every bar already carries its axis positions. No date maths here. -->
+    @if (!chartCollapsed()) {
+      @if (gantt(); as g) {
+        <div class="card card--pad tl-gantt">
+          <div class="tl-gantt__scroll">
+            <div class="tl-gantt__axis" [style.width.px]="(g.axis?.length ?? 0) * COL">
+              @for (day of g.axis ?? []; track day) {
+                <div class="tl-gantt__day" [style.width.px]="COL" [title]="day">{{ axisLabel(day) }}</div>
+              }
+            </div>
+
+            @for (bar of g.bars ?? []; track bar.backlogId) {
+              <div class="tl-gantt__row" [style.width.px]="(g.axis?.length ?? 0) * COL">
+                <span class="tl-gantt__code">{{ bar.backlogCode }}</span>
+
+                @if (barVisible(bar.spanWorkingDays)) {
+                  <!-- No start date → a faint dashed placeholder pinned at its deadline. -->
+                  <div class="tl-gantt__bar"
+                       [class.tl-gantt__bar--ghost]="!bar.hasStart"
+                       [class.tl-gantt__bar--late]="bar.scheduleState === 2"
+                       [class.tl-gantt__bar--warn]="bar.scheduleState === 1"
+                       [style.left.px]="barLeft(bar.startDayIndex)"
+                       [style.width.px]="barWidth(bar.spanWorkingDays)"></div>
+                }
+
+                <!-- The external deadline: a red marker on its own dashed line. -->
+                @if (bar.externalMarkerIndex !== null && bar.externalMarkerIndex !== undefined) {
+                  <div class="tl-gantt__ext" [style.left.px]="barLeft(bar.externalMarkerIndex)"></div>
+                }
               </div>
-              <div class="bar"><div class="bar__fill" [class.full]="pct(ci,ti) >= 100" [style.width.%]="pct(ci,ti)"></div></div>
+            }
+          </div>
+        </div>
+      }
+    }
+
+  } @else {
+
+    <!-- ============================ GRID ============================ -->
+    @for (band of bands(); track band.key) {
+      <div class="tl-band">
+        <span class="tl-band__key">{{ band.key }}</span>
+        <span class="tl-band__count">{{ band.rows.length }}</span>
+      </div>
+
+      @for (row of band.rows; track row.backlogId) {
+        <div class="card tl-card" [class.tl-card--done]="done(row)">
+
+          <!-- ---------------- COMPACT HEADER ----------------
+               `project` is NOT here: the band above already shows it. -->
+          <div class="tl-head">
+            <button type="button" class="tl-caret" (click)="toggleExpand(row)"
+                    [attr.aria-expanded]="isExpanded(row)"
+                    [attr.aria-label]="isExpanded(row) ? 'Collapse' : 'Expand'">
+              {{ isExpanded(row) ? '▾' : '▸' }}
+            </button>
+
+            <span class="tl-code">{{ row.backlogCode }}</span>
+
+            <span class="tl-cell">
+              <span class="tl-cell__lbl">PCT</span>
+              <span class="tl-cell__val">{{ row.pctAssigneeName ?? '—' }}</span>
+            </span>
+
+            <span class="tl-cell">
+              <span class="tl-cell__lbl">Internal</span>
+              <input class="tl-date" type="date" [value]="row.deadlineInternal ?? ''"
+                     [disabled]="saving()" (change)="onDeadline(row, 'internal', $event)" />
+            </span>
+
+            <span class="tl-cell">
+              <span class="tl-cell__lbl">External</span>
+              <input class="tl-date" type="date" [value]="row.deadlineExternal ?? ''"
+                     [disabled]="saving()" (change)="onDeadline(row, 'external', $event)" />
+            </span>
+
+            <!-- ---------------- INLINE PROGRESS ----------------
+                 Enter commits · Escape reverts WITHOUT saving · blur commits. An invalid value NEVER
+                 commits (see `commitProgress`). -->
+            <span class="tl-cell tl-cell--pct">
+              <span class="tl-cell__lbl">Progress</span>
+              @if (editingProgress() === row.backlogId) {
+                <input #progressBox class="tl-pct-input" type="text" maxlength="3" inputmode="numeric"
+                       [value]="progressDraft()"
+                       (input)="onProgressInput($event)"
+                       (keydown.enter)="commitProgress(row)"
+                       (keydown.escape)="cancelProgress()"
+                       (blur)="commitProgress(row)" />
+              } @else {
+                <button type="button" class="tl-pct" [disabled]="saving()" (click)="startProgress(row)">
+                  <span class="tl-pct__bar"><span class="tl-pct__fill" [style.width.%]="row.progressPercent ?? 0"></span></span>
+                  <span class="tl-pct__txt">{{ percent(row.progressPercent) }}</span>
+                </button>
+              }
+            </span>
+          </div>
+
+          <!-- ---------------- CHIPS ----------------
+               At most ONE system chip, then the custom tags, ordered by tag id. -->
+          <div class="tl-chips">
+            @for (chip of chips(row); track $index) {
+              @if (chip.kind === 'late') {
+                <span class="tl-chip tl-chip--late">{{ chip.text }}</span>
+              } @else if (chip.kind === 'warning') {
+                <span class="tl-chip tl-chip--warn">{{ chip.text }}</span>
+              } @else {
+                <span class="tl-chip" [style.background]="(chip.color ?? '#5C6560') + '22'"
+                      [style.color]="chip.color ?? '#5C6560'">
+                  @if (chip.icon) { <span class="tl-chip__icon">{{ chip.icon }}</span> }
+                  {{ chip.text }}
+                </span>
+              }
+            }
+
+            <button type="button" class="btn btn-ghost btn-sm tl-tagbtn"
+                    [disabled]="saving()" (click)="toggleBacklogPicker(row)">✎ Tags</button>
+
+            @if (concreteMonth()) {
+              <button type="button" class="btn btn-ghost btn-sm"
+                      [disabled]="saving()" (click)="continueRow(row)">↻ Continue</button>
+            }
+          </div>
+
+          @if (pickerOpen('backlog', row.backlogId)) {
+            <app-tag-picker [tags]="tags()" [selected]="pickerSelected()" [disabled]="saving()"
+                            (selectionChange)="commitBacklogTags(row, $event)" />
+          }
+
+          <!-- ---------------- EXPANDED ---------------- -->
+          @if (isExpanded(row)) {
+            <div class="tl-detail">
+              <div class="tl-facts">
+                <span class="tl-fact"><span class="tl-cell__lbl">Type</span>{{ row.type ?? '—' }}</span>
+                <span class="tl-fact"><span class="tl-cell__lbl">PCA</span>{{ row.pcaContactName ?? '—' }}</span>
+                <span class="tl-fact">
+                  <span class="tl-cell__lbl">Start</span>
+                  <input class="tl-date" type="date" [value]="row.startDate ?? ''"
+                         [disabled]="saving()" (change)="onDate(row, 'start', $event)" />
+                </span>
+                <span class="tl-fact">
+                  <span class="tl-cell__lbl">End</span>
+                  <input class="tl-date" type="date" [value]="row.endDate ?? ''"
+                         [disabled]="saving()" (change)="onDate(row, 'end', $event)" />
+                </span>
+                <span class="tl-fact"><span class="tl-cell__lbl">Logged</span>{{ hours(row.loggedHours) }}h</span>
+                <span class="tl-fact"><span class="tl-cell__lbl">Estimate</span>{{ hours(row.estimateHours) }}h</span>
+              </div>
+
+              @for (task of row.tasks ?? []; track task.id) {
+                <div class="tl-task">
+                  <span class="tl-task__name" [class.tl-task__name--done]="task.status === 'Done'">
+                    {{ task.taskName }}
+                  </span>
+
+                  <select class="tl-sel" [value]="task.status ?? 'Todo'" [disabled]="saving()"
+                          (change)="onTaskStatus(task, $event)" aria-label="Status">
+                    @for (s of STATUSES; track s) { <option [value]="s">{{ s }}</option> }
+                  </select>
+
+                  <select class="tl-sel" [value]="task.type ?? ''" [disabled]="saving()"
+                          (change)="onTaskType(task, $event)" aria-label="Type">
+                    <option value="">—</option>
+                    @for (t of TYPES; track t) { <option [value]="t">{{ t }}</option> }
+                  </select>
+
+                  <select class="tl-sel" [value]="task.assigneeUserId ?? ''" [disabled]="saving()"
+                          (change)="onTaskAssignee(task, $event)" aria-label="Assignee">
+                    <option value="">—</option>
+                    @for (u of assignees(); track u.id) { <option [value]="u.id">{{ u.name }}</option> }
+                  </select>
+
+                  <button type="button" class="btn btn-ghost btn-sm"
+                          [disabled]="saving()" (click)="toggleTaskPicker(task)">✎ Tags</button>
+
+                  @if (pickerOpen('task', task.id)) {
+                    <app-tag-picker [tags]="tags()" [selected]="pickerSelected()" [disabled]="saving()"
+                                    (selectionChange)="commitTaskTags(task, $event)" />
+                  }
+                </div>
+              } @empty {
+                <div class="tl-empty__sub">No tasks on this backlog yet.</div>
+              }
             </div>
           }
         </div>
-      </div>
-    } @empty {
-      <div class="empty">
-        <div class="empty__title">No tasks yet</div>
-        <div class="empty__sub">Connect <code>WorklogService.getTaskCards()</code>.</div>
-      </div>
+      }
     }
-  </div>
+  }
+
+  <!-- ==========================================================================================
+       🔴 THE DEADLINE REASON NOTE (H3). Nothing has been written yet — the edit is parked until the
+       user confirms. CANCEL puts the date input back to what it was. The note MAY be empty: the
+       desktop's OK button is always enabled, and this mirrors it.
+       ========================================================================================== -->
+  @if (pendingDeadline(); as pending) {
+    <div class="tl-modal" role="dialog" aria-modal="true" aria-label="Reason for the deadline change">
+      <div class="card card--pad tl-modal__box">
+        <h2 class="tl-modal__title">Why is this deadline changing?</h2>
+        <p class="tl-modal__sub">
+          {{ pending.which === 'internal' ? 'Internal' : 'External' }} deadline →
+          {{ pending.iso ?? 'cleared' }}. The reason is recorded on the backlog's history.
+        </p>
+        <textarea class="tl-modal__note" rows="3" placeholder="Optional reason…"
+                  [value]="deadlineNote()" (input)="onNote($event)"></textarea>
+        <div class="tl-modal__actions">
+          <button type="button" class="btn btn-ghost btn-sm" (click)="cancelDeadline()">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" (click)="confirmDeadline()">Save</button>
+        </div>
+      </div>
+    </div>
+  }
 </section>

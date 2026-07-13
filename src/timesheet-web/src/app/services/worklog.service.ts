@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { map, Observable, of } from 'rxjs';
 import {
-  DailyEntry, LogGroup, Tag, TaskCard,
+  DailyEntry, LogGroup, Tag,
   TaskTemplate, TeamMember, User, DayColumn,
 } from '../models/worklog.models';
 
@@ -152,7 +152,7 @@ export interface ReportFilter {
  * binds the VENDORED view model under `strictTemplates`:
  *
  *     getUsers()        -> User[]         users.component.ts
- *     getTaskCards()    -> TaskCard[]     task-list.component.ts        getTags()      -> Tag[]
+ *     getTags()         -> Tag[]          settings.component.ts
  *     getDailyEntries() -> DailyEntry[]   daily-report.component.ts     getTeamBoard() -> TeamMember[]
  *     getContacts() / getTeams() / getTemplates() / getHolidays()       settings.component.ts
  *
@@ -1273,7 +1273,8 @@ export class WorklogService {
   // =====================================================================================================
   getUsers(): Observable<User[]> { return of([]); }                 // -> getUsersAll() [ADMIN] (the tab needs INACTIVE rows) + getUsersActive(); users.component.ts
   getLogGroups(): Observable<LogGroup[]> { return of([]); }         // -> getWeek() (M8.4/W4). No consumer left.
-  getTaskCards(): Observable<TaskCard[]> { return of([]); }         // -> getTaskListScreen(); task-list.component.ts
+  // getTaskCards() — DELETED in M9 Phase 2 (Agent A). `task-list.component.ts` was its ONLY consumer and
+  // it now reads `getTaskListScreen()`. The stub is orphaned, so it goes, per the convention above.
   getDailyEntries(date: string): Observable<DailyEntry[]> { return of([]); }   // -> getStandupMyDay(); daily-report.component.ts
   getTeamBoard(date: string): Observable<TeamMember[]> { return of([]); }      // -> getStandupBoard(); daily-report.component.ts
   // getMetrics() / getMissing() / getWeekly() / getMonthly() / getDrilldown() — DELETED in M9 Phase 2 (Agent
@@ -1292,14 +1293,20 @@ export class WorklogService {
   // the denominator is Mon–Fri MINUS public holidays, which the client cannot see. It used to be `rows.Count`
   // — a list that only holds days that HAVE logs — so it moved with the numerator and the stat could only
   // ever read N/N. `dayTotals.length` is that same bug wearing a different name.
-  getTags(): Observable<Tag[]> { return of([]); }                   // -> getTagList(); task-list.component.ts
+  // 🔴 STILL LIVE, AND NOT MINE TO DELETE. `task-list.component.ts` no longer calls this (M9 Phase 2 /
+  // Agent A moved it to `getTagList()`), but `settings.component.ts` STILL DOES. Deleting it here would
+  // break a component this task may not touch. It dies with its LAST consumer, not its first.
+  getTags(): Observable<Tag[]> { return of([]); }                   // -> getTagList(); settings.component.ts
   getTemplates(): Observable<TaskTemplate[]> { return of([]); }     // -> getTemplateList(); settings.component.ts
   getContacts(): Observable<string[]> { return of([]); }            // -> getPcaContactsActive(), or getPcaContactsAll() [ADMIN] for the Settings tab; settings.component.ts
   getTeams(): Observable<string[]> { return of([]); }               // -> getTeamsActive(), or getTeamsAll() [ADMIN] for the Settings tab; settings.component.ts
   getHolidays(): Observable<string[]> { return of([]); }            // -> getHolidayList() (returns HolidayDto[], not ISO strings); settings.component.ts
 
   // ---- mutations still to connect ----
-  saveProgress(key: string, pct: number): Observable<void> { return of(void 0); }        // -> updateBacklog(): progressPercent rides the WHOLE-RECORD checked PUT. GET the backlog first — see the BACKLOGS section.
+  // saveProgress() — DELETED in M9 Phase 2 (Agent A). It SWALLOWED EVERY PROGRESS EDIT (`of(void 0)`), and
+  // it could never have been anything else: its `(key, pct)` signature has nowhere to put an
+  // `expectedVersion`, and progress is a field on the BACKLOG, not on a task. The Task List now GETs the
+  // backlog and rides `progressPercent` on the whole-record checked PUT — see `pages/task-list/`.
   toggleUser(name: string): Observable<void> { return of(void 0); }                      // -> setUserActive(id, isActive) [ADMIN]. Takes an ID, not a name.
   toggleHoliday(iso: string): Observable<void> { return of(void 0); }                    // -> upsertHoliday(date) / deleteHoliday(date) [ADMIN]. Two routes, not one toggle.
 }

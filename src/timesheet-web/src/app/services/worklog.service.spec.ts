@@ -1155,7 +1155,8 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
     const empties: Observable<unknown[]>[] = [
       service.getUsers(),
       service.getLogGroups(),
-      service.getTaskCards(),
+      // getTaskCards() is GONE — M9 Phase 2 (Agent A) moved task-list.component.ts onto getTaskListScreen()
+      // and deleted the stub it orphaned. That is the convention working, not a regression.
       service.getDailyEntries('2026-07-06'),
       service.getTeamBoard('2026-07-06'),
       // getMetrics() / getMissing() / getWeekly() / getMonthly() / getDrilldown() are GONE — M9 Phase 2
@@ -1176,7 +1177,8 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
     // SAME read that fills the monthly grid, and a second call would have been a second snapshot.
 
     // And the three stub mutations, which must also stay inert.
-    service.saveProgress('0-0-0', 50).subscribe(v => expect(v).toBeUndefined());
+    // (`saveProgress` is GONE — M9 Phase 2 / Agent A. The Task List now rides `progressPercent` on the
+    //  whole-record checked PUT.)
     service.toggleUser('Zoe').subscribe(v => expect(v).toBeUndefined());
     service.toggleHoliday('2026-01-01').subscribe(v => expect(v).toBeUndefined());
 
@@ -1196,7 +1198,9 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
       ['getUsersAll', 'getUsers'],
       ['getStandupMyDay', 'getDailyEntries'],
       ['getStandupBoard', 'getTeamBoard'],
-      ['getTaskListScreen', 'getTaskCards'],
+      // [getTaskListScreen, getTaskCards] — the pair COMPLETED its lifecycle: the component moved to the
+      // real method and the stub was deleted with it (M9 Phase 2 / Agent A). A pair lives here only while
+      // BOTH halves do.
       //   ['getWeeklyReport',      'getWeekly']      — M9 Phase 2 / Agent C
       //   ['getMonthlyReport',     'getMonthly']     — M9 Phase 2 / Agent C
       //   ['getMissingLogs',       'getMissing']     — M9 Phase 2 / Agent C
