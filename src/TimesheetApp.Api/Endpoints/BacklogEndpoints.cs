@@ -51,7 +51,11 @@ public static class BacklogEndpoints
         {
             var authorized = await AuthorizedBacklogAsync(id, backlogs, ctx);
             return authorized is null ? Results.NotFound() : Results.Ok(authorized.Value.Backlog.ToDto());
-        });
+        })
+            .WithName("BacklogGet")
+            .WithTags("Backlogs")
+            .Produces<BacklogDto>()
+            .Produces(StatusCodes.Status404NotFound);
 
         // A new backlog belongs to the caller's ACTIVE team, never a team read off the wire -- mirrors
         // RequestEditorViewModel: `TeamId: _currentTeam?.ActiveTeamId is { } tid and > 0 ? tid : null`.
@@ -127,7 +131,13 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Backlogs, teamId, ctx.ConnectionId);
             return Results.Ok(new SavedBody(newVersion));
-        });
+        })
+            .WithName("BacklogUpdate")
+            .WithTags("Backlogs")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapGet("/api/backlogs/{id}/tags", async (
             int id, IClientContext ctx, IBacklogRepository backlogs) =>
@@ -228,7 +238,11 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.Ok(created!.ToDto());
-        });
+        })
+            .WithName("TaskCreate")
+            .WithTags("Tasks")
+            .Produces<TaskItemDto>()
+            .Produces(StatusCodes.Status404NotFound);
 
         // Mirrors UpdateCheckedAsync(TaskItem, long): writes task_name + order_index + status together
         // (the "full editor" path). Not audited -- the repository method itself carries no changedBy
@@ -352,7 +366,11 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.NoContent();
-        });
+        })
+            .WithName("TaskSetActive")
+            .WithTags("Tasks")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound);
 
         // Rule #9: bump-only BY DESIGN. SetOrderAsync runs once per row during a drag
         // (TimesheetViewModel.ReorderAsync loops it over the whole list) -- a checked variant would
@@ -373,7 +391,11 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.NoContent();
-        });
+        })
+            .WithName("TaskSetOrder")
+            .WithTags("Tasks")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound);
 
         return api;
     }
