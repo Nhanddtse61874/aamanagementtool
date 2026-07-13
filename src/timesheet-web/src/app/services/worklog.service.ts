@@ -17,6 +17,7 @@ import {
   smartFillApply as smartFillApplyFn,
   smartFillValidate as smartFillValidateFn,
   taskCreate as taskCreateFn,
+  taskSetActive as taskSetActiveFn,
   taskSetOrder as taskSetOrderFn,
   timesheetClearCell as timesheetClearCellFn,
   timesheetSaveCell as timesheetSaveCellFn,
@@ -236,6 +237,30 @@ export class WorklogService {
    */
   setTaskOrder(taskId: number, orderIndex: number): Observable<void> {
     return taskSetOrderFn(this.mutatingHttp, this.rootUrl, { id: taskId, body: { orderIndex } })
+      .pipe(map(() => void 0));
+  }
+
+  /**
+   * SOFT delete — `is_active = false`. NOTHING IS DESTROYED, and that is not a detail: `SetActiveAsync` flips
+   * the flag and LEAVES `order_index` alone, while the read is `WHERE is_active = 1 ORDER BY order_index`. So
+   * every delete leaves a GAP in the survivors' indices — which is exactly why `reorderPlan` must rewrite EVERY
+   * row (a windowed write would TIE) and why `nextOrderIndex` must append past the highest INDEX, not the
+   * count. This method is the thing that creates the condition both of those defend against.
+   *
+   * `isActive: true` RESTORES a deleted task through the same route. The flag is therefore passed through
+   * verbatim, never hard-coded to `false` here — the caller decides which direction it is going.
+   *
+   * 🔴 BUMP-ONLY: the body is `{ isActive }` and NOTHING ELSE. There is no `expectedVersion` here and there
+   * must not be one — the C# is explicit that this is by design ("Rule #9: bump-only BY DESIGN, no
+   * *CheckedAsync sibling -- ignore any rowVersion on the DTO (TaskActiveRequest carries none to ignore)"),
+   * and the route declares exactly TWO outcomes: `204 NoContent` and `404 NotFound`. There is no 400 and no
+   * 409 on this path, so a caller that writes handlers for them is writing dead code.
+   *
+   * A MUTATION, so `mutatingHttp` — see that field's comment. On the plain client this write echoes straight
+   * back to us over SignalR, we re-fetch, and we clobber our own screen.
+   */
+  setTaskActive(taskId: number, isActive: boolean): Observable<void> {
+    return taskSetActiveFn(this.mutatingHttp, this.rootUrl, { id: taskId, body: { isActive } })
       .pipe(map(() => void 0));
   }
 

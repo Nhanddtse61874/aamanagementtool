@@ -331,3 +331,77 @@ describe('WorklogService — task order (bump-only)', () => {
     req.flush(null, { status: 204, statusText: 'No Content' });
   });
 });
+
+// =====================================================================================================
+// DRAG TO TRASH — PUT /api/tasks/{id}/active. A SOFT delete, and BUMP-ONLY.
+//
+// 🔴 A CONNECTED hub again, and for the third time the reason is not boilerplate — it is the only thing that
+// makes the header assertion below MEAN anything. `ConnectionIdHttpClient` stamps `X-Connection-Id` only when
+// there IS a connection id. In the plain TestBed at the top of this file there is none, so the header is
+// omitted from EVERYTHING — and `setTaskActive` written on the WRONG client (`this.http`) would emit a
+// BYTE-IDENTICAL request there. A body-only assertion in that block would pass against the very bug it exists
+// to catch. (The plan's own draft of this test is a body-only assertion, and it does not say which block it
+// belongs in.)
+// =====================================================================================================
+describe('WorklogService — soft delete (bump-only)', () => {
+  const CONN = 'hub-conn-3';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('sends ONLY isActive — this route declares no version, and inventing one would be dead code', () => {
+    service.setTaskActive(42, false).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/active');
+    expect(req.request.method).toBe('PUT');
+
+    // 🔴 EXACTLY this, and nothing else. The C# says so in as many words: "Rule #9: bump-only BY DESIGN, no
+    // *CheckedAsync sibling -- ignore any rowVersion on the DTO (TaskActiveRequest carries none to ignore)".
+    // The route's only declared outcomes are 204 and 404 — there is no 409 for a version to provoke.
+    expect(req.request.body).toEqual({ isActive: false });
+    expect('expectedVersion' in req.request.body).toBeFalse();
+    expect('rowVersion' in req.request.body).toBeFalse();
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('WRITES on the MUTATING client — on the plain one the delete echoes back and clobbers our own screen', () => {
+    service.setTaskActive(42, false).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/active');
+
+    // The header the server EXCLUDES us from its own SignalR broadcast by. This is the assertion the whole
+    // separate-TestBed dance above exists for: on the plain `http` the request is otherwise identical.
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('is a SOFT delete: `true` RESTORES through the same route, so the flag is passed through, not hard-coded',
+    () => {
+      service.setTaskActive(42, true).subscribe();
+
+      const req = httpMock.expectOne(r => r.url === '/api/tasks/42/active');
+
+      // Nothing is destroyed — `SetActiveAsync` only flips `is_active`. A `setTaskActive` that hard-coded
+      // `false` into the body would pass the first test in this block and still be wrong; this is what stops
+      // that, and it is the assertion that keeps the restore path open for a later milestone.
+      expect(req.request.body).toEqual({ isActive: true });
+
+      req.flush(null, { status: 204, statusText: 'No Content' });
+    });
+});

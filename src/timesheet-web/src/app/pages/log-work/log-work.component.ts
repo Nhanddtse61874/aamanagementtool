@@ -117,6 +117,28 @@ export class LogWorkComponent {
    *  reason: a second drag started before the first batch lands would CORRUPT the order — see `onDrop`. */
   readonly reordering = signal(false);
 
+  /** True while a soft delete is in flight. The same shape as `reordering`, and for a closely related reason:
+   *  CDK does not remove the row for us, so it SNAPS BACK until the refresh lands — see `onTrash`. */
+  readonly deleting = signal(false);
+
+  /**
+   * The trash's `[cdkDropListData]`. It holds no rows, and never will — but it is a TYPED empty array on a
+   * field rather than a `[]` literal in the template, and that is a compiler requirement, not a style choice.
+   *
+   * 🔴 MEASURED. The plan's `[cdkDropListData]="[]"` infers `CdkDropList<never[]>`, and `T` reaches a
+   * CONTRAVARIANT position through `container.dropped.emit(value)` — so `never[]` does NOT widen to
+   * `readonly TaskRow[]` and the build fails:
+   *
+   *     NG5: Argument of type 'CdkDragDrop<never[], any, any>' is not assignable to parameter of type
+   *          'CdkDragDrop<readonly TaskRow[], …>'. The type 'readonly TaskRow[]' is 'readonly' and cannot be
+   *          assigned to the mutable type 'never[]'.
+   *
+   * Naming the type here fixes the drop list's `T` to the same `readonly TaskRow[]` the groups use, which is
+   * what lets `onTrash` take a properly typed event and read `event.item.data` as a `TaskRow` with no `any`
+   * and no cast. (It also stops a fresh `[]` being allocated on every change-detection pass.)
+   */
+  readonly noRows: readonly TaskRow[] = [];
+
   /**
    * The DEFAULT-backlog rule, exposed to the template so the Move button can be HIDDEN on that group — the
    * FIRST of its two guards. (`onMoveMonth` re-checks it: WPF guards it in both places and so do we.)
@@ -687,6 +709,78 @@ export class LogWorkComponent {
       ? 'One of those tasks is no longer available. Reloaded.'
       : 'Could not save the new order. Reloaded — please try again.');
     this.refresh.next();
+  }
+
+  // ---- drag to trash (a SOFT delete) ---------------------------------------------------------------
+
+  /**
+   * A row was dropped on the trash. Soft-delete it, then re-read the week.
+   *
+   * 🔴 **The trash is reached by STRING ID, not by a template ref**, and the whole feature is silently dead if
+   * that is got wrong. Each group carries `[cdkDropListConnectedTo]="['trash']"`; CDK resolves that string
+   * against its static registry on EVERY drag start (`CdkDropList._dropLists.find(l => l.id === drop)`,
+   * drag-drop.mjs:3510-3546) and FILTERS OUT anything it cannot find. So the trash must carry `id="trash"` —
+   * a plain attribute, which Angular maps onto `CdkDropList`'s `id` INPUT. Write `#trash="cdkDropList"`
+   * instead and the drop list keeps its auto-generated `cdk-drop-list-N` id, the string never resolves, the
+   * row snaps back, `container === previousContainer`, and THIS METHOD IS NEVER CALLED AT ALL. The component
+   * spec drives CDK's own `beforeStarted` handler to prove the resolution really happens; a green build
+   * proves nothing here.
+   *
+   * `dropped` fires ONLY on the DESTINATION list, so this handler sees only drags that ARRIVED at the trash —
+   * and the guard below is the assertion of that, not a branch that does real work.
+   */
+  async onTrash(event: CdkDragDrop<readonly TaskRow[], readonly TaskRow[], TaskRow>): Promise<void> {
+    if (event.previousContainer === event.container) return;   // dropped on itself — not a delete
+
+    // 🔴 Re-entrancy, and — as with `moving` and `reordering` — the reason is that CDK does NOT remove the row
+    // for us. We never call `transferArrayItem`; the re-fetch is what makes the row disappear. So between the
+    // drop and the refresh landing, THE ROW SNAPS BACK to where it was. On a slow link that reads as "it
+    // didn't work", which is exactly when a user drags it to the bin again — and a second delete of the same
+    // task would fire a second write and a second re-fetch for nothing.
+    if (this.deleting()) return;
+
+    // `[cdkDragData]` on the row (Task 6) is the ONLY place this value comes from. Without it `data` is
+    // `undefined` and `row.taskId` throws — and only at the moment a user first tries to delete something.
+    const row = event.item.data;
+
+    this.deleting.set(true);
+    try {
+      await firstValueFrom(this.api.setTaskActive(row.taskId, false));   // SOFT — `is_active = 0`, nothing lost
+      this.refresh.next();                                               // the row leaves the grid
+    } catch (err: unknown) {
+      this.onTrashError(err);
+    } finally {
+      this.deleting.set(false);
+    }
+  }
+
+  /**
+   * 🔴 Why `onTrash` has a `catch` at all, and why it must never re-throw.
+   *
+   * `onTrash` is an `async` method bound to `(cdkDropListDropped)`, so anything escaping it is an UNHANDLED
+   * PROMISE REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would drag a row to the bin, watch it
+   * snap back, be told nothing, and drag it again. (`onAddTaskError`, `onMoveError` and `onReorderError` all
+   * exist for this identical reason.)
+   *
+   * 🔴 Deliberately NOT `onMoveError`'s three-way switch. `PUT /api/tasks/{id}/active` declares exactly two
+   * outcomes — `204 NoContent` and `404 NotFound`. It is bump-only (no version -> no 409) and its body is a
+   * lone bool (nothing to reject -> no 400). Handlers for those would be dead code.
+   */
+  private onTrashError(err: unknown): void {
+    if (err instanceof HttpErrorResponse && err.status === 404) {
+      // Reachable, and it means someone ELSE already deleted this task (or we lost access to its team). The
+      // server is right and our screen is stale, so this one MUST re-read.
+      this.toast.show('This task is no longer available.');
+      this.refresh.next();
+      return;
+    }
+
+    // 🔴 And here it does NOT re-read — a considered difference from `onReorderError`, which re-reads on every
+    // error. A reorder is a SEQUENTIAL BATCH of N writes, so a failure on write 3 of 5 leaves the group
+    // HALF-renormalised on the server and the screen showing an order that does not exist. A delete is ONE
+    // write: if it failed, the server is unchanged, and CDK has already snapped the row back — so the screen
+    // ALREADY matches the server. Re-reading would be a wasted round-trip that fixes nothing.
+    this.toast.show('Could not delete this task. Please try again.');
   }
 
   // ---- misc ----------------------------------------------------------------------------------------
