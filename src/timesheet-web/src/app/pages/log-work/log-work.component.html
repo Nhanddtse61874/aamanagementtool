@@ -84,6 +84,14 @@
                   <div class="c-total" [class.zero]="rowTotal(t.taskId) === 0">{{ fmt(rowTotal(t.taskId)) }}</div>
                 </div>
               }
+
+              <!-- The group footer. `.grp__foot` was already in the SCSS — a leftover of the vendored design
+                   whose MARKUP went out with the fake buttons in M8.4/W4. It is a flex row with
+                   `justify-content: space-between`, so this button sits left and Move-to-next-month (Task 5)
+                   will sit right. `.grp` is a plain block, not a CSS grid, so this <div> is layout-neutral. -->
+              <div class="grp__foot">
+                <button type="button" class="btn btn-ghost btn-sm" (click)="addingTo.set(g)">➕ Add task</button>
+              </div>
             }
           </div>
         } @empty {
@@ -116,6 +124,13 @@
     [conflict]="c"
     (keepTheirs)="keepTheirs()"
     (overwrite)="overwriteTheirs()" />
+}
+
+<!-- 🔴 ONCE, at the ROOT — outside <section class="page"> and outside the @for. Inside the loop this would
+     render one dialog PER GROUP: N backdrops stacked, N inputs, and N ngAfterViewInit focus calls fighting
+     each other for the caret. Which group is being added to lives in the `addingTo` signal, not in the DOM. -->
+@if (addingTo()) {
+  <app-add-task-dialog (confirm)="onAddTaskConfirmed($event)" (cancel)="addingTo.set(null)" />
 }
 
 @if (sfOpen()) {

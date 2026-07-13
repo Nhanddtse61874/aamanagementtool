@@ -5,7 +5,7 @@ import {
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { EMPTY, Subject, catchError, map, merge, switchMap } from 'rxjs';
+import { EMPTY, Subject, catchError, firstValueFrom, map, merge, switchMap } from 'rxjs';
 
 import { ConflictBody, TimeLogDto, ValidationBody, WeekBacklogGroup } from '../../api/models';
 import { cellKey } from '../../core/cell-key';
@@ -13,9 +13,10 @@ import { CellConflict, ConflictDialogComponent } from '../../core/conflict-dialo
 import { RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
+import { AddTaskDialogComponent } from './add-task-dialog.component';
 import {
-  CellMap, Group, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill, parseHours,
-  patchCell,
+  CellMap, Group, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill, nextOrderIndex,
+  parseHours, patchCell,
 } from './grid-state';
 import { buildSmartFillRequest } from './smart-fill';
 import { WeekDay, mondayOf, shiftWeeks, weekDays } from './week';
@@ -52,7 +53,7 @@ interface PendingWrite {
 @Component({
   selector: 'app-log-work',
   standalone: true,
-  imports: [CommonModule, FormsModule, ConflictDialogComponent],
+  imports: [CommonModule, FormsModule, ConflictDialogComponent, AddTaskDialogComponent],
   templateUrl: './log-work.component.html',
   styleUrl: './log-work.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -84,6 +85,10 @@ export class LogWorkComponent {
   readonly collapsed = signal<Record<number, boolean>>({});
   readonly conflict = signal<CellConflict | null>(null);
   private pendingWrite: PendingWrite | null = null;
+
+  /** The group whose "Add task" dialog is open, or `null`. A signal plus an `@if` in the template — the same
+   *  shape as `conflict`, because this app has no dialog service and does not need one. */
+  readonly addingTo = signal<Group | null>(null);
 
   // ---- smart fill ----------------------------------------------------------------------------------
   readonly sfOpen = signal(false);
@@ -427,6 +432,66 @@ export class LogWorkComponent {
         }
       },
     });
+  }
+
+  // ---- adding a task -------------------------------------------------------------------------------
+
+  /**
+   * The dialog handed us a name. Append the task, then re-read the week so it appears as a row.
+   *
+   * 🔴 The group is re-read from the CURRENT `groups()`, not taken from the object captured when the dialog
+   * opened. `addingTo` survives a refresh, and a refresh REPLACES every Group — so if someone else adds a task
+   * to this same backlog while the dialog is open, the captured `tasks` is stale, `nextOrderIndex` computes a
+   * stale maximum, and the new task TIES with theirs. That is the very tie `nextOrderIndex` exists to prevent,
+   * reached through a second door. If the group has vanished entirely, fall through with the stale id and let
+   * the server answer 404 — which `onAddTaskError` handles.
+   */
+  async onAddTaskConfirmed(name: string): Promise<void> {
+    const opened = this.addingTo();
+    if (!opened) return;
+    this.addingTo.set(null);
+
+    const group = this.groups().find(g => g.backlogId === opened.backlogId) ?? opened;
+
+    try {
+      await firstValueFrom(this.api.addTask(group.backlogId, name, nextOrderIndex(group.tasks)));
+      this.refresh.next();                       // the new task must appear as a row
+    } catch (err: unknown) {
+      this.onAddTaskError(err);
+    }
+  }
+
+  /**
+   * 🔴 This method is why `onAddTaskConfirmed` has a `catch` at all, and it must never re-throw.
+   *
+   * `onAddTaskConfirmed` is an `async` method invoked from an output binding, so anything that escapes it is
+   * an UNHANDLED PROMISE REJECTION — which surfaces in the console and NOWHERE THE USER CAN SEE. The row would
+   * simply never appear, with no error, and they would sit there clicking Add again.
+   *
+   * 404 is genuinely reachable, not defensive padding: the backlog can be deleted, or the user removed from
+   * its team, while this screen is open. (400 "TaskName is required." is already refused in the dialog, but
+   * the server's own sentence is still better than anything invented here if it ever does arrive.)
+   */
+  private onAddTaskError(err: unknown): void {
+    if (!(err instanceof HttpErrorResponse)) {
+      this.toast.show('Could not reach the server.');
+      return;
+    }
+
+    switch (err.status) {
+      case 404:
+        this.toast.show('That backlog is no longer available.');
+        this.refresh.next();
+        break;
+
+      case 400:
+        this.toast.show((err.error as ValidationBody | null)?.error ?? 'That task was rejected.');
+        break;
+
+      default:
+        this.toast.show('Could not add the task. Please try again.');
+        break;
+    }
   }
 
   // ---- misc ----------------------------------------------------------------------------------------

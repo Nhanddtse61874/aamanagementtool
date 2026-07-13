@@ -27,6 +27,18 @@ export type CellMap = Readonly<Record<string, Cell>>;
 export interface TaskRow {
   readonly taskId: number;
   readonly taskName: string;
+  /**
+   * The row's `order_index` ON THE SERVER — not its position on screen, and the two are NOT interchangeable.
+   *
+   * `SetActiveAsync` soft-deletes by setting `is_active = 0` and LEAVES `order_index` alone, while the read is
+   * `WHERE is_active = 1 ORDER BY order_index`. So after one delete the survivors sit at 1,2,3 while rendering
+   * at positions 0,1,2 — a GAP. Anything that appends must append past the highest INDEX, never past the
+   * count. See `nextOrderIndex`.
+   *
+   * The wire has always carried it (`WeekRow.orderIndex`, and `TimeLogService` both populates it from
+   * `t.OrderIndex` and sorts by it); `buildGroups` simply used to drop it on the floor.
+   */
+  readonly orderIndex: number;
 }
 
 /** A backlog group, with its task rows. */
@@ -107,8 +119,26 @@ export function buildGroups(groups: WeekBacklogGroup[]): Group[] {
     // flatMap, not filter+map: `filter` cannot narrow the type for the `map` that follows it, so that spelling
     // needs a `!` to compile. A task with no id could never be written to anyway — drop it.
     tasks: (g.tasks ?? []).flatMap(t =>
-      t.taskId == null ? [] : [{ taskId: t.taskId, taskName: t.taskName ?? '' }]),
+      t.taskId == null
+        ? []
+        : [{ taskId: t.taskId, taskName: t.taskName ?? '', orderIndex: t.orderIndex ?? 0 }]),
   }));
+}
+
+/**
+ * The next free `orderIndex` in a group — where an appended task must go.
+ *
+ * 🔴 NOT `tasks.length`. WPF appends at `Tasks.Count` (`RequestGroupVm.cs:63`) and that is a bug we cannot
+ * ship, because a soft delete leaves a GAP: `SetActiveAsync` sets `is_active = 0` and leaves `order_index`
+ * alone, so three survivors of a four-row group sit at 1,2,3 while `length` is 3. Appending at `length` would
+ * write the new task at 3 — a TIE with the existing 3 — and `ORDER BY order_index` with a tie is arbitrary.
+ * "Add task" would simply not append, on the wholly ordinary sequence *delete, then add*.
+ *
+ * Appending past the highest INDEX cannot tie. (A later drag renormalises the gap anyway — see
+ * `reorderPlan` — but a user should not have to drag their way out of a misplaced row.)
+ */
+export function nextOrderIndex(tasks: readonly TaskRow[]): number {
+  return tasks.length ? Math.max(...tasks.map(t => t.orderIndex)) + 1 : 0;
 }
 
 /**

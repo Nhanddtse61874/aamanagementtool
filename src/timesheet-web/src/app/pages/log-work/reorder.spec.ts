@@ -1,10 +1,14 @@
 import { reorderPlan } from './reorder';
 
+// `orderIndex` is the row's order_index ON THE SERVER. Untouched, it matches the screen position -- it is
+// only a DELETE that pulls the two apart (see the gap fixture below). reorderPlan reads neither: it plans
+// from the array's ORDER. The field is here because TaskRow carries it, and a fixture that lies about the
+// shape it is standing in for is a fixture that stops catching things.
 const rows = [
-  { taskId: 10, taskName: 'A' },
-  { taskId: 20, taskName: 'B' },
-  { taskId: 30, taskName: 'C' },
-  { taskId: 40, taskName: 'D' },
+  { taskId: 10, taskName: 'A', orderIndex: 0 },
+  { taskId: 20, taskName: 'B', orderIndex: 1 },
+  { taskId: 30, taskName: 'C', orderIndex: 2 },
+  { taskId: 40, taskName: 'D', orderIndex: 3 },
 ];
 
 describe('reorderPlan', () => {
@@ -26,10 +30,12 @@ describe('reorderPlan', () => {
   // Rewriting every row renormalises the gap on every drag. This is what WPF does.
   it('renormalises a gap left by a soft delete, so no two rows can tie', () => {
     // A was deleted; B, C, D survive at order_index 1, 2, 3 and are rendered at positions 0, 1, 2.
+    // 🔴 The orderIndex values ARE the gap -- 1,2,3 with no 0. The array POSITIONS are 0,1,2. That divergence
+    // is the entire hazard, and the fixture now states it outright instead of only describing it in a comment.
     const afterDelete = [
-      { taskId: 20, taskName: 'B' },
-      { taskId: 30, taskName: 'C' },
-      { taskId: 40, taskName: 'D' },
+      { taskId: 20, taskName: 'B', orderIndex: 1 },
+      { taskId: 30, taskName: 'C', orderIndex: 2 },
+      { taskId: 40, taskName: 'D', orderIndex: 3 },
     ];
     // Drag C (position 1) down to position 2.
     const writes = reorderPlan(afterDelete, 1, 2);

@@ -14,12 +14,13 @@ import {
   me as meFn,
   smartFillApply as smartFillApplyFn,
   smartFillValidate as smartFillValidateFn,
+  taskCreate as taskCreateFn,
   timesheetClearCell as timesheetClearCellFn,
   timesheetSaveCell as timesheetSaveCellFn,
   timesheetWeek as timesheetWeekFn,
 } from '../api/functions';
 import {
-  LoginResponse, MeResponse, SmartFillTaskRequest, TimeLogDto, WeekBacklogGroup,
+  LoginResponse, MeResponse, SmartFillTaskRequest, TaskItemDto, TimeLogDto, WeekBacklogGroup,
 } from '../api/models';
 
 /**
@@ -195,6 +196,24 @@ export class WorklogService {
 
   smartFillApply(tasks: SmartFillTaskRequest[]): Observable<TimeLogDto[]> {
     return smartFillApplyFn(this.mutatingHttp, this.rootUrl, { body: { tasks } })
+      .pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // TASKS — POST /api/tasks
+  // =====================================================================================================
+
+  /**
+   * Append a task to a backlog. A MUTATION, so `mutatingHttp` — see the field's comment. On the plain client
+   * the write echoes back to us over SignalR, we re-fetch, and we clobber our own screen.
+   *
+   * 🔴 `orderIndex` is the CALLER's to compute, and it must not be `tasks.length`. The server takes it
+   * verbatim (`InsertAsync(new TaskItem(0, req.BacklogId, …, req.OrderIndex, true))` — it does NOT derive one),
+   * and a soft delete leaves a GAP in the surviving indices, so `length` ties with a live row and
+   * `ORDER BY order_index` then puts the new task somewhere arbitrary. Pass `nextOrderIndex(group.tasks)`.
+   */
+  addTask(backlogId: number, taskName: string, orderIndex: number): Observable<TaskItemDto> {
+    return taskCreateFn(this.mutatingHttp, this.rootUrl, { body: { backlogId, taskName, orderIndex } })
       .pipe(map(r => r.body));
   }
 
