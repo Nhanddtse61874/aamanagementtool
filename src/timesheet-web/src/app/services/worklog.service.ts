@@ -241,7 +241,7 @@ export class WorklogService {
  * table either 409s spuriously or silently overwrites another user. Losing the version is worse than losing
  * the request.
  */
-function requireRowVersion(rowVersion: number | undefined): number {
+export function requireRowVersion(rowVersion: number | undefined): number {
   if (typeof rowVersion !== 'number') {
     throw new Error(
       'The API accepted the write but returned no rowVersion. Refusing to continue: the next save would ' +
