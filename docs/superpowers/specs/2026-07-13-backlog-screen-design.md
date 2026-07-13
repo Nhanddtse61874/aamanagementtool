@@ -110,7 +110,9 @@ The **grid** resolves names from **all** users (`_users.GetAllAsync()`, `Request
 
 So: open a backlog whose assignee has since left, press Save without touching anything, and **the assignee is gone.** Same for PCA contact. No warning.
 
-**→ The dropdown keeps the current value even when inactive**, rendered as `Name (inactive)`, so an untouched save round-trips it. New assignments still offer only active users. This needs `GET /api/users/all` and `GET /api/pca-contacts/all` — both exist, neither is annotated.
+**→ The dropdown keeps the current value even when inactive**, rendered as `Name (inactive)`, so an untouched save round-trips it. New assignments still offer only active users.
+
+The active lists come from `GET /api/users` and `GET /api/pca-contacts` (both **open**). The *inactive* name comes from the two **new** `…/names` routes (§6.1) — **not** from `/api/users/all`, which is **admin-only** and would 403 for every ordinary user.
 
 ---
 
@@ -174,10 +176,31 @@ It is dead code with two warning signs nailed to it.
 | `POST /api/backlogs` | `BacklogCreate` | `Backlogs` | `BacklogDto` · 400 `ValidationBody` | **the button** |
 | 🆕 **`GET /api/backlogs/{id}/audit`** | `BacklogAudit` | `Backlogs` | `List<BacklogAuditDto>` · 404 | **the change-history panel** |
 | `PUT /api/tasks/{id}` | `TaskUpdate` | `Tasks` | `SavedBody` · 400 · 404 · 409 `ConflictBody` | **§4.4 rename + reorder** |
-| `GET /api/users` | `UserListActive` | `Users` | `List<UserDto>` | assignee dropdown |
-| `GET /api/users/all` | `UserListAll` | `Users` | `List<UserDto>` | **§4.6** + list name resolution |
-| `GET /api/pca-contacts` | `PcaContactListActive` | `PcaContacts` | `List<PcaContactDto>` | PCA combo |
-| `GET /api/pca-contacts/all` | `PcaContactListAll` | `PcaContacts` | `List<PcaContactDto>` | **§4.6** |
+| `GET /api/tasks` | `TaskList` | `Tasks` | `List<TaskItemDto>` · 404 | **the editor's task rows — the only carrier of `status` and `rowVersion`** |
+| `GET /api/users` | `UserListActive` | `Users` | `List<UserDto>` | assignee dropdown (**open** ✅) |
+| `GET /api/pca-contacts` | `PcaContactListActive` | `PcaContacts` | `List<PcaContactDto>` | PCA combo (**open** ✅) |
+| 🆕 **`GET /api/users/names`** | `UserNames` | `Users` | `List<NamedRefDto>` | **§4.6** + list name resolution |
+| 🆕 **`GET /api/pca-contacts/names`** | `PcaContactNames` | `PcaContacts` | `List<NamedRefDto>` | **§4.6** |
+
+### 🔴 `/api/users/all` and `/api/pca-contacts/all` are ADMIN-ONLY. They are NOT part of this milestone.
+
+```csharp
+// SettingsEndpoints.cs:308 — and :260, identically
+api.MapGet("/api/users/all", …).RequireAuthorization(AuthSetup.AdminPolicy);
+```
+An earlier draft of this spec had the client read them to resolve a deactivated assignee's name. **It cannot.**
+For an ordinary user that is a **403**, the list's `forkJoin` errors, and **the whole screen dies.**
+
+Annotating them would produce something worse than a missing method: **a correctly-typed client that 403s** —
+a *new* class of lie, arrived at from a direction the `.Produces<T>()` discipline does not cover on its own.
+
+**So: two new non-admin routes exposing `id` + `name` only.** No `username`, no admin flag, no version — the
+policy on `/all` deliberately protects a deactivated user's `username`, and nothing here crosses it. **No
+existing policy is widened.**
+
+```csharp
+public sealed record NamedRefDto(int Id, string Name);
+```
 
 Plus: `POST /api/tasks` gains its missing `.Produces<ValidationBody>(400)` (§5.2).
 
@@ -231,7 +254,9 @@ Then `npm run gen:api`; **commit the generated output.**
 
 **Proof it worked:** the startup log must read `AdminBootstrap: no users yet, nothing to bootstrap`. That line is unforgeable evidence the process opened an **empty** database. *(Do NOT try to prove it by asserting the real DB has no `-wal` sidecar — the user's app is running right now, and a live SQLite database in WAL mode **always** has one. That test would abort on a false alarm.)*
 
-**Gate:** `npm run build` clean **with the API not running**. `backlogList`, `backlogCreate`, `taskUpdate`, `userListActive`, `userListAll`, `pcaContactListActive`, `pcaContactListAll` all exist under `src/app/api/fn/`. `BacklogListItemDto`, `BacklogCreateRequest`, `TaskUpdateRequest`, `UserDto`, `PcaContactDto` all exist under `src/app/api/models/`.
+**Gate:** `npm run build` clean **with the API not running**. `backlogList`, `backlogCreate`, `backlogAudit`, `taskList`, `taskUpdate`, `userListActive`, `userNames`, `pcaContactListActive`, `pcaContactNames` all exist under `src/app/api/fn/`. `BacklogListItemDto`, `BacklogAuditDto`, `BacklogCreateRequest`, `TaskUpdateRequest`, `NamedRefDto` all exist under `src/app/api/models/`.
+
+🔴 **If `userListAll` or `pcaContactListAll` appears, STOP** — an admin-gated route reached the client. **If any generated function is typed `void`, STOP** — a route was generated without a declared response type.
 
 ---
 
