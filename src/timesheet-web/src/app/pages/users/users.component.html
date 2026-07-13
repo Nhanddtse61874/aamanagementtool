@@ -4,24 +4,192 @@
     <div><h1>Users</h1><p>Manage app accounts</p></div>
   </div>
 
+  <!-- The persistent banner. A half-created account must never be announced by something that fades. -->
+  @if (notice(); as msg) {
+    <div class="notice" role="alert">
+      <div class="notice__body">{{ msg }}</div>
+      <button class="btn btn-ghost btn-sm" (click)="dismissNotice()">Dismiss</button>
+    </div>
+  }
+
   <div class="bar">
     <div class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
-      <input class="input" style="padding-left:40px;" placeholder="Search or add a user name..." [ngModel]="search()" (ngModelChange)="search.set($event)" />
+      <input class="input" style="padding-left:40px;" placeholder="Search by name or username…"
+             [ngModel]="search()" (ngModelChange)="search.set($event)" />
     </div>
-    <button class="btn btn-primary" (click)="addUser()">+ Add user</button>
+    <button class="btn btn-primary" [disabled]="busy()" (click)="openAdd()">+ Add user</button>
   </div>
 
-  <div class="card users-card">
-    <div class="urow urow--head"><div>NAME</div><div>STATUS</div><div></div></div>
-    @for (u of filtered(); track u.name) {
-      <div class="urow">
-        <div class="name"><span class="avatar" [style.background]="avatar(u.name)" style="width:32px;height:32px;font-size:13px;">{{ u.name[0] }}</span>{{ u.name }}</div>
-        <div><span class="badge" [class.badge-ok]="u.active" [class.badge-off]="!u.active">{{ u.active ? 'Active' : 'Inactive' }}</span></div>
-        <div class="right"><button class="btn btn-sm" [class.btn-danger]="u.active" [class.btn-ghost]="!u.active" (click)="toggle(u.name)">{{ u.active ? 'Deactivate' : 'Activate' }}</button></div>
+  <!-- ADD: all three fields are required, because all three calls are required. -->
+  @if (adding()) {
+    <div class="card card--pad addcard">
+      <div class="s-title">New user</div>
+      <div class="s-desc">
+        Creating an account takes three steps — the account, its username, and its password. All three are
+        required: an account without a username or a password cannot be logged into by anyone.
       </div>
-    } @empty {
-      <div class="empty"><div class="empty__title">No users</div><div class="empty__sub">Connect <code>WorklogService.getUsers()</code>.</div></div>
-    }
-  </div>
+
+      <div class="fields">
+        <label class="field">
+          <span>Display name</span>
+          <input class="input" placeholder="Zoe Nguyen" [ngModel]="draft().name"
+                 (ngModelChange)="setDraftName($event)" />
+        </label>
+        <label class="field">
+          <span>Username (used to log in)</span>
+          <input class="input" placeholder="zoe" autocomplete="off" [ngModel]="draft().username"
+                 (ngModelChange)="setDraftUsername($event)" />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input class="input" type="password" autocomplete="new-password" [ngModel]="draft().password"
+                 (ngModelChange)="setDraftPassword($event)" />
+        </label>
+      </div>
+
+      <!-- [checked] + (change), NOT [ngModel] — ngModel writes the DOM on a microtask. See the component. -->
+      <label class="toggle-row" style="margin-top:14px;">
+        <input type="checkbox" [checked]="draft().isAdmin" (change)="toggleDraftAdmin()" />
+        <span class="s-strong">Administrator</span>
+      </label>
+
+      <div class="acts" style="margin-top:16px;">
+        <button class="btn btn-ghost" [disabled]="busy()" (click)="cancelAdd()">Cancel</button>
+        <button class="btn btn-primary" [disabled]="busy() || !addReady()" (click)="addUser()">
+          {{ busy() ? 'Creating…' : 'Create user' }}
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loadError(); as err) {
+    <div class="card card--pad">
+      <div class="empty">
+        <div class="empty__title">Could not load users</div>
+        <div class="empty__sub">{{ err }}</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:14px;" (click)="reload()">Retry</button>
+      </div>
+    </div>
+  } @else if (loading()) {
+    <div class="card card--pad"><div class="empty"><div class="empty__sub">Loading…</div></div></div>
+  } @else {
+    <div class="card users-card">
+      <div class="urow urow--head">
+        <div>NAME</div><div>USERNAME</div><div>ROLE</div><div>STATUS</div><div></div>
+      </div>
+
+      @for (u of filtered(); track trackById($index, u)) {
+        <div class="urow" [class.urow--off]="!(u.isActive === true)">
+          <div class="name">
+            <span class="avatar" [style.background]="avatar(u.name)"
+                  style="width:32px;height:32px;font-size:13px;">{{ initial(u.name) }}</span>
+            {{ u.name }}
+          </div>
+
+          <div class="mono">
+            @if (canLogIn(u)) {
+              {{ u.username }}
+            } @else {
+              <!-- The ghost, made visible. This is the state a half-finished create leaves behind. -->
+              <span class="badge badge-warn" title="No username — this account cannot be logged into.">
+                No login
+              </span>
+            }
+          </div>
+
+          <div>
+            @if (u.isAdmin === true) { <span class="badge badge-admin">Admin</span> }
+            @else { <span class="s-desc">Member</span> }
+          </div>
+
+          <div>
+            <span class="badge" [class.badge-ok]="u.isActive === true" [class.badge-off]="!(u.isActive === true)">
+              {{ u.isActive === true ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+
+          <div class="right">
+            <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="openEdit(u)">Edit</button>
+            <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="openPassword(u)">Password</button>
+            <button class="btn btn-sm" [class.btn-danger]="u.isActive === true"
+                    [class.btn-soft]="!(u.isActive === true)" [disabled]="busy()" (click)="toggleActive(u)">
+              {{ u.isActive === true ? 'Deactivate' : 'Activate' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- EDIT: name + username + admin, saved as ONE chained sequence of checked writes. -->
+        @if (editingId() === u.id) {
+          <div class="uedit">
+            <div class="fields">
+              <label class="field">
+                <span>Display name</span>
+                <input class="input" [ngModel]="edit().name"
+                       (ngModelChange)="setEditName($event)" />
+              </label>
+              <label class="field">
+                <span>Username (used to log in)</span>
+                <input class="input" autocomplete="off" [ngModel]="edit().username"
+                       (ngModelChange)="setEditUsername($event)" />
+              </label>
+            </div>
+
+            <!-- [checked] + (change), NOT [ngModel] — see the component. A microtask-deferred write here
+                 would leave the box unchecked for a user who IS an admin, and the first click would then be
+                 a silent no-op that drops the change. -->
+            <label class="toggle-row" style="margin-top:14px;">
+              <input type="checkbox" [checked]="edit().isAdmin" (change)="toggleEditAdmin()" />
+              <span class="s-strong">Administrator</span>
+            </label>
+
+            <!--
+              🔴 TRUE, AND VERIFIED AGAINST THE API — not a hedge.
+              The "Admin" policy is `RequireClaim("is_admin", "1")` against the AUTH COOKIE, which is issued at
+              login and lives for 30 days (AuthSetup.cs). So revoking admin does not evict an open session from
+              the ~30 routes gated that way. The four /api/ops/* routes are different: each one re-checks
+              `ctx.IsAdmin`, which ClientContextFilter populates FRESH FROM THE DATABASE on every request
+              ("so a demotion takes effect immediately" — IClientContext.cs). Backup, export and retention are
+              therefore shut off the instant this is unticked.
+            -->
+            <p class="admin-note">
+              Removing admin takes effect on their next login — the session cookie carries the claim for up to
+              30 days. Destructive operations (backup, export, retention) re-check the database on every
+              request and are blocked immediately.
+            </p>
+
+            <div class="acts">
+              <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="cancelEdit()">Cancel</button>
+              <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveEdit(u)">
+                {{ busy() ? 'Saving…' : 'Save' }}
+              </button>
+            </div>
+          </div>
+        }
+
+        <!-- PASSWORD: bump-only, no version, cannot 409. Also the repair path for a half-created account. -->
+        @if (passwordForId() === u.id) {
+          <div class="uedit">
+            <div class="s-title">Set a new password for {{ u.name }}</div>
+            <div class="s-desc">
+              They are not asked for their old one. If this account shows “No login”, give it a username with
+              Edit first — a password alone will not let anyone in.
+            </div>
+            <div class="inline">
+              <input class="input grow" type="password" autocomplete="new-password" placeholder="New password"
+                     [ngModel]="newPassword()" (ngModelChange)="newPassword.set($event)" />
+              <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="cancelPassword()">Cancel</button>
+              <button class="btn btn-primary btn-sm" [disabled]="busy() || newPassword() === ''"
+                      (click)="savePassword(u)">Set password</button>
+            </div>
+          </div>
+        }
+      } @empty {
+        <div class="empty">
+          <div class="empty__title">No users match</div>
+          <div class="empty__sub">Clear the search, or add a user.</div>
+        </div>
+      }
+    </div>
+  }
 </section>

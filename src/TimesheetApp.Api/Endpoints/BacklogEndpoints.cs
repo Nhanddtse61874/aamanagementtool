@@ -188,13 +188,21 @@ public static class BacklogEndpoints
             .Produces<List<BacklogAuditDto>>()
             .Produces(StatusCodes.Status404NotFound);
 
+        // A BARE ARRAY OF INTS (GetTagIdsAsync -> IReadOnlyList<int>), NOT a list of TagDto. The TagPicker
+        // reads the ids and resolves them against the tag list it already holds. A .Produces<List<TagDto>>()
+        // here would be a TYPED LIE -- worse than no generated method at all, because the client would
+        // compile against a shape the server never sends.
         api.MapGet("/api/backlogs/{id}/tags", async (
             int id, IClientContext ctx, IBacklogRepository backlogs) =>
         {
             var authorized = await AuthorizedBacklogAsync(id, backlogs, ctx);
             if (authorized is null) return Results.NotFound();
             return Results.Ok(await backlogs.GetTagIdsAsync(id));
-        });
+        })
+            .WithName("BacklogTags")
+            .WithTags("Backlogs")
+            .Produces<IReadOnlyList<int>>()
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapPut("/api/backlogs/{id}/tags", async (
             int id,
@@ -212,7 +220,16 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Backlogs, teamId, ctx.ConnectionId);
             return Results.Ok(new SavedBody(newVersion));
-        });
+        })
+            // No 400: this handler has no validation guard -- an empty TagIds list is a legitimate "clear
+            // every tag". The 409 is real: BacklogTags carries no row_version of its own, so
+            // SetTagsCheckedAsync checks and bumps the PARENT backlog's version and throws
+            // ConcurrencyConflictException when it has moved on (ExceptionMapper turns that into the 409).
+            .WithName("BacklogSetTags")
+            .WithTags("Backlogs")
+            .Produces<SavedBody>()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         // P20, rule #1: MUST go through the service -- it copies tags, copies not-Done tasks and writes
         // the 'continued' audit row. A raw INSERT here would do none of that.
@@ -242,7 +259,16 @@ public static class BacklogEndpoints
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
 
             return Results.Ok(created!.ToDto());
-        });
+        })
+            // TWO distinct 400 paths, one status: an empty TargetPeriod, and a target period that already
+            // holds this backlog's code (ContinueAsync returns 0 rather than throwing). NO 409 -- ContinueAsync
+            // takes no expectedVersion and no *CheckedAsync runs on this path, so a conflict cannot arise.
+            // Declaring one would be a status this route can never return.
+            .WithName("BacklogContinue")
+            .WithTags("Backlogs")
+            .Produces<BacklogDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
         // ==== Tasks ======================================================================================
 
@@ -269,12 +295,18 @@ public static class BacklogEndpoints
             .Produces<List<TaskItemDto>>()
             .Produces(StatusCodes.Status404NotFound);
 
+        // The single-task read. Carries the task's `status` and `rowVersion`, so it is what the Task List's
+        // inline editors re-read to get a fresh expectedVersion after a 409.
         api.MapGet("/api/tasks/{id}", async (
             int id, IClientContext ctx, IBacklogRepository backlogs, ITaskRepository tasks) =>
         {
             var authorized = await AuthorizedTaskAsync(id, tasks, backlogs, ctx);
             return authorized is null ? Results.NotFound() : Results.Ok(authorized.Value.Task.ToDto());
-        });
+        })
+            .WithName("TaskGet")
+            .WithTags("Tasks")
+            .Produces<TaskItemDto>()
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/api/tasks", async (
             [FromBody] TaskCreateRequest req,
@@ -370,7 +402,17 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.Ok(new SavedBody(newVersion));
-        });
+        })
+            // The Task List's inline status dropdown. All four statuses are ones this handler can ACTUALLY
+            // produce: 400 from the empty-Status guard, 404 from the team gate, 200 + SavedBody on success,
+            // and 409 + ConflictBody from UpdateStatusCheckedAsync's ConcurrencyConflictException, which the
+            // handler deliberately does NOT catch (ExceptionMapper maps it).
+            .WithName("TaskSetStatus")
+            .WithTags("Tasks")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapPut("/api/tasks/{id}/extended", async (
             int id,
@@ -390,15 +432,28 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.Ok(new SavedBody(newVersion));
-        });
+        })
+            // The Task List's inline type/assignee editors. NO 400: both fields are nullable and the handler
+            // has no validation guard -- clearing either is legitimate. Declaring a 400 here would be a
+            // status this route cannot return.
+            .WithName("TaskSetExtended")
+            .WithTags("Tasks")
+            .Produces<SavedBody>()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
+        // A BARE ARRAY OF INTS, exactly like the backlog tag read above -- not a list of TagDto.
         api.MapGet("/api/tasks/{id}/tags", async (
             int id, IClientContext ctx, IBacklogRepository backlogs, ITaskRepository tasks) =>
         {
             var authorized = await AuthorizedTaskAsync(id, tasks, backlogs, ctx);
             if (authorized is null) return Results.NotFound();
             return Results.Ok(await tasks.GetTagIdsAsync(id));
-        });
+        })
+            .WithName("TaskTags")
+            .WithTags("Tasks")
+            .Produces<IReadOnlyList<int>>()
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapPut("/api/tasks/{id}/tags", async (
             int id,
@@ -417,7 +472,14 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.Ok(new SavedBody(newVersion));
-        });
+        })
+            // No 400 (an empty TagIds list clears every tag -- legitimate). The 409 is real: TaskTags carries
+            // no row_version of its own, so SetTaskTagsCheckedAsync checks and bumps the PARENT task's.
+            .WithName("TaskSetTags")
+            .WithTags("Tasks")
+            .Produces<SavedBody>()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         // Rule #9: bump-only BY DESIGN, no *CheckedAsync sibling -- ignore any rowVersion on the DTO
         // (TaskActiveRequest carries none to ignore).

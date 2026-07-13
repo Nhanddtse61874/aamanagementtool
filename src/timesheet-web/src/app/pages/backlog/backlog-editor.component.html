@@ -124,10 +124,57 @@
                 [ngModel]="form().note" (ngModelChange)="patch('note', $event)"></textarea>
     </div>
 
+    <!-- ---- tags -------------------------------------------------------------------------------- -->
+
+    <section class="bed__sec">
+      <h3 class="bed__sub">Tags</h3>
+
+      <!--
+        🔴 THE PICKER SELECTS; IT DOES NOT WRITE, AND IT DOES NOT MANAGE.
+
+        It does not WRITE because a tag write is a CHECKED write against the BACKLOG's own row_version
+        (BacklogTags has no version of its own), and a control that owned that write would be perfectly placed
+        to swallow the 409. This component owns it instead — see `writeTags`.
+
+        It does not MANAGE because `tagCreate` / `tagUpdate` / `tagDelete` are ADMIN-ONLY and this dialog is
+        reachable by an ordinary user. Tag CRUD lives on the Settings screen. There is no "+ New tag" here.
+
+        `disabled` while saving: the write is a REPLACE-ALL, so a click landing mid-save would queue a second
+        one against a version the first has already bumped.
+      -->
+      <app-tag-picker
+        [tags]="allTags()"
+        [selected]="selectedTagIds()"
+        [disabled]="saving()"
+        (selectionChange)="onTagsChange($event)" />
+    </section>
+
     <!-- ---- tasks ------------------------------------------------------------------------------- -->
 
     <section class="bed__sec">
       <h3 class="bed__sub">Tasks</h3>
+
+      <!--
+        🔴 CREATE ONLY, and SELECTING ONE APPLIES IT — there is no Apply button, exactly as in WPF. It
+        APPENDS: a second, different template stacks onto the rows already there. The control then resets
+        itself to the placeholder (it is an ACTION, not a field), which is precisely why an already-applied
+        template is DISABLED below — re-picking it would otherwise fire `change` again and duplicate every
+        row it carries. See `applyTemplate`.
+
+        `templates()` is GROUPED ON THE CLIENT: `GET /api/templates` returns flat rows, one per task.
+      -->
+      @if (!isEdit() && templates().length > 0) {
+        <div class="bed__tpl">
+          <label class="bed__lbl" for="bed-template">Add a template</label>
+          <select id="bed-template" class="select bed__tpl-pick" [disabled]="saving()"
+                  [ngModel]="templateChoice()" (ngModelChange)="applyTemplate($event)">
+            <option value="">Add a template…</option>
+            @for (t of templates(); track t.name) {
+              <option [value]="t.name" [disabled]="appliedTemplates().has(t.name)">{{ t.name }}</option>
+            }
+          </select>
+        </div>
+      }
 
       @if (visibleRows().length === 0) {
         <p class="bed__state">No tasks yet. A backlog needs at least one.</p>

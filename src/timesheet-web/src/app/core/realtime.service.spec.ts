@@ -2,9 +2,12 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { HubConnection, HubConnectionBuilder } from '@microsoft/signalr';
 
 import { WorklogService } from '../services/worklog.service';
-import { CONNECTION_ID_HEADER, ConnectionIdHttpClient, RealtimeService } from './realtime.service';
+import {
+  CONNECTION_ID_HEADER, ConnectionIdHttpClient, DataChange, DataKind, RealtimeService,
+} from './realtime.service';
 
 /**
  * The header that keeps a write from echoing back to the person who made it.
@@ -178,5 +181,142 @@ describe('the save contract WorklogService puts on the wire', () => {
 
     expect(error).toBeTruthy();
     expect(error?.message).toContain('rowVersion');
+  });
+});
+
+/**
+ * 🔴 M9/P6d — THE FEED NOW SAYS *WHAT* CHANGED.
+ *
+ * `hub.on(DATA_CHANGED, () => this._dataChanged.next())` threw away BOTH of the server's arguments. The
+ * server has always sent `SendAsync("DataChanged", kind, teamId)`; the client has always discarded them. So
+ * `dataChanged` was `Observable<void>`, no screen could tell a tag edit from a timesheet write, and every
+ * change anywhere re-fetched everything. WPF's ViewModels have filtered on `DataKind` since P8; the web
+ * could not, at all.
+ *
+ * These tests drive the REAL handler the service registers on the REAL hub — the builder's `build()` is
+ * stubbed, but everything downstream of it is production code. A test that merely `next()`d the private
+ * subject would be perfectly green against a handler that still ignores its arguments.
+ */
+describe('🔴 dataChanged carries WHAT changed', () => {
+  /** The handlers `RealtimeService.start()` registers, captured off a fake hub. */
+  let handlers: Map<string, (...args: unknown[]) => void>;
+  let service: RealtimeService;
+
+  beforeEach(() => {
+    handlers = new Map();
+
+    const hub = {
+      on: (name: string, cb: (...args: unknown[]) => void) => { handlers.set(name, cb); },
+      onreconnected: () => undefined,
+      onreconnecting: () => undefined,
+      onclose: () => undefined,
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      connectionId: 'conn-1',
+    };
+
+    // `withUrl` and `withAutomaticReconnect` both return the builder, so stubbing `build` is enough to hand
+    // the service our hub without touching a socket.
+    spyOn(HubConnectionBuilder.prototype, 'build').and.returnValue(hub as unknown as HubConnection);
+
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    service = TestBed.inject(RealtimeService);
+    service.start();
+  });
+
+  /** Fire the hub method exactly as the server does: `SendAsync("DataChanged", kind, teamId)`. */
+  function serverSends(kind: number, teamId: number): void {
+    handlers.get('DataChanged')!(kind, teamId);
+  }
+
+  it('registers a handler for the server\'s DataChanged method', () => {
+    expect(handlers.has('DataChanged')).toBeTrue();
+  });
+
+  /**
+   * 🔴 THE test. Revert the handler to `() => this._dataChanged.next()` and this goes red — nothing else in
+   * the suite would.
+   */
+  it('🔴 emits the (kind, teamId) the server sent — it does not discard them', () => {
+    const seen: DataChange[] = [];
+    service.dataChanged.subscribe(e => seen.push(e));
+
+    serverSends(DataKind.Logs, 42);
+
+    expect(seen).toEqual([{ kind: DataKind.Logs, teamId: 42 }]);
+  });
+
+  /**
+   * 🔴 THE WIRE FORMAT, AND THE ONE THAT WOULD HAVE COST A DAY.
+   *
+   * `DataKind` is a bare C# enum and `Program.cs` calls `builder.Services.AddSignalR()` with NO
+   * `.AddJsonProtocol(...)` — there is not one `JsonStringEnumConverter` in the solution. SignalR's default
+   * System.Text.Json protocol therefore serialises the enum as its INTEGER ORDINAL. The server sends `3`,
+   * never `"Logs"`.
+   *
+   * So a consumer that wrote `if (e.kind === 'Logs')` would compile CLEAN under `strict` — and match
+   * NOTHING, forever, on a feed whose entire purpose is filtering. This pins the ordinals so that cannot be
+   * "tidied" into strings without a red test.
+   */
+  it('🔴 kind is the NUMERIC ordinal of the C# enum, never its name', () => {
+    const seen: DataChange[] = [];
+    service.dataChanged.subscribe(e => seen.push(e));
+
+    serverSends(7, 0);   // DataKind.Tags, teamId 0 = the global broadcast sentinel
+
+    expect(seen[0].kind).toBe(DataKind.Tags);
+    expect(seen[0].kind).toBe(7);
+    expect(typeof seen[0].kind).toBe('number');
+
+    // The declaration order of `TimesheetApp.Core/Services/DataChangedMessage.cs`, which is what the ordinals
+    // ARE. If that enum is ever reordered, these numbers move and both sides must move together.
+    expect([
+      DataKind.Backlogs, DataKind.Tasks, DataKind.Users, DataKind.Logs, DataKind.Templates,
+      DataKind.DefaultTasks, DataKind.Standup, DataKind.Tags, DataKind.PcaContacts, DataKind.Holidays,
+      DataKind.Teams,
+    ]).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  /** `teamId: 0` is the reserved BROADCAST sentinel for the seven entities with no team column at all — it is
+   *  NOT a team. It must arrive intact, or a global change (every tag edit) is indistinguishable from noise. */
+  it('carries teamId 0 — the global-broadcast sentinel — verbatim', () => {
+    const seen: DataChange[] = [];
+    service.dataChanged.subscribe(e => seen.push(e));
+
+    serverSends(DataKind.Tags, 0);
+
+    expect(seen[0].teamId).toBe(0);
+  });
+
+  it('emits once per server push, in order', () => {
+    const seen: DataChange[] = [];
+    service.dataChanged.subscribe(e => seen.push(e));
+
+    serverSends(DataKind.Backlogs, 1);
+    serverSends(DataKind.Standup, 2);
+
+    expect(seen).toEqual([
+      { kind: DataKind.Backlogs, teamId: 1 },
+      { kind: DataKind.Standup, teamId: 2 },
+    ]);
+  });
+
+  /**
+   * 🔴 THE PRODUCTION CONSUMERS SURVIVE — and this is a COMPILE-TIME assertion wearing a runtime coat.
+   *
+   * `backlog.component.ts` and `log-work.component.ts` both do `.subscribe(() => this.refresh.next())`. A
+   * zero-arg callback IS assignable to `(v: DataChange) => void`, which is the only reason widening the
+   * payload did not force an edit into two components this task was forbidden to touch. If that ever stops
+   * being true, THIS FILE stops compiling — which is the point of writing it down as a typed local.
+   */
+  it('still accepts a zero-arg subscriber — the two screens that ignore the payload keep working', () => {
+    let reloads = 0;
+    const refreshEverything: () => void = () => { reloads++; };
+
+    service.dataChanged.subscribe(refreshEverything);
+
+    serverSends(DataKind.Logs, 1);
+
+    expect(reloads).toBe(1);
   });
 });

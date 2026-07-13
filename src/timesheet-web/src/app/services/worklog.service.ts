@@ -1,42 +1,120 @@
 import { inject, Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { map, Observable, of } from 'rxjs';
-import {
-  DailyEntry, LogGroup, Metric, MonthlyRow, Tag, TaskCard,
-  TaskTemplate, TeamMember, TreeNode, User, WeeklyRow, DayColumn,
-} from '../models/worklog.models';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { map, Observable } from 'rxjs';
 
 import { ApiConfiguration } from '../api/api-configuration';
 import { ConnectionIdHttpClient } from '../core/realtime.service';
 import {
+  authAdminSetPassword as authAdminSetPasswordFn,
   backlogAudit as backlogAuditFn,
+  backlogContinue as backlogContinueFn,
   backlogCreate as backlogCreateFn,
   backlogGet as backlogGetFn,
   backlogList as backlogListFn,
+  backlogSetTags as backlogSetTagsFn,
+  backlogTags as backlogTagsFn,
   backlogUpdate as backlogUpdateFn,
+  defaultTaskCreate as defaultTaskCreateFn,
+  defaultTaskList as defaultTaskListFn,
+  defaultTaskSetActive as defaultTaskSetActiveFn,
+  defaultTaskSync as defaultTaskSyncFn,
+  holidayDelete as holidayDeleteFn,
+  holidayList as holidayListFn,
+  holidayUpsert as holidayUpsertFn,
   login as loginFn,
   logout as logoutFn,
   me as meFn,
+  meSetActiveTeam as meSetActiveTeamFn,
+  opsBackupRun as opsBackupRunFn,
+  opsExportRun as opsExportRunFn,
+  opsRetentionPreview as opsRetentionPreviewFn,
+  opsRetentionRun as opsRetentionRunFn,
+  pcaContactCreate as pcaContactCreateFn,
   pcaContactListActive as pcaContactListActiveFn,
+  pcaContactListAll as pcaContactListAllFn,
   pcaContactNames as pcaContactNamesFn,
+  pcaContactRename as pcaContactRenameFn,
+  pcaContactSetActive as pcaContactSetActiveFn,
+  reportsMissingLogs as reportsMissingLogsFn,
+  reportsMonthly as reportsMonthlyFn,
+  reportsWeekly as reportsWeeklyFn,
+  settingGet as settingGetFn,
+  settingSet as settingSetFn,
   smartFillApply as smartFillApplyFn,
   smartFillValidate as smartFillValidateFn,
+  standupArchiveWeek as standupArchiveWeekFn,
+  standupBoard as standupBoardFn,
+  standupEntryCreate as standupEntryCreateFn,
+  standupEntryDelete as standupEntryDeleteFn,
+  standupEntryReorder as standupEntryReorderFn,
+  standupEntryUpdate as standupEntryUpdateFn,
+  standupIssueCreate as standupIssueCreateFn,
+  standupIssueDelete as standupIssueDeleteFn,
+  standupIssueUpdate as standupIssueUpdateFn,
+  standupMyDay as standupMyDayFn,
+  standupQuickImport as standupQuickImportFn,
+  tagCreate as tagCreateFn,
+  tagDelete as tagDeleteFn,
+  tagList as tagListFn,
+  tagUpdate as tagUpdateFn,
   taskCreate as taskCreateFn,
+  taskGet as taskGetFn,
   taskList as taskListFn,
+  taskListExport as taskListExportFn,
+  taskListScreen as taskListScreenFn,
   taskSetActive as taskSetActiveFn,
+  taskSetExtended as taskSetExtendedFn,
   taskSetOrder as taskSetOrderFn,
+  taskSetStatus as taskSetStatusFn,
+  taskSetTags as taskSetTagsFn,
+  taskTags as taskTagsFn,
   taskUpdate as taskUpdateFn,
+  teamCreate as teamCreateFn,
+  teamListActive as teamListActiveFn,
+  teamListAll as teamListAllFn,
+  teamMembers as teamMembersFn,
+  teamRename as teamRenameFn,
+  teamSetActive as teamSetActiveFn,
+  teamSetMembers as teamSetMembersFn,
+  templateCreate as templateCreateFn,
+  templateDelete as templateDeleteFn,
+  templateDeleteByName as templateDeleteByNameFn,
+  templateList as templateListFn,
   timesheetClearCell as timesheetClearCellFn,
   timesheetSaveCell as timesheetSaveCellFn,
   timesheetWeek as timesheetWeekFn,
+  userCreate as userCreateFn,
   userListActive as userListActiveFn,
+  userListAll as userListAllFn,
   userNames as userNamesFn,
+  userRename as userRenameFn,
+  userSetActive as userSetActiveFn,
+  userSetAdmin as userSetAdminFn,
+  userSetUsername as userSetUsernameFn,
 } from '../api/functions';
 import {
-  BacklogAuditDto, BacklogCreateRequest, BacklogDto, BacklogListItemDto, BacklogUpdateRequest, LoginResponse,
-  MeResponse, NamedRefDto, PcaContactDto, SavedBody, SmartFillTaskRequest, TaskItemDto, TaskUpdateRequest,
-  TimeLogDto, UserDto, WeekBacklogGroup,
+  ArchivedFileDto, BacklogAuditDto, BacklogCreateRequest, BacklogDto, BacklogListItemDto, BacklogUpdateRequest,
+  DefaultTaskDto, HolidayDto, LoginResponse, MeResponse, MissingLogWarning, NamedRefDto, PcaContactDto,
+  RetentionPreview, SavedBody, SettingDto, SettingsOpsResult, SettingsStandupEntryCreateRequest,
+  SettingsStandupEntryUpdateRequest, SettingsStandupIssueCreateRequest, SettingsStandupIssueUpdateRequest,
+  SettingsTagCreateRequest, SettingsTagUpdateRequest, SettingsTemplateCreateRequest, SettingsUserStandup,
+  SmartFillTaskRequest, TagDto, TaskExtendedRequest, TaskItemDto, TaskListScreenDto, TaskTemplateDto,
+  TaskUpdateRequest, TeamDto, TimeLogDto, TimesheetMonthlyReportResponse, TimesheetWeeklyReportResponse,
+  UserDto, WeekBacklogGroup,
 } from '../api/models';
+
+/**
+ * The optional filter the two Reports reads and the two exports all share.
+ *
+ * 🔴 `teamIds: []` DOES NOT MEAN "NO TEAMS" — see THE TEAM FILTER block inside the class. It means "ALL MY
+ * TEAMS", the exact inverse. Pass `undefined` when you are not filtering, and do not call at all when the
+ * user's team selection is empty.
+ */
+export interface ReportFilter {
+  readonly userId?: number;
+  readonly project?: string;
+  readonly teamIds?: number[];
+}
 
 /**
  * Central data access for the Worklog app.
@@ -51,31 +129,34 @@ import {
  * redirect loop. The dev proxy makes the whole app same-origin; an absolute `http://localhost:5080/...`
  * anywhere in this file silently re-breaks it. Never introduce one.
  *
+ * The one exception to "generated" is `exportExcel` / `exportMarkdown`, which are HAND-WRITTEN blob
+ * downloads. That is deliberate and is explained on those two methods: their routes return binary / raw text
+ * rather than JSON, so the "Export" tag is kept out of `includeTags` on purpose and no method is generated.
+ * They are still same-origin relative paths, and for exactly the same reason.
+ *
  * WIRED, AND REAL:
  *   - M8.4 — auth, the week grid, Smart Fill, the cell write.
  *   - M8.6/T5 — the Backlog screen's transport: the backlog list / create / audit, the task list and the
  *     checked task update, and the four user + PCA lookups.
+ *   - M9/P5 — EVERYTHING ELSE. The Task List screen, Reports (+ the two file exports), the backlog/task tag
+ *     joins and narrow task writes, Users, Teams, Tags, PCA contacts, Templates, Holidays, Default tasks,
+ *     Standup, the key/value settings store, Ops, and the active-team switch. There is no route left in
+ *     `../api/functions` that this service does not expose.
  *
- * 🔴 STILL STUBS (the `of(...)` block at the bottom of the class) — AND THEY ARE NOT DEAD CODE YOU MAY
- * RETYPE IN PLACE. Each is still CONSUMED by a screen that binds the VENDORED view model, under
- * `strictTemplates`:
+ * THE `of(...)` STUBS ARE GONE — M9 P7 swept the last four. Every method on this class is REAL, TYPED
+ * transport over `../api/**`, and every screen binds the GENERATED DTOs. The vendored view models they used
+ * to return (`models/worklog.models.ts` — `User` as `{name, active}` with no `id`, `getHolidays()` as
+ * `string[]` where the wire is `HolidayDto[]`) are deleted: they could not express the wire at all, which is
+ * why every write keyed by id was unreachable from them by construction.
  *
- *     getUsers()     -> User[]       users.component.ts       (the Users page is OUT OF SCOPE: no task in
- *                                                              this milestone owns it)
- *     getTaskCards() -> TaskCard[]   task-list.component.ts
- *     getContacts()  -> string[]     settings.component.ts
+ * The convention that retired them, for the record, since it is why the class briefly carried two names for
+ * one read: a real method was ADDED BESIDE its stub under a NEW NAME, and each screen's own task then swapped
+ * its component over and deleted the stub it orphaned. M8.6/T6 ran it first (`getBacklogList()` displacing
+ * `getBacklogs()`), M9 Phase 2 ran it for the rest, and M9 P7 swept the four stubs whose consumers had all
+ * moved but which no single agent was authorised to delete. It is finished; there is no stub layer left.
  *
- * The vendored view models DO NOT MATCH the wire DTOs. `User` is `{name, active}` with NO `id` at all where
- * `UserDto` is `{id?, name?, isActive?, …}`. So changing a stub's return type does not "wire up a screen" —
- * it BREAKS THE BUILD of a component the current task is not allowed to touch.
- *
- * Hence the convention: a real method is ADDED BESIDE its stub under a NEW NAME, and each screen's own task
- * then swaps its component over and deletes the stub it was using. That is why `getPcaContactsActive()` sits
- * next to `getContacts()`. Deliberate, not duplication.
- *
- * M8.6/T6 is the convention running to completion for the first time: `BacklogComponent` now reads
- * `getBacklogList()`, so `getBacklogs()` — the `of([])` stub it used to bind — is deleted here, along with the
- * `Backlog` view model's last consumer.
+ * 🔴 DO NOT ADD A NEW `of([])` PLACEHOLDER HERE. A screen with no endpoint is a gap in the plan, not
+ * something to hide behind a stub that silently renders empty.
  */
 @Injectable({ providedIn: 'root' })
 export class WorklogService {
@@ -112,12 +193,6 @@ export class WorklogService {
     Chi: '#0891B2', 'Chi Le': '#2563EB', 'Dung Pham': '#DB2777', 'Em Vo': '#9333EA',
     'Giang Do': '#0D9488', 'Huy Bui': '#CA8A04', Nhan: '#0E7C66', 'Phuc Hoang': '#7C3AED',
   };
-
-  readonly WEEK_DAYS: DayColumn[] = [
-    { dow: 'MON', date: '06/07' }, { dow: 'TUE', date: '07/07' },
-    { dow: 'WED', date: '08/07' }, { dow: 'THU', date: '09/07' },
-    { dow: 'FRI', date: '10/07' },
-  ];
 
   avatarColor(name: string | null): string {
     return name ? (this.AVATAR_COLORS[name] ?? '#0E7C66') : '';
@@ -416,13 +491,25 @@ export class WorklogService {
   // A departed assignee must still render her name on the record she is already on; the active list no longer
   // contains her, so the grid resolves names from `/names` and offers choices from the active list.
   //
-  // 🔴 `/api/users/all` and `/api/pca-contacts/all` are a TRAP, and they are not in the generated client on
-  // purpose. Both are `.RequireAuthorization(AuthSetup.AdminPolicy)`, so an ordinary user reading one gets a
-  // 403 — which takes the screen's whole forkJoin down with it. A contract test
-  // (`Admin_gated_list_is_NOT_tagged_and_so_never_joins_the_generated_client`) pins them OUT of the client so
-  // they cannot be reached for by accident. `/names` exists precisely because `/all` cannot be used here.
+  // 🔴 `/api/users/all` and `/api/pca-contacts/all` ARE STILL A TRAP FOR THESE FOUR CALLERS — but the reason
+  // CHANGED IN M9 P2a, and the old reason is now FALSE. THE COMMENT THAT USED TO SIT HERE SAID THEY WERE "not
+  // in the generated client on purpose", pinned out by a contract test
+  // (`Admin_gated_list_is_NOT_tagged_and_so_never_joins_the_generated_client`). THAT TEST NO LONGER EXISTS AND
+  // THAT CLAIM IS NO LONGER TRUE: both routes are now tagged and BOTH ARE IN THE CLIENT, deliberately, because
+  // the M9 Users/Settings screens cannot list a DEACTIVATED row without them. They are exposed here as
+  // `getUsersAll()` and `getPcaContactsAll()`, both marked [ADMIN].
   //
-  // All four are READS -> the plain `http`.
+  // WHAT DID NOT CHANGE IS THE HAZARD: both are `.RequireAuthorization(AuthSetup.AdminPolicy)`, so an ordinary
+  // user reading one gets a 403 — which takes the screen's whole forkJoin down with it. The BACKLOG EDITOR is
+  // reachable by a non-admin, so IT MUST KEEP USING THE FOUR METHODS BELOW and must never reach for the `/all`
+  // pair. `/names` exists precisely for that: it is how a DEPARTED assignee's name still renders on a record
+  // she is already on, without an admin route.
+  //
+  // The guard did not weaken, it MOVED — from "the route is absent from our client" (a proxy, which never
+  // stopped anyone with a cookie and curl) to `SettingsEndpointsTests.The_admin_gated_full_list_is_403_for_a
+  // _NON_admin`, which asserts the property itself. See THE ADMIN CONTRACT block further down.
+  //
+  // All four below are OPEN, and all four are READS -> the plain `http`.
   // =====================================================================================================
 
   /** The ACTIVE users — the Assignee dropdown's options. You do not assign new work to a departed person. */
@@ -446,41 +533,733 @@ export class WorklogService {
   }
 
   // =====================================================================================================
-  // THE VENDORED STUBS — empty streams, ON PURPOSE, and STILL LIVE.
+  // 🔴 THE ADMIN CONTRACT — READ THIS BEFORE CALLING ANY METHOD MARKED [ADMIN] BELOW.
   //
-  // 🔴 DO NOT RETYPE ONE IN PLACE. Every stub marked "bound by" below is still the data source of a component
-  // that binds the VENDORED view model under `strictTemplates` — changing its return type breaks that
-  // component's build, and those components belong to other tasks (or, for Users, to no task at all). Add a
-  // real method BESIDE the stub under a new name; the screen's own task then swaps its component over and
-  // deletes the stub. See the class comment for the full shape mismatch this rule exists for.
+  // About thirty of the methods added in M9/P5 hit a route carrying `.RequireAuthorization(AuthSetup
+  // .AdminPolicy)`. They are in the generated client ON PURPOSE, and that is a REVERSAL of the M8.6 rule the
+  // class comment above used to state: until M9 there was no admin-only SCREEN, so an admin route in the
+  // client could only ever 403, and `/api/users/all` + `/api/pca-contacts/all` were kept out by a contract
+  // test. M9 BUILDS those screens, and they cannot be built without those two routes — only `/all` returns
+  // DEACTIVATED rows, and "Activate" has nothing to act on without them. The old test is gone; the guard did
+  // not weaken, it MOVED to `SettingsEndpointsTests.The_admin_gated_full_list_is_403_for_a_NON_admin`, which
+  // asserts the security property itself rather than a proxy for it.
   //
-  // The reason the REST are still stubs is unchanged: their C# routes return `IResult` via `Results.Ok(x)`,
-  // which ApiExplorer cannot infer a response type from, so the OpenAPI document declares no schema and there
-  // is nothing honest to generate — a generated method would be typed `void` for an endpoint that in fact
-  // returns data. Each screen's milestone annotates its C# with `.Produces<T>()`, regenerates, and wires them
-  // up. That is exactly what M8.4 did for the timesheet routes and M8.6 just did for the backlog, task, user
-  // and PCA routes above.
+  // An ordinary user calling an [ADMIN] method gets a 403 — and a 403 inside a `forkJoin` takes THE WHOLE
+  // SCREEN down with it, not just the panel that asked. So:
+  //
+  //     🔴 A SCREEN A NON-ADMIN CAN REACH MUST NEVER CALL A METHOD MARKED [ADMIN].
+  //
+  // 🔴 AND THE CLIENT-SIDE HALF OF THAT GUARD DOES NOT EXIST YET. `ng-openapi-gen.json`'s comment describes
+  // `core/admin.guard.ts` in the present tense; there is no such file as of this commit. Routing a non-admin
+  // to /users or /settings today 403s them. Writing that guard is a LATER M9 TASK, and it is not this one's.
   // =====================================================================================================
-  getUsers(): Observable<User[]> { return of([]); }                 // SUPERSEDED by getUsersActive()/getUserNames(); bound by users.component.ts
-  getLogGroups(): Observable<LogGroup[]> { return of([]); }         // SUPERSEDED by getWeek() in W4
-  getTaskCards(): Observable<TaskCard[]> { return of([]); }         // TODO: GET /api/tasklist; bound by task-list.component.ts
-  getDailyEntries(date: string): Observable<DailyEntry[]> { return of([]); }   // TODO
-  getTeamBoard(date: string): Observable<TeamMember[]> { return of([]); }      // TODO
-  getMetrics(): Observable<Metric[]> { return of([]); }             // TODO: GET /api/reports/metrics
-  getMissing(): Observable<string[]> { return of([]); }             // TODO
-  getWeekly(): Observable<WeeklyRow[]> { return of([]); }           // TODO
-  getMonthly(): Observable<MonthlyRow[]> { return of([]); }         // TODO
-  getDrilldown(): Observable<TreeNode | null> { return of(null); }  // TODO
-  getTags(): Observable<Tag[]> { return of([]); }                   // TODO
-  getTemplates(): Observable<TaskTemplate[]> { return of([]); }     // TODO
-  getContacts(): Observable<string[]> { return of([]); }            // SUPERSEDED by getPcaContactsActive(); bound by settings.component.ts
-  getTeams(): Observable<string[]> { return of([]); }               // TODO
-  getHolidays(): Observable<string[]> { return of([]); }            // TODO: ISO date strings
 
-  // ---- mutations still to connect ----
-  saveProgress(key: string, pct: number): Observable<void> { return of(void 0); }        // TODO
-  toggleUser(name: string): Observable<void> { return of(void 0); }                      // TODO
-  toggleHoliday(iso: string): Observable<void> { return of(void 0); }                    // TODO
+  // =====================================================================================================
+  // 🔴 THE TEAM FILTER — `teamIds`, on getTaskListScreen / exportTaskListMarkdown / getWeeklyReport /
+  // getMonthlyReport / getStandupBoard / exportExcel / exportMarkdown.
+  //
+  // 🔴 AN EMPTY ARRAY DOES NOT MEAN "NO TEAMS". IT MEANS "ALL MY TEAMS" — THE EXACT INVERSE.
+  //
+  // The generated `RequestBuilder` serialises a query array with `explode: true` — one `?teamIds=` entry PER
+  // ELEMENT (see `QueryParameter.append`). An empty array therefore iterates ZERO times and appends NOTHING,
+  // so `teamIds: []` goes out BYTE-IDENTICAL to `teamIds: undefined`: the key is genuinely ABSENT from the
+  // URL, not present-and-empty. And the server reads an ABSENT key as "every team the caller belongs to":
+  //
+  //     if (!http.Request.Query.TryGetValue("teamIds", out var raw))
+  //         return ctx.MemberTeamIds;              // <- TimesheetEndpoints/BacklogEndpoints.EffectiveTeamIds
+  //
+  // (`GET /api/standup/board` spells the same thing differently and means the same:
+  //  `teamIds is { Length: > 0 } ? teamIds : ctx.MemberTeamIds`.)
+  //
+  // So a screen that "filters to nothing" by passing `[]` does NOT render an empty table. It renders
+  // EVERYTHING — every backlog of every team the user belongs to, which is the worst possible direction for
+  // this bug to fail in.
+  //
+  // These methods therefore pass `teamIds` through VERBATIM AND INVENT NO SENTINEL. There is no value they
+  // could send that means "no teams": a fake id (`-1`) is INTERSECTED away server-side into the same empty
+  // set that already means "all". THE SCREEN must special-case an empty selection and render its empty state
+  // LOCALLY, without calling. That is Phase 2's contract and it is not this transport's to fake.
+  // =====================================================================================================
+
+  // =====================================================================================================
+  // THE TASK LIST SCREEN — GET /api/tasklist · GET /api/tasklist/export
+  // =====================================================================================================
+
+  /**
+   * The whole Task List screen in one read: the Gantt model plus the rows. A READ -> the plain `http`.
+   *
+   * 🔴 `teamIds: []` means ALL MY TEAMS, not none — see THE TEAM FILTER block above.
+   */
+  getTaskListScreen(year: number, month: number, teamIds?: number[]): Observable<TaskListScreenDto> {
+    return taskListScreenFn(this.http, this.rootUrl, { year, month, teamIds })
+      .pipe(map(r => r.body));
+  }
+
+  /**
+   * The month's task list as MARKDOWN TEXT — not a blob, and not JSON.
+   *
+   * Unlike the two `/api/export/*` routes below, this one IS in the generated client: the generator can type
+   * a `text/markdown` body as a `string`, and `taskListExport` already sets `responseType: 'text'` internally.
+   * So there is nothing to hand-write here. A caller that wants a *download* wraps the string in a `Blob`
+   * itself; a caller that wants a preview just renders it.
+   *
+   * A READ -> the plain `http`. 🔴 `teamIds: []` means ALL MY TEAMS — see THE TEAM FILTER block above, and
+   * note the stakes are highest on this route: `BuildMonthMarkdownAsync`'s `teamIds` is NULLABLE server-side
+   * and null means EVERY TEAM, i.e. a markdown dump of the whole company's backlogs.
+   *
+   * 400 (the month has no data — "no data => no file", TL-09) arrives as an HttpErrorResponse. It is the
+   * caller's to handle: there is no empty document to show.
+   */
+  exportTaskListMarkdown(year: number, month: number, teamIds?: number[]): Observable<string> {
+    return taskListExportFn(this.http, this.rootUrl, { year, month, teamIds })
+      .pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // REPORTS — GET /api/reports/weekly · GET /api/reports/monthly · GET /api/reports/missing-logs
+  //
+  // 🔴 THERE IS NO `/api/reports/metrics`, AND THERE DOES NOT NEED TO BE. The Reports screen's four stat
+  // cards are CLIENT-SIDE ARITHMETIC over what `getWeeklyReport` already returns — `dayTotals` (a
+  // WeeklyDayTotal[] of per-day hours) and `daysLogged` (a DaysLoggedStat of `{logged, workingDays}`) —
+  // plus `getMissingLogs().length`. Do not go looking for a metrics route: the API has exactly three
+  // `/api/reports/*` routes and this is all of them. (The `getMetrics()` stub's old TODO comment named that
+  // route as if it existed. It never did. The comment is corrected in the stub block below.)
+  //
+  // All three are READS -> the plain `http`.
+  // =====================================================================================================
+
+  /**
+   * One week's report: per-day totals, the days-logged stat, and the detail rows.
+   *
+   * 🔴 `filter.teamIds: []` means ALL MY TEAMS, not none — see THE TEAM FILTER block above.
+   */
+  getWeeklyReport(monday: string, filter?: ReportFilter): Observable<TimesheetWeeklyReportResponse> {
+    return reportsWeeklyFn(this.http, this.rootUrl, {
+      monday, userId: filter?.userId, project: filter?.project, teamIds: filter?.teamIds,
+    }).pipe(map(r => r.body));
+  }
+
+  /**
+   * One month's report: the per-backlog/task totals and the project tree.
+   *
+   * 🔴 `filter.teamIds: []` means ALL MY TEAMS, not none — see THE TEAM FILTER block above.
+   */
+  getMonthlyReport(
+    year: number, month: number, filter?: ReportFilter,
+  ): Observable<TimesheetMonthlyReportResponse> {
+    return reportsMonthlyFn(this.http, this.rootUrl, {
+      year, month, userId: filter?.userId, project: filter?.project, teamIds: filter?.teamIds,
+    }).pipe(map(r => r.body));
+  }
+
+  /**
+   * The users who have not logged in the last N days.
+   *
+   * 🔴 TAKES NO ARGUMENTS, AND THAT IS THE CONTRACT, not an omission. The route accepts NO client parameters
+   * at all: N is the shared app-wide setting (SET-02), read SERVER-side, because a client-supplied N would let
+   * anyone request an arbitrarily large scan window. The team scope is likewise internal — it is the caller's
+   * ACTIVE team, applied inside `GetUsersMissingLogsAsync`. There is no `teamIds` here to get wrong.
+   *
+   * `MissingLogWarning` is a bare `{ userName }` — deliberately no id. The route does not expose who they are
+   * beyond the name it already shows.
+   */
+  getMissingLogs(): Observable<MissingLogWarning[]> {
+    return reportsMissingLogsFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // THE TWO FILE EXPORTS — GET /api/export/excel · GET /api/export/markdown
+  //
+  // 🔴 HAND-WRITTEN, AND THAT IS DELIBERATE — DO NOT "FIX" IT BY REGENERATING. Both routes return BINARY or
+  // RAW TEXT, not JSON. `ng-openapi-gen` cannot type either usefully, so the "Export" tag is kept OUT of
+  // `includeTags` in ng-openapi-gen.json ON PURPOSE and no client method is generated for them. The C# says
+  // so in as many words. Adding "Export" to includeTags would produce a client that calls `response.json()`
+  // on a spreadsheet.
+  //
+  // 🔴 NEVER AN ABSOLUTE URL. `this.rootUrl` is `''`, so these are same-origin relative paths — and they must
+  // stay that way. `ng serve` (:4200) -> Kestrel (:5080) is CROSS-SITE, and a `SameSite=Lax` cookie is NOT
+  // SENT on a cross-site request: the download would go out anonymous and 401. See the class comment.
+  //
+  // READS -> the plain `http`. A download notifies nobody.
+  //
+  // 🔴 `filter.teamIds: []` means ALL MY TEAMS — see THE TEAM FILTER block above. It applies here EXACTLY as
+  // it does to the generated calls, because `EffectiveTeamIds` hand-reads the raw query string and an
+  // `HttpParams` with zero appended `teamIds` entries leaves the key ABSENT, just like the RequestBuilder.
+  // (The routes do not DECLARE `teamIds` for ApiExplorer — which is precisely why they could not be generated
+  // with a team filter — but the handler reads it off HttpContext regardless, so sending it works.)
+  // =====================================================================================================
+
+  /** The month's timesheet as an .xlsx. The caller owns the object-URL / anchor dance. */
+  exportExcel(year: number, month: number, filter?: ReportFilter): Observable<Blob> {
+    return this.http.get(`${this.rootUrl}/api/export/excel`, {
+      params: this.exportParams(year, month, filter),
+      responseType: 'blob',
+    });
+  }
+
+  /** The month's timesheet as a markdown document. A download, like the xlsx — hence a Blob, not a string. */
+  exportMarkdown(year: number, month: number, filter?: ReportFilter): Observable<Blob> {
+    return this.http.get(`${this.rootUrl}/api/export/markdown`, {
+      params: this.exportParams(year, month, filter),
+      responseType: 'blob',
+    });
+  }
+
+  /**
+   * The query the two exports share.
+   *
+   * 🔴 `append`, NOT `set`, for teamIds — the server expects ONE ENTRY PER TEAM (`?teamIds=1&teamIds=2`), the
+   * same shape the generated RequestBuilder emits. `set` would collapse them into one comma-joined value that
+   * `int.TryParse` then throws away silently, leaving an EMPTY intersection: no rows, no error, no clue.
+   *
+   * And an empty/absent `teamIds` appends nothing, which the server reads as ALL MY TEAMS. See THE TEAM
+   * FILTER block above — that inversion is the caller's to respect, not this helper's to paper over.
+   */
+  private exportParams(year: number, month: number, filter?: ReportFilter): HttpParams {
+    let params = new HttpParams().set('year', year).set('month', month);
+    if (filter?.userId !== undefined) params = params.set('userId', filter.userId);
+    if (filter?.project !== undefined) params = params.set('project', filter.project);
+    for (const teamId of filter?.teamIds ?? []) params = params.append('teamIds', teamId);
+    return params;
+  }
+
+  // =====================================================================================================
+  // BACKLOG + TASK EXTRAS — the tag joins, "continue to next month", and the three narrow task writes.
+  //
+  // Every write here is CHECKED: the body carries an `expectedVersion` and the server 409s if the record
+  // moved under you. The version comes from the record you already loaded (`getBacklog` / `getTask` /
+  // `getTasks`) — never from a re-read, which is racy. See `saveHours`' comment for why.
+  //
+  // 🔴 The two `*Tags` GETs return `number[]` — TAG IDS, not `TagDto`s. Resolve them against `getTagList()`.
+  // =====================================================================================================
+
+  /** The tag ids on one backlog. A READ -> the plain `http`. */
+  getBacklogTags(backlogId: number): Observable<number[]> {
+    return backlogTagsFn(this.http, this.rootUrl, { id: backlogId }).pipe(map(r => r.body));
+  }
+
+  /** REPLACES a backlog's tag set. A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  setBacklogTags(backlogId: number, tagIds: number[], expectedVersion: number): Observable<SavedBody> {
+    return backlogSetTagsFn(this.mutatingHttp, this.rootUrl, {
+      id: backlogId, body: { tagIds, expectedVersion },
+    }).pipe(map(r => r.body));
+  }
+
+  /**
+   * Copy a backlog forward into another period. A MUTATION -> `mutatingHttp`.
+   *
+   * Returns the NEW `BacklogDto` — carrying the new id and its first `rowVersion`, both of which the caller
+   * needs for anything it does next. Do not discard it and re-read.
+   */
+  continueBacklog(backlogId: number, targetPeriod: string): Observable<BacklogDto> {
+    return backlogContinueFn(this.mutatingHttp, this.rootUrl, {
+      id: backlogId, body: { targetPeriod },
+    }).pipe(map(r => r.body));
+  }
+
+  /** ONE task by id. A READ -> the plain `http`. Carries the `rowVersion` the three writes below need. */
+  getTask(taskId: number): Observable<TaskItemDto> {
+    return taskGetFn(this.http, this.rootUrl, { id: taskId }).pipe(map(r => r.body));
+  }
+
+  /**
+   * Set ONLY a task's status. A CHECKED write, and a MUTATION -> `mutatingHttp`.
+   *
+   * 🔴 This is the NARROW route, and it is the right one for the Task List's status dropdown. Do not reach
+   * for `updateTask` (`PUT /api/tasks/{id}`) to change a status: that one REPLACES name, order AND status in
+   * a single write, so it needs the name and order round-tripped too — and a body built from a status
+   * dropdown alone would compile clean and blank the task's name. This route touches status and nothing else.
+   */
+  setTaskStatus(taskId: number, status: string, expectedVersion: number): Observable<SavedBody> {
+    return taskSetStatusFn(this.mutatingHttp, this.rootUrl, {
+      id: taskId, body: { status, expectedVersion },
+    }).pipe(map(r => r.body));
+  }
+
+  /**
+   * Set a task's `type` and `assigneeUserId`. A CHECKED write, and a MUTATION -> `mutatingHttp`.
+   *
+   * Both fields are NULLABLE and both are written verbatim — passing `{ type: null }` CLEARS the type, it
+   * does not "leave it alone". Build the body from the loaded task, not from a partially-filled form.
+   */
+  setTaskExtended(taskId: number, body: TaskExtendedRequest): Observable<SavedBody> {
+    return taskSetExtendedFn(this.mutatingHttp, this.rootUrl, { id: taskId, body })
+      .pipe(map(r => r.body));
+  }
+
+  /** The tag ids on one task. A READ -> the plain `http`. */
+  getTaskTags(taskId: number): Observable<number[]> {
+    return taskTagsFn(this.http, this.rootUrl, { id: taskId }).pipe(map(r => r.body));
+  }
+
+  /** REPLACES a task's tag set. A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  setTaskTags(taskId: number, tagIds: number[], expectedVersion: number): Observable<SavedBody> {
+    return taskSetTagsFn(this.mutatingHttp, this.rootUrl, {
+      id: taskId, body: { tagIds, expectedVersion },
+    }).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // USERS — the admin-only half. The two OPEN reads (`getUsersActive` / `getUserNames`) are up in PEOPLE.
+  //
+  // 🔴 EVERY METHOD IN THIS SECTION IS [ADMIN] — see THE ADMIN CONTRACT above. A non-admin gets a 403.
+  // =====================================================================================================
+
+  /**
+   * [ADMIN] EVERY user, DEACTIVATED INCLUDED. A READ -> the plain `http`.
+   *
+   * 🔴 This is the route the Users tab is BUILT ON, and the reason the M8.6 "keep /all out of the client"
+   * rule was reversed in M9 P2a: `GET /api/users` is `GetActiveAsync` and can NEVER return a deactivated
+   * user, so "Activate" would have nothing to act on. Only this route can. It is admin-gated (403 for
+   * everyone else), which is exactly why no screen a non-admin can reach may call it.
+   */
+  getUsersAll(): Observable<UserDto[]> {
+    return userListAllFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Create a user. A MUTATION -> `mutatingHttp`. Returns the new row, id and first version included. */
+  createUser(name: string): Observable<UserDto> {
+    return userCreateFn(this.mutatingHttp, this.rootUrl, { body: { name } }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Rename a user (their DISPLAY name). A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  renameUser(id: number, name: string, expectedVersion: number): Observable<SavedBody> {
+    return userRenameFn(this.mutatingHttp, this.rootUrl, { id, body: { name, expectedVersion } })
+      .pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Change a user's LOGIN name. A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  setUserUsername(id: number, username: string, expectedVersion: number): Observable<SavedBody> {
+    return userSetUsernameFn(this.mutatingHttp, this.rootUrl, { id, body: { username, expectedVersion } })
+      .pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Grant or revoke admin. A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  setUserAdmin(id: number, isAdmin: boolean, expectedVersion: number): Observable<SavedBody> {
+    return userSetAdminFn(this.mutatingHttp, this.rootUrl, { id, body: { isAdmin, expectedVersion } })
+      .pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] SOFT delete / restore a user. A MUTATION -> `mutatingHttp`.
+   *
+   * 🔴 BUMP-ONLY: the body is `{ isActive }` and nothing else — this route declares no `expectedVersion` and
+   * inventing one would be dead code. `true` RESTORES through the same route, so the flag is passed through
+   * verbatim rather than hard-coded. This is the write the Users tab's Activate button makes, on a row only
+   * `getUsersAll()` can show it.
+   */
+  setUserActive(id: number, isActive: boolean): Observable<void> {
+    return userSetActiveFn(this.mutatingHttp, this.rootUrl, { id, body: { isActive } })
+      .pipe(map(() => void 0));
+  }
+
+  /**
+   * [ADMIN] Set ANOTHER user's password — the admin reset. A MUTATION -> `mutatingHttp`.
+   *
+   * 🔴 NOT the self-service change. That is `POST /api/auth/set-password`, which requires the CURRENT
+   * password and is open to any authenticated caller; this one requires none and is admin-gated. The target
+   * id is a ROUTE parameter, never a body field, so a caller cannot smuggle a different victim in the JSON.
+   */
+  adminSetPassword(userId: number, newPassword: string): Observable<void> {
+    return authAdminSetPasswordFn(this.mutatingHttp, this.rootUrl, { id: userId, body: { newPassword } })
+      .pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // TEAMS — `GET /api/teams` is OPEN; EVERYTHING ELSE IN THIS SECTION IS [ADMIN], the membership READ
+  // included. See THE ADMIN CONTRACT above.
+  // =====================================================================================================
+
+  /** The ACTIVE teams. OPEN to any authenticated caller. A READ -> the plain `http`. */
+  getTeamsActive(): Observable<TeamDto[]> {
+    return teamListActiveFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] EVERY team, deactivated included — the Settings tab's list. A READ -> the plain `http`. */
+  getTeamsAll(): Observable<TeamDto[]> {
+    return teamListAllFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] The USER IDS in one team — not users, ids. A READ -> the plain `http`.
+   *
+   * 🔴 This READ is admin-gated too, unlike every other read in this file. A non-admin screen that merely
+   * wants to *show* a team's members cannot use it.
+   */
+  getTeamMembers(teamId: number): Observable<number[]> {
+    return teamMembersFn(this.http, this.rootUrl, { id: teamId }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Create a team. A MUTATION -> `mutatingHttp`. */
+  createTeam(name: string): Observable<TeamDto> {
+    return teamCreateFn(this.mutatingHttp, this.rootUrl, { body: { name } }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Rename a team. A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  renameTeam(id: number, name: string, expectedVersion: number): Observable<SavedBody> {
+    return teamRenameFn(this.mutatingHttp, this.rootUrl, { id, body: { name, expectedVersion } })
+      .pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] REPLACES a team's membership with exactly `userIds`. A CHECKED write, and a MUTATION.
+   *
+   * 🔴 It REPLACES. An id you omit is REMOVED from the team, not left alone — so build this from the full
+   * membership `getTeamMembers()` returned, never from the one checkbox the user just ticked.
+   */
+  setTeamMembers(id: number, userIds: number[], expectedVersion: number): Observable<SavedBody> {
+    return teamSetMembersFn(this.mutatingHttp, this.rootUrl, { id, body: { userIds, expectedVersion } })
+      .pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] SOFT delete / restore a team. BUMP-ONLY — no version. A MUTATION -> `mutatingHttp`. */
+  setTeamActive(id: number, isActive: boolean): Observable<void> {
+    return teamSetActiveFn(this.mutatingHttp, this.rootUrl, { id, body: { isActive } })
+      .pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // TAGS — `GET /api/tags` is OPEN (every screen that renders a tag chip needs it). The three WRITES are
+  // [ADMIN]. See THE ADMIN CONTRACT above.
+  // =====================================================================================================
+
+  /** Every tag. OPEN. A READ -> the plain `http`. This is what resolves the ids `get*Tags()` hands back. */
+  getTagList(): Observable<TagDto[]> {
+    return tagListFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Create a tag. A MUTATION -> `mutatingHttp`. */
+  createTag(body: SettingsTagCreateRequest): Observable<TagDto> {
+    return tagCreateFn(this.mutatingHttp, this.rootUrl, { body }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Update a tag's text / colour / icon. A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  updateTag(id: number, body: SettingsTagUpdateRequest): Observable<SavedBody> {
+    return tagUpdateFn(this.mutatingHttp, this.rootUrl, { id, body }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Delete a tag. A MUTATION -> `mutatingHttp`. */
+  deleteTag(id: number): Observable<void> {
+    return tagDeleteFn(this.mutatingHttp, this.rootUrl, { id }).pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // PCA CONTACTS — the admin-only half. The two OPEN reads are up in PEOPLE.
+  // 🔴 EVERY METHOD IN THIS SECTION IS [ADMIN].
+  // =====================================================================================================
+
+  /** [ADMIN] EVERY PCA contact, deactivated included — the Settings tab's list. A READ -> plain `http`. */
+  getPcaContactsAll(): Observable<PcaContactDto[]> {
+    return pcaContactListAllFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Create a PCA contact. A MUTATION -> `mutatingHttp`. */
+  createPcaContact(name: string): Observable<PcaContactDto> {
+    return pcaContactCreateFn(this.mutatingHttp, this.rootUrl, { body: { name } }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Rename a PCA contact. A CHECKED write, and a MUTATION -> `mutatingHttp`. */
+  renamePcaContact(id: number, name: string, expectedVersion: number): Observable<SavedBody> {
+    return pcaContactRenameFn(this.mutatingHttp, this.rootUrl, { id, body: { name, expectedVersion } })
+      .pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] SOFT delete / restore a PCA contact. BUMP-ONLY — no version. A MUTATION -> `mutatingHttp`. */
+  setPcaContactActive(id: number, isActive: boolean): Observable<void> {
+    return pcaContactSetActiveFn(this.mutatingHttp, this.rootUrl, { id, body: { isActive } })
+      .pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // TASK TEMPLATES — `GET /api/templates` is OPEN. The three writes are [ADMIN].
+  //
+  // A "template" is a NAMED GROUP of rows sharing `templateName`, one row per task. There is no template
+  // ENTITY — which is why there are two deletes: one row (`deleteTemplate`) and one whole group
+  // (`deleteTemplateByName`).
+  // =====================================================================================================
+
+  /** Every template row. OPEN. A READ -> the plain `http`. Group them by `templateName` on the client. */
+  getTemplateList(): Observable<TaskTemplateDto[]> {
+    return templateListFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Add ONE row to a template. A MUTATION -> `mutatingHttp`. */
+  createTemplate(body: SettingsTemplateCreateRequest): Observable<TaskTemplateDto> {
+    return templateCreateFn(this.mutatingHttp, this.rootUrl, { body }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Delete ONE template ROW by id. A MUTATION -> `mutatingHttp`. */
+  deleteTemplate(id: number): Observable<void> {
+    return templateDeleteFn(this.mutatingHttp, this.rootUrl, { id }).pipe(map(() => void 0));
+  }
+
+  /**
+   * [ADMIN] Delete an ENTIRE template — every row sharing `templateName`. A MUTATION -> `mutatingHttp`.
+   *
+   * 🔴 `templateName` is a QUERY param on `DELETE /api/templates` (the collection), not a path segment.
+   */
+  deleteTemplateByName(templateName: string): Observable<void> {
+    return templateDeleteByNameFn(this.mutatingHttp, this.rootUrl, { templateName })
+      .pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // HOLIDAYS — `GET /api/holidays` is OPEN (the week grid rejects a write on a holiday, so every user needs
+  // to see them). The two writes are [ADMIN].
+  // =====================================================================================================
+
+  /** The holidays, optionally narrowed to a year / month. OPEN. A READ -> the plain `http`. */
+  getHolidayList(year?: number, month?: number): Observable<HolidayDto[]> {
+    return holidayListFn(this.http, this.rootUrl, { year, month }).pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] Add or update ONE holiday, keyed by date. A MUTATION -> `mutatingHttp`.
+   *
+   * An UPSERT: posting a date that already exists overwrites its description rather than failing.
+   */
+  upsertHoliday(date: string, description?: string): Observable<void> {
+    return holidayUpsertFn(this.mutatingHttp, this.rootUrl, { body: { date, description } })
+      .pipe(map(() => void 0));
+  }
+
+  /** [ADMIN] Delete a holiday. The ISO date is the PATH key — there is no id. A MUTATION -> `mutatingHttp`. */
+  deleteHoliday(date: string): Observable<void> {
+    return holidayDeleteFn(this.mutatingHttp, this.rootUrl, { date }).pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // DEFAULT TASKS — the rows seeded into every new backlog. `GET` is OPEN; the three writes are [ADMIN].
+  // =====================================================================================================
+
+  /** The default tasks. OPEN. A READ -> the plain `http`. */
+  getDefaultTasks(): Observable<DefaultTaskDto[]> {
+    return defaultTaskListFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Add a default task. A MUTATION -> `mutatingHttp`. */
+  createDefaultTask(taskName: string, orderIndex: number): Observable<DefaultTaskDto> {
+    return defaultTaskCreateFn(this.mutatingHttp, this.rootUrl, { body: { taskName, orderIndex } })
+      .pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] SOFT delete / restore a default task. BUMP-ONLY — no version. A MUTATION -> `mutatingHttp`. */
+  setDefaultTaskActive(id: number, isActive: boolean): Observable<void> {
+    return defaultTaskSetActiveFn(this.mutatingHttp, this.rootUrl, { id, body: { isActive } })
+      .pipe(map(() => void 0));
+  }
+
+  /**
+   * [ADMIN] Push the default-task set into EXISTING backlogs. A MUTATION -> `mutatingHttp`.
+   *
+   * 🔴 A BULK, CROSS-BACKLOG WRITE — not a settings toggle. It reaches into backlogs the caller is not
+   * looking at, which is why it notifies and why it is admin-gated.
+   */
+  syncDefaultTasks(): Observable<void> {
+    return defaultTaskSyncFn(this.mutatingHttp, this.rootUrl, {}).pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // STANDUP / DAILY REPORT — the entries, the issues, the team board.
+  //
+  // Everything here is OPEN to any authenticated caller EXCEPT `archiveStandupWeek`, which is [ADMIN].
+  //
+  // 🔴 Standup is the one area whose notifications are TEAM-SCOPED rather than global: the server sends to
+  // the entry's real `TeamId`, not the `teamId: 0` broadcast sentinel every other settings entity uses. That
+  // changes nothing about how you CALL these — writes still go on `mutatingHttp` — but it does mean the echo
+  // you would receive from a write on the wrong client is a REAL one that would land on your own board.
+  // =====================================================================================================
+
+  /**
+   * The caller's OWN standup for one day — yesterday's entries and today's. A READ -> the plain `http`.
+   *
+   * `date` defaults SERVER-side to today when omitted.
+   */
+  getStandupMyDay(date?: string): Observable<SettingsUserStandup> {
+    return standupMyDayFn(this.http, this.rootUrl, { date }).pipe(map(r => r.body));
+  }
+
+  /**
+   * The whole TEAM's board for one day — one `SettingsUserStandup` per member. A READ -> the plain `http`.
+   *
+   * 🔴 `teamIds: []` means ALL MY TEAMS, not none — see THE TEAM FILTER block above.
+   */
+  getStandupBoard(date?: string, teamIds?: number[]): Observable<SettingsUserStandup[]> {
+    return standupBoardFn(this.http, this.rootUrl, { date, teamIds }).pipe(map(r => r.body));
+  }
+
+  /** Create a standup entry. A MUTATION -> `mutatingHttp`. Returns the NEW ENTRY'S ID — keep it. */
+  createStandupEntry(body: SettingsStandupEntryCreateRequest): Observable<number> {
+    return standupEntryCreateFn(this.mutatingHttp, this.rootUrl, { body }).pipe(map(r => r.body));
+  }
+
+  /** Update a standup entry. A MUTATION -> `mutatingHttp`. */
+  updateStandupEntry(entryId: number, body: SettingsStandupEntryUpdateRequest): Observable<void> {
+    return standupEntryUpdateFn(this.mutatingHttp, this.rootUrl, { entryId, body })
+      .pipe(map(() => void 0));
+  }
+
+  /** Delete a standup entry. A MUTATION -> `mutatingHttp`. */
+  deleteStandupEntry(entryId: number): Observable<void> {
+    return standupEntryDeleteFn(this.mutatingHttp, this.rootUrl, { entryId }).pipe(map(() => void 0));
+  }
+
+  /**
+   * Drag one entry onto another. A MUTATION -> `mutatingHttp`.
+   *
+   * The server computes the new order from the PAIR — the client sends who moved and what it landed on, not
+   * a rewritten index list. (Unlike `setTaskOrder`, which rewrites every row.)
+   */
+  reorderStandupEntry(draggedId: number, targetId: number): Observable<void> {
+    return standupEntryReorderFn(this.mutatingHttp, this.rootUrl, { body: { draggedId, targetId } })
+      .pipe(map(() => void 0));
+  }
+
+  /** Copy a day's entries onto another day. A MUTATION -> `mutatingHttp`. Returns HOW MANY were imported. */
+  quickImportStandup(sourceDate: string, targetDate: string): Observable<number> {
+    return standupQuickImportFn(this.mutatingHttp, this.rootUrl, { body: { sourceDate, targetDate } })
+      .pipe(map(r => r.body));
+  }
+
+  /** Add an issue to an entry. A MUTATION -> `mutatingHttp`. Returns the NEW ISSUE'S ID. */
+  createStandupIssue(entryId: number, body: SettingsStandupIssueCreateRequest): Observable<number> {
+    return standupIssueCreateFn(this.mutatingHttp, this.rootUrl, { entryId, body }).pipe(map(r => r.body));
+  }
+
+  /** Update an issue. A CHECKED write (`body.expectedVersion`), and a MUTATION -> `mutatingHttp`. */
+  updateStandupIssue(
+    entryId: number, issueId: number, body: SettingsStandupIssueUpdateRequest,
+  ): Observable<SavedBody> {
+    return standupIssueUpdateFn(this.mutatingHttp, this.rootUrl, { entryId, issueId, body })
+      .pipe(map(r => r.body));
+  }
+
+  /** Delete an issue. A MUTATION -> `mutatingHttp`. */
+  deleteStandupIssue(entryId: number, issueId: number): Observable<void> {
+    return standupIssueDeleteFn(this.mutatingHttp, this.rootUrl, { entryId, issueId })
+      .pipe(map(() => void 0));
+  }
+
+  /**
+   * [ADMIN] Archive the standup week containing `date` to a file on the SERVER. A MUTATION -> `mutatingHttp`.
+   *
+   * 🔴 Returns `ArchivedFileDto` — a SERVER-SIDE PATH, not a download. The browser cannot open it. It is
+   * there to be SHOWN ("written to \\share\..."), not fetched. If you need bytes in the browser, the export
+   * routes above are what do that.
+   */
+  archiveStandupWeek(date: string): Observable<ArchivedFileDto> {
+    return standupArchiveWeekFn(this.mutatingHttp, this.rootUrl, { date }).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // THE KEY/VALUE SETTINGS STORE — GET is OPEN, PUT is [ADMIN].
+  //
+  // 🔴 DELIBERATELY UNVERSIONED: no `expectedVersion` anywhere on this route, by design. Do not add one.
+  // =====================================================================================================
+
+  /**
+   * Read one setting. OPEN. A READ -> the plain `http`.
+   *
+   * 🔴 AN UNSET KEY IS A 200 WITH A NULL VALUE, NOT A 404 — every key is unset on a fresh database. The
+   * caller's correct response to a null is to fall back to the documented default (e.g. 3, for the
+   * missing-logs N-day window), NOT to treat it as an error.
+   */
+  getSetting(key: string): Observable<SettingDto> {
+    return settingGetFn(this.http, this.rootUrl, { key }).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Write one setting. A MUTATION -> `mutatingHttp`. A null value is a 400, not a delete. */
+  setSetting(key: string, value: string): Observable<void> {
+    return settingSetFn(this.mutatingHttp, this.rootUrl, { key, body: { value } })
+      .pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // OPS — backup / export / retention. 🔴 ALL FOUR ARE [ADMIN], and all four are POSTs.
+  //
+  // They go on `mutatingHttp` because they are non-GET. None of them actually notifies over SignalR today,
+  // so the header is INERT on these four — but "every non-GET goes on mutatingHttp" is the rule precisely
+  // because it is mechanically checkable, and it fails SAFE: the cost of the header where it is not needed
+  // is one header, while the cost of omitting it where it IS needed is a write that echoes back and clobbers
+  // the user's own screen. If a notifier call is ever added to one of these, the client is already right.
+  // =====================================================================================================
+
+  /** [ADMIN] Run a backup now. */
+  runBackup(): Observable<SettingsOpsResult> {
+    return opsBackupRunFn(this.mutatingHttp, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] Run the scheduled export now. */
+  runExport(): Observable<SettingsOpsResult> {
+    return opsExportRunFn(this.mutatingHttp, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] What retention WOULD delete. A POST that changes NOTHING — the preview is the whole point.
+   *
+   * Call this before `runRetention()` and show the user what they are about to lose.
+   */
+  previewRetention(): Observable<RetentionPreview> {
+    return opsRetentionPreviewFn(this.mutatingHttp, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] DESTRUCTIVE, AND ASYNCHRONOUS. Actually deletes what `previewRetention()` listed.
+   *
+   * 🔴 The route answers **202 Accepted**, not 204: the work is handed to a background job and the response
+   * means "started", NOT "finished". A caller that re-reads immediately will see the OLD data and conclude
+   * nothing happened. There is no completion signal on this route — do not synthesise one.
+   */
+  runRetention(): Observable<void> {
+    return opsRetentionRunFn(this.mutatingHttp, this.rootUrl, {}).pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // ME — PUT /api/me/active-team
+  // =====================================================================================================
+
+  /**
+   * Switch the caller's own active team. A MUTATION -> `mutatingHttp`.
+   *
+   * 🔴 THE ONE MUTATING ROUTE IN THE WHOLE API THAT NOTIFIES NOBODY, and that is a recorded decision, not an
+   * oversight: `DataChangedAsync` sends to a team group MINUS the caller — i.e. to everyone EXCEPT the one
+   * person whose scope actually changed. Nobody else's view moves when Alice switches teams. So the header
+   * this client stamps is inert here; it rides along for uniformity, and the C# explicitly warns the next
+   * person not to "helpfully" add a notifier call back.
+   *
+   * 400 (the team is not one of yours, or is not active) arrives as an HttpErrorResponse.
+   */
+  setActiveTeam(teamId: number): Observable<void> {
+    return meSetActiveTeamFn(this.mutatingHttp, this.rootUrl, { body: { teamId } })
+      .pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // THE VENDORED STUBS ARE GONE — all of them, as of M9 P7. There is no stub layer left to protect.
+  //
+  // The convention that governed them (add a real method BESIDE the stub under a new name; the screen's own
+  // task swaps its component over and deletes the stub it orphans) ran to completion: M8.6/T6 retired the
+  // first pair, M9 Phase 2 retired the rest, and this task swept the last four — getLogGroups(),
+  // getDailyEntries(), getTeamBoard() and getTags() — which had outlived every consumer. `models/
+  // worklog.models.ts`, the vendored view models they returned, is deleted with them.
+  //
+  // Every method on this class is now real, typed transport over `../api/**`. Do not add another `of([])`
+  // placeholder here: a screen with no endpoint belongs in the plan, not behind a stub that silently
+  // renders empty.
+  //
+  // 🔴 TWO WARNINGS SURVIVE THE STUBS, because they are about REPORTS, not about the stub layer:
+  //
+  // 1. THERE IS NO `/api/reports/metrics` ROUTE, and there never will be. `/api/reports/*` is weekly,
+  //    monthly and missing-logs, and that is all three of them. The four stat cards are CLIENT-SIDE
+  //    ARITHMETIC over what getWeeklyReport() already returns — `dayTotals` and `daysLogged` ride the SAME
+  //    response, deliberately, so the cards cannot show three different snapshots of one week — plus
+  //    getMissingLogs().length. See `pages/reports/report-model.ts:statCards`. Do not go hunting for it.
+  //
+  // 2. DO NOT RE-DERIVE `daysLogged` FROM `dayTotals`. The server owns it (ReportAggregator.DaysLogged):
+  //    the denominator is Mon–Fri MINUS public holidays, which the client cannot see. It used to be
+  //    `rows.Count` — a list that only holds days that HAVE logs — so it moved with the numerator and the
+  //    stat could only ever read N/N. `dayTotals.length` is that same bug wearing a different name.
+  // =====================================================================================================
 }
 
 /**

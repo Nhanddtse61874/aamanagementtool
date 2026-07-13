@@ -4,29 +4,67 @@
     <div><h1>Reports</h1><p>Logged-hours analytics</p></div>
   </div>
 
+  <!-- RPT-04. 🔴 This banner is scoped to your ACTIVE TEAM and IGNORES the team filter below — the route
+       takes no team parameter at all. WPF behaves identically. -->
   @if (missing().length) {
-    <details class="missing">
-      <summary>⚠ Missing time logs <span class="pill">{{ missing().length }}</span><span class="hint">tap to expand</span></summary>
-      <div class="missing__list">@for (p of missing(); track p) { <span class="mchip">{{ p }}</span> }</div>
+    <details class="missing" open>
+      <summary>⚠ Missing time logs <span class="pill">{{ missing().length }}</span><span class="hint">in your active team · tap to collapse</span></summary>
+      <div class="missing__list">
+        @for (m of missing(); track $index) { <span class="mchip">{{ m.userName }}</span> }
+      </div>
     </details>
   }
 
   <div class="filters">
-    @for (f of reportFilters; track f.label) {
-      <label>{{ f.label }}<span class="select-wrap"><select class="select">@for (o of f.options; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
-    }
-    <button class="btn btn-primary" style="margin-left:auto;" (click)="notify('Exported to Excel')">↓ Export to Excel</button>
+    <label for="rpt-target">Report for
+      <span class="select-wrap">
+        <select id="rpt-target" class="select" [value]="selectedUserId()" (change)="onTargetChange($any($event.target).value)">
+          @for (t of targets(); track t.userId) { <option [value]="t.userId">{{ t.display }}</option> }
+        </select>
+        <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg>
+      </span>
+    </label>
+
+    <label for="rpt-project">Project
+      <span class="select-wrap">
+        <select id="rpt-project" class="select" [value]="selectedProject()" (change)="onProjectChange($any($event.target).value)">
+          @for (p of projects; track p) { <option [value]="p">{{ p }}</option> }
+        </select>
+        <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg>
+      </span>
+    </label>
+
+    <!-- Any day snaps to that week's Monday: the API reads monday..monday+4 while the DAYS LOGGED
+         denominator is always Mon–Fri, so a mid-week value would measure one span against another. -->
+    <label for="rpt-week">Week (Mon)
+      <input id="rpt-week" class="select date" type="date" [value]="weekMonday()"
+             (change)="onWeekChange($any($event.target).value)">
+    </label>
+
+    <label for="rpt-month">Month
+      <input id="rpt-month" class="select date" type="month" [value]="selectedMonth()"
+             (change)="onMonthChange($any($event.target).value)">
+    </label>
+
+    <app-team-filter (selectionChange)="onTeamSelectionChange($event)"/>
+
+    <button class="btn btn-primary" style="margin-left:auto;"
+            [disabled]="teamEmpty() || exporting()"
+            [title]="teamEmpty()
+              ? 'Select at least one team first'
+              : 'Export the selected MONTH (and target, project, teams) to an .xlsx file — the week is not used'"
+            (click)="exportExcel()">
+      {{ exporting() ? 'Exporting…' : '↓ Export to Excel' }}
+    </button>
   </div>
 
   <div class="metrics">
-    @for (m of metrics(); track m.label) {
-      <div class="card metric">
+    @for (m of cards(); track m.label) {
+      <div class="card metric" [class.metric--warn]="m.tone === 'warn'">
         <div class="metric__lbl">{{ m.icon }} {{ m.label }}</div>
         <div class="metric__val" [style.color]="metricColor(m.tone)">{{ m.value }}</div>
         <div class="metric__sub">{{ m.sub }}</div>
       </div>
-    } @empty {
-      <div class="empty span"><div class="empty__title">No analytics yet</div><div class="empty__sub">Connect <code>getMetrics()</code>.</div></div>
     }
   </div>
 
@@ -36,34 +74,63 @@
         <div class="tbl-card__title">Weekly <span>by day · ticket · task</span></div>
         <div class="wtbl wtbl--head"><div>DATE</div><div>TICKET</div><div>TASK</div><div class="r">HOURS</div></div>
         <div class="wtbl-body">
-          @for (w of weekly(); track $index) {
-            <div class="wtbl"><div class="b">{{ w.date }}</div><div class="tk">{{ w.ticket }}</div><div class="muted">{{ w.task }}</div><div class="r n">{{ w.hours }}</div></div>
-          } @empty { <div class="tbl-empty">Connect <code>getWeekly()</code></div> }
+          @for (w of detailRows(); track $index) {
+            <div class="wtbl">
+              <div class="b">{{ formatDay(w.date) }}</div>
+              <div class="tk">{{ w.backlogCode }}</div>
+              <div class="muted">{{ w.taskName }}</div>
+              <div class="r n">{{ hours(w.totalHours) }}</div>
+            </div>
+          } @empty {
+            <div class="tbl-empty">
+              @if (teamEmpty()) { No teams selected. } @else { Nothing logged this week. }
+            </div>
+          }
         </div>
       </div>
+
       <div class="card tbl-card">
         <div class="tbl-card__title">Monthly <span>by backlog / task</span></div>
         <div class="mtbl mtbl--head"><div>BACKLOG</div><div>PROJECT</div><div>TASK</div><div class="r">HOURS</div></div>
-        @for (m of monthly(); track $index) {
-          <div class="mtbl"><div class="b">{{ m.backlog }}</div><div class="muted">{{ m.project }}</div><div class="muted">{{ m.task }}</div><div class="r n">{{ m.hours }}</div></div>
-        } @empty { <div class="tbl-empty">Connect <code>getMonthly()</code></div> }
+        @for (m of monthlyRows(); track $index) {
+          <div class="mtbl">
+            <div class="b">{{ m.backlogCode }}</div>
+            <div class="muted">{{ m.project }}</div>
+            <div class="muted">{{ m.taskName }}</div>
+            <div class="r n">{{ hours(m.totalHours) }}</div>
+          </div>
+        } @empty {
+          <div class="tbl-empty">
+            @if (teamEmpty()) { No teams selected. } @else { Nothing logged this month. }
+          </div>
+        }
       </div>
     </div>
 
     <div class="card tree-card">
       <div class="tree-card__title">
-        <span>Drill-down <span class="sub">Project → Backlog → Task → Date</span></span>
-        <button class="btn btn-ghost btn-sm" (click)="toggleAll()">{{ anyExpanded() ? 'Collapse all' : 'Expand all' }}</button>
+        <!-- 🔴 The old label read "Project → Backlog → Task → Date" in BOTH apps. The Team root was added
+             (P10/TM-08) and nobody updated it. There are five levels. -->
+        <span>Drill-down <span class="sub">Team → Project → Backlog → Task → Date</span></span>
+        <button class="btn btn-ghost btn-sm" [disabled]="!flat().length" (click)="toggleAll()">
+          {{ allExpanded() ? 'Collapse all' : 'Expand all' }}
+        </button>
       </div>
       <div class="tree">
         @for (n of flat(); track n.id) {
-          <div class="node" [class.branch]="n.hasChildren" [style.padding-left.px]="10 + n.depth * 20" (click)="n.hasChildren && toggleNode(n.id)">
+          <div class="node" [class.branch]="n.hasChildren" [style.padding-left.px]="10 + n.depth * 20"
+               (click)="n.hasChildren && toggleNode(n.id)">
             <span class="caret" [class.hidden]="!n.hasChildren" [class.open]="n.expanded">▶</span>
-            <span class="lbl" [style.color]="labelColor(n)" [style.font-weight]="n.depth <= 1 ? 800 : (n.depth === 2 ? 700 : 500)">{{ n.label }}</span>
+            <span class="lbl" [style.color]="labelColor(n)"
+                  [style.font-weight]="n.depth <= 1 ? 800 : (n.depth === 2 ? 700 : 500)">{{ n.label }}</span>
             <span class="sp"></span>
             <span class="hrs" [style.color]="n.isLeaf ? 'var(--muted)' : 'var(--accent-700)'">{{ n.hours }}</span>
           </div>
-        } @empty { <div class="tbl-empty">Connect <code>getDrilldown()</code></div> }
+        } @empty {
+          <div class="tbl-empty">
+            @if (teamEmpty()) { No teams selected. } @else { Nothing logged this month. }
+          </div>
+        }
       </div>
     </div>
   </div>

@@ -160,6 +160,50 @@ public sealed class SettingsEndpointsTests
         Assert.Equal(new[] { aliceId }, members);
     }
 
+    /// <summary>M9 P2d — TM-04. <c>POST /api/teams</c> USED TO SKIP THE BOOTSTRAP ENTIRELY.
+    ///
+    /// <para>WPF's <c>SettingsViewModel.AddTeamAsync</c> does <c>InsertAsync</c> →
+    /// <c>EnsureDefaultBacklogIdAsync(newId)</c> → <c>SyncAsync()</c>. The route did only the first, so a team
+    /// created from the WEB got no <c>DEFAULT</c> backlog and no default tasks — its members would have had
+    /// nothing to log Annual Leave / Meeting / Other against. Nobody had noticed because no client could reach
+    /// the route yet; wiring the M9 Settings screen is what makes it reachable.</para>
+    ///
+    /// <para>The default task is created BEFORE the team ON PURPOSE. <c>POST /api/default-tasks</c> itself
+    /// calls <c>SyncAsync()</c>, which reconciles into every ACTIVE team — so creating the task second would
+    /// materialize the rows as a side-effect of the WRONG endpoint and this test would pass against the
+    /// unfixed route, proving nothing. With no team in existence at that moment, that sync is a no-op over
+    /// zero teams, and the only thing that can put "Annual Leave" under Blue Team is the team-create route
+    /// doing its own bootstrap.</para></summary>
+    [Fact]
+    public async Task Creating_a_team_via_the_API_bootstraps_its_DEFAULT_backlog_and_the_default_tasks()
+    {
+        using var factory = new ApiFactory();
+        using var admin = await factory.AdminClientAsync();
+
+        // No teams exist yet, so this SyncAsync reconciles over nothing. See the doc comment.
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync(
+            "/api/default-tasks", new SettingsDefaultTaskCreateRequest("Annual Leave", 0))).StatusCode);
+
+        var created = await admin.PostAsJsonAsync("/api/teams", new SettingsNameRequest("Blue Team"));
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        var team = await created.Content.ReadFromJsonAsync<TeamDto>();
+
+        using var db = factory.OpenDb();
+
+        var defaultBacklogs = await db.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM Backlogs WHERE team_id = @teamId AND backlog_code = 'DEFAULT';",
+            new { teamId = team!.Id });
+        Assert.Equal(1, defaultBacklogs);
+
+        // A DEFAULT backlog with nothing in it is still a team whose members cannot log Annual Leave.
+        var materialized = await db.ExecuteScalarAsync<long>(
+            @"SELECT COUNT(*) FROM Tasks t JOIN Backlogs b ON b.id = t.backlog_id
+              WHERE b.team_id = @teamId AND b.backlog_code = 'DEFAULT'
+                AND t.task_name = 'Annual Leave' AND t.is_active = 1;",
+            new { teamId = team.Id });
+        Assert.Equal(1, materialized);
+    }
+
     // ===== PCA contacts =====================================================================================
 
     [Fact]
@@ -252,6 +296,72 @@ public sealed class SettingsEndpointsTests
 
         Assert.Equal(HttpStatusCode.OK, (await alice.GetAsync("/api/users")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await alice.GetAsync("/api/users/all")).StatusCode);
+    }
+
+    // ===== The admin-gated FULL lists (M9 P2a) ==============================================================
+
+    /// <summary>M9 P2a. THE GUARD ON <c>/api/users/all</c> AND <c>/api/pca-contacts/all</c>.
+    ///
+    /// <para>It replaces <c>Admin_gated_list_is_NOT_tagged_and_so_never_joins_the_generated_client</c>
+    /// (OpenApiContractTests), which M8.6 wrote on the rationale "no admin-only screen exists, so keep these
+    /// routes out of the generated client entirely". M9 BUILDS that screen: the Users tab must list INACTIVE
+    /// users (USR-01) or the "Activate" button has nothing to act on, and <c>GET /api/users</c> is active-only.
+    /// So the routes are now tagged and DO join the client.</para>
+    ///
+    /// <para><b>This test is the stronger guard put in that one's place.</b> The old test asserted a PROXY for
+    /// the security property (the route is absent from the generated client — true, but it only ever stopped
+    /// OUR OWN client from calling it; curl was never impressed). This asserts the PROPERTY ITSELF: the route
+    /// rejects a non-admin. If the <c>AdminPolicy</c> is ever dropped from either route, THIS is what fails.</para>
+    ///
+    /// <para><b>The seeded user is a NON-admin ON PURPOSE.</b> <c>SeedUserAsync</c> takes an <c>isAdmin</c>
+    /// flag, and seeding an admin here would sail straight through an admin-gated route and prove exactly
+    /// nothing — the failure mode that shipped in M8.5.</para></summary>
+    [Theory]
+    [InlineData("/api/users/all")]
+    [InlineData("/api/pca-contacts/all")]
+    public async Task The_admin_gated_full_list_is_403_for_a_NON_admin(string route)
+    {
+        using var factory = new ApiFactory();
+        await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);   // NOT an admin. Deliberately.
+        using var alice = await factory.ClientAsync("alice");
+
+        var response = await alice.GetAsync(route);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>M9 P2a / USR-01 — WHY <c>/api/users/all</c> has to join the generated client at all.
+    ///
+    /// <para>The Users tab shows inactive users too, and "Activate" is impossible without them.
+    /// <c>GET /api/users</c> returns ACTIVE ONLY (<c>GetActiveAsync</c>), so it can never render a
+    /// deactivated user — there would be nothing to click Activate on. <c>/api/users/all</c>
+    /// (<c>GetAllAsync</c>) is the only route that can, and an admin must be able to read it.</para>
+    ///
+    /// <para>Asserting the OMISSION from the active list is the load-bearing half: it is what proves the
+    /// admin route is NECESSARY rather than merely convenient.</para></summary>
+    [Fact]
+    public async Task Users_all_lists_the_INACTIVE_user_that_the_Activate_button_needs_and_the_active_list_omits()
+    {
+        using var factory = new ApiFactory();
+        var zoeId = await factory.SeedUserAsync("zoe", ApiFactory.DefaultPassword);
+        await factory.SetUserActiveAsync(zoeId, false);          // the user an admin now needs to re-activate
+
+        using var admin = await factory.AdminClientAsync();
+
+        var all = await (await admin.GetAsync("/api/users/all")).Content.ReadFromJsonAsync<List<UserDto>>();
+        Assert.Contains(all!, u => u.Id == zoeId && !u.IsActive && u.Name == ApiFactory.DisplayNameFor("zoe"));
+
+        // The route is NECESSARY: the open active list cannot see her, so the Users tab cannot be built on it.
+        var active = await (await admin.GetAsync("/api/users")).Content.ReadFromJsonAsync<List<UserDto>>();
+        Assert.DoesNotContain(active!, u => u.Id == zoeId);
+
+        // And Activate actually works on what /all handed back.
+        var reactivated = await admin.PutAsJsonAsync(
+            $"/api/users/{zoeId}/active", new SettingsSetActiveRequest(true));
+        Assert.Equal(HttpStatusCode.NoContent, reactivated.StatusCode);
+
+        var afterActivate = await (await admin.GetAsync("/api/users")).Content.ReadFromJsonAsync<List<UserDto>>();
+        Assert.Contains(afterActivate!, u => u.Id == zoeId);
     }
 
     /// <summary>M8.6. The backlog editor resolves an assignee's NAME through this route, and that assignee
@@ -374,6 +484,59 @@ public sealed class SettingsEndpointsTests
                 AND t.task_name = 'Daily standup' AND t.is_active = 1;",
             new { teamId });
         Assert.Equal(1, count);
+    }
+
+    /// <summary>M9 P2e — the standalone <c>POST /api/default-tasks/sync</c>.
+    ///
+    /// <para>WPF's "Sync default tasks" button calls <c>IDefaultTaskSyncService.SyncAsync()</c> directly. The
+    /// API only ever ran it as a SIDE-EFFECT of <c>POST /api/default-tasks</c> and
+    /// <c>PUT /api/default-tasks/{id}/active</c> — there was no route the Settings screen's button could call,
+    /// so a reconcile could not be triggered without also writing a default task.</para>
+    ///
+    /// <para>The arrangement below is the state only a standalone sync can repair: a DefaultTask that already
+    /// exists, and an ACTIVE team that came into being AFTER it via a path that does no bootstrap
+    /// (<c>SeedTeamAsync</c> is raw SQL — exactly like a row inserted by an older build, a restore, or a
+    /// hand-edit). The task is therefore NOT materialized under that team, and the precondition asserts that
+    /// before the fix is exercised — otherwise a green here would prove nothing.</para></summary>
+    [Fact]
+    public async Task Sync_route_materializes_default_tasks_into_a_team_that_was_created_without_a_bootstrap()
+    {
+        using var factory = new ApiFactory();
+        using var admin = await factory.AdminClientAsync();
+
+        // No teams yet -> this write's own SyncAsync reconciles over nothing.
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync(
+            "/api/default-tasks", new SettingsDefaultTaskCreateRequest("Meeting", 0))).StatusCode);
+
+        // Raw SQL. Active team, no DEFAULT backlog, no bootstrap ran for it.
+        var teamId = await factory.SeedTeamAsync("Orphan Team");
+
+        const string materializedSql =
+            @"SELECT COUNT(*) FROM Tasks t JOIN Backlogs b ON b.id = t.backlog_id
+              WHERE b.team_id = @teamId AND b.backlog_code = 'DEFAULT'
+                AND t.task_name = 'Meeting' AND t.is_active = 1;";
+
+        using var db = factory.OpenDb();
+
+        // PRECONDITION: without this the test would pass whether or not the route did anything.
+        Assert.Equal(0, await db.ExecuteScalarAsync<long>(materializedSql, new { teamId }));
+
+        var synced = await admin.PostAsync("/api/default-tasks/sync", content: null);
+        Assert.Equal(HttpStatusCode.NoContent, synced.StatusCode);
+
+        Assert.Equal(1, await db.ExecuteScalarAsync<long>(materializedSql, new { teamId }));
+    }
+
+    [Fact]
+    public async Task A_non_admin_cannot_trigger_a_default_task_sync()
+    {
+        using var factory = new ApiFactory();
+        await factory.SeedUserAsync("peon", ApiFactory.DefaultPassword);
+        using var client = await factory.ClientAsync("peon");
+
+        var response = await client.PostAsync("/api/default-tasks/sync", content: null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     // ===== Standup entries ====================================================================================

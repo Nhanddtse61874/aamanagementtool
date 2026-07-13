@@ -535,6 +535,48 @@ public sealed class TimesheetEndpointsTests
         Assert.DoesNotContain("bob", markdown, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>M9 P4.5 — THE ONE BEHAVIOUR P4.5 CHANGED, pinned deliberately rather than left to be
+    /// discovered.
+    ///
+    /// <para>The four routes that feed a client-side team filter now declare a bound-but-UNREAD
+    /// <c>[FromQuery] int[]? teamIds</c>, purely so ApiExplorer emits the parameter into the OpenAPI document
+    /// and the generated client can send it at all. The handlers still resolve their scope through
+    /// <c>EffectiveTeamIds</c> and never read the bound value — but merely DECLARING it means ASP.NET now
+    /// PARSES the query values, and a value that will not parse as an <c>int</c> is a binding failure:
+    /// <b>400</b>.</para>
+    ///
+    /// <para>Before P4.5 these exact requests returned <b>200 with no rows</b> — <c>EffectiveTeamIds</c>
+    /// hand-parses, silently drops what it cannot read, and intersects the empty set. So this IS a real
+    /// contract change, and it is accepted on three grounds: it is FAIL-CLOSED (a 400 carries no body at all,
+    /// so the data-leak direction is untouched); it is UNREACHABLE from the generated client (which types
+    /// <c>teamIds</c> as <c>Array&lt;number&gt;</c>, and omits the key entirely for an empty array); and it is
+    /// precisely what <c>GET /api/standup/board</c> — the one route that already carried a bound
+    /// <c>int[]?</c> — has always done, so the four now AGREE with it instead of differing. An explicit 400
+    /// also beats the old behaviour of silently rendering a blank screen.</para>
+    ///
+    /// <para>What must NEVER happen is the third outcome: a malformed <c>teamIds</c> falling through to
+    /// <c>null</c>, which means EVERY TEAM to the repository. Whichever way this contract is later revised,
+    /// the request must keep returning NO DATA. That is what this test is really guarding.</para></summary>
+    [Theory]
+    [InlineData("/api/tasklist?year=2026&month=7")]
+    [InlineData("/api/tasklist/export?year=2026&month=7")]
+    [InlineData("/api/reports/weekly?monday=2026-07-06")]
+    [InlineData("/api/reports/monthly?year=2026&month=7")]
+    public async Task Malformed_teamIds_is_rejected_outright_and_never_widened_to_every_team(string route)
+    {
+        using var factory = new ApiFactory();
+        var (client, _, _, _) = await ArrangeAsync(factory);
+
+        // "abc" cannot parse as an int; "" is the key present with an EMPTY value (which is exactly the case
+        // EffectiveTeamIds' `!string.IsNullOrEmpty(s)` guard was written for). Both are binding failures now.
+        foreach (var malformed in new[] { "abc", "" })
+        {
+            var response = await client.GetAsync($"{route}&teamIds={malformed}");
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+    }
+
     [Fact]
     public async Task Missing_logs_banner_route_exists_and_returns_a_typed_list()
     {

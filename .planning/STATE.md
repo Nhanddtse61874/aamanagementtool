@@ -2,14 +2,119 @@
 
 ## Current Position
 
-**Phase:** Step 8 — UAT (M8.6 **COMPLETE and merged to `main`**; awaiting the user's click-through)
-**Status:** waiting_for_user
-**Last updated:** 2026-07-13
+**Phase:** Step 7 — Execute (M9; **Phase 1: P1 · P2 · P2.5 merged, P3 in flight** — 3 of 7)
+**Status:** in_progress
+**Last updated:** 2026-07-14
 
 ## ▶ RESUME HERE
 
-**`main` @ `90151d4`.** M8.6 merged. **The app is RUNNING** — API :5080 (real DB), `ng serve` :4200.
-**Suite:** **1142 green** — 868 .NET (658 Core/WPF + **210** API) + **274** Angular. 0 warnings.
+**Branch:** `feature/m9-remaining-screens-2026-07-13` @ `03fcdbd`. Base `main` @ `28fd406` (M8.6 merged).
+**Suite:** **1370 green** — 1096 .NET (**681** Core/WPF + **415** API) + 274 Angular. 0 warnings.
+
+🔴 **THE API IS STOPPED** — a P-task killed it (it locks `TimesheetApp.Core.dll`, which makes the .NET gate a **false green**). `ng serve` on :4200 is up but has **no API to talk to**. **RESTART THE API BEFORE THE USER'S UAT.**
+
+### M9 — Phase 1 progress
+
+| | | |
+|---|---|---|
+| **P1** Core: `BuildGantt` **moved WPF → Core** · `SetIsAdminCheckedAsync` · **the TaskList read model** | ✅ `b8be891` `1aa44a2` `7544a2f` | 658 → **681** |
+| **P2** annotate **46 routes** in `SettingsEndpoints.cs` · **the `/all` guard MOVED, not deleted** · fix the teamless team bootstrap | ✅ `569b2e0` | 210 → **381** |
+| **P2.5** the **8 `BacklogEndpoints.cs` routes the plan forgot** · contract-test host now boots **ONCE** (1m57s → **41s**) | ✅ `246a67a` | → **415** |
+| **P3** reports/export + `GET /api/tasklist` + admin + settings/{key} + standup archive + tasklist export | 🔄 | |
+| **P4** regenerate ONCE · **P5** `WorklogService` (**ADD, retype nothing**) · **P6** team-filter · tag-picker · adminGuard · realtime | ⬜ | |
+| **PHASE 2** — 5 agents, true parallel | ⬜ | |
+| **P7** cleanup — `Tag` is shared A↔D, so **neither Phase-2 agent can delete it** | ⬜ | |
+
+### 🔴🔴 THE DB-SAFETY RULE WAS WRONG FOR THREE MILESTONES. Read this before any agent starts the API.
+
+Every brief since M8.4 has said: *"pin all three seams — `DbPath`, `ConfigPath`, `KeyRingPath`."* **That is NOT SUFFICIENT**, and M9/P4's agent found the real failure mode:
+
+```csharp
+// JsonAppConfig.cs:57
+_dbPath = model?.DbPath ?? defaultDbPath;
+```
+
+**The `TimesheetApp:DbPath` you pass is only a DEFAULT.** If `ConfigPath` points at a config file that **EXISTS** and carries a `DbPath` key, **that file's `DbPath` WINS and yours is silently ignored.** And the real `%APPDATA%\TimesheetApp\appsettings.json` contains exactly:
+```json
+"DbPath": "C:\\Users\\Admin\\Documents\\TimesheetApp\\timesheet.db"
+```
+
+**So an agent that pinned all three seams AND aimed `ConfigPath` at the production config would have PASSED MY CHECK AND OPENED THE LIVE COMPANY DATABASE.** The rule protected against the accident I imagined, not the one that was actually there.
+
+## 🔴 THE TRUE INVARIANT: **`ConfigPath` MUST POINT AT A PATH THAT DOES NOT EXIST.**
+
+A fresh `mktemp -d` guarantees it. Pin all three **into that fresh directory**.
+
+**And the proof still stands:** grep the startup log for the substring **`no users yet, nothing to bootstrap`** — it fires only on `all.Count == 0`, i.e. a database with **zero users**. *(Grep the SUBSTRING. The line reads "**Admin bootstrap:** …" — space, lowercase `b`; `AdminBootstrap` is only the logger category on the line before. An earlier plan searched for the wrong string, which matches nothing — so an obedient agent would have aborted a safe run, **or concluded the check was broken and disabled it.** Disabling the check is how the real database gets opened.)*
+
+**Corroborating, and free:** `t.db` appearing in the temp dir is itself proof the seams held, because `Program.cs` uses `||` — the custom-path branch runs only if `ConfigPath` **and** `DbPath` are both set. *(`c.json` may never be written — `JsonAppConfig` persists lazily. **Its absence is NOT a failed seam.** Do not read it as one.)*
+
+**`KeyRingPath` is NOT load-bearing for DB safety** — `Program.cs` derives it from `appConfig.DbPath` when unset. Pin it anyway; it's free.
+
+**Never** try to prove safety via the absence of a `-wal` sidecar — a live WAL database **always** has one.
+
+### 🔴 A query param the handler reads off `HttpContext` is INVISIBLE to the generated client
+
+`EffectiveTeamIds()` reads `teamIds` from `HttpContext.Request.Query` **by hand** — deliberately, because a bound `[FromQuery] int[]?` **cannot tell "key absent" from "key present but empty"** (both bind to an **empty array, never `null`**) while `null` means **EVERY TEAM** to the repository. **That hand-read is a data-leak guard and must stay.**
+
+**But ApiExplorer cannot see it**, so `TaskListScreen$Params` came out as `{year, month}` — **no `teamIds`** — and **the team filter that four screens need had nothing to send.** Fixed in P4.5 by declaring a **bound-but-unused** `[FromQuery] int[]? teamIds` purely so the generator emits it. **Delete that unused param and four screens silently lose their team filter, with nothing going red.**
+
+### 🔴 The `/all` decision — read this before touching auth
+
+`/api/users/all` and `/api/pca-contacts/all` are **admin-only** and were deliberately kept **out** of the generated client, enforced by a contract test. **M9 TAGGED THEM ON PURPOSE.**
+
+**Why the old rule expired:** it rested on *"no admin-only screen exists"* — so an admin route in the client could only ever 403. **M9 creates the Users and Settings screens, which MUST list DEACTIVATED users** (USR-01; "Activate" is meaningless without them), and **only the `/all` routes carry those.**
+
+**The guard did not go away. It MOVED, and got stronger.** The old test asserted a **proxy** for the property (*the route is absent from the client*). Two tests now assert the **property itself**:
+- **API:** the `/all` routes **403 for a NON-admin** *(seeded non-admin, deliberately — `ApiFactory.SeedUserAsync(…, isAdmin)` lets you seed an admin and go green)*
+- **CLIENT:** `adminGuard` (P6) — `/users` and `/settings` unreachable for a non-admin, sidebar hides them
+
+🔴 **~30 admin-only methods are now in the generated client. A screen a non-admin can reach must NEVER call one.** That is the whole contract now.
+
+*(P2's agent found the old guard was **never load-bearing anyway** — `Users_all_list_is_admin_only_but_active_list_is_open` already seeded a non-admin and asserted 403. The real protection was somewhere I hadn't looked.)*
+
+### 🔴 M9 — the FOUR remaining screens, as ONE milestone. Mode A.
+
+**Spec:** `docs/superpowers/specs/2026-07-13-m9-remaining-screens-design.md`
+**Plan:** `docs/superpowers/plans/2026-07-13-M9-remaining-screens.md`
+**Recon (the design brief):** `.planning/research/M8.7-M8.10-recon.md` · `M8.8-daily-report-recon.md`
+
+**The user said: "tự chạy cho xong, tôi sẽ test sau khi chạy xong toàn bộ."** Full autonomy. **They test only at the very end.**
+
+**Their five decisions (2026-07-13):**
+| | |
+|---|---|
+| **Gantt** | **BUILD IT.** *(My objection evaporated: the only reason to defer was to get Task List into their hands sooner, and they will not test until everything is done.)* |
+| **Settings infra config** | **DROP from the web.** Five sections → `appsettings.json` on the host. Keep the four `/api/ops/*` buttons. |
+| **Dark mode** | **`localStorage`, unchanged.** 🔴 **It is NOT one of the dropped sections** — it is a per-user preference and `ThemeService` already does it correctly. I wrongly lumped it in; the user caught it. |
+| **Tags + Templates** | **PULL IN.** Also repays M8.6's deferred TagPicker debt. |
+| **Admin promote/demote** | **ADD.** The entire codebase has **exactly one** statement that writes `is_admin`: the v10 migration. One admin, forever, unless someone edits the `.db` by hand. |
+
+**Why ONE milestone, not four:** five files are needed by every screen and owned by none. **`SettingsEndpoints.cs` alone is 49 routes in ONE file (4 annotated)** serving Users + Settings + Task List + Daily Report + Reports + Backlog — **all 10 standup routes live there.** Plus `includeTags` (one line), `OpenApiContractTests.cs`, the single contiguous stub block in `worklog.service.ts`, and the generated `api/**` tree, where **a regen is a GLOBAL event**.
+
+**PHASE 1 (sequential, one owner):** P1 Core (move `BuildGantt` out of the WPF ViewModel · `SetIsAdminAsync` · **the TaskList read model, which does not exist**) → P2 annotate all 49 settings routes + fix the teamless team bootstrap → P3 reports/export + 4 new routes → P4 regenerate ONCE → P5 every service method ONCE → P6 the shared Angular nobody owns (team-filter · tag-picker · adminGuard · **a realtime feed that finally says WHAT changed**).
+**PHASE 2 (five agents, TRUE parallel):** `task-list` | `daily-report` | `reports` | `users`+`settings` | the Backlog editor's TagPicker debt.
+
+**Good news on the Gantt:** `BuildGantt` is already **`internal static`** — a **pure function in the wrong project**. Moving it to Core is a **move, not a rewrite**, and `GanttModelTests` calls it directly so its tests come along.
+
+**🔴 R7 — THE WHOLE-RECORD TRAP, THIRD MILESTONE RUNNING.** It has already nulled a `team_id` (M8.3 — a backlog invisible to everyone, forever) and six Backlog fields (M8.6). **It is waiting in Task List's `CommitBacklogEditAsync`, which writes ALL FOUR of Type/Assignee/PCA/Progress whenever any ONE changes.** TypeScript cannot catch it — the generated DTOs are all-optional, so **a dropped field COMPILES**.
+
+### 🔴 R8 — "Don't edit a test to reconcile a gate" HAS AN EXCEPTION, and I got it wrong FOUR times in M8.6
+
+The rule stops you deleting a test that caught a real regression. **It does not apply when you deliberately changed the contract the test was pinning.** Every time, the implementing agent proved it rather than arguing:
+
+| Gate I wrote | Why it was wrong |
+|---|---|
+| T0: *"165 + yours, 0 failures"* | The task stops `onTrash` from writing; **five tests assert that it writes.** Rewritten. |
+| T1: *"the 172 is a fixed baseline"* | Two tests deserialised the **old DTO**, and `System.Text.Json` **binds by NAME and defaults the missing** — they'd stay **green while asserting nothing.** The 172 wouldn't move. **That was the problem.** |
+| T5: *"232 unchanged"* | `ConnectionIdHttpClient` only stamps its header **when a hub is connected** — so a write on the **wrong client** is **byte-identical** in a hub-less TestBed and **undetectable by every test in the repo.** |
+| T7: *"`npm run build` clean"* | `ng build` **exits 0** with `{{ noSuchSymbol() }}` in a component **nobody imports yet** — AOT never type-checks it. |
+
+**A gate that cannot move is a gate that cannot notice.**
+
+---
+
+### M8.6 — COMPLETE, merged to `main` (`90151d4`). 1142 green.
 
 ### M8.6 — the Backlog screen. COMPLETE. Mode A. Eight tasks.
 

@@ -1,8 +1,16 @@
 <section class="page" style="max-width:1100px;">
   <div class="page-head">
     <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="14" cy="18" r="2"/></svg></div>
-    <div><h1>Settings</h1><p>Database &amp; preferences</p></div>
+    <div><h1>Settings</h1><p>Preferences, workflow &amp; operations</p></div>
   </div>
+
+  <!-- The banner that does NOT fade. A half-written template is announced here. -->
+  @if (notice(); as msg) {
+    <div class="notice" role="alert">
+      <div class="notice__body">{{ msg }}</div>
+      <button class="btn btn-ghost btn-sm" (click)="dismissNotice()">Dismiss</button>
+    </div>
+  }
 
   <div class="stabs">
     @for (t of tabs; track t.id) {
@@ -10,122 +18,408 @@
     }
   </div>
 
-  <!-- GENERAL -->
-  @if (tab() === 'general') {
-    <div class="fade stack">
-      <div class="card card--pad">
-        <div class="s-title">Appearance</div>
-        <div class="s-desc">Switch between light and dark theme, and pick an accent.</div>
-        <label class="toggle-row">
-          <span class="switch" [class.on]="theme.dark()" (click)="theme.toggleDark()"><span class="knob"></span></span>
-          <span class="s-strong">Dark mode</span>
-        </label>
-        <div class="accent-row">
-          <span class="s-strong">Accent</span>
-          @for (c of theme.accentOptions; track c) {
-            <button class="swatch" [class.on]="theme.accent() === c" [style.background]="c" (click)="theme.setAccent(c)"></button>
+  @if (loadError(); as err) {
+    <div class="card card--pad">
+      <div class="s-title">Could not load settings</div>
+      <div class="s-desc">{{ err }}</div>
+      <button class="btn btn-ghost btn-sm" (click)="reload()">Retry</button>
+    </div>
+  } @else if (loading()) {
+    <div class="card card--pad"><div class="s-desc" style="margin:0;">Loading…</div></div>
+  } @else {
+
+    <!-- ══ GENERAL ══════════════════════════════════════════════════════════════════════════════════ -->
+    @if (tab() === 'general') {
+      <div class="fade stack">
+        <!--
+          🔴 DARK MODE STAYS. It is a PER-USER preference persisted to localStorage by ThemeService — it never
+          touches the server, so it cannot leak across users. That is exactly what separates it from the DB
+          path / export roots / backup folder, which were deleted from this screen: those are IAppConfig
+          setters, i.e. process-wide CROSS-USER state on a server. They live in appsettings.json on the host.
+        -->
+        <div class="card card--pad">
+          <div class="s-title">Appearance</div>
+          <div class="s-desc">Switch between light and dark theme, and pick an accent. Only you see this.</div>
+          <label class="toggle-row">
+            <span class="switch" [class.on]="theme.dark()" (click)="theme.toggleDark()"><span class="knob"></span></span>
+            <span class="s-strong">Dark mode</span>
+          </label>
+          <div class="accent-row">
+            <span class="s-strong">Accent</span>
+            @for (c of theme.accentOptions; track c) {
+              <button class="swatch" [class.on]="theme.accent() === c" [style.background]="c" (click)="theme.setAccent(c)"></button>
+            }
+          </div>
+        </div>
+
+        <div class="card card--pad">
+          <div class="s-title">"Not logged" warning window</div>
+          <div class="s-desc">Warn if no hours are logged within this many recent working days. Applies to everyone.</div>
+          <div class="inline">
+            <input class="input num" type="number" min="1" [ngModel]="warningDays()"
+                   (ngModelChange)="warningDays.set($event)" />
+            <span class="s-desc" style="margin:0;">working days</span>
+            <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveWarningDays()">Save</button>
+          </div>
+        </div>
+
+        <div class="card card--pad">
+          <div class="s-title">Holiday calendar</div>
+          <!-- Weekends ARE clickable: WPF allows it and the API has no weekday guard. Shaded, not blocked. -->
+          <div class="s-desc">Click a day to mark or unmark it a holiday. Weekends are shaded, but you can still mark one.</div>
+          <div class="cal">
+            <div class="cal__head">
+              <button class="cal__nav" [disabled]="busy()" (click)="prevMonth()" aria-label="Previous month">◀</button>
+              <span>{{ calLabel() }}</span>
+              <button class="cal__nav" [disabled]="busy()" (click)="nextMonth()" aria-label="Next month">▶</button>
+            </div>
+            <div class="cal__dows">@for (w of weekdays; track w) { <div>{{ w }}</div> }</div>
+            <div class="cal__grid">
+              @for (c of calendar(); track c.iso) {
+                <button class="day" type="button" [class.out]="!c.inMonth" [class.weekend]="c.weekend"
+                        [class.holiday]="isHoliday(c.iso)" [disabled]="busy()"
+                        [attr.aria-pressed]="isHoliday(c.iso)" [attr.aria-label]="c.iso"
+                        (click)="toggleHoliday(c)">{{ c.day }}</button>
+              }
+            </div>
+            <div class="legend"><span><i class="sw-hol"></i>Holiday</span><span><i class="sw-wke"></i>Weekend</span></div>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ══ WORKFLOW ═════════════════════════════════════════════════════════════════════════════════ -->
+    @if (tab() === 'workflow') {
+      <div class="fade stack">
+        <!-- TEMPLATES -->
+        <div class="card card--pad">
+          <div class="s-head">
+            <div class="s-title">Task templates</div>
+            <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="newTemplate()">+ New template</button>
+          </div>
+          <div class="s-desc">Reusable task lists you can apply to a request. Saving one rewrites all of its rows.</div>
+
+          @if (templateDraft(); as d) {
+            <div class="editor">
+              <label class="field">
+                <span>Template name</span>
+                <input class="input" placeholder="Onboarding" [ngModel]="d.name"
+                       (ngModelChange)="setTemplateName($event)" />
+              </label>
+              <label class="field" style="margin-top:12px;">
+                <span>Tasks — one per line, in order</span>
+                <textarea class="input area" rows="5" placeholder="Accounts&#10;Laptop&#10;Intro call"
+                          [ngModel]="d.tasks" (ngModelChange)="setTemplateTasks($event)"></textarea>
+              </label>
+              <!-- Honest about what a save actually is: there is no update route. -->
+              <p class="warn-note">
+                Saving replaces every task in this template: the old rows are deleted and the new ones written
+                back one at a time. If that is interrupted part-way, the template is left incomplete — and you
+                will be told exactly how far it got.
+              </p>
+              <div class="acts">
+                <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="cancelTemplate()">Cancel</button>
+                <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveTemplateDraft()">
+                  {{ busy() ? 'Saving…' : 'Save template' }}
+                </button>
+              </div>
+            </div>
+          }
+
+          @for (t of templates(); track t.name) {
+            <div class="listrow">
+              <span class="s-strong">{{ t.name }} <span class="s-desc">({{ t.taskNames.length }} tasks)</span></span>
+              <div class="acts">
+                <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="editTemplate(t)">Edit</button>
+                <button class="btn btn-danger btn-sm" [disabled]="busy()" (click)="askDeleteTemplate(t)">Delete</button>
+              </div>
+            </div>
+          } @empty { <div class="listempty">No templates yet.</div> }
+        </div>
+
+        <!-- TAGS -->
+        <div class="card card--pad">
+          <div class="s-head">
+            <div class="s-title">Tags</div>
+            <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="newTag()">+ New tag</button>
+          </div>
+          <div class="s-desc">Custom labels (icon + colour) you can attach to backlogs and tasks.</div>
+
+          @if (tagDraft(); as d) {
+            <div class="editor">
+              <div class="fields">
+                <label class="field" style="max-width:110px;">
+                  <span>Icon</span>
+                  <input class="input" placeholder="🔥" maxlength="4" [ngModel]="d.icon"
+                         (ngModelChange)="setTagIcon($event)" />
+                </label>
+                <label class="field">
+                  <span>Text</span>
+                  <input class="input" placeholder="Urgent" [ngModel]="d.text"
+                         (ngModelChange)="setTagText($event)" />
+                </label>
+                <label class="field" style="max-width:110px;">
+                  <span>Colour</span>
+                  <input class="input color" type="color" [ngModel]="d.color"
+                         (ngModelChange)="setTagColor($event)" />
+                </label>
+              </div>
+              <div class="acts">
+                <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="cancelTag()">Cancel</button>
+                <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveTag()">Save tag</button>
+              </div>
+            </div>
+          }
+
+          @for (t of tags(); track t.id) {
+            <div class="listrow">
+              <span class="tagchip" [style.background]="t.color">{{ t.icon }} {{ t.text }}</span>
+              <div class="acts">
+                <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="editTag(t)">Edit</button>
+                <!-- HARD delete — it cascades BacklogTags and TaskTags. Confirmed first. -->
+                <button class="btn btn-danger btn-sm" [disabled]="busy()" (click)="askDeleteTag(t)">Delete</button>
+              </div>
+            </div>
+          } @empty { <div class="listempty">No tags yet.</div> }
+        </div>
+
+        <!-- DEFAULT TASKS -->
+        <div class="card card--pad">
+          <div class="s-head">
+            <div class="s-title">Default tasks</div>
+            <button class="btn btn-soft btn-sm" [disabled]="busy()" (click)="syncDefaultTasks()">Sync default tasks</button>
+          </div>
+          <div class="s-desc">
+            The rows seeded into every new backlog. “Sync” pushes them into <em>existing</em> backlogs too.
+          </div>
+
+          <div class="inline" style="margin-bottom:14px;">
+            <input class="input grow" placeholder="Annual Leave" [ngModel]="newDefaultTask()"
+                   (ngModelChange)="newDefaultTask.set($event)" />
+            <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="addDefaultTask()">Add</button>
+          </div>
+
+          @for (d of defaultTasks(); track d.id) {
+            <div class="listrow">
+              <span class="s-strong">{{ d.taskName }}</span>
+              <div class="acts">
+                <!--
+                  🔴 "Remove", not a toggle. GET /api/default-tasks is ACTIVE-ONLY and there is no GetAllAsync,
+                  so a removed default task can never be seen again and therefore never re-activated. WPF has
+                  the identical hole — this is parity. A toggle would imply a round-trip that does not exist.
+                -->
+                <button class="btn btn-danger btn-sm" [disabled]="busy()" (click)="askRemoveDefaultTask(d)">Remove</button>
+              </div>
+            </div>
+          } @empty { <div class="listempty">No default tasks.</div> }
+
+          <p class="warn-note">
+            Removing a default task is permanent. The API only ever returns <em>active</em> default tasks, so
+            once one is removed there is no way to list it again or bring it back.
+          </p>
+        </div>
+      </div>
+    }
+
+    <!-- ══ TEAMS ════════════════════════════════════════════════════════════════════════════════════ -->
+    @if (tab() === 'teams') {
+      <div class="fade stack">
+        <div class="card card--pad">
+          <div class="s-head"><div class="s-title">Teams</div></div>
+          <div class="s-desc">Top-level teams that scope backlogs, tasks and standup. A new team is created with its own DEFAULT backlog.</div>
+
+          <div class="inline" style="margin-bottom:14px;">
+            <input class="input grow" placeholder="New team name" [ngModel]="newTeam()"
+                   (ngModelChange)="newTeam.set($event)" />
+            <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="addTeam()">+ Add team</button>
+          </div>
+
+          @for (t of teams(); track t.id) {
+            <div class="listrow box" [class.off]="!(t.isActive === true)">
+              @if (renamingTeamId() === t.id) {
+                <input class="input grow" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)" />
+                <div class="acts">
+                  <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="renamingTeamId.set(null)">Cancel</button>
+                  <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveRenameTeam(t)">Save</button>
+                </div>
+              } @else {
+                <span class="s-strong">
+                  {{ t.name }}
+                  @if (!(t.isActive === true)) { <span class="badge badge-off">Inactive</span> }
+                </span>
+                <div class="acts">
+                  <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="startRenameTeam(t)">Rename</button>
+                  <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="openMembers(t)">Members</button>
+                  <button class="btn btn-sm" [class.btn-danger]="t.isActive === true"
+                          [class.btn-soft]="!(t.isActive === true)" [disabled]="busy()" (click)="toggleTeamActive(t)">
+                    {{ t.isActive === true ? 'Deactivate' : 'Activate' }}
+                  </button>
+                </div>
+              }
+            </div>
+
+            @if (membersTeamId() === t.id) {
+              <div class="editor">
+                <div class="s-title">Members of {{ t.name }}</div>
+                <!-- REPLACE-ALL: an unticked user is REMOVED from the team, so the whole set is sent. -->
+                <div class="s-desc">Tick everyone who belongs to this team. Saving replaces the membership with exactly what is ticked.</div>
+                <div class="memgrid">
+                  @for (u of activeUsers(); track u.id) {
+                    <label class="toggle-row">
+                      <input type="checkbox" [checked]="isMember(u.id)" (change)="toggleMember(u.id)" />
+                      <span class="s-strong">{{ u.name }}</span>
+                    </label>
+                  } @empty { <div class="listempty">No active users.</div> }
+                </div>
+                <div class="acts">
+                  <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="closeMembers()">Cancel</button>
+                  <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveMembers(t)">Save members</button>
+                </div>
+              </div>
+            }
+          } @empty { <div class="listempty">No teams yet.</div> }
+        </div>
+
+        <div class="card card--pad">
+          <div class="s-head"><div class="s-title">PCA contacts</div></div>
+          <div class="s-desc">External contacts you can assign to a backlog.</div>
+
+          <div class="inline" style="margin-bottom:14px;">
+            <input class="input grow" placeholder="New contact name" [ngModel]="newContact()"
+                   (ngModelChange)="newContact.set($event)" />
+            <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="addContact()">+ Add contact</button>
+          </div>
+
+          @for (c of contacts(); track c.id) {
+            <div class="listrow box" [class.off]="!(c.isActive === true)">
+              @if (renamingContactId() === c.id) {
+                <input class="input grow" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)" />
+                <div class="acts">
+                  <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="renamingContactId.set(null)">Cancel</button>
+                  <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveRenameContact(c)">Save</button>
+                </div>
+              } @else {
+                <span class="s-strong">
+                  {{ c.name }}
+                  @if (!(c.isActive === true)) { <span class="badge badge-off">Inactive</span> }
+                </span>
+                <div class="acts">
+                  <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="startRenameContact(c)">Rename</button>
+                  <!--
+                    🔴 SOFT, unlike the Tags list directly above. The row survives, so historical backlogs keep
+                    the reference and still render the contact's name.
+                  -->
+                  <button class="btn btn-sm" [class.btn-danger]="c.isActive === true"
+                          [class.btn-soft]="!(c.isActive === true)" [disabled]="busy()" (click)="toggleContactActive(c)">
+                    {{ c.isActive === true ? 'Deactivate' : 'Activate' }}
+                  </button>
+                </div>
+              }
+            </div>
+          } @empty { <div class="listempty">No contacts yet.</div> }
+
+          <p class="warn-note">
+            Deactivating a contact is reversible and keeps them on the backlogs they are already assigned to.
+          </p>
+        </div>
+      </div>
+    }
+
+    <!-- ══ OPERATIONS ═══════════════════════════════════════════════════════════════════════════════ -->
+    @if (tab() === 'ops') {
+      <div class="fade stack">
+        @if (opsResult(); as r) {
+          <div class="card card--pad opsresult">
+            <div class="s-strong">{{ r }}</div>
+            <button class="btn btn-ghost btn-sm" (click)="opsResult.set(null)">Dismiss</button>
+          </div>
+        }
+
+        <!--
+          The FOLDERS these write to are NOT configurable here, on purpose: they are IAppConfig setters, i.e.
+          process-wide cross-user state on a server. They live in appsettings.json on the host. These four
+          buttons ACT; they do not persist a setting.
+        -->
+        <div class="card card--pad">
+          <div class="s-title">Backup &amp; export</div>
+          <div class="s-desc">
+            Run a backup or a structured export now, into the folders configured on the server
+            (<code>appsettings.json</code>). The folders are not editable from the web — changing them would
+            change them for every user at once.
+          </div>
+          <div class="inline">
+            <button class="btn btn-soft btn-sm" [disabled]="busy()" (click)="runBackup()">Back up now</button>
+            <button class="btn btn-soft btn-sm" [disabled]="busy()" (click)="runExport()">Export now</button>
+          </div>
+        </div>
+
+        <div class="card card--pad">
+          <div class="s-title">Archive standup week</div>
+          <div class="s-desc">Write the standup week containing this date to a markdown file on the server.</div>
+          <div class="inline">
+            <input class="input" type="date" [ngModel]="archiveDate()" (ngModelChange)="archiveDate.set($event)" />
+            <button class="btn btn-soft btn-sm" [disabled]="busy()" (click)="archiveStandupWeek()">Archive week</button>
+          </div>
+          <!-- The response is a SERVER-SIDE path. The browser cannot open it; it is there to be shown. -->
+          <p class="warn-note">The file is written on the server. This is not a download.</p>
+        </div>
+
+        <div class="card card--pad">
+          <div class="s-title">Data retention</div>
+          <div class="s-desc" style="max-width:660px;">
+            Retention archives business data older than the configured window and then <strong>deletes it from
+            the live database</strong>. The window itself is configured on the server. Preview is read-only and
+            changes nothing — look at it before you run anything.
+          </div>
+
+          <div class="inline">
+            <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="previewRetention()">Preview</button>
+
+            <!--
+              🔴 The destructive button DOES NOT EXIST until a preview has been taken. You cannot authorise a
+              deletion whose contents you have not seen.
+            -->
+            @if (retentionPreview() !== null) {
+              <button class="btn btn-danger btn-sm" [disabled]="busy()" (click)="askRunRetention()">
+                Run retention now
+              </button>
+            }
+          </div>
+
+          @if (retentionPreview(); as p) {
+            <div class="preview">
+              <div class="s-strong">Everything before {{ p.cutoff }} would be deleted:</div>
+              @if ((p.months ?? []).length === 0) {
+                <div class="listempty">Nothing is old enough to delete. There is nothing to run.</div>
+              } @else {
+                <table class="ptable">
+                  <thead>
+                    <tr><th>Month</th><th>Time logs</th><th>Backlogs</th><th>Tasks</th><th>Standup</th><th>Issues</th></tr>
+                  </thead>
+                  <tbody>
+                    @for (m of p.months ?? []; track m.month) {
+                      <tr>
+                        <td>{{ m.month }}</td>
+                        <td>{{ m.timeLogs }}</td>
+                        <td>{{ m.backlogs }}</td>
+                        <td>{{ m.tasks }}</td>
+                        <td>{{ m.standupEntries }}</td>
+                        <td>{{ m.standupIssues }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
+            </div>
           }
         </div>
       </div>
-
-      <div class="card card--pad">
-        <div class="s-title">"Not logged" warning window</div>
-        <div class="s-desc">Warn if no hours are logged within this many recent working days.</div>
-        <div class="inline"><input class="input num" value="3" /><span class="s-desc">working days</span><button class="btn btn-primary btn-sm" (click)="notify('Saved')">Save</button></div>
-      </div>
-
-      <div class="card card--pad">
-        <div class="s-title">Holiday calendar</div>
-        <div class="s-desc">Click a day to mark/unmark it a holiday. Weekends are excluded automatically.</div>
-        <div class="cal">
-          <div class="cal__head"><button class="cal__nav">◀</button><span>July 2026</span><button class="cal__nav">▶</button></div>
-          <div class="cal__dows">@for (w of weekdays; track w) { <div>{{ w }}</div> }</div>
-          <div class="cal__grid">
-            @for (c of calendar; track c.iso) {
-              <div class="day" [class.out]="!c.inMonth" [class.weekend]="c.weekend" [class.holiday]="isHoliday(c.iso)" (click)="toggleHoliday(c)">{{ c.day }}</div>
-            }
-          </div>
-          <div class="legend"><span><i class="sw-hol"></i>Holiday</span><span><i class="sw-wke"></i>Weekend</span></div>
-        </div>
-      </div>
-    </div>
+    }
   }
 
-  <!-- STORAGE -->
-  @if (tab() === 'storage') {
-    <div class="fade stack">
-      @for (s of storageFields; track s.title) {
-        <div class="card card--pad">
-          <div class="s-title">{{ s.title }}</div>
-          <div class="s-desc">{{ s.desc }}</div>
-          <div class="inline wrap"><input class="input input--mono grow" [value]="s.value" placeholder="Path…" /><button class="btn btn-ghost btn-sm">Browse…</button><button class="btn btn-primary btn-sm" (click)="notify('Applied')">Apply</button></div>
-        </div>
-      }
-      <div class="card card--pad">
-        <div class="s-title">Backup &amp; Restore</div>
-        <div class="s-desc">Back up the full database to a local folder. Restore replaces the current database.</div>
-        <div class="inline wrap" style="margin-bottom:14px;"><input class="input input--mono grow" placeholder="Backup folder…" /><button class="btn btn-ghost btn-sm">Browse…</button><button class="btn btn-primary btn-sm" (click)="notify('Applied')">Apply</button></div>
-        <div class="inline wrap">
-          <label class="toggle-row"><span class="switch" [class.on]="autoBackup()" (click)="autoBackup.set(!autoBackup())"><span class="knob"></span></span><span class="s-desc">Auto-backup once per day</span></label>
-          <span class="s-desc">Keep last <input class="input num sm" value="30" /> backups</span>
-          <button class="btn btn-soft btn-sm" (click)="notify('Backup complete')">Backup now</button>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- DATA -->
-  @if (tab() === 'data') {
-    <div class="fade">
-      <div class="card card--pad">
-        <div class="s-title">Data retention</div>
-        <div class="s-desc" style="max-width:640px;">When enabled, business data older than the recent N-month window is archived and then deleted from the live database. Preview is read-only; Run now permanently deletes data.</div>
-        <div class="inline wrap" style="margin-bottom:16px;">
-          <label class="toggle-row"><span class="switch" [class.on]="retention()" (click)="retention.set(!retention())"><span class="knob"></span></span><span class="s-strong">Enable retention</span></label>
-          <span class="s-desc">Keep last <input class="input num sm" value="3" /> months</span>
-        </div>
-        <div class="inline"><button class="btn btn-ghost btn-sm">Preview</button><button class="btn btn-danger btn-sm">Run retention now</button></div>
-      </div>
-    </div>
-  }
-
-  <!-- WORKFLOW -->
-  @if (tab() === 'workflow') {
-    <div class="fade stack">
-      <div class="card card--pad">
-        <div class="s-head"><div class="s-title">Task templates</div><button class="btn btn-primary btn-sm" (click)="notify('Template created')">+ New template</button></div>
-        <div class="s-desc">Reusable task lists you can apply to a request.</div>
-        @for (t of templates(); track t.name) {
-          <div class="listrow"><span class="s-strong">{{ t.name }} <span class="s-desc">({{ t.taskCount }} tasks)</span></span><div class="acts"><button class="btn btn-ghost btn-sm">Edit</button><button class="btn btn-danger btn-sm">Delete</button></div></div>
-        } @empty { <div class="listempty">Connect <code>getTemplates()</code></div> }
-      </div>
-      <div class="card card--pad">
-        <div class="s-head"><div class="s-title">Tags</div><button class="btn btn-primary btn-sm" (click)="notify('Tag created')">+ New tag</button></div>
-        <div class="s-desc">Custom labels (icon + color) you can attach to backlogs.</div>
-        @for (t of tags(); track t.label) {
-          <div class="listrow"><span class="tagchip" [style.background]="t.color">{{ t.icon }} {{ t.label }}</span><div class="acts"><button class="btn btn-ghost btn-sm">Edit</button><button class="btn btn-danger btn-sm">Delete</button></div></div>
-        } @empty { <div class="listempty">Connect <code>getTags()</code></div> }
-      </div>
-    </div>
-  }
-
-  <!-- TEAMS -->
-  @if (tab() === 'teams') {
-    <div class="fade stack">
-      <div class="card card--pad">
-        <div class="s-head"><div class="s-title">PCA contacts</div><button class="btn btn-primary btn-sm" (click)="notify('Contact added')">+ Add contact</button></div>
-        <div class="s-desc">External contacts you can assign to a backlog.</div>
-        @for (c of contacts(); track c) {
-          <div class="listrow box"><span class="s-strong">{{ c }}</span><div class="acts"><button class="btn btn-ghost btn-sm">Rename</button><button class="btn btn-danger btn-sm">Deactivate</button></div></div>
-        } @empty { <div class="listempty">Connect <code>getContacts()</code></div> }
-      </div>
-      <div class="card card--pad">
-        <div class="s-head"><div class="s-title">Teams</div><button class="btn btn-primary btn-sm" (click)="notify('Team added')">+ Add team</button></div>
-        <div class="s-desc">Top-level teams that scope backlogs, tasks and standup.</div>
-        @for (t of teams(); track t) {
-          <div class="listrow box"><span class="s-strong">{{ t }}</span><div class="acts"><button class="btn btn-ghost btn-sm">Rename</button><button class="btn btn-ghost btn-sm">Members</button><button class="btn btn-danger btn-sm">Deactivate</button></div></div>
-        } @empty { <div class="listempty">Connect <code>getTeams()</code></div> }
-      </div>
-    </div>
+  @if (confirm(); as c) {
+    <app-confirm-dialog
+      [title]="c.title" [message]="c.message" [confirmLabel]="c.confirmLabel" [busy]="busy()"
+      (confirm)="confirmYes()" (cancel)="confirmNo()" />
   }
 </section>

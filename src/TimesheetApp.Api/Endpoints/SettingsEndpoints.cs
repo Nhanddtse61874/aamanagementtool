@@ -136,7 +136,12 @@ public static class SettingsEndpoints
             // recorded decision: "No ActiveTeamChanged, and no DataChangedMessage: per-user state, not a
             // team-wide event."
             return Results.NoContent();
-        });
+        })
+        .WithName("MeSetActiveTeam")
+        .WithTags("Me")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound);
     }
 
     // ===== Tags (global; hard-delete) ======================================================================
@@ -144,7 +149,10 @@ public static class SettingsEndpoints
     private static void MapTagEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/api/tags", async (ITagRepository tags) =>
-            Results.Ok((await tags.GetAllAsync()).Select(t => t.ToDto()).ToList()));
+                Results.Ok((await tags.GetAllAsync()).Select(t => t.ToDto()).ToList()))
+            .WithName("TagList")
+            .WithTags("Tags")
+            .Produces<List<TagDto>>();
 
         api.MapPost("/api/tags", async (
                 [FromBody] SettingsTagCreateRequest req,
@@ -157,7 +165,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Tags, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new TagDto(id, req.Text, req.Icon, req.Color, RowVersion: 1));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TagCreate")
+            .WithTags("Tags")
+            .Produces<TagDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPut("/api/tags/{id:int}", async (
                 int id, [FromBody] SettingsTagUpdateRequest req,
@@ -173,7 +185,12 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Tags, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new SavedBody(newVersion));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TagUpdate")
+            .WithTags("Tags")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapDelete("/api/tags/{id:int}", async (
                 int id, ITagRepository tags, IChangeNotifier notifier, IClientContext ctx) =>
@@ -182,7 +199,10 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Tags, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TagDelete")
+            .WithTags("Tags")
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     // ===== Teams (global; soft-delete; membership) =========================================================
@@ -190,25 +210,51 @@ public static class SettingsEndpoints
     private static void MapTeamEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/api/teams", async (ITeamRepository teams) =>
-            Results.Ok((await teams.GetActiveAsync()).Select(t => t.ToDto()).ToList()));
+                Results.Ok((await teams.GetActiveAsync()).Select(t => t.ToDto()).ToList()))
+            .WithName("TeamListActive")
+            .WithTags("Teams")
+            .Produces<List<TeamDto>>();
 
         api.MapGet("/api/teams/all", async (ITeamRepository teams) =>
                 Results.Ok((await teams.GetAllAsync()).Select(t => t.ToDto()).ToList()))
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TeamListAll")
+            .WithTags("Teams")
+            .Produces<List<TeamDto>>();
 
         api.MapPost("/api/teams", async (
                 [FromBody] SettingsNameRequest req,
-                ITeamRepository teams, IChangeNotifier notifier, IClientContext ctx) =>
+                ITeamRepository teams, IDefaultTaskSyncService sync,
+                IChangeNotifier notifier, IClientContext ctx) =>
             {
                 if (string.IsNullOrWhiteSpace(req.Name))
                     return Results.BadRequest(new ValidationBody("Team name is required."));
 
                 var now = DateTimeOffset.UtcNow;
                 var id = await teams.InsertAsync(new Team(0, req.Name, true, now));
+
+                // TM-04 (M9 P2d). MIRRORS SettingsViewModel.AddTeamAsync — WHICH THIS ROUTE USED TO SKIP.
+                // A new team needs its own DEFAULT backlog with the global default tasks materialized under
+                // it, or its members have nothing to log Annual Leave / Meeting / Other against. Without
+                // these two calls a team created from the web was born broken; nobody had noticed only
+                // because no client could reach this route yet.
+                //
+                // Both calls, exactly as the WPF VM does them, and NOT just SyncAsync(): SyncAsync does
+                // reconcile every ACTIVE team (and so would cover a team created active, as this one is),
+                // but EnsureDefaultBacklogIdAsync is idempotent (DATA-03) and states the intent locally —
+                // this team, right now, gets its backlog — rather than relying on the new row happening to
+                // be picked up by a loop somewhere else.
+                await sync.EnsureDefaultBacklogIdAsync(id);
+                await sync.SyncAsync();
+
                 await notifier.DataChangedAsync(DataKind.Teams, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new TeamDto(id, req.Name, true, now, RowVersion: 1));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TeamCreate")
+            .WithTags("Teams")
+            .Produces<TeamDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPut("/api/teams/{id:int}", async (
                 int id, [FromBody] SettingsRenameRequest req,
@@ -221,7 +267,12 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Teams, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new SavedBody(newVersion));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TeamRename")
+            .WithTags("Teams")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapPut("/api/teams/{id:int}/active", async (
                 int id, [FromBody] SettingsSetActiveRequest req,
@@ -231,13 +282,23 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Teams, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TeamSetActive")
+            .WithTags("Teams")
+            .Produces(StatusCodes.Status204NoContent);
 
         // Membership editor: read/replace the member set. Admin-only — the read is scoped to the same
         // admin-only editing flow as the write, and any team member already sees teammates via the board.
+        //
+        // Returns a BARE ARRAY OF IDS, not a DTO: GetUserIdsForTeamAsync is Task<IReadOnlyList<int>>. Do not
+        // "helpfully" declare .Produces<List<UserDto>>() here — a wrong .Produces<T>() generates a TYPED LIE
+        // in the client, which is strictly worse than no method at all.
         api.MapGet("/api/teams/{id:int}/members", async (int id, ITeamRepository teams) =>
                 Results.Ok(await teams.GetUserIdsForTeamAsync(id)))
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TeamMembers")
+            .WithTags("Teams")
+            .Produces<IReadOnlyList<int>>();
 
         api.MapPut("/api/teams/{id:int}/members", async (
                 int id, [FromBody] SettingsTeamMembersRequest req,
@@ -247,7 +308,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Teams, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new SavedBody(newVersion));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TeamSetMembers")
+            .WithTags("Teams")
+            .Produces<SavedBody>()
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
     }
 
     // ===== PCA contacts (global; soft-delete) ===============================================================
@@ -278,14 +343,26 @@ public static class SettingsEndpoints
             .WithTags("PcaContacts")
             .Produces<List<NamedRefDto>>();
 
-        // DELIBERATELY NOT TAGGED / NOT ANNOTATED -- and it must stay that way. It is AdminPolicy-gated, and
-        // ng-openapi-gen's includeTags now pulls in "PcaContacts": tag this route and it joins the generated
-        // client as a correctly-typed method that 403s for every non-admin -- worse than no method at all.
-        // OpenApiContractTests pins this. It returns the full PcaContactDto (username-free but version- and
-        // is_active-bearing); the name-only projection above is what the editor gets instead.
+        // M9 P2a. NOW TAGGED — it was deliberately NOT, and the reversal is deliberate too.
+        //
+        // M8.6 kept this route out of the generated client on the rationale "no admin-only screen exists, so a
+        // typed method here could only 403 for whoever called it". M9 BUILDS the admin Settings screen, and
+        // that screen has to manage DEACTIVATED contacts — which the active list omits by construction and the
+        // name-only projection above cannot express (it carries no is_active and no rowVersion, so it can
+        // neither show the state nor write it back). This route is the only one that can, so it must reach the
+        // client.
+        //
+        // The guard that kept it honest is NOT gone, it is STRONGER. The old contract test asserted a PROXY
+        // for the security property (the route is absent from OUR client — which never stopped curl). Its
+        // replacement, SettingsEndpointsTests.The_admin_gated_full_list_is_403_for_a_NON_admin, asserts the
+        // property ITSELF: a non-admin gets a 403. The AdminPolicy below is what does the work; the front end
+        // must simply not call this from a screen a non-admin can reach (M9 puts an adminGuard on /settings).
         api.MapGet("/api/pca-contacts/all", async (IPcaContactRepository contacts) =>
                 Results.Ok((await contacts.GetAllAsync()).Select(c => c.ToDto()).ToList()))
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("PcaContactListAll")
+            .WithTags("PcaContacts")
+            .Produces<List<PcaContactDto>>();
 
         api.MapPost("/api/pca-contacts", async (
                 [FromBody] SettingsNameRequest req,
@@ -298,7 +375,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.PcaContacts, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new PcaContactDto(id, req.Name, true, RowVersion: 1));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("PcaContactCreate")
+            .WithTags("PcaContacts")
+            .Produces<PcaContactDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPut("/api/pca-contacts/{id:int}", async (
                 int id, [FromBody] SettingsRenameRequest req,
@@ -311,7 +392,12 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.PcaContacts, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new SavedBody(newVersion));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("PcaContactRename")
+            .WithTags("PcaContacts")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapPut("/api/pca-contacts/{id:int}/active", async (
                 int id, [FromBody] SettingsSetActiveRequest req,
@@ -321,7 +407,10 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.PcaContacts, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("PcaContactSetActive")
+            .WithTags("PcaContacts")
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     // ===== Users (global; soft-delete). Login credentials (password) are W2-A's — not here. ================
@@ -347,14 +436,24 @@ public static class SettingsEndpoints
             .WithTags("Users")
             .Produces<List<NamedRefDto>>();
 
-        // DELIBERATELY NOT TAGGED / NOT ANNOTATED -- and it must stay that way. It is AdminPolicy-gated, and
-        // ng-openapi-gen's includeTags now pulls in "Users": tag this route and it joins the generated client
-        // as a correctly-typed method that 403s for every non-admin -- worse than no method at all. It also
-        // exposes `username`, which the name-only route above exists precisely to avoid. OpenApiContractTests
-        // pins both facts.
+        // M9 P2a. NOW TAGGED — it was deliberately NOT, and the reversal is deliberate too.
+        //
+        // M8.6's rationale was "no admin-only screen exists". M9 BUILDS one, and USR-01 requires the Users tab
+        // to show INACTIVE users: GET /api/users is GetActiveAsync, so it can never render a deactivated user,
+        // and "Activate" is impossible without them. GetAllAsync is the only thing that returns them. So this
+        // route has to reach the client.
+        //
+        // It does still expose `username` — which is exactly why the AdminPolicy below is load-bearing and
+        // why the name-only route above exists for every NON-admin caller. The guard did not go away, it got
+        // stronger: SettingsEndpointsTests.The_admin_gated_full_list_is_403_for_a_NON_admin now asserts the
+        // security property ITSELF (a non-admin is refused) rather than the old proxy for it (the route is
+        // missing from our own generated client — which never bound anyone holding a cookie and a terminal).
         api.MapGet("/api/users/all", async (IUserRepository users) =>
                 Results.Ok((await users.GetAllAsync()).Select(u => u.ToDto()).ToList()))
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("UserListAll")
+            .WithTags("Users")
+            .Produces<List<UserDto>>();
 
         // Mirrors UsersViewModel.InsertAsync: name only, no username, active. A created user cannot log in
         // until an admin also sets a username (below) and a password (W2-A's set-password-for-user).
@@ -369,7 +468,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Users, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new UserDto(id, req.Name, null, true, false, RowVersion: 1));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("UserCreate")
+            .WithTags("Users")
+            .Produces<UserDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPut("/api/users/{id:int}", async (
                 int id, [FromBody] SettingsRenameRequest req,
@@ -382,7 +485,12 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Users, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new SavedBody(newVersion));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("UserRename")
+            .WithTags("Users")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         // A newly-created user has a NULL username (see POST above) and cannot log in until this is set.
         api.MapPut("/api/users/{id:int}/username", async (
@@ -396,7 +504,12 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Users, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new SavedBody(newVersion));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("UserSetUsername")
+            .WithTags("Users")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapPut("/api/users/{id:int}/active", async (
                 int id, [FromBody] SettingsSetActiveRequest req,
@@ -406,7 +519,10 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Users, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("UserSetActive")
+            .WithTags("Users")
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     // ===== Task templates (global; unversioned; edit = delete-by-name then reinsert, mirrors the WPF VM) ====
@@ -414,7 +530,10 @@ public static class SettingsEndpoints
     private static void MapTemplateEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/api/templates", async (ITaskTemplateRepository templates) =>
-            Results.Ok((await templates.GetAllAsync()).Select(t => t.ToDto()).ToList()));
+                Results.Ok((await templates.GetAllAsync()).Select(t => t.ToDto()).ToList()))
+            .WithName("TemplateList")
+            .WithTags("Templates")
+            .Produces<List<TaskTemplateDto>>();
 
         api.MapPost("/api/templates", async (
                 [FromBody] SettingsTemplateCreateRequest req,
@@ -428,7 +547,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Templates, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new TaskTemplateDto(id, req.TemplateName, req.TaskName, req.OrderIndex));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TemplateCreate")
+            .WithTags("Templates")
+            .Produces<TaskTemplateDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapDelete("/api/templates/{id:int}", async (
                 int id, ITaskTemplateRepository templates, IChangeNotifier notifier, IClientContext ctx) =>
@@ -437,7 +560,10 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Templates, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TemplateDelete")
+            .WithTags("Templates")
+            .Produces(StatusCodes.Status204NoContent);
 
         // Bulk delete of a whole named template (all its rows) — the other half of the WPF "edit" flow
         // (delete-by-name, then re-POST each row). Query string, not a route segment: a template name is
@@ -453,7 +579,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Templates, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("TemplateDeleteByName")
+            .WithTags("Templates")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
     }
 
     // ===== Holidays (global; unversioned; natural key = date). Column is holiday_date, not date. ===========
@@ -461,12 +591,15 @@ public static class SettingsEndpoints
     private static void MapHolidayEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/api/holidays", async (int? year, int? month, IHolidayRepository holidays) =>
-        {
-            var rows = year is { } y && month is { } m
-                ? await holidays.GetForMonthAsync(y, m)
-                : await holidays.GetAllAsync();
-            return Results.Ok(rows.Select(h => h.ToDto()).ToList());
-        });
+            {
+                var rows = year is { } y && month is { } m
+                    ? await holidays.GetForMonthAsync(y, m)
+                    : await holidays.GetAllAsync();
+                return Results.Ok(rows.Select(h => h.ToDto()).ToList());
+            })
+            .WithName("HolidayList")
+            .WithTags("Holidays")
+            .Produces<List<HolidayDto>>();
 
         api.MapPost("/api/holidays", async (
                 [FromBody] SettingsHolidayRequest req,
@@ -476,7 +609,10 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Holidays, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("HolidayUpsert")
+            .WithTags("Holidays")
+            .Produces(StatusCodes.Status204NoContent);
 
         api.MapDelete("/api/holidays/{date}", async (
                 string date, IHolidayRepository holidays, IChangeNotifier notifier, IClientContext ctx) =>
@@ -488,7 +624,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Holidays, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("HolidayDelete")
+            .WithTags("Holidays")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
     }
 
     // ===== Default tasks (global; every write reconciles into every team's DEFAULT backlog) =================
@@ -496,7 +636,10 @@ public static class SettingsEndpoints
     private static void MapDefaultTaskEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/api/default-tasks", async (IDefaultTaskRepository defaults) =>
-            Results.Ok((await defaults.GetActiveAsync()).Select(d => d.ToDto()).ToList()));
+                Results.Ok((await defaults.GetActiveAsync()).Select(d => d.ToDto()).ToList()))
+            .WithName("DefaultTaskList")
+            .WithTags("DefaultTasks")
+            .Produces<List<DefaultTaskDto>>();
 
         api.MapPost("/api/default-tasks", async (
                 [FromBody] SettingsDefaultTaskCreateRequest req,
@@ -511,7 +654,11 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.DefaultTasks, teamId: 0, ctx.ConnectionId);
                 return Results.Ok(new DefaultTaskDto(id, req.TaskName, req.OrderIndex, true));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("DefaultTaskCreate")
+            .WithTags("DefaultTasks")
+            .Produces<DefaultTaskDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPut("/api/default-tasks/{id:int}/active", async (
                 int id, [FromBody] SettingsSetActiveRequest req,
@@ -523,7 +670,35 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.DefaultTasks, teamId: 0, ctx.ConnectionId);
                 return Results.NoContent();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("DefaultTaskSetActive")
+            .WithTags("DefaultTasks")
+            .Produces(StatusCodes.Status204NoContent);
+
+        // M9 P2e. The STANDALONE reconcile — WPF's "Sync default tasks" button calls SyncAsync() directly,
+        // and until now the API ran it ONLY as a side-effect of the two writes above. There was no route the
+        // Settings screen's button could call, so a reconcile could not be triggered without also writing a
+        // default task nobody wanted.
+        //
+        // The literal "sync" cannot satisfy the `:int` constraint on the sibling
+        // PUT /api/default-tasks/{id:int}/active, and that route is a PUT besides — no AmbiguousMatchException
+        // in either registration order.
+        api.MapPost("/api/default-tasks/sync", async (
+                IDefaultTaskSyncService sync, IChangeNotifier notifier, IClientContext ctx) =>
+            {
+                await sync.SyncAsync();
+
+                // Rule 7. A reconcile rewrites Tasks under EVERY active team's DEFAULT backlog, so every
+                // other connected client's task list is now stale. Both sibling routes above notify after
+                // their own SyncAsync for exactly this reason; a standalone sync that stayed silent would be
+                // the one write in this file that changes everyone's data and tells nobody.
+                await notifier.DataChangedAsync(DataKind.DefaultTasks, teamId: 0, ctx.ConnectionId);
+                return Results.NoContent();
+            })
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("DefaultTaskSync")
+            .WithTags("DefaultTasks")
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     // ===== Standup entries + issues (team-scoped; entries are owner-gated by the service) ===================
@@ -532,12 +707,16 @@ public static class SettingsEndpoints
     {
         // My own day (Input tab) — scoped internally to the current user + active team.
         api.MapGet("/api/standup/entries", async (string? date, IStandupService standup) =>
-        {
-            if (!TryParseDay(date, out var day))
-                return Results.BadRequest(new ValidationBody("date must be yyyy-MM-dd."));
+            {
+                if (!TryParseDay(date, out var day))
+                    return Results.BadRequest(new ValidationBody("date must be yyyy-MM-dd."));
 
-            return Results.Ok(ToWire(await standup.GetMyStandupAsync(day)));
-        });
+                return Results.Ok(ToWire(await standup.GetMyStandupAsync(day)));
+            })
+            .WithName("StandupMyDay")
+            .WithTags("Standup")
+            .Produces<SettingsUserStandup>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         // The multi-team board. R6: client-supplied teamIds is INTERSECTED with membership; absent defaults
         // to the full membership; never passed through as null (null means "every team" to the service).
@@ -552,7 +731,11 @@ public static class SettingsEndpoints
 
                 var board = await standup.GetTeamStandupAsync(day, scoped);
                 return Results.Ok(board.Select(ToWire).ToList());
-            });
+            })
+            .WithName("StandupBoard")
+            .WithTags("Standup")
+            .Produces<List<SettingsUserStandup>>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPost("/api/standup/entries", async (
                 [FromBody] SettingsStandupEntryCreateRequest req,
@@ -573,7 +756,13 @@ public static class SettingsEndpoints
 
                 await notifier.DataChangedAsync(DataKind.Standup, currentTeam.ActiveTeamId, ctx.ConnectionId);
                 return Results.Ok(id);
-            });
+            })
+            .WithName("StandupEntryCreate")
+            .WithTags("Standup")
+            // A BARE int — the new entry id, NOT a DTO. There is no StandupEntryCreateResponse and inventing
+            // one here would generate a typed lie in the client (see also quick-import and issue-create).
+            .Produces<int>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPut("/api/standup/entries/{entryId:int}", async (
                 int entryId, [FromBody] SettingsStandupEntryUpdateRequest req,
@@ -597,7 +786,12 @@ public static class SettingsEndpoints
 
                 await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
                 return Results.NoContent();
-            });
+            })
+            .WithName("StandupEntryUpdate")
+            .WithTags("Standup")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapDelete("/api/standup/entries/{entryId:int}", async (
                 int entryId, IClientContext ctx, IStandupRepository standupRepo, IStandupService standup,
@@ -614,41 +808,51 @@ public static class SettingsEndpoints
 
                 await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
                 return Results.NoContent();
-            });
+            })
+            .WithName("StandupEntryDelete")
+            .WithTags("Standup")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
         // Drag-reorder. The literal "reorder" cannot satisfy the `:int` constraint on the sibling
         // PUT /api/standup/entries/{entryId:int}, so the two coexist without an AmbiguousMatchException in
         // either registration order.
         api.MapPut("/api/standup/entries/reorder", async (
-            [FromBody] SettingsStandupReorderRequest req,
-            IClientContext ctx, IStandupRepository standupRepo, IStandupService standup,
-            IChangeNotifier notifier) =>
-        {
-            // BOTH ids are attacker-supplied, so BOTH are team-gated.
-            var dragged = await standupRepo.GetEntryAsync(req.DraggedId);
-            if (!TryAuthorizeEntryTeam(dragged, ctx, out var teamId))
-                return Results.NotFound();
+                [FromBody] SettingsStandupReorderRequest req,
+                IClientContext ctx, IStandupRepository standupRepo, IStandupService standup,
+                IChangeNotifier notifier) =>
+            {
+                // BOTH ids are attacker-supplied, so BOTH are team-gated.
+                var dragged = await standupRepo.GetEntryAsync(req.DraggedId);
+                if (!TryAuthorizeEntryTeam(dragged, ctx, out var teamId))
+                    return Results.NotFound();
 
-            var target = await standupRepo.GetEntryAsync(req.TargetId);
-            if (!TryAuthorizeEntryTeam(target, ctx, out _))
-                return Results.NotFound();
+                var target = await standupRepo.GetEntryAsync(req.TargetId);
+                if (!TryAuthorizeEntryTeam(target, ctx, out _))
+                    return Results.NotFound();
 
-            // ReorderEntryAsync returns void and SILENTLY no-ops on each of its three rejections (owner,
-            // edit-lock, cross-day). Re-checking them here is not a second gate — the service still enforces
-            // every one of them — it only stops a 204 from claiming a write that never happened. `dragged` is
-            // non-null here: TryAuthorizeEntryTeam is [NotNullWhen(true)].
-            if (dragged.UserId != ctx.UserId)
-                return Results.BadRequest(new ValidationBody("Only the entry's owner may reorder it."));
-            if (!standup.CanEditDay(dragged.WorkDate))
-                return Results.BadRequest(new ValidationBody("The day is no longer editable."));
-            if (dragged.WorkDate != target.WorkDate)
-                return Results.BadRequest(new ValidationBody("Entries can only be reordered within one day."));
+                // ReorderEntryAsync returns void and SILENTLY no-ops on each of its three rejections (owner,
+                // edit-lock, cross-day). Re-checking them here is not a second gate — the service still
+                // enforces every one of them — it only stops a 204 from claiming a write that never happened.
+                // `dragged` is non-null here: TryAuthorizeEntryTeam is [NotNullWhen(true)].
+                if (dragged.UserId != ctx.UserId)
+                    return Results.BadRequest(new ValidationBody("Only the entry's owner may reorder it."));
+                if (!standup.CanEditDay(dragged.WorkDate))
+                    return Results.BadRequest(new ValidationBody("The day is no longer editable."));
+                if (dragged.WorkDate != target.WorkDate)
+                    return Results.BadRequest(new ValidationBody("Entries can only be reordered within one day."));
 
-            await standup.ReorderEntryAsync(req.DraggedId, req.TargetId);
+                await standup.ReorderEntryAsync(req.DraggedId, req.TargetId);
 
-            await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
-            return Results.NoContent();
-        });
+                await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
+                return Results.NoContent();
+            })
+            .WithName("StandupEntryReorder")
+            .WithTags("Standup")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
         // P18 Quick Import: clone my own source day into my own target day, appending.
         api.MapPost("/api/standup/quick-import", async (
@@ -675,7 +879,13 @@ public static class SettingsEndpoints
                 await notifier.DataChangedAsync(DataKind.Standup, currentTeam.ActiveTeamId, ctx.ConnectionId);
 
             return Results.Ok(cloned);
-        });
+        })
+        .WithName("StandupQuickImport")
+        .WithTags("Standup")
+        // A BARE int — the COUNT of entries cloned, not an id and not a DTO. A 0 that reaches the client means
+        // "the source day was empty" (the locked-target rejection is a 400, above).
+        .Produces<int>()
+        .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         // ---- Issues: collaborative (no owner gate), team-gated only. See the class doc for why the team
         // gate has to be established here, from the repository, before the service is ever called. --------
@@ -695,7 +905,13 @@ public static class SettingsEndpoints
 
                 await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
                 return Results.Ok(id);
-            });
+            })
+            .WithName("StandupIssueCreate")
+            .WithTags("Standup")
+            // A BARE int — the new issue id, as the comment above says. Not a StandupIssueDto.
+            .Produces<int>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapPut("/api/standup/entries/{entryId:int}/issues/{issueId:int}", async (
                 int entryId, int issueId, [FromBody] SettingsStandupIssueUpdateRequest req,
@@ -725,7 +941,12 @@ public static class SettingsEndpoints
 
                 await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
                 return Results.Ok(new SavedBody(newVersion));
-            });
+            })
+            .WithName("StandupIssueUpdate")
+            .WithTags("Standup")
+            .Produces<SavedBody>()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         api.MapDelete("/api/standup/entries/{entryId:int}/issues/{issueId:int}", async (
                 int entryId, int issueId,
@@ -747,7 +968,11 @@ public static class SettingsEndpoints
 
                 await notifier.DataChangedAsync(DataKind.Standup, teamId, ctx.ConnectionId);
                 return Results.NoContent();
-            });
+            })
+            .WithName("StandupIssueDelete")
+            .WithTags("Standup")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound);
     }
 
     // ===== Ops: retention / export / backup — admin-only, destructive, deliberately narrow ==================
@@ -759,7 +984,13 @@ public static class SettingsEndpoints
                 if (!ctx.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 return Results.Ok(await retention.PreviewAsync());
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("OpsRetentionPreview")
+            .WithTags("Ops")
+            // RetentionPreview is a CORE type (TimesheetApp.Services), not an Api DTO — PreviewAsync returns
+            // it directly and the handler passes it straight through. Declaring anything else here would be a
+            // typed lie; re-shaping it into a DTO would be a contract change this task is not scoped to make.
+            .Produces<RetentionPreview>();
 
         // 202, NOT in the request path: RetentionService holds one BEGIN IMMEDIATE across six bulk DELETEs,
         // which blocks every other writer app-wide. IRetentionService is a Singleton with an entirely
@@ -781,21 +1012,31 @@ public static class SettingsEndpoints
 
                 return Results.Accepted();
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("OpsRetentionRun")
+            .WithTags("Ops")
+            // 202, NOT 200 — see the comment above. The client must not wait for a result that is not coming.
+            .Produces(StatusCodes.Status202Accepted);
 
         api.MapPost("/api/ops/export/run", async (IClientContext ctx, IExportHubService export) =>
             {
                 if (!ctx.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 return Results.Ok(new SettingsOpsResult(await export.ExportNowAsync()));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("OpsExportRun")
+            .WithTags("Ops")
+            .Produces<SettingsOpsResult>();
 
         api.MapPost("/api/ops/backup/run", async (IClientContext ctx, IBackupService backup) =>
             {
                 if (!ctx.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
                 return Results.Ok(new SettingsOpsResult(await backup.BackupNowAsync()));
             })
-            .RequireAuthorization(AuthSetup.AdminPolicy);
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("OpsBackupRun")
+            .WithTags("Ops")
+            .Produces<SettingsOpsResult>();
     }
 
     // ===== helpers ===========================================================================================
@@ -880,14 +1121,22 @@ internal sealed record SettingsQuickImportRequest(DateOnly SourceDate, DateOnly 
 internal sealed record SettingsActiveTeamRequest(int TeamId);
 
 // ---- Response DTOs (composite read-models with no equivalent in Contracts/Dtos.cs) --------------------------
+//
+// PUBLIC, unlike the request records above, and that is a CONVENTION rather than a compile requirement — do
+// not go hunting for the build error that made it necessary, because there isn't one. A generic type argument
+// to .Produces<T>() needs accessibility only at the CALL SITE, and these are in the same assembly as the
+// endpoints, so `internal` compiles perfectly well (SettingsOpsMarker below is internal and is a type argument
+// to ILogger<T> three feet away). They are public because every other WIRE CONTRACT the client is generated
+// from is public (Contracts/Dtos.cs), and a response shape that crosses the wire should not be the one
+// exception that says otherwise.
 
-internal sealed record SettingsStandupEntryView(StandupEntryDto Entry, IReadOnlyList<StandupIssueDto> Issues, bool Editable);
+public sealed record SettingsStandupEntryView(StandupEntryDto Entry, IReadOnlyList<StandupIssueDto> Issues, bool Editable);
 
-internal sealed record SettingsUserStandup(
+public sealed record SettingsUserStandup(
     int UserId, string UserName,
     IReadOnlyList<SettingsStandupEntryView> Yesterday, IReadOnlyList<SettingsStandupEntryView> Today);
 
-internal sealed record SettingsOpsResult(string? Value);
+public sealed record SettingsOpsResult(string? Value);
 
 /// <summary>Pure category marker for <see cref="ILogger{TCategoryName}"/> in the retention background task —
 /// <see cref="SettingsEndpoints"/> itself is a static class and cannot be used as a generic type argument

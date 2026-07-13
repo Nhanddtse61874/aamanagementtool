@@ -1,0 +1,56 @@
+<!--
+  Mirrors TeamFilterComponent (and WPF's TagPicker.xaml, which mirrors WPF's TeamFilter): a `Tags (N)`
+  disclosure over a type-to-filter box and a list of checkable chips. One <details>, so the browser gives us
+  Escape-to-close, Enter/Space-to-open and keyboard reachability for nothing.
+-->
+<details class="tp">
+  <summary class="tp__head">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linejoin="round" aria-hidden="true">
+      <path d="M20.6 13.4 12 22l-9-9V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/>
+      <circle cx="7.5" cy="7.5" r="1.3" fill="currentColor"/>
+    </svg>
+    <span class="tp__label">{{ header() }}</span>
+    <svg class="tp__chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+  </summary>
+
+  <div class="tp__menu">
+    <input
+      class="tp__filter"
+      type="text"
+      placeholder="Type to filter tags"
+      aria-label="Filter tags"
+      [disabled]="disabled()"
+      (input)="onFilter($event)"
+    />
+
+    <div class="tp__list" role="group" [attr.aria-label]="header()">
+      @for (tag of visibleTags(); track tag.id) {
+        <label class="tp__row" [class.is-disabled]="disabled()">
+          <input
+            type="checkbox"
+            [checked]="isChecked(tag.id!)"
+            [disabled]="disabled()"
+            (change)="toggle(tag.id!)"
+          />
+          <!-- The chip carries the tag's OWN colour as its background, with the emoji icon inline — exactly
+               what WPF renders (Border Background="{Binding Tag.Color}" + a Segoe UI Emoji TextBlock). -->
+          <span class="tp__chip" [style.background]="tag.color ?? '#64748B'">
+            @if (tag.icon) {
+              <span class="tp__icon" aria-hidden="true">{{ tag.icon }}</span>
+            }
+            <span class="tp__text">{{ tag.text }}</span>
+          </span>
+        </label>
+      }
+
+      @if (noMatches()) {
+        <p class="tp__empty">No tags match that.</p>
+      }
+      @if (!tags().length) {
+        <p class="tp__empty">No tags have been created yet.</p>
+      }
+    </div>
+  </div>
+</details>

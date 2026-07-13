@@ -615,6 +615,56 @@ public sealed class BacklogEndpointsTests
         Assert.Equal(ApiFactory.DisplayNameFor("alice"), editor);
     }
 
+    /// <summary>M9 P2.5. <c>PUT /api/tasks/{id}/status</c> now DECLARES a 400 (the Task List's inline status
+    /// dropdown needs the generated client to see it), and nothing exercised that guard — the route's only
+    /// test was the happy path above. A declared status that no test reaches is an unverified claim, and an
+    /// unverified claim in an OpenAPI document is exactly the kind of typed lie this milestone is closing.</summary>
+    [Fact]
+    public async Task Updating_a_task_status_to_an_empty_string_is_400_and_leaves_the_status_unchanged()
+    {
+        using var factory = new ApiFactory();
+        var (client, _, teamId) = await ArrangeAsync(factory);
+        var backlogId = await factory.SeedBacklogAsync(teamId, "REQ-309");
+        var taskId = await factory.SeedTaskAsync(backlogId, "Blank status me");
+        var current = await GetTaskAsync(client, taskId);
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/tasks/{taskId}/status", new TaskStatusRequest("   ", current.RowVersion));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // A 400 that still wrote the row is the failure worth catching -- assert the status did not move.
+        var refetched = await GetTaskAsync(client, taskId);
+        Assert.Equal(current.Status, refetched.Status);
+    }
+
+    /// <summary>M9 P2.5. Proves the 409 the route now declares. The status write is version-CHECKED
+    /// (<c>UpdateStatusCheckedAsync</c>), so the inline dropdown must be able to tell a lost update from a
+    /// server error — and it can only do that if the generated client knows 409 is a possible outcome.</summary>
+    [Fact]
+    public async Task A_stale_task_status_update_is_409_with_deleted_false()
+    {
+        using var factory = new ApiFactory();
+        var (client, _, teamId) = await ArrangeAsync(factory);
+        var backlogId = await factory.SeedBacklogAsync(teamId, "REQ-310");
+        var taskId = await factory.SeedTaskAsync(backlogId, "Status conflict me");
+        var v1 = await GetTaskAsync(client, taskId);
+
+        using (var db = factory.OpenDb())
+        {
+            await db.ExecuteAsync(
+                "UPDATE Tasks SET row_version = row_version + 1 WHERE id = @id;", new { id = taskId });
+        }
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/tasks/{taskId}/status", new TaskStatusRequest("Done", v1.RowVersion));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<ConflictBody>();
+        Assert.Equal("Tasks", body!.Table);
+        Assert.False(body.Deleted);
+    }
+
     [Fact]
     public async Task Task_extended_fields_can_be_updated_and_are_audited()
     {
@@ -642,6 +692,32 @@ public sealed class BacklogEndpointsTests
         Assert.Equal(ApiFactory.DisplayNameFor("alice"), editor);
     }
 
+    /// <summary>M9 P2.5. Proves the 409 <c>PUT /api/tasks/{id}/extended</c> now declares — the Task List's
+    /// inline type/assignee editors are version-checked exactly like the status dropdown.</summary>
+    [Fact]
+    public async Task A_stale_task_extended_update_is_409_with_deleted_false()
+    {
+        using var factory = new ApiFactory();
+        var (client, userId, teamId) = await ArrangeAsync(factory);
+        var backlogId = await factory.SeedBacklogAsync(teamId, "REQ-311");
+        var taskId = await factory.SeedTaskAsync(backlogId, "Extended conflict me");
+        var v1 = await GetTaskAsync(client, taskId);
+
+        using (var db = factory.OpenDb())
+        {
+            await db.ExecuteAsync(
+                "UPDATE Tasks SET row_version = row_version + 1 WHERE id = @id;", new { id = taskId });
+        }
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/tasks/{taskId}/extended", new TaskExtendedRequest("Investigate", userId, v1.RowVersion));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<ConflictBody>();
+        Assert.Equal("Tasks", body!.Table);
+        Assert.False(body.Deleted);
+    }
+
     [Fact]
     public async Task Task_tags_can_be_assigned_and_read_back()
     {
@@ -659,6 +735,39 @@ public sealed class BacklogEndpointsTests
         var tagsResponse = await client.GetAsync($"/api/tasks/{taskId}/tags");
         var tagIds = await tagsResponse.Content.ReadFromJsonAsync<List<int>>();
         Assert.Equal(new[] { tagId }, tagIds);
+    }
+
+    /// <summary>M9 P2.5. Proves the 409 <c>PUT /api/tasks/{id}/tags</c> now declares. Task tags ride the
+    /// PARENT task's <c>row_version</c> (TaskTags carries none of its own — the same arrangement as
+    /// BacklogTags, asserted for backlogs in
+    /// <see cref="Backlog_tags_can_be_assigned_read_back_and_are_version_checked"/>), so two people re-ticking
+    /// the chips on one task clobber each other exactly like any other inline edit.</summary>
+    [Fact]
+    public async Task A_stale_task_tags_update_is_409_with_deleted_false()
+    {
+        using var factory = new ApiFactory();
+        var (client, _, teamId) = await ArrangeAsync(factory);
+        var backlogId = await factory.SeedBacklogAsync(teamId, "REQ-312");
+        var taskId = await factory.SeedTaskAsync(backlogId, "Tag conflict me");
+        var tagId = await SeedTagAsync(factory, "Contended");
+        var current = await GetTaskAsync(client, taskId);
+
+        var first = await client.PutAsJsonAsync(
+            $"/api/tasks/{taskId}/tags", new TaskTagsRequest(new[] { tagId }, current.RowVersion));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        // `current.RowVersion` is now stale -- the write above bumped the PARENT task's version.
+        var stale = await client.PutAsJsonAsync(
+            $"/api/tasks/{taskId}/tags", new TaskTagsRequest(Array.Empty<int>(), current.RowVersion));
+
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var body = await stale.Content.ReadFromJsonAsync<ConflictBody>();
+        Assert.Equal("Tasks", body!.Table);
+        Assert.False(body.Deleted);
+
+        // The rejected write must not have cleared the tags.
+        var tagsResponse = await client.GetAsync($"/api/tasks/{taskId}/tags");
+        Assert.Equal(new[] { tagId }, await tagsResponse.Content.ReadFromJsonAsync<List<int>>());
     }
 
     /// <summary>Rule #9: bump-only BY DESIGN, no checked sibling — a checked reorder would 409-storm an

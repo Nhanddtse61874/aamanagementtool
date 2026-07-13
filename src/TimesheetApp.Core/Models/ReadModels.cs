@@ -134,3 +134,12 @@ public sealed record GanttBar(int BacklogId, string BacklogCode,
 
 // The Gantt chart model: a working-day axis (weekends/holidays excluded) + one bar per backlog.
 public sealed record GanttModel(IReadOnlyList<DateOnly> Axis, IReadOnlyList<GanttBar> Bars);
+
+// M9 (P1c): the WHOLE Task List screen in ONE value — the grid rows and the Gantt built from those
+// same rows, at one instant.
+//
+// It is one record rather than two calls on purpose. The grid's schedule chips and the Gantt's bar
+// colours are the SAME ScheduleState; fetched separately, a write landing between the two calls would
+// let the chart and the grid disagree on screen with no way for the client to notice. Rows and Bars
+// here are guaranteed to have been computed from a single snapshot.
+public sealed record TaskListScreen(IReadOnlyList<TaskListRow> Rows, GanttModel Gantt);

@@ -4,16 +4,49 @@
 .search { position: relative; flex: 1; min-width: 220px; }
 .search svg { position: absolute; left: 14px; top: 12px; width: 17px; height: 17px; color: var(--faint); }
 
+/* The banner that does NOT fade. A half-created account is announced here, never by a 2-second toast. */
+.notice { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; padding: 14px 16px;
+  border-radius: 12px; background: var(--warn-bg); color: var(--warn-c);
+  border: 1px solid color-mix(in srgb, var(--warn-c) 25%, transparent); }
+.notice__body { flex: 1; font-size: 13.5px; font-weight: 600; line-height: 1.5; }
+
+.addcard { margin-bottom: 18px; }
+
+.s-title { font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.s-desc { color: var(--muted); font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+.s-strong { font-weight: 600; font-size: 14px; }
+
+.fields { display: flex; gap: 14px; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 200px; }
+.field > span { font-size: 12px; font-weight: 700; color: var(--faint); letter-spacing: .3px; }
+
+.toggle-row { display: flex; align-items: center; gap: 10px; cursor: pointer; width: fit-content; }
+.inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 220px; }
+.acts { display: flex; gap: 8px; }
+
 .users-card { overflow: hidden; }
-.urow, .urow--head { display: grid; grid-template-columns: 1fr 130px 130px; align-items: center; }
+.urow, .urow--head { display: grid; grid-template-columns: 1.4fr 1fr 110px 110px 265px; align-items: center; }
 .urow--head { background: var(--surf2); border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 700; letter-spacing: .6px; color: var(--faint); }
 .urow--head > div { padding: 12px 8px; } .urow--head > div:first-child { padding-left: 18px; }
 .urow { border-bottom: 1px solid var(--line-soft); transition: background .12s; }
 .urow:hover { background: var(--surf2); }
 .urow > div { padding: 12px 8px; }
 .urow .name { padding-left: 18px; display: flex; align-items: center; gap: 11px; font-weight: 600; font-size: 14px; }
-.urow .right { text-align: right; padding-right: 12px; }
+.urow .right { padding-right: 12px; display: flex; gap: 6px; justify-content: flex-end; }
+.urow .mono { font-family: 'Spline Sans Mono', monospace; font-size: 13px; color: var(--muted); }
+/* A deactivated row still reads clearly — it is restorable, not wreckage. */
+.urow--off { opacity: .62; }
+
 .badge-off { background: color-mix(in srgb, var(--faint) 18%, transparent); color: var(--faint); }
+.badge-admin { background: var(--accent-soft); color: var(--accent-700); }
+
+/* The inline editors, rendered as a full-width band under the row they belong to. */
+.uedit { padding: 18px; border-bottom: 1px solid var(--line-soft); background: var(--surf2); }
+.uedit .acts { margin-top: 16px; }
+
+.admin-note { margin: 14px 0 0; padding: 11px 13px; border-radius: 10px;
+  background: var(--surf3); color: var(--muted); font-size: 12.5px; line-height: 1.55; max-width: 620px; }
 
 .empty { padding: 44px 20px; text-align: center; }
 .empty__title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
