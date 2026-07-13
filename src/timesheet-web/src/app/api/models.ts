@@ -3,6 +3,8 @@
 
 export type { AuthAdminSetPasswordRequest } from './models/auth-admin-set-password-request';
 export type { AuthSetPasswordRequest } from './models/auth-set-password-request';
+export type { BacklogDto } from './models/backlog-dto';
+export type { BacklogUpdateRequest } from './models/backlog-update-request';
 export type { ConflictBody } from './models/conflict-body';
 export type { LoginRequest } from './models/login-request';
 export type { LoginResponse } from './models/login-response';
@@ -11,6 +13,10 @@ export type { SavedBody } from './models/saved-body';
 export type { SmartFillCellRequest } from './models/smart-fill-cell-request';
 export type { SmartFillRequest } from './models/smart-fill-request';
 export type { SmartFillTaskRequest } from './models/smart-fill-task-request';
+export type { TaskActiveRequest } from './models/task-active-request';
+export type { TaskCreateRequest } from './models/task-create-request';
+export type { TaskItemDto } from './models/task-item-dto';
+export type { TaskOrderRequest } from './models/task-order-request';
 export type { TimeLogDto } from './models/time-log-dto';
 export type { TimesheetClearCellRequest } from './models/timesheet-clear-cell-request';
 export type { TimesheetSaveCellRequest } from './models/timesheet-save-cell-request';
