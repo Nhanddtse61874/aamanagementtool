@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable, of } from 'rxjs';
 import {
-  Backlog, DailyEntry, LogGroup, Metric, MonthlyRow, Tag, TaskCard,
+  DailyEntry, LogGroup, Metric, MonthlyRow, Tag, TaskCard,
   TaskTemplate, TeamMember, TreeNode, User, WeeklyRow, DayColumn,
 } from '../models/worklog.models';
 
@@ -60,21 +60,22 @@ import {
  * RETYPE IN PLACE. Each is still CONSUMED by a screen that binds the VENDORED view model, under
  * `strictTemplates`:
  *
- *     getBacklogs()  -> Backlog[]    backlog.component.ts     (its own task deletes this stub when it
- *                                                              rewrites that component — not before)
  *     getUsers()     -> User[]       users.component.ts       (the Users page is OUT OF SCOPE: no task in
  *                                                              this milestone owns it)
  *     getTaskCards() -> TaskCard[]   task-list.component.ts
  *     getContacts()  -> string[]     settings.component.ts
  *
- * The vendored view models DO NOT MATCH the wire DTOs. `Backlog` is `{code, project, month, assignee}` where
- * `BacklogListItemDto` is `{backlogCode, periodMonth, assigneeUserId}`; `User` is `{name, active}` with NO
- * `id` at all where `UserDto` is `{id?, name?, isActive?, …}`. So changing a stub's return type does not
- * "wire up a screen" — it BREAKS THE BUILD of a component the current task is not allowed to touch.
+ * The vendored view models DO NOT MATCH the wire DTOs. `User` is `{name, active}` with NO `id` at all where
+ * `UserDto` is `{id?, name?, isActive?, …}`. So changing a stub's return type does not "wire up a screen" —
+ * it BREAKS THE BUILD of a component the current task is not allowed to touch.
  *
  * Hence the convention: a real method is ADDED BESIDE its stub under a NEW NAME, and each screen's own task
- * then swaps its component over and deletes the stub it was using. That is why `getBacklogList()` sits next
- * to `getBacklogs()`, and `getPcaContactsActive()` next to `getContacts()`. Deliberate, not duplication.
+ * then swaps its component over and deletes the stub it was using. That is why `getPcaContactsActive()` sits
+ * next to `getContacts()`. Deliberate, not duplication.
+ *
+ * M8.6/T6 is the convention running to completion for the first time: `BacklogComponent` now reads
+ * `getBacklogList()`, so `getBacklogs()` — the `of([])` stub it used to bind — is deleted here, along with the
+ * `Backlog` view model's last consumer.
  */
 @Injectable({ providedIn: 'root' })
 export class WorklogService {
@@ -461,7 +462,6 @@ export class WorklogService {
   // and PCA routes above.
   // =====================================================================================================
   getUsers(): Observable<User[]> { return of([]); }                 // SUPERSEDED by getUsersActive()/getUserNames(); bound by users.component.ts
-  getBacklogs(): Observable<Backlog[]> { return of([]); }           // SUPERSEDED by getBacklogList(); bound by backlog.component.ts
   getLogGroups(): Observable<LogGroup[]> { return of([]); }         // SUPERSEDED by getWeek() in W4
   getTaskCards(): Observable<TaskCard[]> { return of([]); }         // TODO: GET /api/tasklist; bound by task-list.component.ts
   getDailyEntries(date: string): Observable<DailyEntry[]> { return of([]); }   // TODO
