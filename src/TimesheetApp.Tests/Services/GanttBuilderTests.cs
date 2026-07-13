@@ -1,13 +1,15 @@
 using TimesheetApp.Models;
 using TimesheetApp.Services;
-using TimesheetApp.ViewModels;
 using Xunit;
 
-namespace TimesheetApp.Tests.ViewModels;
+namespace TimesheetApp.Tests.Services;
 
 // P8 / W6 (spec §5.4, Q3): GanttModel geometry — pure index math over a working-day axis
 // (weekends + holidays excluded). Canvas pixel drawing is UAT, not tested here.
-public sealed class GanttModelTests
+//
+// M9 (P1a): these tests MOVED with BuildGantt, from TaskListViewModel (WPF) to Core's GanttBuilder.
+// Not one assertion changed — the geometry contract is identical, only its address moved.
+public sealed class GanttBuilderTests
 {
     private static readonly IWorkingDayCalculator Calc = new WorkingDayCalculator();
 
@@ -20,7 +22,7 @@ public sealed class GanttModelTests
 
     private static GanttModel Build(
         IReadOnlySet<DateOnly> holidays, params (Backlog, ScheduleState)[] src) =>
-        TaskListViewModel.BuildGantt(src.ToList(), holidays, Calc);
+        GanttBuilder.BuildGantt(src.ToList(), holidays, Calc);
 
     private static readonly IReadOnlySet<DateOnly> NoHolidays = new HashSet<DateOnly>();
 
