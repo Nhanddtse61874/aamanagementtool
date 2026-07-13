@@ -194,17 +194,6 @@ export class WorklogService {
     'Giang Do': '#0D9488', 'Huy Bui': '#CA8A04', Nhan: '#0E7C66', 'Phuc Hoang': '#7C3AED',
   };
 
-  // 🔴 NO CONSUMER. The day axis is DERIVED now — `pages/log-work/week.ts`, since M8.4/W4 — and this
-  // hard-coded literal is the mockup week it replaced. It is kept only because deleting a public member of
-  // the service is a contract change that M9 P7 was not scoped to make; it is a deletion candidate.
-  // Its type was the last symbol keeping `models/worklog.models.ts` (the vendored mockup layer) alive, so
-  // that one-line shape is inlined here and the file is gone.
-  readonly WEEK_DAYS: { dow: string; date: string }[] = [
-    { dow: 'MON', date: '06/07' }, { dow: 'TUE', date: '07/07' },
-    { dow: 'WED', date: '08/07' }, { dow: 'THU', date: '09/07' },
-    { dow: 'FRI', date: '10/07' },
-  ];
-
   avatarColor(name: string | null): string {
     return name ? (this.AVATAR_COLORS[name] ?? '#0E7C66') : '';
   }
