@@ -1,0 +1,160 @@
+// Only the global CSS custom properties (styles.scss), so the dialog follows light/dark automatically rather
+// than hard-coding a palette that would be unreadable in one of the two themes. Same shape as the Smart Fill
+// panel, the conflict dialog and the add-task dialog: a flex-centred backdrop WRAPPING the card.
+//
+// This card is much taller than those three, so it scrolls INTERNALLY (`max-height` + `overflow-y`) rather
+// than growing past the viewport: a Save button below the fold is a Save button nobody can press.
+
+.bed-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 38%);
+}
+
+.bed {
+  width: 100%;
+  max-width: 620px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 22%);
+  outline: none;                       // it is focused on open for the escape key; do not draw a ring for that
+}
+
+.bed__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.bed__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.bed__sub {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+// The one place a refusal, a rejection or a conflict is spoken. It must not be mistakable for a field label.
+.bed__error {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--danger-bd);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: var(--danger-c);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.bed__state {
+  margin: 0 0 12px;
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+// Label / field pairs. The label column is fixed so the fields line up down the form.
+.bed__grid {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.bed__lbl {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.bed__f {
+  width: 100%;
+  min-width: 0;                        // a grid child will not shrink below its content without this
+  font-size: 13.5px;
+}
+
+// Month + year sit in one row of the grid.
+.bed__pair {
+  display: flex;
+  gap: 8px;
+
+  .select { flex: 1; }
+}
+
+.bed__note {
+  padding: 9px 11px;
+  resize: vertical;
+}
+
+.bed__sec {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+// One task row: the name takes the space, the three controls keep their size.
+.bed__task {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.bed__task-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+}
+
+.bed__audit {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bed__audit-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12.5px;
+
+  &:last-child { border-bottom: none; }
+}
+
+.bed__audit-change {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.bed__audit-who {
+  flex: none;
+  color: var(--faint);
+}
+
+.bed__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}

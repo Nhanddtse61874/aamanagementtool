@@ -1,0 +1,190 @@
+<!--
+  The backdrop WRAPS the card and centres it, as `.atd-backdrop` and `.cd-backdrop` both do.
+
+  🔴 Clicking the backdrop does NOT close this one, and that is a considered difference from
+  `AddTaskDialogComponent`. That dialog holds ONE string; a stray click costs a word. This one holds a whole
+  backlog and its task list, and dismissing it on a mis-click would throw away minutes of typing with no undo.
+  Escape and Cancel are explicit; a backdrop click is not.
+-->
+<div class="bed-backdrop" role="presentation">
+  <!-- `tabindex="-1"` so `ngAfterViewInit` can move focus in here: it is what a modal owes a keyboard user,
+       and it is also what makes the escape binding below fire (keydown bubbles up from the fields). -->
+  <div #shell class="bed" role="dialog" aria-modal="true" aria-labelledby="bed-title" tabindex="-1"
+       (keydown.escape)="close()">
+
+    <header class="bed__head">
+      <h2 class="bed__title" id="bed-title">{{ isEdit() ? 'Edit backlog' : 'New backlog' }}</h2>
+      <button type="button" class="btn btn-ghost btn-sm" [disabled]="saving()" (click)="close()">Close</button>
+    </header>
+
+    @if (loading()) {
+      <p class="bed__state">Loading…</p>
+    }
+
+    <!-- The one place any refusal, any rejection and any conflict is spoken. A save that fails silently is
+         the failure this whole component is written around. -->
+    @if (error(); as message) {
+      <p class="bed__error" role="alert">{{ message }}</p>
+    }
+
+    <div class="bed__grid">
+      <label class="bed__lbl" for="bed-code">Code</label>
+      <input id="bed-code" class="input bed__f" autocomplete="off" placeholder="ARCS-1042"
+             [ngModel]="form().code" (ngModelChange)="patch('code', $event)" />
+
+      <label class="bed__lbl" for="bed-project">Project</label>
+      <select id="bed-project" class="select bed__f"
+              [ngModel]="form().project" (ngModelChange)="patch('project', $event)">
+        @for (p of projects; track p) {
+          <option [value]="p">{{ p }}</option>
+        }
+      </select>
+
+      <label class="bed__lbl" for="bed-assignee">Assignee</label>
+      <!-- 🔴 `assigneeOptions` carries a DEACTIVATED assignee when the saved one has left, so an untouched
+           save round-trips her instead of silently clearing the field. See the computed. -->
+      <select id="bed-assignee" class="select bed__f"
+              [ngModel]="form().assigneeUserId" (ngModelChange)="patch('assigneeUserId', $event)">
+        @for (o of assigneeOptions(); track o.id) {
+          <option [ngValue]="o.id">{{ o.label }}</option>
+        }
+      </select>
+
+      <label class="bed__lbl" for="bed-month">Month</label>
+      <div class="bed__f bed__pair">
+        <select id="bed-month" class="select" aria-label="Month"
+                [ngModel]="form().month" (ngModelChange)="patch('month', $event)">
+          @for (m of months; track m) {
+            <option [ngValue]="m">{{ m }}</option>
+          }
+        </select>
+        <select class="select" aria-label="Year"
+                [ngModel]="form().year" (ngModelChange)="patch('year', $event)">
+          @for (y of years; track y) {
+            <option [ngValue]="y">{{ y }}</option>
+          }
+        </select>
+      </div>
+
+      <label class="bed__lbl" for="bed-type">Type</label>
+      <select id="bed-type" class="select bed__f"
+              [ngModel]="form().type" (ngModelChange)="patch('type', $event)">
+        <option [ngValue]="null">(none)</option>
+        @for (t of types; track t) {
+          <option [ngValue]="t">{{ t }}</option>
+        }
+      </select>
+
+      <label class="bed__lbl" for="bed-rough">Rough estimate</label>
+      <input id="bed-rough" class="input bed__f" autocomplete="off" inputmode="decimal" placeholder="hours"
+             [ngModel]="form().roughEstimateText" (ngModelChange)="patch('roughEstimateText', $event)" />
+
+      <label class="bed__lbl" for="bed-official">Official estimate</label>
+      <input id="bed-official" class="input bed__f" autocomplete="off" inputmode="decimal" placeholder="hours"
+             [ngModel]="form().officialEstimateText" (ngModelChange)="patch('officialEstimateText', $event)" />
+
+      <!--
+        🔴 CREATE ONLY, all six. On EDIT these are edited INLINE on the Task List screen, so the editor does
+        not offer a second place to change them — and `toUpdateRequest` round-trips them from the loaded DTO,
+        which is what stops `PUT /api/backlogs/{id}` (a whole-record replace) from writing them as NULL.
+      -->
+      @if (!isEdit()) {
+        <label class="bed__lbl" for="bed-start">Start date</label>
+        <input id="bed-start" type="date" class="input bed__f"
+               [ngModel]="form().startDate" (ngModelChange)="patch('startDate', $event)" />
+
+        <label class="bed__lbl" for="bed-end">End date</label>
+        <input id="bed-end" type="date" class="input bed__f"
+               [ngModel]="form().endDate" (ngModelChange)="patch('endDate', $event)" />
+
+        <label class="bed__lbl" for="bed-pct">Internal deadline (PCT)</label>
+        <input id="bed-pct" type="date" class="input bed__f"
+               [ngModel]="form().deadlineInternal" (ngModelChange)="patch('deadlineInternal', $event)" />
+
+        <label class="bed__lbl" for="bed-pca">External deadline (PCA)</label>
+        <input id="bed-pca" type="date" class="input bed__f"
+               [ngModel]="form().deadlineExternal" (ngModelChange)="patch('deadlineExternal', $event)" />
+
+        <label class="bed__lbl" for="bed-progress">Progress</label>
+        <input id="bed-progress" class="input bed__f" autocomplete="off" inputmode="numeric" placeholder="0–100"
+               [ngModel]="form().progressText" (ngModelChange)="patch('progressText', $event)" />
+
+        <label class="bed__lbl" for="bed-contact">PCA contact</label>
+        <select id="bed-contact" class="select bed__f"
+                [ngModel]="form().pcaContactId" (ngModelChange)="patch('pcaContactId', $event)">
+          <option [ngValue]="null">(unassigned)</option>
+          @for (c of pcaOptions(); track c.id) {
+            <option [ngValue]="c.id">{{ c.label }}</option>
+          }
+        </select>
+      }
+
+      <label class="bed__lbl" for="bed-note">Note</label>
+      <textarea id="bed-note" class="input bed__f bed__note" rows="2"
+                [ngModel]="form().note" (ngModelChange)="patch('note', $event)"></textarea>
+    </div>
+
+    <!-- ---- tasks ------------------------------------------------------------------------------- -->
+
+    <section class="bed__sec">
+      <h3 class="bed__sub">Tasks</h3>
+
+      @if (visibleRows().length === 0) {
+        <p class="bed__state">No tasks yet. A backlog needs at least one.</p>
+      }
+
+      <!--
+        🔴 `track $index`, not `track row`. A rename replaces the row OBJECT (signals are immutable), so
+        tracking by identity would tear down and rebuild the <input> on every keystroke — and the caret with
+        it. `existingTaskId` cannot be the key either: it is 0 for EVERY new row.
+      -->
+      @for (row of visibleRows(); track $index) {
+        <div class="bed__task">
+          <input class="input bed__task-name" autocomplete="off" [attr.aria-label]="'Task ' + ($index + 1)"
+                 [ngModel]="row.name" (ngModelChange)="rename($index, $event)" />
+
+          <!-- 🔴 Up/Down MOVE THE ARRAY ELEMENT — the only thing that expresses a reorder. See `move`. -->
+          <button type="button" class="btn btn-ghost btn-sm" title="Move up" aria-label="Move up"
+                  [disabled]="$first" (click)="moveUp($index)">↑</button>
+          <button type="button" class="btn btn-ghost btn-sm" title="Move down" aria-label="Move down"
+                  [disabled]="$last" (click)="moveDown($index)">↓</button>
+          <button type="button" class="btn btn-danger btn-sm" title="Remove" aria-label="Remove"
+                  (click)="remove($index)">✕</button>
+        </div>
+      }
+
+      <div class="bed__task">
+        <input class="input bed__task-name" autocomplete="off" placeholder="Add a task…" aria-label="New task"
+               [ngModel]="newTaskName()" (ngModelChange)="newTaskName.set($event)"
+               (keydown.enter)="addRow()" />
+        <button type="button" class="btn btn-soft btn-sm" [disabled]="!newTaskName().trim()"
+                (click)="addRow()">Add</button>
+      </div>
+    </section>
+
+    <!-- ---- change history (EDIT only; hidden when there is none) ---------------------------------- -->
+
+    @if (isEdit() && auditLines().length > 0) {
+      <section class="bed__sec">
+        <h3 class="bed__sub">Change history</h3>
+
+        <!-- Newest first — the order the API already returns (`ORDER BY id DESC`). Not re-sorted here. -->
+        <ul class="bed__audit">
+          @for (line of auditLines(); track $index) {
+            <li class="bed__audit-row">
+              <span class="bed__audit-change">{{ line.change }}</span>
+              <span class="bed__audit-who">{{ line.who }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    <footer class="bed__actions">
+      <button type="button" class="btn btn-ghost" [disabled]="saving()" (click)="close()">Cancel</button>
+      <button type="button" class="btn btn-primary" [disabled]="!canSave()" (click)="save()">
+        {{ saving() ? 'Saving…' : 'Save' }}
+      </button>
+    </footer>
+  </div>
+</div>
