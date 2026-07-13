@@ -221,6 +221,18 @@ public static class TimesheetEndpoints
             [FromQuery] DateOnly monday,
             [FromQuery] int? userId,
             [FromQuery] string? project,
+            // DECLARED FOR ApiExplorer ONLY -- DO NOT READ IT, AND DO NOT DELETE IT AS DEAD. The handler
+            // resolves teams through EffectiveTeamIds(http, ctx) (see its comment below), which reads the raw
+            // query string BY HAND because a bound int[]? CANNOT TELL "key absent" (=> the caller's own teams)
+            // from "key present but empty" (=> no teams) -- both bind to an EMPTY ARRAY, never null, while
+            // null means EVERY TEAM to GetReportRowsAsync/GetExportRowsAsync. That hand-read is a data-leak
+            // guard and must stay.
+            //
+            // But a parameter the handler reads off HttpContext is INVISIBLE to ApiExplorer, and therefore to
+            // the generated TypeScript client. This declaration is the ONLY thing that puts `teamIds` in the
+            // OpenAPI document, and so the only thing that lets the Reports screen send a team filter at all.
+            // Delete it and that filter silently disappears -- with nothing going red.
+            [FromQuery] int[]? teamIds,
             HttpContext http,
             IClientContext ctx,
             ITimeLogRepository logs,
@@ -245,6 +257,11 @@ public static class TimesheetEndpoints
             [FromQuery] int month,
             [FromQuery] int? userId,
             [FromQuery] string? project,
+            // DECLARED FOR ApiExplorer ONLY -- DO NOT READ IT, AND DO NOT DELETE IT AS DEAD. See the identical
+            // note on GET /api/reports/weekly above: EffectiveTeamIds(http, ctx) hand-reads the raw query
+            // because a bound int[]? cannot distinguish "absent" from "empty", and this declaration exists
+            // solely so the OpenAPI document -- and hence the generated client -- can SEE `teamIds`.
+            [FromQuery] int[]? teamIds,
             HttpContext http,
             IClientContext ctx,
             ITimeLogRepository logs,
@@ -400,6 +417,13 @@ public static class TimesheetEndpoints
     // Export_with_no_teamIds..., Reports_and_export_never_leak_a_team...) is strictly safer than a second
     // hand-rolled copy that can drift from it silently. The BODY IS UNCHANGED -- do not "simplify" it into a
     // [FromQuery] parameter; that is the bug this method exists to avoid.
+    //
+    // M9 P4.5 -- YES, FOUR ROUTES NOW ALSO DECLARE A BOUND `[FromQuery] int[]? teamIds`, AND THAT IS NOT A
+    // CONTRADICTION. Those declarations exist PURELY so ApiExplorer emits the parameter into the OpenAPI
+    // document (a param read off HttpContext is invisible to it, so the generated TypeScript client had no way
+    // to send a team filter at all). NOT ONE of them is read: every handler still calls this method, which
+    // still hand-reads the raw query. Declaring the param and READING the param are different acts -- the
+    // first is what the client needs, the second is the bug. Keep it that way.
     internal static IReadOnlyList<int> EffectiveTeamIds(HttpContext http, IClientContext ctx)
     {
         if (!http.Request.Query.TryGetValue("teamIds", out var raw))

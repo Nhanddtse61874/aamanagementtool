@@ -14,6 +14,7 @@ export interface ReportsMonthly$Params {
   month: number;
   userId?: number;
   project?: string;
+  teamIds?: Array<number>;
 }
 
 export function reportsMonthly(http: HttpClient, rootUrl: string, params: ReportsMonthly$Params, context?: HttpContext): Observable<StrictHttpResponse<TimesheetMonthlyReportResponse>> {
@@ -23,6 +24,7 @@ export function reportsMonthly(http: HttpClient, rootUrl: string, params: Report
     rb.query('month', params.month, {});
     rb.query('userId', params.userId, {});
     rb.query('project', params.project, {});
+    rb.query('teamIds', params.teamIds, {});
   }
 
   return http.request(

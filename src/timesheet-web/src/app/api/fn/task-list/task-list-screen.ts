@@ -12,6 +12,7 @@ import { TaskListScreenDto } from '../../models/task-list-screen-dto';
 export interface TaskListScreen$Params {
   year: number;
   month: number;
+  teamIds?: Array<number>;
 }
 
 export function taskListScreen(http: HttpClient, rootUrl: string, params: TaskListScreen$Params, context?: HttpContext): Observable<StrictHttpResponse<TaskListScreenDto>> {
@@ -19,6 +20,7 @@ export function taskListScreen(http: HttpClient, rootUrl: string, params: TaskLi
   if (params) {
     rb.query('year', params.year, {});
     rb.query('month', params.month, {});
+    rb.query('teamIds', params.teamIds, {});
   }
 
   return http.request(

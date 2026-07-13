@@ -11,6 +11,7 @@ import { RequestBuilder } from '../../request-builder';
 export interface TaskListExport$Params {
   year: number;
   month: number;
+  teamIds?: Array<number>;
 }
 
 export function taskListExport(http: HttpClient, rootUrl: string, params: TaskListExport$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
@@ -18,6 +19,7 @@ export function taskListExport(http: HttpClient, rootUrl: string, params: TaskLi
   if (params) {
     rb.query('year', params.year, {});
     rb.query('month', params.month, {});
+    rb.query('teamIds', params.teamIds, {});
   }
 
   return http.request(

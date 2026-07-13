@@ -513,4 +513,53 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
             $"{verb.ToUpperInvariant()} {path} has no operationId -- add .WithName(\"{operationId}\").");
         Assert.Equal(operationId, id.GetString());
     }
+
+    /// <summary>M9 P4.5. The four routes that take a team filter — and could not RECEIVE one from the
+    /// generated client, because nothing in their C# told ApiExplorer the parameter existed.
+    ///
+    /// <para>Each of these handlers resolves its team scope through
+    /// <c>TimesheetEndpoints.EffectiveTeamIds</c>, which reads <c>teamIds</c> off
+    /// <c>HttpContext.Request.Query</c> BY HAND. That is deliberate and load-bearing: a bound <c>int[]?</c>
+    /// CANNOT TELL "key absent" (⇒ the caller's own teams) from "key present but empty" (⇒ no teams) — both
+    /// bind to an EMPTY ARRAY, never null, while <c>null</c> means EVERY TEAM to the repository. It is a
+    /// data-leak guard and it stays.</para>
+    ///
+    /// <para>But ApiExplorer cannot see a parameter that the handler signature never declares. So the document
+    /// omitted <c>teamIds</c> on all four, <c>TaskListScreen$Params</c> was <c>{year, month}</c>, and the team
+    /// filter four screens depend on COULD NOT BE SENT AT ALL. Each route therefore declares a
+    /// bound-but-deliberately-unread <c>[FromQuery] int[]? teamIds</c> whose only job is to appear here.</para>
+    ///
+    /// <para><b>This test exists because that parameter is indistinguishable from dead code.</b> Deleting it
+    /// breaks no compile, no runtime path and no other test — every handler goes on reading the raw query, so
+    /// the API keeps working perfectly. The only casualty is the generated client, on the next regeneration,
+    /// silently. THIS ASSERTION IS THE ONLY THING THAT GOES RED. Do not delete it either.</para></summary>
+    [Theory]
+    [InlineData("/api/tasklist", "get")]
+    [InlineData("/api/tasklist/export", "get")]
+    [InlineData("/api/reports/weekly", "get")]
+    [InlineData("/api/reports/monthly", "get")]
+    public void Team_scoped_route_DECLARES_teamIds_so_the_generated_client_can_send_it(string path, string verb)
+    {
+        var op = _paths.GetProperty(path).GetProperty(verb);
+
+        Assert.True(op.TryGetProperty("parameters", out var parameters),
+            $"{verb.ToUpperInvariant()} {path} declares NO parameters at all -- `teamIds` is gone.");
+
+        var teamIds = parameters.EnumerateArray()
+            .SingleOrDefault(p => p.GetProperty("name").GetString() == "teamIds");
+
+        Assert.True(teamIds.ValueKind is not JsonValueKind.Undefined,
+            $"{verb.ToUpperInvariant()} {path} does not declare a `teamIds` parameter. The handler still reads " +
+            "it through EffectiveTeamIds, so the API itself is fine -- but ApiExplorer cannot see it, the " +
+            "generated client cannot send it, and this screen's team filter is silently dead. Restore the " +
+            "bound-but-unread `[FromQuery] int[]? teamIds` on the handler; do NOT make the handler read it.");
+
+        Assert.Equal("query", teamIds.GetProperty("in").GetString());
+
+        // ARRAY, not a scalar. The wire format is a REPEATED KEY (?teamIds=1&teamIds=2) -- that is what
+        // EffectiveTeamIds parses, and what RequestBuilder emits for an array (style: form, explode: true, one
+        // query entry per element). A scalar schema here would make the client send "1,2" as a SINGLE value,
+        // which int.TryParse rejects, which EffectiveTeamIds then drops -- leaving NO teams and a blank screen.
+        Assert.Equal("array", teamIds.GetProperty("schema").GetProperty("type").GetString());
+    }
 }

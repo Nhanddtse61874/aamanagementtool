@@ -13,6 +13,7 @@ export interface ReportsWeekly$Params {
   monday: string;
   userId?: number;
   project?: string;
+  teamIds?: Array<number>;
 }
 
 export function reportsWeekly(http: HttpClient, rootUrl: string, params: ReportsWeekly$Params, context?: HttpContext): Observable<StrictHttpResponse<TimesheetWeeklyReportResponse>> {
@@ -21,6 +22,7 @@ export function reportsWeekly(http: HttpClient, rootUrl: string, params: Reports
     rb.query('monday', params.monday, {});
     rb.query('userId', params.userId, {});
     rb.query('project', params.project, {});
+    rb.query('teamIds', params.teamIds, {});
   }
 
   return http.request(

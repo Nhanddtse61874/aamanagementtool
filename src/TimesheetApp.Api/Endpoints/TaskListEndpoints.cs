@@ -55,6 +55,17 @@ public static class TaskListEndpoints
         api.MapGet("/api/tasklist", async (
             [FromQuery] int year,
             [FromQuery] int month,
+            // DECLARED FOR ApiExplorer ONLY -- DO NOT READ IT, AND DO NOT DELETE IT AS DEAD. The handler
+            // resolves teams through TimesheetEndpoints.EffectiveTeamIds(http, ctx), which reads the raw query
+            // string BY HAND because a bound int[]? CANNOT TELL "key absent" (=> the caller's own teams) from
+            // "key present but empty" (=> no teams) -- both bind to an EMPTY ARRAY, never null, while null
+            // means EVERY TEAM to the repository. That hand-read is a data-leak guard and must stay.
+            //
+            // But a parameter the handler reads off HttpContext is INVISIBLE to ApiExplorer, and therefore to
+            // the generated TypeScript client. This declaration is the ONLY thing that puts `teamIds` in the
+            // OpenAPI document, and so the only thing that lets the client send a team filter at all. Delete
+            // it and the Task List screen silently loses its team filter -- with nothing going red.
+            [FromQuery] int[]? teamIds,
             HttpContext http,
             IClientContext ctx,
             ITaskListService taskList) =>
@@ -88,6 +99,16 @@ public static class TaskListEndpoints
         api.MapGet("/api/tasklist/export", async (
             [FromQuery] int year,
             [FromQuery] int month,
+            // DECLARED FOR ApiExplorer ONLY -- DO NOT READ IT, AND DO NOT DELETE IT AS DEAD. See the identical
+            // note on GET /api/tasklist above: EffectiveTeamIds(http, ctx) hand-reads the raw query because a
+            // bound int[]? cannot distinguish "absent" from "empty", and this declaration exists solely so the
+            // OpenAPI document -- and hence the generated client -- can SEE `teamIds`.
+            //
+            // The stakes are higher on THIS route than on any other: BuildMonthMarkdownAsync's teamIds is
+            // NULLABLE and null means EVERY TEAM, so the export is one wrong value away from handing any
+            // authenticated caller a markdown dump of the whole company's backlogs. Reading this bound
+            // parameter instead of EffectiveTeamIds is exactly how that happens.
+            [FromQuery] int[]? teamIds,
             HttpContext http,
             IClientContext ctx,
             ITaskListArchiveService archive) =>
