@@ -1,9 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { map, Observable, of } from 'rxjs';
-import {
-  DailyEntry, LogGroup, Tag, TeamMember, DayColumn,
-} from '../models/worklog.models';
+import { map, Observable } from 'rxjs';
 
 import { ApiConfiguration } from '../api/api-configuration';
 import { ConnectionIdHttpClient } from '../core/realtime.service';
@@ -146,26 +143,20 @@ export interface ReportFilter {
  *     Standup, the key/value settings store, Ops, and the active-team switch. There is no route left in
  *     `../api/functions` that this service does not expose.
  *
- * 🔴 SO WHY IS THERE STILL A BLOCK OF `of(...)` STUBS AT THE BOTTOM? Because a REAL METHOD AND ITS STUB ARE
- * NOT THE SAME OBJECT, and the stub is STILL LIVE. Every stub is still CONSUMED by a Phase-2 component that
- * binds the VENDORED view model under `strictTemplates`:
+ * THE `of(...)` STUBS ARE GONE — M9 P7 swept the last four. Every method on this class is REAL, TYPED
+ * transport over `../api/**`, and every screen binds the GENERATED DTOs. The vendored view models they used
+ * to return (`models/worklog.models.ts` — `User` as `{name, active}` with no `id`, `getHolidays()` as
+ * `string[]` where the wire is `HolidayDto[]`) are deleted: they could not express the wire at all, which is
+ * why every write keyed by id was unreachable from them by construction.
  *
- *     getUsers()        -> User[]         users.component.ts            getTags()      -> Tag[]
- *     getDailyEntries() -> DailyEntry[]   daily-report.component.ts     getTeamBoard() -> TeamMember[]
- *     getContacts() / getTeams() / getTemplates() / getHolidays()       settings.component.ts
+ * The convention that retired them, for the record, since it is why the class briefly carried two names for
+ * one read: a real method was ADDED BESIDE its stub under a NEW NAME, and each screen's own task then swapped
+ * its component over and deleted the stub it orphaned. M8.6/T6 ran it first (`getBacklogList()` displacing
+ * `getBacklogs()`), M9 Phase 2 ran it for the rest, and M9 P7 swept the four stubs whose consumers had all
+ * moved but which no single agent was authorised to delete. It is finished; there is no stub layer left.
  *
- * The vendored view models DO NOT MATCH the wire DTOs. `User` is `{name, active}` with NO `id` at all where
- * `UserDto` is `{id?, name?, isActive?, …}`; `getHolidays()` is `string[]` where the wire is `HolidayDto[]`.
- * So RETYPING a stub in place does not "wire up a screen" — it BREAKS THE BUILD of a component this task is
- * not allowed to touch, and Phase 1 must end GREEN.
- *
- * 🔴 THE CONVENTION, AND IT IS LOAD-BEARING: a real method is ADDED BESIDE its stub under a NEW NAME. Each
- * Phase-2 agent then swaps ITS OWN component over to the real method and DELETES THE STUB IT ORPHANS — the
- * stub's trailing comment names its replacement, so nobody has to guess. `getPcaContactsActive()` sitting
- * next to `getContacts()` is that convention, not duplication; M8.6/T6 ran it to completion for the first
- * time when `BacklogComponent` moved onto `getBacklogList()` and `getBacklogs()` was deleted with it.
- *
- * 🔴 DO NOT DELETE A STUB YOU DID NOT ORPHAN.
+ * 🔴 DO NOT ADD A NEW `of([])` PLACEHOLDER HERE. A screen with no endpoint is a gap in the plan, not
+ * something to hide behind a stub that silently renders empty.
  */
 @Injectable({ providedIn: 'root' })
 export class WorklogService {
@@ -203,7 +194,12 @@ export class WorklogService {
     'Giang Do': '#0D9488', 'Huy Bui': '#CA8A04', Nhan: '#0E7C66', 'Phuc Hoang': '#7C3AED',
   };
 
-  readonly WEEK_DAYS: DayColumn[] = [
+  // 🔴 NO CONSUMER. The day axis is DERIVED now — `pages/log-work/week.ts`, since M8.4/W4 — and this
+  // hard-coded literal is the mockup week it replaced. It is kept only because deleting a public member of
+  // the service is a contract change that M9 P7 was not scoped to make; it is a deletion candidate.
+  // Its type was the last symbol keeping `models/worklog.models.ts` (the vendored mockup layer) alive, so
+  // that one-line shape is inlined here and the file is gone.
+  readonly WEEK_DAYS: { dow: string; date: string }[] = [
     { dow: 'MON', date: '06/07' }, { dow: 'TUE', date: '07/07' },
     { dow: 'WED', date: '08/07' }, { dow: 'THU', date: '09/07' },
     { dow: 'FRI', date: '10/07' },
@@ -1250,69 +1246,31 @@ export class WorklogService {
   }
 
   // =====================================================================================================
-  // THE VENDORED STUBS — empty streams, ON PURPOSE, and STILL LIVE.
+  // THE VENDORED STUBS ARE GONE — all of them, as of M9 P7. There is no stub layer left to protect.
   //
-  // 🔴 DO NOT RETYPE ONE IN PLACE. Every stub below is still the data source of a component that binds the
-  // VENDORED view model under `strictTemplates` — changing its return type breaks that component's build, and
-  // those components belong to OTHER (Phase-2) tasks. Add a real method BESIDE the stub under a new name; the
-  // screen's own task then swaps its component over and deletes the stub. See the class comment.
+  // The convention that governed them (add a real method BESIDE the stub under a new name; the screen's own
+  // task swaps its component over and deletes the stub it orphans) ran to completion: M8.6/T6 retired the
+  // first pair, M9 Phase 2 retired the rest, and this task swept the last four — getLogGroups(),
+  // getDailyEntries(), getTeamBoard() and getTags() — which had outlived every consumer. `models/
+  // worklog.models.ts`, the vendored view models they returned, is deleted with them.
   //
-  // 🔴 THE REASON THESE ARE STILL STUBS HAS CHANGED — AND THE OLD REASON IS NOW FALSE. It used to be that
-  // their C# routes returned a bare `IResult` via `Results.Ok(x)`, which ApiExplorer cannot infer a schema
-  // from, so there was nothing honest to generate. THAT IS NO LONGER SO: M9 P3/P4 annotated every one of
-  // those routes with `.Produces<T>()` and regenerated, and EVERY ONE of them now has a real, typed method
-  // above (the stub's trailing comment names it). Nothing below is blocked on the API any more.
+  // Every method on this class is now real, typed transport over `../api/**`. Do not add another `of([])`
+  // placeholder here: a screen with no endpoint belongs in the plan, not behind a stub that silently
+  // renders empty.
   //
-  // They survive for ONE reason only: their CONSUMERS have not moved yet. The moment a Phase-2 agent points
-  // its component at the real method, the stub it was using is dead and that agent deletes it. Not before —
-  // and not by anyone else.
+  // 🔴 TWO WARNINGS SURVIVE THE STUBS, because they are about REPORTS, not about the stub layer:
   //
-  // (`getMetrics()` is the one that never had a route at all, and never will. See its comment.)
+  // 1. THERE IS NO `/api/reports/metrics` ROUTE, and there never will be. `/api/reports/*` is weekly,
+  //    monthly and missing-logs, and that is all three of them. The four stat cards are CLIENT-SIDE
+  //    ARITHMETIC over what getWeeklyReport() already returns — `dayTotals` and `daysLogged` ride the SAME
+  //    response, deliberately, so the cards cannot show three different snapshots of one week — plus
+  //    getMissingLogs().length. See `pages/reports/report-model.ts:statCards`. Do not go hunting for it.
+  //
+  // 2. DO NOT RE-DERIVE `daysLogged` FROM `dayTotals`. The server owns it (ReportAggregator.DaysLogged):
+  //    the denominator is Mon–Fri MINUS public holidays, which the client cannot see. It used to be
+  //    `rows.Count` — a list that only holds days that HAVE logs — so it moved with the numerator and the
+  //    stat could only ever read N/N. `dayTotals.length` is that same bug wearing a different name.
   // =====================================================================================================
-  getLogGroups(): Observable<LogGroup[]> { return of([]); }         // -> getWeek() (M8.4/W4). No consumer left.
-  // getTaskCards() — DELETED in M9 Phase 2 (Agent A). `task-list.component.ts` was its ONLY consumer and it
-  // now reads `getTaskListScreen()`. The stub is orphaned, so it goes, per the convention in the class doc.
-  getDailyEntries(date: string): Observable<DailyEntry[]> { return of([]); }   // -> getStandupMyDay(); daily-report.component.ts
-  getTeamBoard(date: string): Observable<TeamMember[]> { return of([]); }      // -> getStandupBoard(); daily-report.component.ts
-  // getMetrics() / getMissing() / getWeekly() / getMonthly() / getDrilldown() — DELETED in M9 Phase 2
-  // (Agent C). `reports.component.ts` was the ONLY consumer of all five, and it now binds the generated DTOs
-  // directly: getWeeklyReport(), getMonthlyReport() (whose `projectTree` IS the drill-down — the SAME read,
-  // not a second one) and getMissingLogs().
-  //
-  // 🔴 getMetrics() IS THE ONE THAT NEVER HAD A ROUTE AT ALL. Its old "TODO: GET /api/reports/metrics" named
-  // an endpoint that was never built and never will be: `/api/reports/*` is weekly, monthly and missing-logs,
-  // and that is all three of them. The four stat cards are CLIENT-SIDE ARITHMETIC over what getWeeklyReport()
-  // already returns — `dayTotals` and `daysLogged` ride the SAME response, deliberately, so the cards cannot
-  // show three different snapshots of one week — plus getMissingLogs().length. See `pages/reports/
-  // report-model.ts:statCards`. Do not go hunting for that route.
-  //
-  // 🔴 AND DO NOT RE-DERIVE `daysLogged` FROM `dayTotals`. The server owns it (ReportAggregator.DaysLogged):
-  // the denominator is Mon–Fri MINUS public holidays, which the client cannot see. It used to be `rows.Count`
-  // — a list that only holds days that HAVE logs — so it moved with the numerator and the stat could only
-  // ever read N/N. `dayTotals.length` is that same bug wearing a different name.
-  // 🔴 STILL LIVE, AND NOT MINE TO DELETE. `task-list.component.ts` no longer calls this (M9 Phase 2 / Agent
-  // A moved it to `getTagList()`), but `settings.component.ts:51` STILL DOES. Deleting it here would break a
-  // component this task is not allowed to touch. It dies with its LAST consumer, not its first.
-  getTags(): Observable<Tag[]> { return of([]); }                   // -> getTagList(). 🔴 NO CONSUMER LEFT as of M9 P2: Agent A moved task-list to getTagList() and Agent D moved settings to getTagList() in the same wave, so the comment above (which named settings as the survivor) is now stale. NEITHER agent deleted it, because each was briefed that the OTHER still owned it. It is DEAD CODE — sweep it, and the `Tag` import, at the merge.
-  // getUsers() / getTemplates() / getContacts() / getTeams() / getHolidays() — DELETED in M9 Phase 2 (Agent D).
-  // `users.component.ts` and `settings.component.ts` were their only consumers and both now bind the generated
-  // DTOs directly: getUsersAll() (the tab needs the DEACTIVATED rows, which GET /api/users can never return),
-  // getTemplateList(), getPcaContactsAll(), getTeamsAll(), getHolidayList(). The vendored view models they
-  // returned could not express the wire at all — `User` was `{name, active}` with NO `id`, so every write
-  // (which is keyed by id) was unreachable from them by construction.
-
-  // ---- mutations still to connect ----
-  // saveProgress() — DELETED in M9 Phase 2 (Agent A). It swallowed EVERY progress edit (`of(void 0)`), and it
-  // could never have been anything else: its `(key, pct)` signature has nowhere to put an `expectedVersion`,
-  // and progress is a field on the BACKLOG, not on a task. The Task List now GETs the backlog and rides
-  // `progressPercent` on the whole-record checked PUT — see `pages/task-list/task-list.model.ts`.
-  //
-  // toggleUser() / toggleHoliday() — DELETED in M9 Phase 2 (Agent D). Both were `of(void 0)`, and both were
-  // the WRONG SHAPE, not merely unwired:
-  //   - toggleUser(name) keyed a user by NAME; `PUT /api/users/{id}/active` takes an ID. There is no toggle
-  //     route either — the flag is passed through verbatim, because `true` RESTORES a soft-deleted user.
-  //   - toggleHoliday(iso) is TWO routes, not one: POST /api/holidays upserts, DELETE /api/holidays/{date}
-  //     removes. A single "toggle" cannot express that, which is why the calendar now calls both.
 }
 
 /**

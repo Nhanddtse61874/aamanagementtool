@@ -1,7 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Observable } from 'rxjs';
 
 import { WorklogService } from './worklog.service';
 import { CONNECTION_ID_HEADER, RealtimeService } from '../core/realtime.service';
@@ -1126,94 +1125,23 @@ describe('WorklogService — M9 P5: request bodies and response shapes', () => {
 });
 
 // =====================================================================================================
-// 🔴 THE ONE RULE OF M9 PHASE 1: ADD METHODS. RETYPE NOTHING. DELETE NOTHING.
+// THE VENDORED-STUB GUARD IS GONE — and so is the thing it guarded. M9 P7.
 //
-// Every stub below is STILL BOUND by a Phase-2 component that has not been rewritten yet (users, task-list,
-// daily-report, reports, settings), all of which bind the VENDORED view models under strictTemplates.
-// Retyping one here does not "wire up a screen" — it breaks the build of a component this phase is not
-// allowed to touch. Each Phase-2 agent deletes the stub IT orphans, when it moves its own component over.
+// Two tests lived here. Both asserted the stub layer's CONVENTION, not any behaviour of the app:
 //
-// This block is the regression guard for that rule. If a later agent "tidies up" by deleting a stub whose
-// component still binds it, or quietly retypes one in place, THIS goes red.
+//   1. 'still exposes every stub, still empty, and still making NO http call' — that getLogGroups(),
+//      getDailyEntries(), getTeamBoard() and getTags() each returned `[]` and touched no network.
+//   2. 'keeps each real method and its stub as SEPARATE, DIFFERENTLY-NAMED members' — that a real method
+//      and the stub it displaced coexisted under different names while the screen moved between them.
+//
+// Both pinned a contract that has now been deliberately retired: M9 P7 deleted those last four stubs, whose
+// consumers had ALL migrated to the generated DTOs, and deleted `models/worklog.models.ts` with them. The
+// tests are removed rather than emptied — an assertion over an empty list passes while asserting nothing,
+// which is a worse lie than no test at all. Every real method they name (getTagList, getStandupMyDay,
+// getStandupBoard, getWeeklyReport, …) is covered by the transport suites above, which is where the
+// behaviour actually lives.
+//
+// Nothing here asserted a SECURITY property. The admin-gating tests — `/api/users/names` vs the
+// AdminPolicy-gated `/api/users/all` (403 for an ordinary user), and the [ADMIN] route rows — are in the
+// transport describe above and are UNTOUCHED.
 // =====================================================================================================
-describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
-  let service: WorklogService;
-  let httpMock: HttpTestingController;
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    });
-    service = TestBed.inject(WorklogService);
-    httpMock = TestBed.inject(HttpTestingController);
-  });
-
-  // No request may be made by ANY stub — they are `of(...)`, not transport.
-  afterEach(() => httpMock.verify());
-
-  it('still exposes every stub, still empty, and still making NO http call', () => {
-    const empties: Observable<unknown[]>[] = [
-      service.getLogGroups(),
-      // getTaskCards() is GONE — M9 Phase 2 (Agent A) moved task-list.component.ts onto getTaskListScreen()
-      // and deleted the stub it orphaned. That is the convention working, not a regression.
-      //
-      // getUsers() / getTemplates() / getContacts() / getTeams() / getHolidays() are GONE for the same reason
-      // — M9 Phase 2 (Agent D) moved users.component.ts and settings.component.ts onto getUsersAll(),
-      // getTemplateList(), getPcaContactsAll(), getTeamsAll() and getHolidayList().
-      service.getDailyEntries('2026-07-06'),
-      service.getTeamBoard('2026-07-06'),
-      // getMetrics() / getMissing() / getWeekly() / getMonthly() / getDrilldown() are GONE — M9 Phase 2
-      // (Agent C) moved reports.component.ts onto getWeeklyReport(), getMonthlyReport() and getMissingLogs().
-      // getMetrics() is the one that never had a route to move TO: the four stat cards are client-side
-      // arithmetic over the weekly response, and /api/reports/metrics has never existed.
-      // 🔴 getTags() survives with NO CONSUMER: task-list (Agent A) and settings (Agent D) BOTH moved to
-      // getTagList() in this same wave, and each was briefed that the other still owned the stub. It is dead
-      // code — neither agent was authorised to delete it. Sweep it at the merge.
-      service.getTags(),
-    ];
-
-    empties.forEach(o => o.subscribe(v => expect(v).toEqual([])));
-
-    // getDrilldown() — the odd one out, a null rather than an empty array — is GONE too (M9 Phase 2 / Agent
-    // C). It never needed a route of its own: the drill-down tree IS `getMonthlyReport().projectTree`, the
-    // SAME read that fills the monthly grid, and a second call would have been a second snapshot.
-
-    // The stub mutations are ALL GONE now:
-    //   saveProgress()  — M9 Phase 2 / Agent A; the Task List rides `progressPercent` on the checked PUT.
-    //   toggleUser()    — M9 Phase 2 / Agent D; keyed a user by NAME, and the route takes an ID.
-    //   toggleHoliday() — M9 Phase 2 / Agent D; a "toggle" cannot express TWO routes (POST upsert / DELETE).
-
-    // httpMock.verify() in afterEach proves none of the above touched the network. A stub "helpfully" wired
-    // to a real route would fail HERE, loudly, rather than silently changing a screen's behaviour in a phase
-    // that is not allowed to.
-  });
-
-  it('keeps each real method and its stub as SEPARATE, DIFFERENTLY-NAMED members', () => {
-    // The convention, asserted: `getTagList` is real, `getTags` is the vendored stub, and BOTH exist. This is
-    // what M8.6 did with getBacklogList()/getBacklogs(), and it is why Phase 1 can end green.
-    const pairs: [keyof WorklogService, keyof WorklogService][] = [
-      ['getTagList', 'getTags'],
-      ['getStandupMyDay', 'getDailyEntries'],
-      ['getStandupBoard', 'getTeamBoard'],
-      // These pairs have COMPLETED their lifecycle: the component moved to the real method and the stub was
-      // deleted with it. A pair only lives here while BOTH halves do.
-      //   ['getTaskListScreen',    'getTaskCards']   — M9 Phase 2 / Agent A
-      //   ['getUsersAll',          'getUsers']       — M9 Phase 2 / Agent D
-      //   ['getTemplateList',      'getTemplates']   — M9 Phase 2 / Agent D
-      //   ['getHolidayList',       'getHolidays']    — M9 Phase 2 / Agent D
-      //   ['getTeamsActive',       'getTeams']       — M9 Phase 2 / Agent D
-      //   ['getPcaContactsActive', 'getContacts']    — M9 Phase 2 / Agent D
-      //   ['getWeeklyReport',      'getWeekly']      — M9 Phase 2 / Agent C
-      //   ['getMonthlyReport',     'getMonthly']     — M9 Phase 2 / Agent C
-      //   ['getMissingLogs',       'getMissing']     — M9 Phase 2 / Agent C
-      //   (getMetrics() / getDrilldown() had no pair to complete: getMetrics() never had a route, and the
-      //    drill-down tree rides getMonthlyReport()'s response rather than a call of its own.)
-    ];
-
-    pairs.forEach(([real, stub]) => {
-      expect(typeof service[real]).toBe('function');
-      expect(typeof service[stub]).toBe('function');
-      expect(service[real]).not.toBe(service[stub]);
-    });
-  });
-});
