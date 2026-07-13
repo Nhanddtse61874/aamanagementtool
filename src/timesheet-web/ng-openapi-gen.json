@@ -16,7 +16,7 @@
     "So a route joins this list when, and only when, its C# gains a .Produces<T>(). Annotate first, then",
     "generate. Never widen this list to 'fix' a missing method."
   ],
-  "includeTags": ["Auth", "Timesheet", "SmartFill", "Backlogs", "Tasks"],
+  "includeTags": ["Auth", "Timesheet", "SmartFill", "Backlogs", "Tasks", "Users", "PcaContacts"],
 
   "//ignoreUnusedModels": "Keeps the emitted model set to what the included operations actually reference.",
   "ignoreUnusedModels": true
