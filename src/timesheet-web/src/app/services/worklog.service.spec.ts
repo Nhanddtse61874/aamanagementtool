@@ -3,7 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 
 import { WorklogService } from './worklog.service';
-import { TimeLogDto, WeekBacklogGroup } from '../api/models';
+import { CONNECTION_ID_HEADER, RealtimeService } from '../core/realtime.service';
+import { BacklogDto, BacklogUpdateRequest, TimeLogDto, WeekBacklogGroup } from '../api/models';
 
 describe('WorklogService (generated transport)', () => {
   let service: WorklogService;
@@ -187,5 +188,87 @@ describe('WorklogService (generated transport)', () => {
     const req = httpMock.expectOne(r => r.url === '/api/me');
     expect(req.request.method).toBe('GET');
     req.flush({ id: 1, name: 'Nhan', isAdmin: false, memberTeamIds: [1], activeTeamId: 1 });
+  });
+});
+
+// =====================================================================================================
+// MOVE TO NEXT MONTH — GET /api/backlogs/{id}, then a CHECKED PUT to the same route.
+//
+// 🔴 This block needs its OWN TestBed, and the reason is the whole point of the block.
+//
+// `ConnectionIdHttpClient` only stamps `X-Connection-Id` when there IS a connection id, and in the plain
+// TestBed above there is no live hub, so `RealtimeService.connectionId()` is null and the header is omitted
+// from EVERYTHING. A header assertion there would pass on the plain client too — it would pin nothing while
+// looking like it pinned the most dangerous convention in this file. So: stub a "connected" hub.
+// =====================================================================================================
+describe('WorklogService — Move to next month', () => {
+  const CONN = 'hub-conn-1';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  /** The record exactly as `GET /api/backlogs/{id}` returns it — including the `rowVersion` that is the sole
+   *  reason the GET is mandatory: the WEEK read carries no version for a BACKLOG. */
+  const backlog: BacklogDto = {
+    id: 7, backlogCode: 'PCT-1', project: 'Alpha', note: 'keep me',
+    progressPercent: 40, periodMonth: '2026-07', rowVersion: 3,
+  };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        // A hub that IS connected. `ConnectionIdHttpClient` reads only `connectionId()`.
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('READS on the plain client — a read notifies nobody, so it must not widen X-Connection-Id', () => {
+    let got: BacklogDto | undefined;
+    service.getBacklog(7).subscribe(b => (got = b));
+
+    const req = httpMock.expectOne(r => r.url === '/api/backlogs/7');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.headers.has(CONNECTION_ID_HEADER)).toBeFalse();
+    req.flush(backlog);
+
+    expect(got!.rowVersion).toBe(3);
+  });
+
+  it('WRITES on the MUTATING client — on the plain one the write echoes back to us and clobbers our screen', () => {
+    // The body a Move sends. `toUpdateRequest` (move-month.ts) is what builds it for real and is tested there;
+    // what is pinned HERE is that this transport hands it over intact, on the right client, at the right URL.
+    const body: BacklogUpdateRequest = {
+      backlogCode: 'PCT-1', project: 'Alpha', startDate: null, endDate: null,
+      periodMonth: '2026-08', type: null, assigneeUserId: null,
+      deadlineInternal: null, deadlineExternal: null,
+      roughEstimateHours: null, officialEstimateHours: null,
+      progressPercent: 40, note: 'keep me', pcaContactId: null,
+      expectedVersion: 3, auditNote: null,
+    };
+
+    service.updateBacklog(7, body).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/backlogs/7');
+    expect(req.request.method).toBe('PUT');
+
+    // 🔴 The header the server EXCLUDES us from its own SignalR broadcast by. Omit it and this write echoes
+    // straight back to the person who made it: the page re-fetches and clobbers their own screen.
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+    // The WHOLE record goes back. PUT /api/backlogs/{id} REPLACES it — an omitted field is written as NULL,
+    // not left alone — so `note` and `progressPercent` surviving the trip is load-bearing, not incidental.
+    expect(req.request.body.periodMonth).toBe('2026-08');
+    expect(req.request.body.note).toBe('keep me');
+    expect(req.request.body.progressPercent).toBe(40);
+    expect(req.request.body.expectedVersion).toBe(3);
+
+    req.flush({ rowVersion: 4 });
   });
 });

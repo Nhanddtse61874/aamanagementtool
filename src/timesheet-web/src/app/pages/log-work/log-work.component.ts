@@ -18,6 +18,7 @@ import {
   CellMap, Group, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill, nextOrderIndex,
   parseHours, patchCell,
 } from './grid-state';
+import { canMoveMonth, nextMonthFrom, toUpdateRequest } from './move-month';
 import { buildSmartFillRequest } from './smart-fill';
 import { WeekDay, mondayOf, shiftWeeks, weekDays } from './week';
 
@@ -89,6 +90,19 @@ export class LogWorkComponent {
   /** The group whose "Add task" dialog is open, or `null`. A signal plus an `@if` in the template — the same
    *  shape as `conflict`, because this app has no dialog service and does not need one. */
   readonly addingTo = signal<Group | null>(null);
+
+  /** True while a Move's GET -> PUT is in flight; the button is disabled for its duration. The same shape as
+   *  `sfBusy`. A second click is not merely wasteful here, it CORRUPTS — see `onMoveMonth`. */
+  readonly moving = signal(false);
+
+  /**
+   * The DEFAULT-backlog rule, exposed to the template so the Move button can be HIDDEN on that group — the
+   * FIRST of its two guards. (`onMoveMonth` re-checks it: WPF guards it in both places and so do we.)
+   *
+   * A bound reference, not a wrapper method: the pure function in `move-month.ts` stays the single source of
+   * truth for the rule, and a template can only call a member of its own component.
+   */
+  readonly canMoveMonth = canMoveMonth;
 
   // ---- smart fill ----------------------------------------------------------------------------------
   readonly sfOpen = signal(false);
@@ -490,6 +504,93 @@ export class LogWorkComponent {
 
       default:
         this.toast.show('Could not add the task. Please try again.');
+        break;
+    }
+  }
+
+  // ---- moving a ticket to next month ---------------------------------------------------------------
+
+  /**
+   * Push an untouched ticket into next month: a READ, then a CHECKED WRITE.
+   *
+   * 🔴 **The GET is mandatory, not an optimisation.** `PUT /api/backlogs/{id}` REPLACES THE WHOLE RECORD (an
+   * omitted field is written as NULL, not left alone) and it demands an `expectedVersion`. All this screen
+   * holds is a `Group`, built from the WEEK read — which carries the backlog's id, code, project, type and
+   * assignee, and NEITHER its other fields NOR its rowVersion. There is nowhere else to get them.
+   *
+   * `group` is read ONLY for `backlogId` and `code`, and only BEFORE the first await — so the fact that a
+   * SignalR refresh REPLACES every `Group` mid-flight cannot make this stale, and ids do not change.
+   * (`onAddTaskConfirmed` has to re-look-up its group precisely because it needs `tasks`, which IS live data.
+   * This one must not copy that: it needs no live data at all — the GET re-reads the authoritative record.)
+   */
+  async onMoveMonth(group: Group): Promise<void> {
+    if (!canMoveMonth(group.code)) return;   // the SECOND of the two DEFAULT guards. Both, deliberately.
+
+    // 🔴 Re-entrancy, and it is a CORRUPTION guard, not a politeness. A second click starts a second GET->PUT
+    // chain, and on a slow link — which is exactly when a user clicks again because "nothing happened" —
+    // chain 2's GET can land AFTER chain 1's PUT committed. It then reads the ALREADY-BUMPED periodMonth and
+    // moves the ticket a SECOND month forward. That is the very outcome the 409 branch below refuses to reach
+    // by retrying; leaving this door open while barring that one would be incoherent.
+    if (this.moving()) return;
+    this.moving.set(true);
+
+    try {
+      const b = await firstValueFrom(this.api.getBacklog(group.backlogId));
+      const periodMonth = nextMonthFrom(b.periodMonth ?? null, this.monday());
+
+      // toUpdateRequest carries every other field across untouched and THROWS rather than sending a version
+      // it does not have (never `rowVersion!`). Its throw lands in the catch below, so it cannot escape.
+      await firstValueFrom(this.api.updateBacklog(group.backlogId, toUpdateRequest(b, periodMonth)));
+      this.refresh.next();                   // the ticket leaves this month's view
+    } catch (err: unknown) {
+      // 🔴 The GET is INSIDE the try, deliberately. Its 404 is reachable — the backlog can be deleted, or the
+      // user removed from its team, while this screen is open — and an error escaping an `async` method
+      // called from a (click) binding is an UNHANDLED PROMISE REJECTION: it lands in the console and NOWHERE
+      // THE USER CAN SEE. They would click Move, watch nothing happen, and click again.
+      this.onMoveError(err);
+    } finally {
+      this.moving.set(false);
+    }
+  }
+
+  /**
+   * All THREE declared failures, not just the conflict.
+   *
+   * The route declares `400 ValidationBody`, `404` and `409 ConflictBody`. Collapsing them into one "could
+   * not move" throws away the only sentence the user can act on.
+   *
+   * 🔴 And a 409 must NOT reuse the cell conflict dialog. That dialog is a MERGE between two numbers — keep
+   * theirs, or overwrite with mine. A moved backlog has nothing to merge: someone else changed the ticket,
+   * and there is no reconciliation to offer. Say so, re-read, stop.
+   *
+   * 🔴 Above all, DO NOT SILENTLY RETRY. Their change may ITSELF have been a Move — a retry would then read
+   * the already-bumped month and push the ticket TWO months forward, which is precisely the corruption this
+   * whole path is careful about.
+   */
+  private onMoveError(err: unknown): void {
+    if (!(err instanceof HttpErrorResponse)) {
+      this.toast.show('Could not reach the server.');
+      return;
+    }
+
+    switch (err.status) {
+      case 400:
+        this.toast.show((err.error as ValidationBody | null)?.error ?? 'That change was rejected.');
+        break;
+
+      case 404:
+        this.toast.show('This ticket is no longer available.');
+        this.refresh.next();
+        break;
+
+      case 409:
+        this.toast.show(
+          'Someone else just changed this ticket. Reloaded — try again if you still want to move it.');
+        this.refresh.next();
+        break;
+
+      default:
+        this.toast.show('Could not move this ticket. Please try again.');
         break;
     }
   }

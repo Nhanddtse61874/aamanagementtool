@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Observable, Subject, of, throwError } from 'rxjs';
 
-import { TimeLogDto, WeekBacklogGroup } from '../../api/models';
+import { BacklogDto, SavedBody, TimeLogDto, WeekBacklogGroup } from '../../api/models';
 import { RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
@@ -41,8 +41,45 @@ function week(monHours: number | null, monVersion: number | null): WeekBacklogGr
   }];
 }
 
+/** The same week, plus the hidden DEFAULT backlog. It holds the recurring default tasks, so it must appear in
+ *  EVERY month — which is exactly why it must never BELONG to one, and must never be movable. */
+function weekWithDefault(): WeekBacklogGroup[] {
+  return [
+    ...week(4, 11),
+    {
+      backlogId: 99, backlogCode: 'DEFAULT', project: 'Recurring',
+      tasks: [{
+        taskId: 90, taskName: 'Daily standup', orderIndex: 0,
+        mon: { hours: null, rowVersion: null },
+        tue: { hours: null, rowVersion: null },
+        wed: { hours: null, rowVersion: null },
+        thu: { hours: null, rowVersion: null },
+        fri: { hours: null, rowVersion: null },
+      }],
+    },
+  ];
+}
+
+/**
+ * The full record as `GET /api/backlogs/{id}` returns it — the backlog behind `week()`'s group.
+ *
+ * It HAS a `periodMonth`, so the move is computed from that and not from the displayed Monday. These tests
+ * therefore do not depend on today's date, in keeping with the note at the top of this file.
+ */
+const BACKLOG: BacklogDto = {
+  id: 2, backlogCode: 'ARCS-1001', project: 'ARCS', note: 'keep me',
+  progressPercent: 40, periodMonth: '2026-07', rowVersion: 3,
+};
+
 function httpError(status: number, body: unknown): HttpErrorResponse {
   return new HttpErrorResponse({ status, error: body, url: '/api/timesheet/cell' });
+}
+
+/** Every "Move to next month" button currently RENDERED. Asserted against the DOM, not against the guard
+ *  function — the template guard is a separate guard, and a unit test of the pure rule cannot see it. */
+function moveButtons(f: ComponentFixture<LogWorkComponent>): HTMLButtonElement[] {
+  const all: HTMLButtonElement[] = Array.from(f.nativeElement.querySelectorAll('button'));
+  return all.filter(b => (b.textContent ?? '').includes('Move to next month'));
 }
 
 describe('LogWorkComponent', () => {
@@ -60,7 +97,8 @@ describe('LogWorkComponent', () => {
 
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
-      ['getWeek', 'saveHours', 'clearHours', 'smartFillApply', 'typeColor', 'avatarColor'],
+      ['getWeek', 'saveHours', 'clearHours', 'smartFillApply', 'typeColor', 'avatarColor',
+       'getBacklog', 'updateBacklog'],
     );
     api.getWeek.and.returnValue(of(initial));
     api.typeColor.and.returnValue({ bg: '#fff', c: '#000' });
@@ -393,4 +431,113 @@ describe('LogWorkComponent', () => {
     expect(api.getWeek).toHaveBeenCalled();
     expect(component.loadError()).toBeNull();
   });
+
+  // ---- 🔴 move to next month --------------------------------------------------------------------------
+
+  it('GETs the backlog, then PUTs the WHOLE record back with only periodMonth changed', async () => {
+    setUp();
+    api.getBacklog.and.returnValue(of(BACKLOG));
+    api.updateBacklog.and.returnValue(of({ rowVersion: 4 }));
+    api.getWeek.calls.reset();
+
+    await component.onMoveMonth(component.groups()[0]);
+
+    // The GET is MANDATORY, not an optimisation. The week read gives a `Group` -- id, code, project, type,
+    // assignee -- and NEITHER the backlog's other fields NOR its rowVersion. There is nowhere else to get them.
+    expect(api.getBacklog).toHaveBeenCalledWith(2);
+
+    const [id, body] = api.updateBacklog.calls.mostRecent().args;
+    expect(id).toBe(2);
+    expect(body.periodMonth).toBe('2026-08');      // 2026-07, bumped. NOT derived from the displayed week.
+    expect(body.expectedVersion).toBe(3);          // the version the GET returned -- never `!`, never 0.
+    expect(body.note).toBe('keep me');             // carried across: an omitted field is written as NULL.
+
+    expect(api.getWeek).toHaveBeenCalled();        // ...and the ticket leaves this month's view.
+  });
+
+  it('🔴 the hidden DEFAULT backlog shows NO Move button -- it must appear in EVERY month, so it belongs to none',
+    () => {
+      setUp(weekWithDefault());
+
+      // 🔴 A SECOND pass, and it is not ceremony. `setUp`'s single `detectChanges()` is the pass during which
+      // `toObservable(monday)`'s effect first fires -- so the week arrives and `groups` is set WHILE that pass
+      // is already rendering, and the template goes out with `groups()` still empty (verified: `.grp` count 0,
+      // toolbar reading "Expand all"). Component STATE is right after one pass; the DOM needs the next one.
+      // Every existing test in this file asserts on state alone, which is why nothing has needed this before.
+      fixture.detectChanges();
+
+      // Both groups are on screen; only the normal ticket may be moved.
+      expect(component.groups().length).toBe(2);
+      expect(fixture.nativeElement.querySelectorAll('.grp').length).toBe(2);
+      expect(moveButtons(fixture).length).toBe(1);
+
+      expect(component.canMoveMonth('ARCS-1001')).toBeTrue();
+      expect(component.canMoveMonth('DEFAULT')).toBeFalse();
+    });
+
+  it('🔴 ...and the HANDLER refuses it too, not only the template -- WPF guards it twice and so do we',
+    async () => {
+      setUp(weekWithDefault());
+
+      const dflt = component.groups().find(g => g.code === 'DEFAULT')!;
+      await component.onMoveMonth(dflt);
+
+      // Not even read. Defence in depth here is deliberate: a future template edit that drops the @if must
+      // not be able to move this backlog.
+      expect(api.getBacklog).not.toHaveBeenCalled();
+      expect(api.updateBacklog).not.toHaveBeenCalled();
+    });
+
+  it('🔴 409: says so, re-reads, and does NOT retry -- their change may ITSELF have been a Move', async () => {
+    setUp();
+    api.getBacklog.and.returnValue(of(BACKLOG));
+    api.updateBacklog.and.returnValue(throwError(() => httpError(409, { detail: 'd', message: 'm' })));
+    api.getWeek.calls.reset();
+
+    await component.onMoveMonth(component.groups()[0]);
+
+    expect(toast.show).toHaveBeenCalledWith(
+      'Someone else just changed this ticket. Reloaded — try again if you still want to move it.');
+    expect(api.getWeek).toHaveBeenCalled();
+
+    // Exactly ONE write. A blind retry would re-read the ALREADY-BUMPED month and push the ticket TWO months
+    // forward -- the corruption this whole path is careful about.
+    expect(api.updateBacklog).toHaveBeenCalledTimes(1);
+
+    // And this is NOT the cell conflict dialog: that one is a MERGE between two numbers (keep theirs /
+    // overwrite with mine), and a moved backlog has nothing to merge.
+    expect(component.conflict()).toBeNull();
+  });
+
+  it('404 on the GET: surfaces it instead of dying as an unhandled rejection the user never sees', async () => {
+    setUp();
+    // Reachable: the backlog can be deleted, or the user removed from its team, while this screen is open.
+    api.getBacklog.and.returnValue(throwError(() => httpError(404, null)));
+    api.getWeek.calls.reset();
+
+    await component.onMoveMonth(component.groups()[0]);
+
+    expect(toast.show).toHaveBeenCalledWith('This ticket is no longer available.');
+    expect(api.updateBacklog).not.toHaveBeenCalled();
+    expect(api.getWeek).toHaveBeenCalled();
+    expect(component.moving()).toBeFalse();        // the button is released again
+  });
+
+  it('🔴 a second click while the first is in flight starts NO second chain -- it would move it TWICE',
+    async () => {
+      setUp();
+      api.getBacklog.and.returnValue(of(BACKLOG));
+      api.updateBacklog.and.returnValue(new Subject<SavedBody>());   // never settles: still in flight
+
+      const group = component.groups()[0];
+      void component.onMoveMonth(group);      // chain 1 -- its PUT hangs
+      await component.onMoveMonth(group);     // chain 2 -- must be refused outright
+
+      // Chain 2 never even READ the backlog. Had it done so, its GET could have landed AFTER chain 1's PUT
+      // committed, read the already-bumped periodMonth, and moved the ticket a SECOND month forward. That is
+      // reachable precisely when a user is most likely to click twice: a slow link, where "nothing happened".
+      expect(api.getBacklog).toHaveBeenCalledTimes(1);
+      expect(api.updateBacklog).toHaveBeenCalledTimes(1);
+      expect(component.moving()).toBeTrue();        // chain 1 still in flight -> the button stays disabled
+    });
 });
