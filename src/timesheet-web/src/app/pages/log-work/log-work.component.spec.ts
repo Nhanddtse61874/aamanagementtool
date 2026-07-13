@@ -5,6 +5,7 @@ import { By } from '@angular/platform-browser';
 import { Observable, Subject, of, throwError } from 'rxjs';
 
 import { BacklogDto, SavedBody, TimeLogDto, WeekBacklogGroup } from '../../api/models';
+import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
 import { RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
@@ -844,14 +845,70 @@ describe('LogWorkComponent', () => {
     expect(document.getElementById('trash')).not.toBeNull();
   });
 
-  it('🔴 a drop on the trash SOFT-deletes the dropped row — is_active = false, nothing is destroyed',
+  // ---- 🔴 the drop ARMS the delete; the DIALOG commits it -----------------------------------------------
+  //
+  // The drop used to delete INSTANTLY. The delete is soft — `setTaskActive(id, true)` restores the task, and
+  // that path is even tested — but NO SCREEN CALLS THE RESTORE, so a mis-drop was unrecoverable from the UI.
+  // A drag is the easiest gesture in the app to perform by accident. So the drop now only ARMS the delete, and
+  // `confirmDelete` is the ONLY thing that writes.
+
+  it('does NOT delete on drop — it asks first', () => {
+    setUp();
+
+    const row = component.groups()[0].tasks[0];
+    component.onTrash(trashEvent(row));
+
+    expect(api.setTaskActive).not.toHaveBeenCalled();          // nothing written yet
+    expect(component.pendingDelete()).toEqual({ taskId: row.taskId, taskName: 'Design schema' });
+  });
+
+  it('deletes only after the dialog is confirmed', async () => {
+    setUp();
+    api.setTaskActive.and.returnValue(of(void 0));
+
+    const row = component.groups()[0].tasks[0];
+    component.onTrash(trashEvent(row));
+    await component.confirmDelete();
+
+    expect(api.setTaskActive).toHaveBeenCalledWith(row.taskId, false);
+    expect(component.pendingDelete()).toBeNull();
+  });
+
+  it('writes nothing when the dialog is cancelled', () => {
+    setUp();
+
+    component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+    component.cancelDelete();
+
+    expect(api.setTaskActive).not.toHaveBeenCalled();
+    expect(component.pendingDelete()).toBeNull();
+  });
+
+  it('🔴 renders the dialog in the DOM after a drop — a handler test cannot prove the handler is REACHABLE',
+    () => {
+      setUp();
+
+      component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+      fixture.detectChanges();
+
+      // 🔴 THE WIRING, and it is the only test here that can see it. Every other test in this section calls
+      // `confirmDelete` / `cancelDelete` DIRECTLY — so delete the `<app-confirm-dialog>` line from the template
+      // and they ALL still pass, against a dialog the user can never reach and a delete that can never happen.
+      // VERIFIED by doing exactly that: with the line removed this test, and only this test, goes red.
+      expect(fixture.debugElement.query(By.directive(ConfirmDialogComponent))).toBeTruthy();
+    });
+
+  // ---- 🔴 the write itself (now reached through the dialog, not through the drop) -----------------------
+
+  it('🔴 a confirmed delete SOFT-deletes the dropped row — is_active = false, nothing is destroyed',
     async () => {
       setUp();
       api.setTaskActive.and.returnValue(of(void 0));
       api.getWeek.calls.reset();
 
       const row = component.groups()[0].tasks[0];
-      await component.onTrash(trashEvent(row));
+      component.onTrash(trashEvent(row));
+      await component.confirmDelete();
 
       // `false`, and the row read from `event.item.data` — NOT from an index into `groups()`, which a
       // concurrent refresh could have re-pointed at a different task between the pick-up and the drop.
@@ -863,28 +920,38 @@ describe('LogWorkComponent', () => {
       expect(component.deleting()).toBeFalse();       // released again
     });
 
-  it('writes nothing when the drop\'s source and destination are the same list', async () => {
+  it('writes nothing — and asks nothing — when the drop\'s source and destination are the same list', () => {
     setUp();
 
-    await component.onTrash(trashEvent(component.groups()[0].tasks[0], { ontoItself: true }));
+    component.onTrash(trashEvent(component.groups()[0].tasks[0], { ontoItself: true }));
 
     expect(api.setTaskActive).not.toHaveBeenCalled();
+    expect(component.pendingDelete()).toBeNull();   // not even a dialog: nothing was dropped on the bin
   });
 
-  it('🔴 a second drop while the first delete is in flight is refused — the row SNAPS BACK and invites it',
+  it('🔴 a second CONFIRM while the first delete is in flight is refused — the row SNAPS BACK and invites it',
     async () => {
       setUp();
       api.setTaskActive.and.returnValue(new Subject<void>());   // never settles: still in flight
 
       const row = component.groups()[0].tasks[0];
-      void component.onTrash(trashEvent(row));      // delete 1 — hangs
-      await component.onTrash(trashEvent(row));     // delete 2 — must be refused outright
+      component.onTrash(trashEvent(row));
+      void component.confirmDelete();               // delete 1 — hangs, and the dialog closes
 
       // The row is still on screen (CDK snapped it back; only the refresh removes it), so on a slow link the
-      // user sees nothing happen and drags it to the bin again. Without this guard that is a second write and
-      // a second re-fetch for a task already being deleted.
+      // user sees nothing happen and drags it to the bin AGAIN — which re-opens the dialog over an in-flight
+      // delete. The dialog's `[busy]="deleting()"` disables the button, so this is not normally reachable from
+      // the UI; the handler refuses it anyway, as `canMoveMonth` is refused in both the template and the
+      // handler. Without this, a second write and a second re-fetch fire for a task already being deleted.
+      component.onTrash(trashEvent(row));
+      await component.confirmDelete();              // delete 2 — must be refused outright
+
       expect(api.setTaskActive).toHaveBeenCalledTimes(1);
       expect(component.deleting()).toBeTrue();      // delete 1 still in flight
+
+      // 🔴 And the refused confirm did NOT close the dialog. Clearing it first would have shown the user a
+      // dialog vanishing on a delete that never happened — they would read that as success.
+      expect(component.pendingDelete()).not.toBeNull();
     });
 
   it('🔴 404: someone else already deleted it — say so and RE-READ, do not die as an unhandled rejection',
@@ -894,11 +961,12 @@ describe('LogWorkComponent', () => {
       api.setTaskActive.and.returnValue(throwError(() => httpError(404, null)));
       api.getWeek.calls.reset();
 
-      await component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+      component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+      await component.confirmDelete();
 
-      // `onTrash` is an async method bound to an output: an escaping error would be an UNHANDLED PROMISE
-      // REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would drag the row to the bin, watch it
-      // snap back, be told nothing, and drag it again.
+      // `confirmDelete` is an async method bound to the dialog's (confirm) output: an escaping error would be
+      // an UNHANDLED PROMISE REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would confirm, watch
+      // the dialog close and the row stay put, be told nothing, and try again.
       expect(toast.show).toHaveBeenCalledWith('This task is no longer available.');
       expect(api.getWeek).toHaveBeenCalled();      // the server is right and our screen is stale
       expect(component.deleting()).toBeFalse();    // released, so the next delete is not dead
@@ -910,7 +978,8 @@ describe('LogWorkComponent', () => {
       api.setTaskActive.and.returnValue(throwError(() => httpError(500, null)));
       api.getWeek.calls.reset();
 
-      await component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+      component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+      await component.confirmDelete();
 
       expect(toast.show).toHaveBeenCalledWith('Could not delete this task. Please try again.');
 
