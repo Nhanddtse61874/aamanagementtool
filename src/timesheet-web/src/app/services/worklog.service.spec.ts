@@ -4,7 +4,10 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 
 import { WorklogService } from './worklog.service';
 import { CONNECTION_ID_HEADER, RealtimeService } from '../core/realtime.service';
-import { BacklogDto, BacklogUpdateRequest, TimeLogDto, WeekBacklogGroup } from '../api/models';
+import {
+  BacklogCreateRequest, BacklogDto, BacklogUpdateRequest, TaskItemDto, TaskUpdateRequest, TimeLogDto,
+  WeekBacklogGroup,
+} from '../api/models';
 
 describe('WorklogService (generated transport)', () => {
   let service: WorklogService;
@@ -404,4 +407,164 @@ describe('WorklogService — soft delete (bump-only)', () => {
 
       req.flush(null, { status: 204, statusText: 'No Content' });
     });
+});
+
+// =====================================================================================================
+// THE BACKLOG SCREEN's TRANSPORT (M8.6/T5) — the backlog grid, the task list + checked task update, and the
+// user / PCA lookups.
+//
+// 🔴 A CONNECTED hub again, for the FOURTH time, and for the fourth time it is not boilerplate. It is the only
+// thing that makes the header assertions below mean anything: `ConnectionIdHttpClient` stamps `X-Connection-Id`
+// only when there IS a connection id, so in the plain TestBed at the top of this file it is omitted from
+// EVERYTHING — and `createBacklog` or `updateTask` written on the WRONG client (`this.http`) would emit a
+// BYTE-IDENTICAL request there. Every assertion that could catch the mistake would pass.
+//
+// The reads are asserted here too, and NEGATIVELY (`headers.has(...)` is FALSE). That direction matters as
+// much: a read pushed onto `mutatingHttp` widens the header's blast radius for a call that notifies nobody.
+// =====================================================================================================
+describe('WorklogService — the backlog screen (M8.6)', () => {
+  const CONN = 'hub-conn-4';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  // ---- the seven READS: right URL, right verb, relative path, and NOT on the mutating client -------------
+  const READS: { name: string; call: (s: WorklogService) => void; url: string }[] = [
+    { name: 'getBacklogList',       call: s => s.getBacklogList().subscribe(),        url: '/api/backlogs' },
+    { name: 'getBacklogAudit',      call: s => s.getBacklogAudit(7).subscribe(),      url: '/api/backlogs/7/audit' },
+    { name: 'getTasks',             call: s => s.getTasks(7).subscribe(),             url: '/api/tasks' },
+    { name: 'getUsersActive',       call: s => s.getUsersActive().subscribe(),        url: '/api/users' },
+    { name: 'getUserNames',         call: s => s.getUserNames().subscribe(),          url: '/api/users/names' },
+    { name: 'getPcaContactsActive', call: s => s.getPcaContactsActive().subscribe(),  url: '/api/pca-contacts' },
+    { name: 'getPcaContactNames',   call: s => s.getPcaContactNames().subscribe(),    url: '/api/pca-contacts/names' },
+  ];
+
+  READS.forEach(({ name, call, url }) => {
+    it(`${name} GETs ${url} on the PLAIN client — a read notifies nobody, so it must not carry the header`, () => {
+      call(service);
+
+      const req = httpMock.expectOne(r => r.url === url);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.url.startsWith('http')).toBeFalse();   // same-origin, or the auth cookie stops being sent
+      expect(req.request.headers.has(CONNECTION_ID_HEADER)).toBeFalse();
+
+      req.flush([]);
+    });
+  });
+
+  // ===================================================================================================
+  // 🔴 `/api/users/names`, NEVER `/api/users/all`. The `/all` route is AdminPolicy-gated: an ordinary user
+  // reading it gets a 403, which takes the screen's whole forkJoin down with it. It is deliberately absent
+  // from the generated client and a C# contract test keeps it absent. `/names` is the route that exists so a
+  // DEACTIVATED assignee's name can still render on a record she is already on — `/api/users` omits her.
+  // ===================================================================================================
+  it('resolves assignee names from /api/users/names — the admin-gated /all would 403 an ordinary user', () => {
+    service.getUserNames().subscribe();
+
+    httpMock.expectNone(r => r.url === '/api/users/all');
+    httpMock.expectOne(r => r.url === '/api/users/names').flush([{ id: 3, name: 'Departed Person' }]);
+  });
+
+  // ===================================================================================================
+  // The grid searches CLIENT-side (`filterRows`), because `rebuildOptions` builds the four dropdowns FROM THE
+  // LOADED ROWS. If this read ever started sending `?term=`, typing in the search box would silently delete
+  // options out of the Project / Type / Assignee / Month dropdowns as the user typed.
+  // ===================================================================================================
+  it('reads the WHOLE backlog list — it must not send the endpoint\'s ?term= filter', () => {
+    service.getBacklogList().subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/backlogs');
+    expect(req.request.params.has('term')).toBeFalse();
+    req.flush([]);
+  });
+
+  it('sends backlogId as a QUERY param on the task read, not as a path segment', () => {
+    service.getTasks(7).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks');
+    expect(req.request.params.get('backlogId')).toBe('7');
+    req.flush([]);
+  });
+
+  // ===================================================================================================
+  // 🔴 THE TASK READ IS THE ONLY CARRIER OF `status` AND `rowVersion`. Lose either and the update below is
+  // dead: `rowVersion` IS the next `expectedVersion`, and `status` must be round-tripped or the checked PUT
+  // (which binds `Status = req.Status` with no null-guard) wipes the column the Task List screen is built on.
+  // ===================================================================================================
+  it('parses status and rowVersion off each task — the two fields the checked update cannot be built without',
+    () => {
+      const wire: TaskItemDto[] = [
+        { id: 42, backlogId: 7, taskName: 'Do the thing', orderIndex: 0, status: 'In-process', rowVersion: 9, isActive: true },
+      ];
+
+      let got: TaskItemDto[] | undefined;
+      service.getTasks(7).subscribe(t => (got = t));
+      httpMock.expectOne(r => r.url === '/api/tasks').flush(wire);
+
+      expect(got![0].status).toBe('In-process');
+      expect(got![0].rowVersion).toBe(9);
+    });
+
+  // ===================================================================================================
+  // THE CHECKED TASK WRITE. On the MUTATING client, and carrying a round-tripped `status`.
+  // ===================================================================================================
+  it('PUTs a task on the MUTATING client, with status ROUND-TRIPPED and the version it was given', () => {
+    const body: TaskUpdateRequest = {
+      taskName: 'Renamed', orderIndex: 2, status: 'In-process', expectedVersion: 9,
+    };
+
+    service.updateTask(42, body).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42');
+    expect(req.request.method).toBe('PUT');
+
+    // 🔴 The header the server EXCLUDES us from its own SignalR broadcast by. Omit it and this write echoes
+    // straight back to the person who made it: the editor re-fetches and clobbers their own screen.
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+    // 🔴 `status` survives the trip. `TaskUpdateRequest` types it optional, so a body built from the editor's
+    // form alone — which never shows a status — would compile clean and land `status: null` on the server,
+    // silently wiping Todo / In-process / Done / Pending off the task.
+    expect(req.request.body.status).toBe('In-process');
+    expect(req.request.body.expectedVersion).toBe(9);
+    expect(req.request.body.taskName).toBe('Renamed');
+    expect(req.request.body.orderIndex).toBe(2);
+
+    req.flush({ rowVersion: 10 });
+  });
+
+  // ===================================================================================================
+  // THE CREATE. On the MUTATING client, and its RESPONSE is load-bearing: the new id is the `backlogId` of
+  // every task insert that follows, and the first rowVersion is the next checked PUT's `expectedVersion`.
+  // ===================================================================================================
+  it('POSTs a new backlog on the MUTATING client and hands back the new id and first rowVersion', () => {
+    const body: BacklogCreateRequest = { backlogCode: 'PCT-9', project: 'Alpha', periodMonth: '2026-07' };
+
+    let created: BacklogDto | undefined;
+    service.createBacklog(body).subscribe(b => (created = b));
+
+    const req = httpMock.expectOne(r => r.url === '/api/backlogs');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+    expect(req.request.body.backlogCode).toBe('PCT-9');
+
+    req.flush({ id: 12, backlogCode: 'PCT-9', project: 'Alpha', periodMonth: '2026-07', rowVersion: 1 });
+
+    expect(created!.id).toBe(12);
+    expect(created!.rowVersion).toBe(1);
+  });
 });
