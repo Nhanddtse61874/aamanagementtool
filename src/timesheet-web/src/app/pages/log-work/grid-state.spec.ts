@@ -1,7 +1,8 @@
 import { TimeLogDto, WeekBacklogGroup } from '../../api/models';
 import { cellKey } from '../../core/cell-key';
 import {
-  buildCellMap, buildGroups, CellMap, expectedVersionFor, formatHours, mergeSmartFill, parseHours, patchCell,
+  buildCellMap, buildGroups, CellMap, expectedVersionFor, formatHours, mergeSmartFill, nextOrderIndex,
+  parseHours, patchCell,
 } from './grid-state';
 import { weekDays } from './week';
 
@@ -213,12 +214,38 @@ describe('buildGroups', () => {
     expect(groups[0].code).toBe('ARCS-1001');
     expect(groups[0].project).toBe('ARCS');
     expect(groups[0].assignee).toBe('Nhan');
-    expect(groups[0].tasks).toEqual([{ taskId: 7, taskName: 'Design schema' }]);
+    // orderIndex is carried off the wire (WeekRow.orderIndex) -- see the buildGroups/nextOrderIndex test below.
+    expect(groups[0].tasks).toEqual([{ taskId: 7, taskName: 'Design schema', orderIndex: 0 }]);
   });
 
   it('drops a task with no id -- it could never be written to anyway', () => {
     const groups = buildGroups([{ backlogId: 1, backlogCode: 'B', project: 'P', tasks: [{ taskName: 'ghost' }] }]);
     expect(groups[0].tasks).toEqual([]);
+  });
+});
+
+// 🔴 Where "Add task" appends -- and the tie it must not create.
+describe('nextOrderIndex', () => {
+  it('appends PAST the highest index, not past the count -- a soft delete leaves a gap', () => {
+    // Straight off the wire, so this pins buildGroups' carry-through TOO, and that is deliberate:
+    // `orderIndex: 0` hardcoded in buildGroups (a plausible slip for `t.orderIndex ?? 0`) would leave every
+    // other test in this file green while making nextOrderIndex return 1 forever -- reintroducing the very
+    // tie it exists to prevent. Hand-made TaskRow literals could never catch that; the real wire shape can.
+    //
+    // A was soft-deleted. SetActiveAsync sets is_active = 0 and LEAVES order_index alone, so B, C, D survive
+    // at order_index 1, 2, 3 -- while `tasks.length` is 3.
+    const [group] = buildGroups([{
+      backlogId: 1, backlogCode: 'B', project: 'P',
+      tasks: [
+        { taskId: 20, taskName: 'B', orderIndex: 1 },
+        { taskId: 30, taskName: 'C', orderIndex: 2 },
+        { taskId: 40, taskName: 'D', orderIndex: 3 },
+      ],
+    }]);
+
+    expect(group.tasks.map(t => t.orderIndex)).toEqual([1, 2, 3]);   // CARRIED off the wire, not defaulted
+    expect(nextOrderIndex(group.tasks)).toBe(4);                     // NOT 3 (== length), which would tie with D
+    expect(nextOrderIndex([])).toBe(0);
   });
 });
 

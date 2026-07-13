@@ -3,7 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 
 import { WorklogService } from './worklog.service';
-import { TimeLogDto, WeekBacklogGroup } from '../api/models';
+import { CONNECTION_ID_HEADER, RealtimeService } from '../core/realtime.service';
+import { BacklogDto, BacklogUpdateRequest, TimeLogDto, WeekBacklogGroup } from '../api/models';
 
 describe('WorklogService (generated transport)', () => {
   let service: WorklogService;
@@ -188,4 +189,219 @@ describe('WorklogService (generated transport)', () => {
     expect(req.request.method).toBe('GET');
     req.flush({ id: 1, name: 'Nhan', isAdmin: false, memberTeamIds: [1], activeTeamId: 1 });
   });
+});
+
+// =====================================================================================================
+// MOVE TO NEXT MONTH — GET /api/backlogs/{id}, then a CHECKED PUT to the same route.
+//
+// 🔴 This block needs its OWN TestBed, and the reason is the whole point of the block.
+//
+// `ConnectionIdHttpClient` only stamps `X-Connection-Id` when there IS a connection id, and in the plain
+// TestBed above there is no live hub, so `RealtimeService.connectionId()` is null and the header is omitted
+// from EVERYTHING. A header assertion there would pass on the plain client too — it would pin nothing while
+// looking like it pinned the most dangerous convention in this file. So: stub a "connected" hub.
+// =====================================================================================================
+describe('WorklogService — Move to next month', () => {
+  const CONN = 'hub-conn-1';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  /** The record exactly as `GET /api/backlogs/{id}` returns it — including the `rowVersion` that is the sole
+   *  reason the GET is mandatory: the WEEK read carries no version for a BACKLOG. */
+  const backlog: BacklogDto = {
+    id: 7, backlogCode: 'PCT-1', project: 'Alpha', note: 'keep me',
+    progressPercent: 40, periodMonth: '2026-07', rowVersion: 3,
+  };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        // A hub that IS connected. `ConnectionIdHttpClient` reads only `connectionId()`.
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('READS on the plain client — a read notifies nobody, so it must not widen X-Connection-Id', () => {
+    let got: BacklogDto | undefined;
+    service.getBacklog(7).subscribe(b => (got = b));
+
+    const req = httpMock.expectOne(r => r.url === '/api/backlogs/7');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.headers.has(CONNECTION_ID_HEADER)).toBeFalse();
+    req.flush(backlog);
+
+    expect(got!.rowVersion).toBe(3);
+  });
+
+  it('WRITES on the MUTATING client — on the plain one the write echoes back to us and clobbers our screen', () => {
+    // The body a Move sends. `toUpdateRequest` (move-month.ts) is what builds it for real and is tested there;
+    // what is pinned HERE is that this transport hands it over intact, on the right client, at the right URL.
+    const body: BacklogUpdateRequest = {
+      backlogCode: 'PCT-1', project: 'Alpha', startDate: null, endDate: null,
+      periodMonth: '2026-08', type: null, assigneeUserId: null,
+      deadlineInternal: null, deadlineExternal: null,
+      roughEstimateHours: null, officialEstimateHours: null,
+      progressPercent: 40, note: 'keep me', pcaContactId: null,
+      expectedVersion: 3, auditNote: null,
+    };
+
+    service.updateBacklog(7, body).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/backlogs/7');
+    expect(req.request.method).toBe('PUT');
+
+    // 🔴 The header the server EXCLUDES us from its own SignalR broadcast by. Omit it and this write echoes
+    // straight back to the person who made it: the page re-fetches and clobbers their own screen.
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+    // The WHOLE record goes back. PUT /api/backlogs/{id} REPLACES it — an omitted field is written as NULL,
+    // not left alone — so `note` and `progressPercent` surviving the trip is load-bearing, not incidental.
+    expect(req.request.body.periodMonth).toBe('2026-08');
+    expect(req.request.body.note).toBe('keep me');
+    expect(req.request.body.progressPercent).toBe(40);
+    expect(req.request.body.expectedVersion).toBe(3);
+
+    req.flush({ rowVersion: 4 });
+  });
+});
+
+// =====================================================================================================
+// DRAG TO REORDER — PUT /api/tasks/{id}/order. BUMP-ONLY.
+//
+// 🔴 This block has its OWN TestBed with a CONNECTED hub, for exactly the reason the block above spells out,
+// and the reason is not boilerplate: `ConnectionIdHttpClient` only stamps `X-Connection-Id` when there IS a
+// connection id. In the plain TestBed at the top of this file there is no live hub, so the header is omitted
+// from EVERYTHING — and `setTaskOrder` written on the WRONG client (`this.http`) would emit a byte-for-byte
+// IDENTICAL request there. A body-only assertion in that block would pass against the bug it exists to catch.
+//
+// (The plan's own draft of this test lived in the plain block. It would have pinned nothing.)
+// =====================================================================================================
+describe('WorklogService — task order (bump-only)', () => {
+  const CONN = 'hub-conn-2';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('sends ONLY orderIndex — a version here would 409-STORM an ordinary drag', () => {
+    service.setTaskOrder(42, 3).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/order');
+    expect(req.request.method).toBe('PUT');
+
+    // 🔴 EXACTLY this, and nothing else. `reorderPlan` emits one write PER ROW, so a checked variant would see
+    // row 1's write invalidate the version rows 2..n are already holding — a 409 on the happy path, every drag.
+    expect(req.request.body).toEqual({ orderIndex: 3 });
+    expect('expectedVersion' in req.request.body).toBeFalse();
+    expect('rowVersion' in req.request.body).toBeFalse();
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('WRITES on the MUTATING client — a reorder is N writes, so N echoes would re-fetch the week N times', () => {
+    service.setTaskOrder(42, 3).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/order');
+
+    // The header the server EXCLUDES us from its own SignalR broadcast by. Omit it and every one of the N
+    // writes a single drag makes echoes straight back to the person who made it.
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+});
+
+// =====================================================================================================
+// DRAG TO TRASH — PUT /api/tasks/{id}/active. A SOFT delete, and BUMP-ONLY.
+//
+// 🔴 A CONNECTED hub again, and for the third time the reason is not boilerplate — it is the only thing that
+// makes the header assertion below MEAN anything. `ConnectionIdHttpClient` stamps `X-Connection-Id` only when
+// there IS a connection id. In the plain TestBed at the top of this file there is none, so the header is
+// omitted from EVERYTHING — and `setTaskActive` written on the WRONG client (`this.http`) would emit a
+// BYTE-IDENTICAL request there. A body-only assertion in that block would pass against the very bug it exists
+// to catch. (The plan's own draft of this test is a body-only assertion, and it does not say which block it
+// belongs in.)
+// =====================================================================================================
+describe('WorklogService — soft delete (bump-only)', () => {
+  const CONN = 'hub-conn-3';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('sends ONLY isActive — this route declares no version, and inventing one would be dead code', () => {
+    service.setTaskActive(42, false).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/active');
+    expect(req.request.method).toBe('PUT');
+
+    // 🔴 EXACTLY this, and nothing else. The C# says so in as many words: "Rule #9: bump-only BY DESIGN, no
+    // *CheckedAsync sibling -- ignore any rowVersion on the DTO (TaskActiveRequest carries none to ignore)".
+    // The route's only declared outcomes are 204 and 404 — there is no 409 for a version to provoke.
+    expect(req.request.body).toEqual({ isActive: false });
+    expect('expectedVersion' in req.request.body).toBeFalse();
+    expect('rowVersion' in req.request.body).toBeFalse();
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('WRITES on the MUTATING client — on the plain one the delete echoes back and clobbers our own screen', () => {
+    service.setTaskActive(42, false).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/active');
+
+    // The header the server EXCLUDES us from its own SignalR broadcast by. This is the assertion the whole
+    // separate-TestBed dance above exists for: on the plain `http` the request is otherwise identical.
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('is a SOFT delete: `true` RESTORES through the same route, so the flag is passed through, not hard-coded',
+    () => {
+      service.setTaskActive(42, true).subscribe();
+
+      const req = httpMock.expectOne(r => r.url === '/api/tasks/42/active');
+
+      // Nothing is destroyed — `SetActiveAsync` only flips `is_active`. A `setTaskActive` that hard-coded
+      // `false` into the body would pass the first test in this block and still be wrong; this is what stops
+      // that, and it is the assertion that keeps the restore path open for a later milestone.
+      expect(req.request.body).toEqual({ isActive: true });
+
+      req.flush(null, { status: 204, statusText: 'No Content' });
+    });
 });

@@ -51,6 +51,20 @@
 
 .grp__foot { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
+/* ---- M8.5/Task 6: drag to reorder ------------------------------------------------------------------- */
+
+/* The handle is the six-dot SVG that was ALREADY inside `.c-task` — deliberately NOT a new child of `.row`.
+   `.row` is a CSS grid of exactly seven columns and already has exactly seven children; an eighth would shift
+   every column by one and wrap `.c-total` onto a second implicit row, on every task row in the grid.
+   (`log-work.component.spec.ts` asserts that seven, so a future edit cannot quietly add the eighth.) */
+.row .grip { cursor: grab; }
+.row .grip:active { cursor: grabbing; }
+
+/* NOTE: the CDK drag PREVIEW (the floating copy under the cursor) is left to CDK's own inline styles, which
+   size and position it. It is deliberately NOT styled here: the preview is a CLONE appended outside this
+   component's DOM, so whether an emulated-encapsulation rule reaches it is not something a headless unit test
+   can prove — and unverifiable CSS is worse than none. Flagged for a human look at UAT. */
+
 .grid__foot { background: var(--surf2); }
 .grid__foot > div { padding: 13px 8px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .grid__foot .c-task { color: var(--muted); font-size: 12px; letter-spacing: .5px; }
@@ -65,6 +79,23 @@
 
 .dropzone { margin-top: 14px; border: 1.5px dashed #E3C6A8; background: #FFF8EF; border-radius: 12px; padding: 13px;
   text-align: center; color: #B5791F; font-weight: 600; font-size: 13px; }
+
+/* ---- M8.5/Task 7: drag to trash ---------------------------------------------------------------------- */
+
+/* 🔴 REUSING `.dropzone` directly above — the vendored design's dashed-amber drop target, which has sat in
+   this file UNREFERENCED since M8.4/W4 took its markup out along with the fake buttons. It was drawn as a
+   STANDALONE block, though, and the trash is the last child INSIDE `.grid-card` (`overflow: hidden`), so
+   without a horizontal/bottom inset its dashed border would sit flush against the card's own border. That is
+   the only change to its box. */
+.grid > .dropzone { margin: 14px 16px; }
+
+/* CDK adds `cdk-drop-list-receiving` to every list that CAN receive the drag currently in progress — it is a
+   host binding on `_dropListRef.isReceiving()` — so this fires the moment a row is PICKED UP, not when it
+   arrives. Which makes it the one piece of VISIBLE evidence that `[cdkDropListConnectedTo]="['trash']"`
+   actually resolved: an unresolved id is filtered out of the siblings, the trash is then nobody's sibling,
+   and this state would simply never appear. If the box never turns red on drag, the wiring is broken. */
+.dropzone.cdk-drop-list-receiving { border-color: var(--danger-bd); background: var(--danger-bg);
+                                    color: var(--danger-c); }
 
 /* ---- M8.4/W4: real-API states the vendored design never had ------------------------------------------ */
 

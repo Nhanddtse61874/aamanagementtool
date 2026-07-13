@@ -1,3 +1,4 @@
+import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal,
@@ -5,7 +6,7 @@ import {
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { EMPTY, Subject, catchError, map, merge, switchMap } from 'rxjs';
+import { EMPTY, Subject, catchError, firstValueFrom, map, merge, switchMap } from 'rxjs';
 
 import { ConflictBody, TimeLogDto, ValidationBody, WeekBacklogGroup } from '../../api/models';
 import { cellKey } from '../../core/cell-key';
@@ -13,10 +14,13 @@ import { CellConflict, ConflictDialogComponent } from '../../core/conflict-dialo
 import { RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
+import { AddTaskDialogComponent } from './add-task-dialog.component';
 import {
-  CellMap, Group, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill, parseHours,
-  patchCell,
+  CellMap, Group, TaskRow, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill,
+  nextOrderIndex, parseHours, patchCell,
 } from './grid-state';
+import { canMoveMonth, nextMonthFrom, toUpdateRequest } from './move-month';
+import { reorderPlan } from './reorder';
 import { buildSmartFillRequest } from './smart-fill';
 import { WeekDay, mondayOf, shiftWeeks, weekDays } from './week';
 
@@ -52,7 +56,23 @@ interface PendingWrite {
 @Component({
   selector: 'app-log-work',
   standalone: true,
-  imports: [CommonModule, FormsModule, ConflictDialogComponent],
+  // 🔴 `DragDropModule` is LOAD-BEARING, and HOW it fails when absent is worth knowing exactly, because the
+  // widely-repeated version of this warning is only half true. MEASURED, by removing it and building:
+  //
+  //   - A PROPERTY BINDING is checked: `[cdkDropListData]` / `[cdkDropListConnectedTo]` / `[cdkDragData]` each
+  //     fail with `NG8002: Can't bind to '…' since it isn't a known property of 'div'`, and the output fails
+  //     with `NG5: Argument of type 'Event' is not assignable to parameter of type 'CdkDragDrop<…>'` — because
+  //     `$event` falls back to the native `Event`. So for THIS template, losing the module is LOUD: four errors.
+  //   - A BARE ATTRIBUTE is NOT checked. With the same module missing and the same directives written as bare
+  //     attributes, `ng build` reports "Application bundle generation complete" — CLEAN. Angular errors on an
+  //     unknown ELEMENT (NG8001), never on an unknown ATTRIBUTE.
+  //
+  // 🔴 Which matters here, because `cdkDragHandle` on the SVG IS a bare attribute — the one directive in this
+  // template with nothing bound to it. Typo it, or let it drift outside `cdkDrag`, and it is silently dropped;
+  // CDK then falls back to making the WHOLE ROW draggable, so the grid still "works" and the bug is invisible.
+  // `log-work.component.spec.ts` asserts `By.directive(CdkDragHandle)` finds it, and that assertion is the only
+  // thing standing under it. A green build is not evidence for that one.
+  imports: [CommonModule, FormsModule, ConflictDialogComponent, AddTaskDialogComponent, DragDropModule],
   templateUrl: './log-work.component.html',
   styleUrl: './log-work.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -84,6 +104,49 @@ export class LogWorkComponent {
   readonly collapsed = signal<Record<number, boolean>>({});
   readonly conflict = signal<CellConflict | null>(null);
   private pendingWrite: PendingWrite | null = null;
+
+  /** The group whose "Add task" dialog is open, or `null`. A signal plus an `@if` in the template — the same
+   *  shape as `conflict`, because this app has no dialog service and does not need one. */
+  readonly addingTo = signal<Group | null>(null);
+
+  /** True while a Move's GET -> PUT is in flight; the button is disabled for its duration. The same shape as
+   *  `sfBusy`. A second click is not merely wasteful here, it CORRUPTS — see `onMoveMonth`. */
+  readonly moving = signal(false);
+
+  /** True while a drag's batch of order writes is in flight. The same shape as `moving`, and for the same
+   *  reason: a second drag started before the first batch lands would CORRUPT the order — see `onDrop`. */
+  readonly reordering = signal(false);
+
+  /** True while a soft delete is in flight. The same shape as `reordering`, and for a closely related reason:
+   *  CDK does not remove the row for us, so it SNAPS BACK until the refresh lands — see `onTrash`. */
+  readonly deleting = signal(false);
+
+  /**
+   * The trash's `[cdkDropListData]`. It holds no rows, and never will — but it is a TYPED empty array on a
+   * field rather than a `[]` literal in the template, and that is a compiler requirement, not a style choice.
+   *
+   * 🔴 MEASURED. The plan's `[cdkDropListData]="[]"` infers `CdkDropList<never[]>`, and `T` reaches a
+   * CONTRAVARIANT position through `container.dropped.emit(value)` — so `never[]` does NOT widen to
+   * `readonly TaskRow[]` and the build fails:
+   *
+   *     NG5: Argument of type 'CdkDragDrop<never[], any, any>' is not assignable to parameter of type
+   *          'CdkDragDrop<readonly TaskRow[], …>'. The type 'readonly TaskRow[]' is 'readonly' and cannot be
+   *          assigned to the mutable type 'never[]'.
+   *
+   * Naming the type here fixes the drop list's `T` to the same `readonly TaskRow[]` the groups use, which is
+   * what lets `onTrash` take a properly typed event and read `event.item.data` as a `TaskRow` with no `any`
+   * and no cast. (It also stops a fresh `[]` being allocated on every change-detection pass.)
+   */
+  readonly noRows: readonly TaskRow[] = [];
+
+  /**
+   * The DEFAULT-backlog rule, exposed to the template so the Move button can be HIDDEN on that group — the
+   * FIRST of its two guards. (`onMoveMonth` re-checks it: WPF guards it in both places and so do we.)
+   *
+   * A bound reference, not a wrapper method: the pure function in `move-month.ts` stays the single source of
+   * truth for the rule, and a template can only call a member of its own component.
+   */
+  readonly canMoveMonth = canMoveMonth;
 
   // ---- smart fill ----------------------------------------------------------------------------------
   readonly sfOpen = signal(false);
@@ -427,6 +490,297 @@ export class LogWorkComponent {
         }
       },
     });
+  }
+
+  // ---- adding a task -------------------------------------------------------------------------------
+
+  /**
+   * The dialog handed us a name. Append the task, then re-read the week so it appears as a row.
+   *
+   * 🔴 The group is re-read from the CURRENT `groups()`, not taken from the object captured when the dialog
+   * opened. `addingTo` survives a refresh, and a refresh REPLACES every Group — so if someone else adds a task
+   * to this same backlog while the dialog is open, the captured `tasks` is stale, `nextOrderIndex` computes a
+   * stale maximum, and the new task TIES with theirs. That is the very tie `nextOrderIndex` exists to prevent,
+   * reached through a second door. If the group has vanished entirely, fall through with the stale id and let
+   * the server answer 404 — which `onAddTaskError` handles.
+   */
+  async onAddTaskConfirmed(name: string): Promise<void> {
+    const opened = this.addingTo();
+    if (!opened) return;
+    this.addingTo.set(null);
+
+    const group = this.groups().find(g => g.backlogId === opened.backlogId) ?? opened;
+
+    try {
+      await firstValueFrom(this.api.addTask(group.backlogId, name, nextOrderIndex(group.tasks)));
+      this.refresh.next();                       // the new task must appear as a row
+    } catch (err: unknown) {
+      this.onAddTaskError(err);
+    }
+  }
+
+  /**
+   * 🔴 This method is why `onAddTaskConfirmed` has a `catch` at all, and it must never re-throw.
+   *
+   * `onAddTaskConfirmed` is an `async` method invoked from an output binding, so anything that escapes it is
+   * an UNHANDLED PROMISE REJECTION — which surfaces in the console and NOWHERE THE USER CAN SEE. The row would
+   * simply never appear, with no error, and they would sit there clicking Add again.
+   *
+   * 404 is genuinely reachable, not defensive padding: the backlog can be deleted, or the user removed from
+   * its team, while this screen is open. (400 "TaskName is required." is already refused in the dialog, but
+   * the server's own sentence is still better than anything invented here if it ever does arrive.)
+   */
+  private onAddTaskError(err: unknown): void {
+    if (!(err instanceof HttpErrorResponse)) {
+      this.toast.show('Could not reach the server.');
+      return;
+    }
+
+    switch (err.status) {
+      case 404:
+        this.toast.show('That backlog is no longer available.');
+        this.refresh.next();
+        break;
+
+      case 400:
+        this.toast.show((err.error as ValidationBody | null)?.error ?? 'That task was rejected.');
+        break;
+
+      default:
+        this.toast.show('Could not add the task. Please try again.');
+        break;
+    }
+  }
+
+  // ---- moving a ticket to next month ---------------------------------------------------------------
+
+  /**
+   * Push an untouched ticket into next month: a READ, then a CHECKED WRITE.
+   *
+   * 🔴 **The GET is mandatory, not an optimisation.** `PUT /api/backlogs/{id}` REPLACES THE WHOLE RECORD (an
+   * omitted field is written as NULL, not left alone) and it demands an `expectedVersion`. All this screen
+   * holds is a `Group`, built from the WEEK read — which carries the backlog's id, code, project, type and
+   * assignee, and NEITHER its other fields NOR its rowVersion. There is nowhere else to get them.
+   *
+   * `group` is read ONLY for `backlogId` and `code`, and only BEFORE the first await — so the fact that a
+   * SignalR refresh REPLACES every `Group` mid-flight cannot make this stale, and ids do not change.
+   * (`onAddTaskConfirmed` has to re-look-up its group precisely because it needs `tasks`, which IS live data.
+   * This one must not copy that: it needs no live data at all — the GET re-reads the authoritative record.)
+   */
+  async onMoveMonth(group: Group): Promise<void> {
+    if (!canMoveMonth(group.code)) return;   // the SECOND of the two DEFAULT guards. Both, deliberately.
+
+    // 🔴 Re-entrancy, and it is a CORRUPTION guard, not a politeness. A second click starts a second GET->PUT
+    // chain, and on a slow link — which is exactly when a user clicks again because "nothing happened" —
+    // chain 2's GET can land AFTER chain 1's PUT committed. It then reads the ALREADY-BUMPED periodMonth and
+    // moves the ticket a SECOND month forward. That is the very outcome the 409 branch below refuses to reach
+    // by retrying; leaving this door open while barring that one would be incoherent.
+    if (this.moving()) return;
+    this.moving.set(true);
+
+    try {
+      const b = await firstValueFrom(this.api.getBacklog(group.backlogId));
+      const periodMonth = nextMonthFrom(b.periodMonth ?? null, this.monday());
+
+      // toUpdateRequest carries every other field across untouched and THROWS rather than sending a version
+      // it does not have (never `rowVersion!`). Its throw lands in the catch below, so it cannot escape.
+      await firstValueFrom(this.api.updateBacklog(group.backlogId, toUpdateRequest(b, periodMonth)));
+      this.refresh.next();                   // the ticket leaves this month's view
+    } catch (err: unknown) {
+      // 🔴 The GET is INSIDE the try, deliberately. Its 404 is reachable — the backlog can be deleted, or the
+      // user removed from its team, while this screen is open — and an error escaping an `async` method
+      // called from a (click) binding is an UNHANDLED PROMISE REJECTION: it lands in the console and NOWHERE
+      // THE USER CAN SEE. They would click Move, watch nothing happen, and click again.
+      this.onMoveError(err);
+    } finally {
+      this.moving.set(false);
+    }
+  }
+
+  /**
+   * All THREE declared failures, not just the conflict.
+   *
+   * The route declares `400 ValidationBody`, `404` and `409 ConflictBody`. Collapsing them into one "could
+   * not move" throws away the only sentence the user can act on.
+   *
+   * 🔴 And a 409 must NOT reuse the cell conflict dialog. That dialog is a MERGE between two numbers — keep
+   * theirs, or overwrite with mine. A moved backlog has nothing to merge: someone else changed the ticket,
+   * and there is no reconciliation to offer. Say so, re-read, stop.
+   *
+   * 🔴 Above all, DO NOT SILENTLY RETRY. Their change may ITSELF have been a Move — a retry would then read
+   * the already-bumped month and push the ticket TWO months forward, which is precisely the corruption this
+   * whole path is careful about.
+   */
+  private onMoveError(err: unknown): void {
+    if (!(err instanceof HttpErrorResponse)) {
+      this.toast.show('Could not reach the server.');
+      return;
+    }
+
+    switch (err.status) {
+      case 400:
+        this.toast.show((err.error as ValidationBody | null)?.error ?? 'That change was rejected.');
+        break;
+
+      case 404:
+        this.toast.show('This ticket is no longer available.');
+        this.refresh.next();
+        break;
+
+      case 409:
+        this.toast.show(
+          'Someone else just changed this ticket. Reloaded — try again if you still want to move it.');
+        this.refresh.next();
+        break;
+
+      default:
+        this.toast.show('Could not move this ticket. Please try again.');
+        break;
+    }
+  }
+
+  // ---- drag to reorder -----------------------------------------------------------------------------
+
+  /**
+   * A row was dropped. Rewrite the group's order on the server, then re-read the week.
+   *
+   * 🔴 **`reorderPlan` rewrites EVERY row, and that is a FIX, not caution.** `SetActiveAsync` soft-deletes by
+   * setting `is_active = 0` and LEAVES `order_index` untouched, while the read is
+   * `WHERE is_active = 1 ORDER BY order_index` — so one delete leaves the survivors at 1,2,3: a GAP. A
+   * windowed write (only the rows between the two positions, at absolute index `lo + i`) then produces a TIE,
+   * and `ORDER BY` with a tie is ARBITRARY: the order silently scrambles on the next reload. Rewriting every
+   * row renormalises the gap on every drag, which is exactly what WPF does. Do not "optimise" it back.
+   *
+   * The writes are BUMP-ONLY — `setTaskOrder` sends `{ orderIndex }` and no version, deliberately. See it.
+   *
+   * 🔴 **The container guard, traced through CDK's source rather than guessed:** `dropped` fires ONLY on the
+   * DESTINATION list. A drag *within* a group makes that group both source and destination, so
+   * `previousContainer === container` and this proceeds. A drag *to the trash* fires only the TRASH's handler
+   * — so this method can never see a cross-list index, and the guard below is the assertion of that, not a
+   * branch that does real work. Groups connect only to the trash, never to each other: a task cannot be
+   * dragged into a different backlog, which `PUT /api/tasks/{id}/order` could not express anyway (it takes an
+   * `orderIndex` and no `backlogId`).
+   */
+  async onDrop(group: Group, event: CdkDragDrop<readonly TaskRow[]>): Promise<void> {
+    if (event.previousContainer !== event.container) return;   // came from elsewhere — not a reorder
+
+    // 🔴 Re-entrancy, and — as with `moving` — it is a CORRUPTION guard, not a politeness. CDK does NOT move
+    // the row for us (we never call `moveItemInArray`; the re-fetch is what re-renders it), so between the
+    // drop and the refresh landing the row SNAPS BACK to where it started. On a slow link that reads as "the
+    // drag didn't work", which is precisely when a user drags again — and a second batch computed from the
+    // still-stale `group.tasks` would interleave with the first, leaving the group's `order_index` values in
+    // an order neither drag asked for.
+    if (this.reordering()) return;
+
+    const writes = reorderPlan(group.tasks, event.previousIndex, event.currentIndex);
+    if (!writes.length) return;                                // dropped where it started
+
+    this.reordering.set(true);
+    try {
+      for (const w of writes) await firstValueFrom(this.api.setTaskOrder(w.taskId, w.orderIndex));
+      this.refresh.next();
+    } catch (err: unknown) {
+      this.onReorderError(err);
+    } finally {
+      this.reordering.set(false);
+    }
+  }
+
+  /**
+   * 🔴 Why `onDrop` has a `catch` at all, and why it must never re-throw.
+   *
+   * `onDrop` is an `async` method bound to `(cdkDropListDropped)`, so anything escaping it is an UNHANDLED
+   * PROMISE REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would drag a row, watch it snap back,
+   * and have no idea the write failed. (`onAddTaskError` and `onMoveError` exist for the identical reason.)
+   *
+   * And a failure here is not merely a no-op: the writes are sequential, so a 404 on write 3 of 5 leaves the
+   * group HALF-renormalised on the server. Re-reading is therefore mandatory, not tidy — it is the only way
+   * the screen stops showing an order the server does not have. A 404 is genuinely reachable: another user can
+   * delete one of these tasks (M8.5 ships exactly that) while the drag is in flight.
+   */
+  private onReorderError(err: unknown): void {
+    if (!(err instanceof HttpErrorResponse)) {
+      this.toast.show('Could not reach the server.');
+      this.refresh.next();
+      return;
+    }
+
+    this.toast.show(err.status === 404
+      ? 'One of those tasks is no longer available. Reloaded.'
+      : 'Could not save the new order. Reloaded — please try again.');
+    this.refresh.next();
+  }
+
+  // ---- drag to trash (a SOFT delete) ---------------------------------------------------------------
+
+  /**
+   * A row was dropped on the trash. Soft-delete it, then re-read the week.
+   *
+   * 🔴 **The trash is reached by STRING ID, not by a template ref**, and the whole feature is silently dead if
+   * that is got wrong. Each group carries `[cdkDropListConnectedTo]="['trash']"`; CDK resolves that string
+   * against its static registry on EVERY drag start (`CdkDropList._dropLists.find(l => l.id === drop)`,
+   * drag-drop.mjs:3510-3546) and FILTERS OUT anything it cannot find. So the trash must carry `id="trash"` —
+   * a plain attribute, which Angular maps onto `CdkDropList`'s `id` INPUT. Write `#trash="cdkDropList"`
+   * instead and the drop list keeps its auto-generated `cdk-drop-list-N` id, the string never resolves, the
+   * row snaps back, `container === previousContainer`, and THIS METHOD IS NEVER CALLED AT ALL. The component
+   * spec drives CDK's own `beforeStarted` handler to prove the resolution really happens; a green build
+   * proves nothing here.
+   *
+   * `dropped` fires ONLY on the DESTINATION list, so this handler sees only drags that ARRIVED at the trash —
+   * and the guard below is the assertion of that, not a branch that does real work.
+   */
+  async onTrash(event: CdkDragDrop<readonly TaskRow[], readonly TaskRow[], TaskRow>): Promise<void> {
+    if (event.previousContainer === event.container) return;   // dropped on itself — not a delete
+
+    // 🔴 Re-entrancy, and — as with `moving` and `reordering` — the reason is that CDK does NOT remove the row
+    // for us. We never call `transferArrayItem`; the re-fetch is what makes the row disappear. So between the
+    // drop and the refresh landing, THE ROW SNAPS BACK to where it was. On a slow link that reads as "it
+    // didn't work", which is exactly when a user drags it to the bin again — and a second delete of the same
+    // task would fire a second write and a second re-fetch for nothing.
+    if (this.deleting()) return;
+
+    // `[cdkDragData]` on the row (Task 6) is the ONLY place this value comes from. Without it `data` is
+    // `undefined` and `row.taskId` throws — and only at the moment a user first tries to delete something.
+    const row = event.item.data;
+
+    this.deleting.set(true);
+    try {
+      await firstValueFrom(this.api.setTaskActive(row.taskId, false));   // SOFT — `is_active = 0`, nothing lost
+      this.refresh.next();                                               // the row leaves the grid
+    } catch (err: unknown) {
+      this.onTrashError(err);
+    } finally {
+      this.deleting.set(false);
+    }
+  }
+
+  /**
+   * 🔴 Why `onTrash` has a `catch` at all, and why it must never re-throw.
+   *
+   * `onTrash` is an `async` method bound to `(cdkDropListDropped)`, so anything escaping it is an UNHANDLED
+   * PROMISE REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would drag a row to the bin, watch it
+   * snap back, be told nothing, and drag it again. (`onAddTaskError`, `onMoveError` and `onReorderError` all
+   * exist for this identical reason.)
+   *
+   * 🔴 Deliberately NOT `onMoveError`'s three-way switch. `PUT /api/tasks/{id}/active` declares exactly two
+   * outcomes — `204 NoContent` and `404 NotFound`. It is bump-only (no version -> no 409) and its body is a
+   * lone bool (nothing to reject -> no 400). Handlers for those would be dead code.
+   */
+  private onTrashError(err: unknown): void {
+    if (err instanceof HttpErrorResponse && err.status === 404) {
+      // Reachable, and it means someone ELSE already deleted this task (or we lost access to its team). The
+      // server is right and our screen is stale, so this one MUST re-read.
+      this.toast.show('This task is no longer available.');
+      this.refresh.next();
+      return;
+    }
+
+    // 🔴 And here it does NOT re-read — a considered difference from `onReorderError`, which re-reads on every
+    // error. A reorder is a SEQUENTIAL BATCH of N writes, so a failure on write 3 of 5 leaves the group
+    // HALF-renormalised on the server and the screen showing an order that does not exist. A delete is ONE
+    // write: if it failed, the server is unchanged, and CDK has already snapped the row back — so the screen
+    // ALREADY matches the server. Re-reading would be a wasted round-trip that fixes nothing.
+    this.toast.show('Could not delete this task. Please try again.');
   }
 
   // ---- misc ----------------------------------------------------------------------------------------

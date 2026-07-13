@@ -1,20 +1,33 @@
 # ROADMAP — TimesheetApp
 
-**Last updated:** 2026-07-12
+**Last updated:** 2026-07-13
 
 ## Active
-- **M8 — Migrate WPF → Web (ASP.NET Core 8 + Angular 17)** — started 2026-07-12, **Mode B**, in progress.
-  Why: the WPF UI is defect-prone (nine re-entrancy guards, a hand-drawn Gantt, several binding workarounds), and the app is architected around a SQLite file on a synced shared folder, where two people editing at once silently overwrite each other.
-  **Deployment:** no server exists, so **one designated workstation hosts the API** and the team reaches it over the LAN. That restores the single-writer property SQLite needs. It also puts all company data on one machine's disk, so **hourly online backup to the network share is a `must_have`, not an option**.
-  Scope inventory: `.planning/M8-FEATURE-INVENTORY.md` (7 screens, 8 dialogs, every business rule, 16 tables, ~40 design tokens).
-  - [x] **M8.0** — Research (4 agents). Found 5 blockers, 2 of which would have destroyed production data. `.planning/research/M8-*.md`
-  - [ ] **M8.1** — Extract `TimesheetApp.Core` (net8.0). Pure `git mv`, zero C# changes. Gate: **548/548 green + WPF still launches**. Plan: `docs/superpowers/plans/2026-07-12-M8.1-core-extraction.md`
-  - [ ] **M8.2** — API host + schema v10 + optimistic concurrency + SignalR
-  - [ ] **M8.3** — Auth (username/password, cookie, `is_admin` on 3 destructive endpoints)
-  - [ ] **M8.4–M8.8** — Angular screens (design bundle vendored at `src/timesheet-web/`; covers ~35–45% — the shell, not the behaviour)
-  - [ ] **M8.9** — Export / Backup / Retention moved host-side
-  - [ ] **M8.10** — Delete the WPF project
-  Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (rev. 2, approved).
+- **M8.6 — Backlog screen** — starting 2026-07-13. **STEP 2 (brainstorm).**
+  The screen the user clicked into and found dead: *"+ New backlog"* shows a toast and does nothing, and the list is empty because the service returns `of([])`. It is still the vendored design's shell.
+  **No architectural unknowns remain** — M8.5 established the pattern and already annotated five of the Backlog/Task routes, which M8.6 inherits: **annotate its routes (`.WithName` + `.WithTags` + `.Produces<T>()`) → regenerate the client → wire the Angular.**
+
+## Shipped
+- **M8.5 — Log Work task actions** — **COMPLETE** (`ebfea32`, 2026-07-13), **Mode A**. **995 tests green** — 830 .NET + 165 Angular. 0 warnings.
+  Restored the three controls M8.4/W4 removed because the vendored design **faked** them: `+ Add task` called `toast.show('Task added')` and added nothing, `Move to next month` had no handler, and the delete dropzone had no drop handler. All three now work against the real API.
+  All five endpoints already existed — but `BacklogEndpoints.cs` had **zero `.Produces<T>()`**, so OpenAPI described none of them and the generated TypeScript client could not contain them. **Annotating the C# was Wave A, not optional cleanup** — and `OpenApiContractTests.cs` (15 cases) now fails the build if that invariant is ever broken again. Three sequential waves, seven tasks: **A** annotate (metadata only, 815→830) → **B** regenerate → **C** the Angular (124→165).
+  **UAT still open — the user must click OT-13 and OT-14**, the two interactions no single-feature test catches: *delete → reorder → reload* (the order must hold) and *delete → add → reload* (the new task must be last). Both are gap/tie hazards created by soft delete leaving `order_index` untouched.
+  **Known UX gap, undecided:** a mis-drop onto the trash deletes instantly — no undo, no confirmation. It is a *soft* delete and the restore path is tested, but **no screen calls it.**
+  Spec: `docs/superpowers/specs/2026-07-13-log-work-task-actions-design.md` · Plan: `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md` (rev. 3)
+- **M8 — Migrate WPF → Web (ASP.NET Core 8 + Angular 17)** — **MERGED to `main`** (`feature/m8-web-migration-2026-07-13`, 2026-07-13). **939 tests green** — 658 Core/WPF + 157 API + 124 Angular. 0 warnings. From 548 at the start of M8.2.
+  Why: the WPF UI is defect-prone, and the app is architected around a SQLite file on a synced shared folder, where two people editing at once **silently overwrite each other**.
+  - [x] **M8.0** — Research (4 agents). Found 5 blockers, **2 of which would have destroyed production data**.
+  - [x] **M8.1** — Extract `TimesheetApp.Core` (net8.0). 81 files moved, zero C# edited, **one** XAML line. 548 green.
+  - [x] **M8.2** — Schema v10 · optimistic concurrency across 8 repositories · **the backup blocker** (every backup test faked the database with a *text file*, which cannot have a `-wal` — so `File.Copy` looked correct for four phases while a data-loss route sat wide open) · `ActiveTeamId` per-user. **628 green.**
+  - [x] **M8.3** — ASP.NET Core API · cookie auth + Data Protection · **80 routes** · SignalR. **809 green.**
+  - [x] **M8.4** — Angular: login, guarded shell, **Log Work working against the real API**. **939 green.**
+  **Still open, and the user's to decide:** how the web app reaches anyone else's browser. The dev loop works same-origin through an `ng serve` proxy — the only transport where a `SameSite=Lax` cookie survives, since `SameSite=None` would require HTTPS and this project deliberately has none. **Production hosting collides with the deferred "the company has no server" blocker.**
+  Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (rev. 3).
+
+## Planned
+- **M8.6–M8.9** — the six remaining Angular screens: Backlog · Task List · Daily Report · Reports · Users · Settings. The backend **already serves all of them** (80 routes); each screen now needs only: annotate its routes → regenerate → wire. *(M8.4/W2 deliberately left them as `of([])` stubs: wiring all 20 service methods at once breaks the build, because 7 of 9 components bind the old view models and `tsconfig` is `strict` + `strictTemplates`.)*
+- **M8.10** — Export / Backup / Retention moved host-side.
+- **M8.11** — Delete the WPF project.
 
 ## Shipped
 - **P15 / P16 / P17 — Task List card layout + auto-provision user** — MERGED to `main` + pushed (`bc4c02f`, 2026-07-02), build clean, **536 tests green**. **P15** grouped section bands (adaptive Team/Project, collapsible, `Name (count)`). **P16** per-backlog **card** layout (`DataGrid`→grouped `ItemsControl`; tags full-width on top of each card, no horizontal scroll; Type/PCT/PCA → direct TwoWay) + tweaks (External in compact header, "Estimation" label, no-progress defaults to 0%). **P17** auto-provision current user on startup (unmapped Windows account → auto-create + map, no manual add / no picker). Specs+plans: `docs/superpowers/{specs,plans}/2026-07-02-*`. UAT: `.planning/P15-UAT.md`, `.planning/P16-UAT.md`. Summary: `.planning/P15-P16-P17-SUMMARY.md`. Follow-up UAT (non-blocking): live-check Type/PCT/PCA persist + auto-provision.

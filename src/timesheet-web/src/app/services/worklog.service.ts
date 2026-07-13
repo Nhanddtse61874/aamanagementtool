@@ -9,17 +9,23 @@ import {
 import { ApiConfiguration } from '../api/api-configuration';
 import { ConnectionIdHttpClient } from '../core/realtime.service';
 import {
+  backlogGet as backlogGetFn,
+  backlogUpdate as backlogUpdateFn,
   login as loginFn,
   logout as logoutFn,
   me as meFn,
   smartFillApply as smartFillApplyFn,
   smartFillValidate as smartFillValidateFn,
+  taskCreate as taskCreateFn,
+  taskSetActive as taskSetActiveFn,
+  taskSetOrder as taskSetOrderFn,
   timesheetClearCell as timesheetClearCellFn,
   timesheetSaveCell as timesheetSaveCellFn,
   timesheetWeek as timesheetWeekFn,
 } from '../api/functions';
 import {
-  LoginResponse, MeResponse, SmartFillTaskRequest, TimeLogDto, WeekBacklogGroup,
+  BacklogDto, BacklogUpdateRequest, LoginResponse, MeResponse, SavedBody, SmartFillTaskRequest, TaskItemDto,
+  TimeLogDto, WeekBacklogGroup,
 } from '../api/models';
 
 /**
@@ -199,6 +205,99 @@ export class WorklogService {
   }
 
   // =====================================================================================================
+  // TASKS — POST /api/tasks · PUT /api/tasks/{id}/order
+  // =====================================================================================================
+
+  /**
+   * Append a task to a backlog. A MUTATION, so `mutatingHttp` — see the field's comment. On the plain client
+   * the write echoes back to us over SignalR, we re-fetch, and we clobber our own screen.
+   *
+   * 🔴 `orderIndex` is the CALLER's to compute, and it must not be `tasks.length`. The server takes it
+   * verbatim (`InsertAsync(new TaskItem(0, req.BacklogId, …, req.OrderIndex, true))` — it does NOT derive one),
+   * and a soft delete leaves a GAP in the surviving indices, so `length` ties with a live row and
+   * `ORDER BY order_index` then puts the new task somewhere arbitrary. Pass `nextOrderIndex(group.tasks)`.
+   */
+  addTask(backlogId: number, taskName: string, orderIndex: number): Observable<TaskItemDto> {
+    return taskCreateFn(this.mutatingHttp, this.rootUrl, { body: { backlogId, taskName, orderIndex } })
+      .pipe(map(r => r.body));
+  }
+
+  /**
+   * Move one task to a new `order_index`. A MUTATION, so `mutatingHttp` — see that field's comment.
+   *
+   * 🔴 BUMP-ONLY: the body is `{ orderIndex }` and NOTHING ELSE. There is no `expectedVersion` here and there
+   * must not be one — that is a recorded M8.2 decision, not an oversight. `reorderPlan` emits a write for EVERY
+   * row in the group (it has to: a soft delete leaves a GAP in `order_index`, and a windowed write would then
+   * produce a TIE that `ORDER BY order_index` resolves arbitrarily), so one ordinary drag calls this method
+   * once per row. A checked variant would therefore 409-STORM on the happy path: row 1's write bumps the
+   * group, and rows 2..n would each arrive holding a version the previous write already invalidated.
+   *
+   * Do not "harden" this by adding a version. The reason it is safe without one is that the client sends the
+   * WHOLE new order, so a lost update cannot leave the group half-ordered — the next drag renormalises it.
+   */
+  setTaskOrder(taskId: number, orderIndex: number): Observable<void> {
+    return taskSetOrderFn(this.mutatingHttp, this.rootUrl, { id: taskId, body: { orderIndex } })
+      .pipe(map(() => void 0));
+  }
+
+  /**
+   * SOFT delete — `is_active = false`. NOTHING IS DESTROYED, and that is not a detail: `SetActiveAsync` flips
+   * the flag and LEAVES `order_index` alone, while the read is `WHERE is_active = 1 ORDER BY order_index`. So
+   * every delete leaves a GAP in the survivors' indices — which is exactly why `reorderPlan` must rewrite EVERY
+   * row (a windowed write would TIE) and why `nextOrderIndex` must append past the highest INDEX, not the
+   * count. This method is the thing that creates the condition both of those defend against.
+   *
+   * `isActive: true` RESTORES a deleted task through the same route. The flag is therefore passed through
+   * verbatim, never hard-coded to `false` here — the caller decides which direction it is going.
+   *
+   * 🔴 BUMP-ONLY: the body is `{ isActive }` and NOTHING ELSE. There is no `expectedVersion` here and there
+   * must not be one — the C# is explicit that this is by design ("Rule #9: bump-only BY DESIGN, no
+   * *CheckedAsync sibling -- ignore any rowVersion on the DTO (TaskActiveRequest carries none to ignore)"),
+   * and the route declares exactly TWO outcomes: `204 NoContent` and `404 NotFound`. There is no 400 and no
+   * 409 on this path, so a caller that writes handlers for them is writing dead code.
+   *
+   * A MUTATION, so `mutatingHttp` — see that field's comment. On the plain client this write echoes straight
+   * back to us over SignalR, we re-fetch, and we clobber our own screen.
+   */
+  setTaskActive(taskId: number, isActive: boolean): Observable<void> {
+    return taskSetActiveFn(this.mutatingHttp, this.rootUrl, { id: taskId, body: { isActive } })
+      .pipe(map(() => void 0));
+  }
+
+  // =====================================================================================================
+  // BACKLOGS — GET /api/backlogs/{id} · PUT /api/backlogs/{id}
+  //
+  // These two exist as a PAIR, and the read half is not an optimisation you can skip:
+  //
+  //   - `PUT /api/backlogs/{id}` REPLACES THE WHOLE RECORD. An omitted field is written as NULL, not left
+  //     alone. M8.3 already paid for this once: a DTO that merely omitted `teamId` set `team_id = NULL` and
+  //     the backlog dropped out of every team — invisible to everyone, permanently, while every test passed.
+  //   - It is also a CHECKED write, so it demands an `expectedVersion`.
+  //
+  // The Log Work screen holds neither. All it has is `WeekBacklogGroup` — the WEEK read model — which carries
+  // the backlog's id, code, project, type and assignee and NOTHING else: no `rowVersion`, no `note`, no
+  // `progressPercent`, no dates. There is nowhere else to get them. So: GET the record, change the one field,
+  // PUT it back. See `move-month.ts` (`toUpdateRequest`), which is where the field-by-field copy lives.
+  // =====================================================================================================
+
+  /** A READ -> the plain `http`. A read notifies nobody, so there is no SignalR echo to suppress and no
+   *  reason to widen `X-Connection-Id`'s blast radius. */
+  getBacklog(id: number): Observable<BacklogDto> {
+    return backlogGetFn(this.http, this.rootUrl, { id }).pipe(map(r => r.body));
+  }
+
+  /**
+   * A CHECKED write: `body.expectedVersion` must be the `rowVersion` the GET above just returned, and the
+   * server 409s if anyone changed the record in between.
+   *
+   * A MUTATION, so `mutatingHttp` — see that field's comment. On the plain client this write echoes straight
+   * back to us over SignalR, we re-fetch, and we clobber our own screen.
+   */
+  updateBacklog(id: number, body: BacklogUpdateRequest): Observable<SavedBody> {
+    return backlogUpdateFn(this.mutatingHttp, this.rootUrl, { id, body }).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
   // NOT YET ON THE WIRE — the five screens outside M8.4.
   //
   // These keep returning empty streams ON PURPOSE. Their routes exist in C# but declare no response schema
@@ -241,7 +340,7 @@ export class WorklogService {
  * table either 409s spuriously or silently overwrites another user. Losing the version is worse than losing
  * the request.
  */
-function requireRowVersion(rowVersion: number | undefined): number {
+export function requireRowVersion(rowVersion: number | undefined): number {
   if (typeof rowVersion !== 'number') {
     throw new Error(
       'The API accepted the write but returned no rowVersion. Refusing to continue: the next save would ' +
