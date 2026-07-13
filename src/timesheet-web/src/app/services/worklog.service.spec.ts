@@ -1158,10 +1158,10 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
       service.getTaskCards(),
       service.getDailyEntries('2026-07-06'),
       service.getTeamBoard('2026-07-06'),
-      service.getMetrics(),
-      service.getMissing(),
-      service.getWeekly(),
-      service.getMonthly(),
+      // getMetrics() / getMissing() / getWeekly() / getMonthly() / getDrilldown() are GONE — M9 Phase 2
+      // (Agent C) moved reports.component.ts onto getWeeklyReport(), getMonthlyReport() and getMissingLogs().
+      // getMetrics() is the one that never had a route to move TO: the four stat cards are client-side
+      // arithmetic over the weekly response, and /api/reports/metrics has never existed.
       service.getTags(),
       service.getTemplates(),
       service.getContacts(),
@@ -1171,8 +1171,9 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
 
     empties.forEach(o => o.subscribe(v => expect(v).toEqual([])));
 
-    // The odd one out: a null, not an empty array.
-    service.getDrilldown().subscribe(v => expect(v).toBeNull());
+    // getDrilldown() — the odd one out, a null rather than an empty array — is GONE too (M9 Phase 2 / Agent
+    // C). It never needed a route of its own: the drill-down tree IS `getMonthlyReport().projectTree`, the
+    // SAME read that fills the monthly grid, and a second call would have been a second snapshot.
 
     // And the three stub mutations, which must also stay inert.
     service.saveProgress('0-0-0', 50).subscribe(v => expect(v).toBeUndefined());
@@ -1196,9 +1197,11 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
       ['getStandupMyDay', 'getDailyEntries'],
       ['getStandupBoard', 'getTeamBoard'],
       ['getTaskListScreen', 'getTaskCards'],
-      ['getWeeklyReport', 'getWeekly'],
-      ['getMonthlyReport', 'getMonthly'],
-      ['getMissingLogs', 'getMissing'],
+      //   ['getWeeklyReport',      'getWeekly']      — M9 Phase 2 / Agent C
+      //   ['getMonthlyReport',     'getMonthly']     — M9 Phase 2 / Agent C
+      //   ['getMissingLogs',       'getMissing']     — M9 Phase 2 / Agent C
+      //   (getMetrics() / getDrilldown() had no pair to complete: getMetrics() never had a route, and the
+      //    drill-down tree rides getMonthlyReport()'s response rather than a call of its own.)
       ['getPcaContactsActive', 'getContacts'],
     ];
 

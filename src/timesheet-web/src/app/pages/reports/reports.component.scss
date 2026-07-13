@@ -13,8 +13,17 @@
 .filters { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
 .filters label { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); font-weight: 600; }
 
+/* The week / month pickers are real <input type=date|month>, not a <select> of two hard-coded literals.
+   They borrow `.select`'s chrome; only the trailing chevron (which a date input draws itself) differs. */
+.select.date { padding-right: 10px; font-weight: 600; color: var(--ink); min-width: 148px; }
+
+.btn[disabled] { opacity: .5; cursor: not-allowed; pointer-events: none; }
+
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .metric { padding: 17px 18px; }
+/* WPF paints the 4th stat card amber, like the banner it counts — the two are one warning, not two. */
+.metric--warn { background: #FFF8EF; border-color: #F0DBBE; }
+.metric--warn .metric__lbl, .metric--warn .metric__sub { color: #C79A54; }
 .metric__lbl { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .7px; color: var(--faint); margin-bottom: 8px; }
 .metric__val { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
 .metric__sub { font-size: 12px; color: var(--muted); margin-top: 6px; }

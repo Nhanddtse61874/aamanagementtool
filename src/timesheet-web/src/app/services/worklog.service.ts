@@ -2,8 +2,8 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { map, Observable, of } from 'rxjs';
 import {
-  DailyEntry, LogGroup, Metric, MonthlyRow, Tag, TaskCard,
-  TaskTemplate, TeamMember, TreeNode, User, WeeklyRow, DayColumn,
+  DailyEntry, LogGroup, Tag, TaskCard,
+  TaskTemplate, TeamMember, User, DayColumn,
 } from '../models/worklog.models';
 
 import { ApiConfiguration } from '../api/api-configuration';
@@ -154,8 +154,6 @@ export interface ReportFilter {
  *     getUsers()        -> User[]         users.component.ts
  *     getTaskCards()    -> TaskCard[]     task-list.component.ts        getTags()      -> Tag[]
  *     getDailyEntries() -> DailyEntry[]   daily-report.component.ts     getTeamBoard() -> TeamMember[]
- *     getMetrics()      -> Metric[]       reports.component.ts          getMissing()   -> string[]
- *     getWeekly() / getMonthly() / getDrilldown()                       ... and the rest
  *     getContacts() / getTeams() / getTemplates() / getHolidays()       settings.component.ts
  *
  * The vendored view models DO NOT MATCH the wire DTOs. `User` is `{name, active}` with NO `id` at all where
@@ -1278,11 +1276,22 @@ export class WorklogService {
   getTaskCards(): Observable<TaskCard[]> { return of([]); }         // -> getTaskListScreen(); task-list.component.ts
   getDailyEntries(date: string): Observable<DailyEntry[]> { return of([]); }   // -> getStandupMyDay(); daily-report.component.ts
   getTeamBoard(date: string): Observable<TeamMember[]> { return of([]); }      // -> getStandupBoard(); daily-report.component.ts
-  getMetrics(): Observable<Metric[]> { return of([]); }             // 🔴 NO SUCH ROUTE. The old "TODO: GET /api/reports/metrics" was WRONG — /api/reports/* is weekly, monthly, missing-logs and NOTHING ELSE. The four stat cards are CLIENT-SIDE arithmetic over getWeeklyReport() (dayTotals + daysLogged) and getMissingLogs().length. Do not go hunting for a route; there never was one.
-  getMissing(): Observable<string[]> { return of([]); }             // -> getMissingLogs() (returns MissingLogWarning[], not string[]); reports.component.ts
-  getWeekly(): Observable<WeeklyRow[]> { return of([]); }           // -> getWeeklyReport(); reports.component.ts
-  getMonthly(): Observable<MonthlyRow[]> { return of([]); }         // -> getMonthlyReport(); reports.component.ts
-  getDrilldown(): Observable<TreeNode | null> { return of(null); }  // -> getMonthlyReport().projectTree (TeamNode[]) — the SAME read, not a second one; reports.component.ts
+  // getMetrics() / getMissing() / getWeekly() / getMonthly() / getDrilldown() — DELETED in M9 Phase 2 (Agent
+  // C). `reports.component.ts` was the ONLY consumer of all five, and it now binds the generated DTOs
+  // directly: getWeeklyReport(), getMonthlyReport() (whose `projectTree` IS the drill-down — the SAME read,
+  // not a second one) and getMissingLogs().
+  //
+  // 🔴 getMetrics() IS THE ONE THAT NEVER HAD A ROUTE AT ALL. Its old "TODO: GET /api/reports/metrics" named
+  // an endpoint that was never built and never will be: `/api/reports/*` is weekly, monthly and missing-logs,
+  // and that is all three of them. The four stat cards are CLIENT-SIDE ARITHMETIC over what getWeeklyReport()
+  // already returns — `dayTotals` and `daysLogged` ride the SAME response, deliberately, so the cards cannot
+  // show three different snapshots of one week — plus getMissingLogs().length. See `pages/reports/
+  // report-model.ts:statCards`. Do not go hunting for that route.
+  //
+  // 🔴 AND DO NOT RE-DERIVE `daysLogged` FROM `dayTotals`. The server owns it (ReportAggregator.DaysLogged):
+  // the denominator is Mon–Fri MINUS public holidays, which the client cannot see. It used to be `rows.Count`
+  // — a list that only holds days that HAVE logs — so it moved with the numerator and the stat could only
+  // ever read N/N. `dayTotals.length` is that same bug wearing a different name.
   getTags(): Observable<Tag[]> { return of([]); }                   // -> getTagList(); task-list.component.ts
   getTemplates(): Observable<TaskTemplate[]> { return of([]); }     // -> getTemplateList(); settings.component.ts
   getContacts(): Observable<string[]> { return of([]); }            // -> getPcaContactsActive(), or getPcaContactsAll() [ADMIN] for the Settings tab; settings.component.ts
