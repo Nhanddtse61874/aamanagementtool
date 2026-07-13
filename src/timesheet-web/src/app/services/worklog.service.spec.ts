@@ -272,3 +272,62 @@ describe('WorklogService — Move to next month', () => {
     req.flush({ rowVersion: 4 });
   });
 });
+
+// =====================================================================================================
+// DRAG TO REORDER — PUT /api/tasks/{id}/order. BUMP-ONLY.
+//
+// 🔴 This block has its OWN TestBed with a CONNECTED hub, for exactly the reason the block above spells out,
+// and the reason is not boilerplate: `ConnectionIdHttpClient` only stamps `X-Connection-Id` when there IS a
+// connection id. In the plain TestBed at the top of this file there is no live hub, so the header is omitted
+// from EVERYTHING — and `setTaskOrder` written on the WRONG client (`this.http`) would emit a byte-for-byte
+// IDENTICAL request there. A body-only assertion in that block would pass against the bug it exists to catch.
+//
+// (The plan's own draft of this test lived in the plain block. It would have pinned nothing.)
+// =====================================================================================================
+describe('WorklogService — task order (bump-only)', () => {
+  const CONN = 'hub-conn-2';
+
+  let service: WorklogService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: RealtimeService, useValue: { connectionId: () => CONN } },
+      ],
+    });
+    service = TestBed.inject(WorklogService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpMock.verify());
+
+  it('sends ONLY orderIndex — a version here would 409-STORM an ordinary drag', () => {
+    service.setTaskOrder(42, 3).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/order');
+    expect(req.request.method).toBe('PUT');
+
+    // 🔴 EXACTLY this, and nothing else. `reorderPlan` emits one write PER ROW, so a checked variant would see
+    // row 1's write invalidate the version rows 2..n are already holding — a 409 on the happy path, every drag.
+    expect(req.request.body).toEqual({ orderIndex: 3 });
+    expect('expectedVersion' in req.request.body).toBeFalse();
+    expect('rowVersion' in req.request.body).toBeFalse();
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('WRITES on the MUTATING client — a reorder is N writes, so N echoes would re-fetch the week N times', () => {
+    service.setTaskOrder(42, 3).subscribe();
+
+    const req = httpMock.expectOne(r => r.url === '/api/tasks/42/order');
+
+    // The header the server EXCLUDES us from its own SignalR broadcast by. Omit it and every one of the N
+    // writes a single drag makes echoes straight back to the person who made it.
+    expect(req.request.headers.get(CONNECTION_ID_HEADER)).toBe(CONN);
+
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+});

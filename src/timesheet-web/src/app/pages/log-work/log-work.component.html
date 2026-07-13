@@ -61,29 +61,68 @@
             </div>
 
             @if (isOpen(g.backlogId)) {
-              <!-- track by taskId: the row's IDENTITY, so a re-sort moves the row instead of re-pointing it -->
-              @for (t of g.tasks; track t.taskId) {
-                <div class="row">
-                  <div class="c-task task">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2.4" stroke-linecap="round"><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/></svg>
-                    <span>{{ t.taskName }}</span>
-                  </div>
-                  @for (d of days(); track d.iso) {
-                    <div class="c-day cell" [class.filled]="cellText(t.taskId, d.iso)">
-                      <!-- (ngModelChange) updates the DRAFT only. The write happens on (blur)/Enter --
-                           a save per keystroke would fire "4", "4.", "4.5" as three concurrent PUTs
-                           carrying the same expectedVersion, and the last two would 409 against the first. -->
-                      <input inputmode="decimal" placeholder="·"
-                        [attr.aria-label]="t.taskName + ' — ' + d.dow + ' ' + d.label"
-                        [ngModel]="cellText(t.taskId, d.iso)"
-                        (ngModelChange)="editCell(t.taskId, d.iso, $event)"
-                        (blur)="commitCell(t.taskId, d.iso)"
-                        (keyup.enter)="commitCell(t.taskId, d.iso)" />
+              <!-- The drop list. `.grp` is a plain block (only `.grid__head`, `.row` and `.grid__foot` are CSS
+                   grids), so this wrapper <div> is layout-neutral. Each group connects ONLY to the trash and
+                   never to another group: that is what stops a task being dragged into a different backlog,
+                   which `PUT /api/tasks/{id}/order` could not express anyway — it takes an `orderIndex` and no
+                   `backlogId`.
+
+                   🔴 CONNECTED BY STRING ID, NOT BY TEMPLATE REF — a correction to the plan, which specified
+                   `[cdkDropListConnectedTo]="[trash]"` against a `#trash` that Task 7 creates. That DOES NOT
+                   COMPILE. Verified:
+
+                       NG9: Property 'trash' does not exist on type 'LogWorkComponent'.
+
+                   A template reference variable is not a forward declaration: an unresolved `#name` is read as
+                   a property of the COMPONENT, and `strictTemplates` rejects it. But `connectedTo` is typed
+                   `(CdkDropList | string)[] | CdkDropList | string`, and CDK resolves a STRING against its
+                   static `_dropLists` registry inside `ref.beforeStarted` — LAZILY, ON EVERY DRAG START
+                   (drag-drop.mjs:3510-3519). So the target need not exist yet: today the id resolves to nothing
+                   and is filtered out harmlessly (`siblings.filter(drop => drop && ...)`), leaving intra-group
+                   reorder working; the moment Task 7 renders its trash, the very next drag connects. This is
+                   CDK's own documented mechanism ("id — ... Can be used as a reference in the `connectedTo` of
+                   another `CdkDropList`"), not a placeholder — the binding below is FINAL.
+
+                   🔴 SO TASK 7'S TRASH MUST CARRY `id="trash"`, NOT `#trash="cdkDropList"`. A template ref
+                   leaves its drop list on the auto-generated id (`cdk-drop-list-N`) and this connection then
+                   silently never resolves — the dragged row would snap back and the trash's `dropped` would
+                   never fire at all. Until Task 7 lands, CDK logs `could not find connected drop list with id
+                   "trash"` on each drag: a loud, self-describing reminder that disappears when it does. -->
+              <div class="grp__rows" cdkDropList [cdkDropListData]="g.tasks"
+                   [cdkDropListConnectedTo]="['trash']" (cdkDropListDropped)="onDrop(g, $event)">
+                <!-- track by taskId: the row's IDENTITY, so a re-sort moves the row instead of re-pointing it -->
+                @for (t of g.tasks; track t.taskId) {
+                  <!-- 🔴 [cdkDragData] is REQUIRED, not decoration: it is the ONLY way the trash's handler
+                       learns WHICH row was dropped on it. Without it `event.item.data` is `undefined` and
+                       `row.taskId` throws a TypeError — and only at the moment a user first tries to delete. -->
+                  <div class="row" cdkDrag [cdkDragData]="t">
+                    <div class="c-task task">
+                      <!-- 🔴 The handle goes ON THE SVG THAT WAS ALREADY HERE. Do NOT add a <span class="grip">
+                           as a child of `.row`: `.row` is a CSS grid of exactly SEVEN columns
+                           (`--gcols: minmax(230px,1.8fr) repeat(5,1fr) 92px`) and already has exactly seven
+                           children, so an eighth would shift every column by one and wrap `.c-total` onto a
+                           second implicit row — on every task row in the grid. The vendored design drew this
+                           six-dot glyph as a drag grip; it is finally one. -->
+                      <svg cdkDragHandle class="grip" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2.4" stroke-linecap="round"><title>Drag to reorder</title><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/></svg>
+                      <span>{{ t.taskName }}</span>
                     </div>
-                  }
-                  <div class="c-total" [class.zero]="rowTotal(t.taskId) === 0">{{ fmt(rowTotal(t.taskId)) }}</div>
-                </div>
-              }
+                    @for (d of days(); track d.iso) {
+                      <div class="c-day cell" [class.filled]="cellText(t.taskId, d.iso)">
+                        <!-- (ngModelChange) updates the DRAFT only. The write happens on (blur)/Enter --
+                             a save per keystroke would fire "4", "4.", "4.5" as three concurrent PUTs
+                             carrying the same expectedVersion, and the last two would 409 against the first. -->
+                        <input inputmode="decimal" placeholder="·"
+                          [attr.aria-label]="t.taskName + ' — ' + d.dow + ' ' + d.label"
+                          [ngModel]="cellText(t.taskId, d.iso)"
+                          (ngModelChange)="editCell(t.taskId, d.iso, $event)"
+                          (blur)="commitCell(t.taskId, d.iso)"
+                          (keyup.enter)="commitCell(t.taskId, d.iso)" />
+                      </div>
+                    }
+                    <div class="c-total" [class.zero]="rowTotal(t.taskId) === 0">{{ fmt(rowTotal(t.taskId)) }}</div>
+                  </div>
+                }
+              </div>
 
               <!-- The group footer. `.grp__foot` was already in the SCSS — a leftover of the vendored design
                    whose MARKUP went out with the fake buttons in M8.4/W4. It is a flex row with

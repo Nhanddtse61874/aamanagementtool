@@ -1,3 +1,4 @@
+import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal,
@@ -15,10 +16,11 @@ import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
 import { AddTaskDialogComponent } from './add-task-dialog.component';
 import {
-  CellMap, Group, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill, nextOrderIndex,
-  parseHours, patchCell,
+  CellMap, Group, TaskRow, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill,
+  nextOrderIndex, parseHours, patchCell,
 } from './grid-state';
 import { canMoveMonth, nextMonthFrom, toUpdateRequest } from './move-month';
+import { reorderPlan } from './reorder';
 import { buildSmartFillRequest } from './smart-fill';
 import { WeekDay, mondayOf, shiftWeeks, weekDays } from './week';
 
@@ -54,7 +56,23 @@ interface PendingWrite {
 @Component({
   selector: 'app-log-work',
   standalone: true,
-  imports: [CommonModule, FormsModule, ConflictDialogComponent, AddTaskDialogComponent],
+  // 🔴 `DragDropModule` is LOAD-BEARING, and HOW it fails when absent is worth knowing exactly, because the
+  // widely-repeated version of this warning is only half true. MEASURED, by removing it and building:
+  //
+  //   - A PROPERTY BINDING is checked: `[cdkDropListData]` / `[cdkDropListConnectedTo]` / `[cdkDragData]` each
+  //     fail with `NG8002: Can't bind to '…' since it isn't a known property of 'div'`, and the output fails
+  //     with `NG5: Argument of type 'Event' is not assignable to parameter of type 'CdkDragDrop<…>'` — because
+  //     `$event` falls back to the native `Event`. So for THIS template, losing the module is LOUD: four errors.
+  //   - A BARE ATTRIBUTE is NOT checked. With the same module missing and the same directives written as bare
+  //     attributes, `ng build` reports "Application bundle generation complete" — CLEAN. Angular errors on an
+  //     unknown ELEMENT (NG8001), never on an unknown ATTRIBUTE.
+  //
+  // 🔴 Which matters here, because `cdkDragHandle` on the SVG IS a bare attribute — the one directive in this
+  // template with nothing bound to it. Typo it, or let it drift outside `cdkDrag`, and it is silently dropped;
+  // CDK then falls back to making the WHOLE ROW draggable, so the grid still "works" and the bug is invisible.
+  // `log-work.component.spec.ts` asserts `By.directive(CdkDragHandle)` finds it, and that assertion is the only
+  // thing standing under it. A green build is not evidence for that one.
+  imports: [CommonModule, FormsModule, ConflictDialogComponent, AddTaskDialogComponent, DragDropModule],
   templateUrl: './log-work.component.html',
   styleUrl: './log-work.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,6 +112,10 @@ export class LogWorkComponent {
   /** True while a Move's GET -> PUT is in flight; the button is disabled for its duration. The same shape as
    *  `sfBusy`. A second click is not merely wasteful here, it CORRUPTS — see `onMoveMonth`. */
   readonly moving = signal(false);
+
+  /** True while a drag's batch of order writes is in flight. The same shape as `moving`, and for the same
+   *  reason: a second drag started before the first batch lands would CORRUPT the order — see `onDrop`. */
+  readonly reordering = signal(false);
 
   /**
    * The DEFAULT-backlog rule, exposed to the template so the Move button can be HIDDEN on that group — the
@@ -593,6 +615,78 @@ export class LogWorkComponent {
         this.toast.show('Could not move this ticket. Please try again.');
         break;
     }
+  }
+
+  // ---- drag to reorder -----------------------------------------------------------------------------
+
+  /**
+   * A row was dropped. Rewrite the group's order on the server, then re-read the week.
+   *
+   * 🔴 **`reorderPlan` rewrites EVERY row, and that is a FIX, not caution.** `SetActiveAsync` soft-deletes by
+   * setting `is_active = 0` and LEAVES `order_index` untouched, while the read is
+   * `WHERE is_active = 1 ORDER BY order_index` — so one delete leaves the survivors at 1,2,3: a GAP. A
+   * windowed write (only the rows between the two positions, at absolute index `lo + i`) then produces a TIE,
+   * and `ORDER BY` with a tie is ARBITRARY: the order silently scrambles on the next reload. Rewriting every
+   * row renormalises the gap on every drag, which is exactly what WPF does. Do not "optimise" it back.
+   *
+   * The writes are BUMP-ONLY — `setTaskOrder` sends `{ orderIndex }` and no version, deliberately. See it.
+   *
+   * 🔴 **The container guard, traced through CDK's source rather than guessed:** `dropped` fires ONLY on the
+   * DESTINATION list. A drag *within* a group makes that group both source and destination, so
+   * `previousContainer === container` and this proceeds. A drag *to the trash* fires only the TRASH's handler
+   * — so this method can never see a cross-list index, and the guard below is the assertion of that, not a
+   * branch that does real work. Groups connect only to the trash, never to each other: a task cannot be
+   * dragged into a different backlog, which `PUT /api/tasks/{id}/order` could not express anyway (it takes an
+   * `orderIndex` and no `backlogId`).
+   */
+  async onDrop(group: Group, event: CdkDragDrop<readonly TaskRow[]>): Promise<void> {
+    if (event.previousContainer !== event.container) return;   // came from elsewhere — not a reorder
+
+    // 🔴 Re-entrancy, and — as with `moving` — it is a CORRUPTION guard, not a politeness. CDK does NOT move
+    // the row for us (we never call `moveItemInArray`; the re-fetch is what re-renders it), so between the
+    // drop and the refresh landing the row SNAPS BACK to where it started. On a slow link that reads as "the
+    // drag didn't work", which is precisely when a user drags again — and a second batch computed from the
+    // still-stale `group.tasks` would interleave with the first, leaving the group's `order_index` values in
+    // an order neither drag asked for.
+    if (this.reordering()) return;
+
+    const writes = reorderPlan(group.tasks, event.previousIndex, event.currentIndex);
+    if (!writes.length) return;                                // dropped where it started
+
+    this.reordering.set(true);
+    try {
+      for (const w of writes) await firstValueFrom(this.api.setTaskOrder(w.taskId, w.orderIndex));
+      this.refresh.next();
+    } catch (err: unknown) {
+      this.onReorderError(err);
+    } finally {
+      this.reordering.set(false);
+    }
+  }
+
+  /**
+   * 🔴 Why `onDrop` has a `catch` at all, and why it must never re-throw.
+   *
+   * `onDrop` is an `async` method bound to `(cdkDropListDropped)`, so anything escaping it is an UNHANDLED
+   * PROMISE REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would drag a row, watch it snap back,
+   * and have no idea the write failed. (`onAddTaskError` and `onMoveError` exist for the identical reason.)
+   *
+   * And a failure here is not merely a no-op: the writes are sequential, so a 404 on write 3 of 5 leaves the
+   * group HALF-renormalised on the server. Re-reading is therefore mandatory, not tidy — it is the only way
+   * the screen stops showing an order the server does not have. A 404 is genuinely reachable: another user can
+   * delete one of these tasks (M8.5 ships exactly that) while the drag is in flight.
+   */
+  private onReorderError(err: unknown): void {
+    if (!(err instanceof HttpErrorResponse)) {
+      this.toast.show('Could not reach the server.');
+      this.refresh.next();
+      return;
+    }
+
+    this.toast.show(err.status === 404
+      ? 'One of those tasks is no longer available. Reloaded.'
+      : 'Could not save the new order. Reloaded — please try again.');
+    this.refresh.next();
   }
 
   // ---- misc ----------------------------------------------------------------------------------------
