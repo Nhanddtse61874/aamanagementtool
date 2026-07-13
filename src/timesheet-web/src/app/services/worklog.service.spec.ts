@@ -1153,21 +1153,23 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
 
   it('still exposes every stub, still empty, and still making NO http call', () => {
     const empties: Observable<unknown[]>[] = [
-      service.getUsers(),
       service.getLogGroups(),
       // getTaskCards() is GONE — M9 Phase 2 (Agent A) moved task-list.component.ts onto getTaskListScreen()
       // and deleted the stub it orphaned. That is the convention working, not a regression.
+      //
+      // getUsers() / getTemplates() / getContacts() / getTeams() / getHolidays() are GONE for the same reason
+      // — M9 Phase 2 (Agent D) moved users.component.ts and settings.component.ts onto getUsersAll(),
+      // getTemplateList(), getPcaContactsAll(), getTeamsAll() and getHolidayList().
       service.getDailyEntries('2026-07-06'),
       service.getTeamBoard('2026-07-06'),
       // getMetrics() / getMissing() / getWeekly() / getMonthly() / getDrilldown() are GONE — M9 Phase 2
       // (Agent C) moved reports.component.ts onto getWeeklyReport(), getMonthlyReport() and getMissingLogs().
       // getMetrics() is the one that never had a route to move TO: the four stat cards are client-side
       // arithmetic over the weekly response, and /api/reports/metrics has never existed.
+      // 🔴 getTags() survives with NO CONSUMER: task-list (Agent A) and settings (Agent D) BOTH moved to
+      // getTagList() in this same wave, and each was briefed that the other still owned the stub. It is dead
+      // code — neither agent was authorised to delete it. Sweep it at the merge.
       service.getTags(),
-      service.getTemplates(),
-      service.getContacts(),
-      service.getTeams(),
-      service.getHolidays(),
     ];
 
     empties.forEach(o => o.subscribe(v => expect(v).toEqual([])));
@@ -1176,11 +1178,10 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
     // C). It never needed a route of its own: the drill-down tree IS `getMonthlyReport().projectTree`, the
     // SAME read that fills the monthly grid, and a second call would have been a second snapshot.
 
-    // And the three stub mutations, which must also stay inert.
-    // (`saveProgress` is GONE — M9 Phase 2 / Agent A. The Task List now rides `progressPercent` on the
-    //  whole-record checked PUT.)
-    service.toggleUser('Zoe').subscribe(v => expect(v).toBeUndefined());
-    service.toggleHoliday('2026-01-01').subscribe(v => expect(v).toBeUndefined());
+    // The stub mutations are ALL GONE now:
+    //   saveProgress()  — M9 Phase 2 / Agent A; the Task List rides `progressPercent` on the checked PUT.
+    //   toggleUser()    — M9 Phase 2 / Agent D; keyed a user by NAME, and the route takes an ID.
+    //   toggleHoliday() — M9 Phase 2 / Agent D; a "toggle" cannot express TWO routes (POST upsert / DELETE).
 
     // httpMock.verify() in afterEach proves none of the above touched the network. A stub "helpfully" wired
     // to a real route would fail HERE, loudly, rather than silently changing a screen's behaviour in a phase
@@ -1192,21 +1193,21 @@ describe('WorklogService — M9 P5: the vendored stubs are LEFT ALONE', () => {
     // what M8.6 did with getBacklogList()/getBacklogs(), and it is why Phase 1 can end green.
     const pairs: [keyof WorklogService, keyof WorklogService][] = [
       ['getTagList', 'getTags'],
-      ['getTemplateList', 'getTemplates'],
-      ['getHolidayList', 'getHolidays'],
-      ['getTeamsActive', 'getTeams'],
-      ['getUsersAll', 'getUsers'],
       ['getStandupMyDay', 'getDailyEntries'],
       ['getStandupBoard', 'getTeamBoard'],
-      // [getTaskListScreen, getTaskCards] — the pair COMPLETED its lifecycle: the component moved to the
-      // real method and the stub was deleted with it (M9 Phase 2 / Agent A). A pair lives here only while
-      // BOTH halves do.
+      // These pairs have COMPLETED their lifecycle: the component moved to the real method and the stub was
+      // deleted with it. A pair only lives here while BOTH halves do.
+      //   ['getTaskListScreen',    'getTaskCards']   — M9 Phase 2 / Agent A
+      //   ['getUsersAll',          'getUsers']       — M9 Phase 2 / Agent D
+      //   ['getTemplateList',      'getTemplates']   — M9 Phase 2 / Agent D
+      //   ['getHolidayList',       'getHolidays']    — M9 Phase 2 / Agent D
+      //   ['getTeamsActive',       'getTeams']       — M9 Phase 2 / Agent D
+      //   ['getPcaContactsActive', 'getContacts']    — M9 Phase 2 / Agent D
       //   ['getWeeklyReport',      'getWeekly']      — M9 Phase 2 / Agent C
       //   ['getMonthlyReport',     'getMonthly']     — M9 Phase 2 / Agent C
       //   ['getMissingLogs',       'getMissing']     — M9 Phase 2 / Agent C
       //   (getMetrics() / getDrilldown() had no pair to complete: getMetrics() never had a route, and the
       //    drill-down tree rides getMonthlyReport()'s response rather than a call of its own.)
-      ['getPcaContactsActive', 'getContacts'],
     ];
 
     pairs.forEach(([real, stub]) => {
