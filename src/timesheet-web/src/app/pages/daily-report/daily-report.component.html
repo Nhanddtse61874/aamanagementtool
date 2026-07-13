@@ -6,76 +6,286 @@
 
   <div class="toolbar">
     <div class="seg">
-      <button>◀</button>
-      <div class="seg__label mono">{{ date }}</div>
-      <button>▶</button>
+      <button type="button" aria-label="Previous day" [disabled]="loading()" (click)="prevDay()">◀</button>
+      <div class="seg__label mono">{{ dayLabel() }}</div>
+      <button type="button" aria-label="Next day" [disabled]="loading()" (click)="nextDay()">▶</button>
     </div>
-    <button class="btn btn-ghost" (click)="notify('Week archived')">Archive week</button>
+
+    @if (!canEdit()) {
+      <span class="lock">🔒 This day is locked — only today and yesterday are editable.</span>
+    }
+
+    <!-- [ADMIN]. `archiveStandupWeek` is AdminPolicy-gated and 403s everyone else; this screen is open to
+         every user, so the button is only OFFERED to an admin. -->
+    @if (isAdmin()) {
+      <button class="btn btn-ghost" type="button" [disabled]="busy()" (click)="archiveWeek()">Archive week</button>
+    }
   </div>
 
   <div class="tabs">
-    <button [class.active]="tab() === 'input'" (click)="tab.set('input')">Input</button>
-    <button [class.active]="tab() === 'team'" (click)="tab.set('team')">Team board</button>
+    <button type="button" [class.active]="tab() === 'input'" (click)="tab.set('input')">Input</button>
+    <button type="button" [class.active]="tab() === 'team'" (click)="tab.set('team')">Team board</button>
   </div>
 
   @if (tab() === 'input') {
-    <div class="fade">
-      <div class="actions">
-        <button class="btn btn-primary" (click)="notify('Entry added')">+ Add entry</button>
-        <button class="btn btn-soft" (click)="notify('Imported from yesterday')">⇕ Quick import</button>
-      </div>
-      <div class="band band--y">YESTERDAY <span>— nothing logged</span></div>
-      <div class="band band--t">TODAY</div>
+    <div class="fade" cdkDropListGroup>
+      <!-- Both add-buttons are HIDDEN when the day is locked. The server would 400 them anyway; offering a
+           button that cannot work is the lie this screen was full of. -->
+      @if (canEdit()) {
+        <div class="actions">
+          <button class="btn btn-primary" type="button" [disabled]="busy()" (click)="openAdd('today')">+ Add entry</button>
+          <button class="btn btn-soft" type="button" [disabled]="busy()" (click)="quickImport()">⇕ Quick import</button>
+        </div>
+      }
 
-      @for (e of entries(); track $index) {
-        <div class="card entry">
-          <div class="entry__top">
-            <div>
-              <div class="entry__title"><span class="code">{{ e.code }}</span><span class="dot">·</span><b>{{ e.title }}</b></div>
-              <div class="muted">{{ e.note }}</div>
-              <div class="faint">Deadline: {{ e.deadline }}</div>
-            </div>
-            <span class="badge" [class.badge-ok]="e.status === 'Done'" [class.badge-warn]="e.status === 'Todo'">{{ e.status }}</span>
-          </div>
-          <div class="issues__head"><span>ISSUES</span><button class="btn btn-soft btn-sm" (click)="notify('Issue added')">+ Issue</button></div>
-          @for (i of e.issues; track $index) {
-            <div class="issue" [class.ok]="i.ok" [class.warn]="!i.ok">
-              <div class="issue__row"><span class="issue__txt">{{ i.ok ? '✓' : '⚠' }} {{ i.text }}</span><button class="x">✕</button></div>
-              @if (i.hasSolution) {
-                <div class="sol-lbl">SOLUTION</div>
-                <div class="sol"><input class="input" [value]="i.solution || ''" /><button class="btn btn-primary btn-sm" (click)="notify('Solution saved')">Save</button></div>
-              } @else {
-                <div class="issue__row" style="margin-top:9px;"><span class="faint">No solution yet</span><button class="btn btn-ghost btn-sm" (click)="notify('Add a solution')">+ Add solution</button></div>
+      @for (section of sections; track section) {
+        <div class="band" [class.band--y]="section === 'yesterday'" [class.band--t]="section === 'today'">
+          {{ section === 'yesterday' ? 'YESTERDAY' : 'TODAY' }}
+          <!-- The mock hard-coded "— nothing logged" on YESTERDAY regardless of content. It is now a real
+               empty state, on either band. -->
+          @if (entriesOf(section).length === 0) { <span>— nothing logged</span> }
+        </div>
+
+        <div
+          cdkDropList
+          [cdkDropListData]="zone(section)"
+          [cdkDropListDisabled]="!canEdit() || busy()"
+          (cdkDropListDropped)="onDrop($event)"
+          class="droplist">
+          @for (v of entriesOf(section); track trackEntry($index, v)) {
+            <div class="card entry" cdkDrag [cdkDragData]="v" [cdkDragDisabled]="v.editable !== true || busy()">
+              <div class="entry__top">
+                <div>
+                  <div class="entry__title">
+                    <span class="code">{{ v.entry?.backlogCode }}</span>
+                    <span class="dot">·</span>
+                    <b>{{ v.entry?.taskText }}</b>
+                  </div>
+                  @if (v.entry?.description) { <div class="muted">{{ v.entry?.description }}</div> }
+                  @if (v.entry?.deadline) { <div class="faint">Deadline: {{ v.entry?.deadline }}</div> }
+                </div>
+                <span
+                  class="badge"
+                  [class.badge-ok]="v.entry?.status === 'Done'"
+                  [class.badge-warn]="v.entry?.status === 'Todo' || v.entry?.status === 'Pending'">
+                  {{ v.entry?.status }}
+                </span>
+              </div>
+
+              <!-- ISSUES. 🔴 NOT lock-gated: AddIssueAsync/UpdateIssueAsync/DeleteIssueAsync carry no
+                   CanEditDay and no owner check, by design (DR-04 — "anyone, anytime"). -->
+              <div class="issues__head">
+                <span>ISSUES</span>
+                <button class="btn btn-soft btn-sm" type="button" [disabled]="busy()"
+                        (click)="toggleAddIssue(v.entry?.id ?? 0)">+ Issue</button>
+              </div>
+
+              @if (isAddingIssue(v.entry?.id ?? 0)) {
+                <div class="issue">
+                  <div class="sol">
+                    <input #newIssue class="input" placeholder="What is blocking this?" />
+                    <button class="btn btn-primary btn-sm" type="button" [disabled]="busy()"
+                            (click)="addIssue(v.entry?.id ?? 0, newIssue.value)">Add</button>
+                    <button class="btn btn-ghost btn-sm" type="button"
+                            (click)="toggleAddIssue(v.entry?.id ?? 0)">Cancel</button>
+                  </div>
+                </div>
+              }
+
+              @for (i of issuesOf(v); track trackIssue($index, i)) {
+                <div class="issue" [class.ok]="hasSolution(i)" [class.warn]="!hasSolution(i)">
+                  <div class="issue__row">
+                    <!-- Issue text is READ-ONLY after creation (DR-04). Solution + status are collaborative. -->
+                    <span class="issue__txt">{{ hasSolution(i) ? '✓' : '⚠' }} {{ i.issueText }}</span>
+                    <button class="x" type="button" aria-label="Delete issue" [disabled]="busy()"
+                            (click)="deleteIssue(v.entry?.id ?? 0, i.id)">✕</button>
+                  </div>
+
+                  @if (isEditingSolution(i)) {
+                    <div class="sol-lbl">SOLUTION</div>
+                    <div class="sol">
+                      <input #sol class="input" [value]="i.solutionText || ''" placeholder="How was it solved?" />
+                      <select #st class="input status-sel">
+                        @for (s of issueStatuses; track s) {
+                          <option [value]="s" [selected]="i.status === s">{{ s }}</option>
+                        }
+                      </select>
+                      <button class="btn btn-primary btn-sm" type="button" [disabled]="busy()"
+                              (click)="saveIssue(v.entry?.id ?? 0, i, sol.value, st.value)">Save</button>
+                    </div>
+                  } @else {
+                    <div class="issue__row" style="margin-top:9px;">
+                      <span class="faint">No solution yet</span>
+                      <button class="btn btn-ghost btn-sm" type="button"
+                              (click)="beginEditSolution(i.id ?? 0)">+ Add solution</button>
+                    </div>
+                  }
+                </div>
+              }
+
+              @if (v.editable) {
+                <div class="right">
+                  <button class="btn btn-danger btn-sm" type="button" [disabled]="busy()"
+                          (click)="deleteEntry(v)">Delete entry</button>
+                </div>
               }
             </div>
+          } @empty {
+            <div class="empty sm-empty faint">Nothing in this section.</div>
           }
-          <div class="right"><button class="btn btn-danger btn-sm">Delete entry</button></div>
         </div>
-      } @empty {
-        <div class="empty"><div class="empty__title">No entries for today</div><div class="empty__sub">Connect <code>getDailyEntries()</code>.</div></div>
+      }
+
+      <!-- The trash drop-zone. Lock-gated, exactly as the drag itself is. -->
+      @if (canEdit()) {
+        <div
+          cdkDropList
+          [cdkDropListData]="trashZone"
+          [cdkDropListDisabled]="busy()"
+          (cdkDropListDropped)="onDrop($event)"
+          class="trash">
+          🗑 Drag an entry here to delete it
+        </div>
       }
     </div>
   } @else {
     <div class="fade">
-      <div class="teams-note">Teams: <span class="chip">Teams (1)</span></div>
-      <div class="board">
-        @for (m of team(); track m.name) {
-          <div class="card member">
-            <div class="member__head"><span class="avatar" [style.background]="avatar(m.name)" style="width:32px;height:32px;">{{ initial(m.name) }}</span><b>{{ m.name }}</b></div>
-            <div class="band band--y sm">YESTERDAY <span>— nothing logged</span></div>
-            <div class="band band--t sm">TODAY</div>
-            @for (t of m.today; track $index) {
-              <div class="titem">
-                <div class="titem__row"><span><b class="code">{{ t.code }}</b> · {{ t.title }} <span class="faint">· due {{ t.due }}</span></span><span class="badge" [class.badge-ok]="t.status === 'Done'" [class.badge-warn]="t.status === 'Todo'">{{ t.status }}</span></div>
-                <div class="muted">{{ t.note }}</div>
-                @for (i of t.issues; track $index) { <div class="issue sm" [class.ok]="i.ok" [class.warn]="!i.ok">{{ i.ok ? '✓' : '⚠' }} {{ i.text }}</div> }
-              </div>
-            } @empty { <div class="faint sm-empty">No items today</div> }
-          </div>
-        } @empty {
-          <div class="empty"><div class="empty__title">No team activity</div><div class="empty__sub">Connect <code>getTeamBoard()</code>.</div></div>
-        }
+      <div class="teams-note">
+        <app-team-filter (selectionChange)="onTeamSelection($event)" />
       </div>
+
+      <!-- 🔴 H4. `teamIds: []` on the wire means "ALL MY TEAMS", the exact inverse of what the user asked
+           for. So an empty selection renders HERE, locally, and makes NO API CALL. -->
+      @if (boardBlocked()) {
+        <div class="empty">
+          <div class="empty__title">No teams selected</div>
+          <div class="empty__sub">Check at least one team to see the board.</div>
+        </div>
+      } @else {
+        <div class="board">
+          @for (m of board(); track trackMember($index, m)) {
+            <div class="card member">
+              <div class="member__head">
+                <span class="avatar" [style.background]="avatar(m.userName)" style="width:32px;height:32px;">{{ initial(m.userName) }}</span>
+                <b>{{ m.userName }}</b>
+              </div>
+
+              <!-- Both bands, per member. The mock's `TeamMember` had no `yesterday` array at all, so the
+                   YESTERDAY band was decorative and always read "— nothing logged". -->
+              @for (section of sections; track section) {
+                <div class="band sm" [class.band--y]="section === 'yesterday'" [class.band--t]="section === 'today'">
+                  {{ section === 'yesterday' ? 'YESTERDAY' : 'TODAY' }}
+                  @if (bandOf(m, section).length === 0) { <span>— nothing logged</span> }
+                </div>
+
+                @for (v of bandOf(m, section); track trackEntry($index, v)) {
+                  <div class="titem">
+                    <div class="titem__row">
+                      <span>
+                        <b class="code">{{ v.entry?.backlogCode }}</b> · {{ v.entry?.taskText }}
+                        @if (v.entry?.deadline) { <span class="faint">· due {{ v.entry?.deadline }}</span> }
+                      </span>
+                      <span
+                        class="badge"
+                        [class.badge-ok]="v.entry?.status === 'Done'"
+                        [class.badge-warn]="v.entry?.status === 'Todo' || v.entry?.status === 'Pending'">
+                        {{ v.entry?.status }}
+                      </span>
+                    </div>
+                    @if (v.entry?.description) { <div class="muted">{{ v.entry?.description }}</div> }
+                    @for (i of issuesOf(v); track trackIssue($index, i)) {
+                      <div class="issue sm" [class.ok]="hasSolution(i)" [class.warn]="!hasSolution(i)">
+                        {{ hasSolution(i) ? '✓' : '⚠' }} {{ i.issueText }}
+                      </div>
+                    }
+                  </div>
+                }
+              }
+            </div>
+          } @empty {
+            <div class="empty">
+              <div class="empty__title">No team activity</div>
+              <div class="empty__sub">Nobody on the checked teams has logged a standup for this day.</div>
+            </div>
+          }
+        </div>
+      }
     </div>
   }
 </section>
+
+<!-- ══ Add-entry modal ══════════════════════════════════════════════════════════════════════════════════ -->
+@if (modalOpen()) {
+  <div class="scrim" (click)="closeAdd()"></div>
+  <div class="modal card" role="dialog" aria-label="Add standup entry">
+    <h2>Add entry</h2>
+
+    <label class="fld">
+      <span class="fld__lbl">SECTION</span>
+      <div class="radios">
+        @for (s of sections; track s) {
+          <label class="radio">
+            <input type="radio" name="section" [value]="s" [checked]="draft().section === s"
+                   (change)="patch('section', asSection(s))" />
+            {{ s === 'yesterday' ? 'Yesterday' : 'Today' }}
+          </label>
+        }
+      </div>
+    </label>
+
+    <label class="fld">
+      <span class="fld__lbl">BACKLOG</span>
+      <select #bl class="input" (change)="pickBacklog(bl.value)">
+        <!-- The empty option is AD-HOC: it leaves `backlogId` null, which is what makes a typed code an
+             ad-hoc line rather than a claim about a backlog that exists. -->
+        <option value="">— ad-hoc (type a code below) —</option>
+        @for (b of backlogs(); track b.id) {
+          <option [value]="b.id" [selected]="draft().backlogId === b.id">{{ b.backlogCode }} · {{ b.project }}</option>
+        }
+      </select>
+      <input #code class="input" placeholder="Backlog code (required)" [value]="draft().backlogCode"
+             (input)="patch('backlogCode', code.value)" />
+    </label>
+
+    <label class="fld">
+      <span class="fld__lbl">TASK</span>
+      <select #tk class="input" [disabled]="tasks().length === 0" (change)="pickTask(tk.value)">
+        <option value="">— ad-hoc (type it below) —</option>
+        @for (t of tasks(); track t.id) {
+          <option [value]="t.id">{{ t.taskName }}</option>
+        }
+      </select>
+      <input #task class="input" placeholder="Task (required)" [value]="draft().taskText"
+             (input)="patch('taskText', task.value)" />
+    </label>
+
+    <label class="fld">
+      <span class="fld__lbl">DESCRIPTION <em>optional</em></span>
+      <input #desc class="input" [value]="draft().description" (input)="patch('description', desc.value)" />
+    </label>
+
+    <div class="fld-row">
+      <label class="fld">
+        <span class="fld__lbl">DEADLINE <em>optional</em></span>
+        <input #dl class="input" type="date" [value]="draft().deadline || ''"
+               (input)="patch('deadline', dl.value || null)" />
+      </label>
+
+      <label class="fld">
+        <span class="fld__lbl">STATUS</span>
+        <select #stt class="input" (change)="patch('status', asStatus(stt.value))">
+          @for (s of statuses; track s) {
+            <option [value]="s" [selected]="draft().status === s">{{ s }}</option>
+          }
+        </select>
+      </label>
+    </div>
+
+    @if (draftError()) { <div class="err">{{ draftError() }}</div> }
+
+    <div class="modal__actions">
+      <button class="btn btn-ghost" type="button" (click)="closeAdd()">Cancel</button>
+      <button class="btn btn-primary" type="button" [disabled]="busy()" (click)="submitEntry()">Add entry</button>
+    </div>
+  </div>
+}
