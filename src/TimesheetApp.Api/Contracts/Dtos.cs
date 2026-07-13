@@ -72,6 +72,25 @@ public sealed record BacklogDto(
     int? ProgressPercent, string? Note, int? PcaContactId, int? TeamId,
     long RowVersion);
 
+/// <summary>The LIST shape (<c>GET /api/backlogs</c>). Deliberately NOT <see cref="BacklogDto"/>:
+/// <c>BacklogDto</c> is the EDITOR's shape (what <c>GET /{id}</c> and <c>POST</c> return), and a
+/// <c>TaskCount</c> on it would force every single-backlog read to compute a number nobody uses.
+///
+/// <para><b>No <c>rowVersion</c>, deliberately.</b> The Edit button does a fresh <c>GET /{id}</c>, which
+/// returns the authoritative version. A version carried on a list row is STALE BY CONSTRUCTION — and a
+/// stale version is exactly the thing that gets narrowed with a <c>!</c> and silently overwrites somebody.
+/// This is the one DTO on a versioned entity that must NOT expose the token (see the file header).</para></summary>
+public sealed record BacklogListItemDto(
+    int Id, string BacklogCode, string Project, int TaskCount,
+    string? PeriodMonth, string? Type, int? AssigneeUserId);
+
+/// <summary>Projected from <c>BacklogAuditEntry</c> (<c>Models/Entities.cs</c>). <c>BacklogId</c> is dropped
+/// (it is the path param); <c>ChangedByUserId</c> is dropped (the panel renders the NAME — and the
+/// repository audits by name precisely so a deleted user's history still reads).</summary>
+public sealed record BacklogAuditDto(
+    int Id, string Field, string? OldValue, string? NewValue,
+    string? ChangedByName, DateTimeOffset ChangedAt, string? Note);
+
 public sealed record TaskItemDto(
     int Id, int BacklogId, string TaskName, int OrderIndex, bool IsActive,
     string Status, string? Type, int? AssigneeUserId, long RowVersion);

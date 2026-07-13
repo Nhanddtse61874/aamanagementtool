@@ -26,9 +26,15 @@ public sealed class OpenApiContractTests : IAsyncLifetime
 
     public Task DisposeAsync() { _factory.Dispose(); return Task.CompletedTask; }
 
+    // NOTE on "/api/backlogs/{id}/audit": the ROUTE is declared "{id:int}", but ApiExplorer STRIPS the route
+    // constraint from the OpenAPI path. The key here is therefore "{id}" -- "{id:int}" is not in the document
+    // and lookups for it fail with a KeyNotFoundException that reads exactly like a missing route.
     [Theory]
+    [InlineData("/api/backlogs", "get", "200")]
+    [InlineData("/api/backlogs", "post", "200")]
     [InlineData("/api/backlogs/{id}", "get", "200")]
     [InlineData("/api/backlogs/{id}", "put", "200")]
+    [InlineData("/api/backlogs/{id}/audit", "get", "200")]
     [InlineData("/api/tasks", "post", "200")]
     public void Route_declares_a_response_SCHEMA_not_just_a_status(string path, string verb, string status)
     {
@@ -53,8 +59,11 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     }
 
     [Theory]
+    [InlineData("/api/backlogs", "get", "Backlogs")]
+    [InlineData("/api/backlogs", "post", "Backlogs")]
     [InlineData("/api/backlogs/{id}", "get", "Backlogs")]
     [InlineData("/api/backlogs/{id}", "put", "Backlogs")]
+    [InlineData("/api/backlogs/{id}/audit", "get", "Backlogs")]
     [InlineData("/api/tasks", "post", "Tasks")]
     [InlineData("/api/tasks/{id}/active", "put", "Tasks")]
     [InlineData("/api/tasks/{id}/order", "put", "Tasks")]
@@ -69,8 +78,11 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     // from .WithName(...). Omit it and Swashbuckle invents one -- so the function gets a name nobody
     // chose, and it churns whenever an unrelated route is added.
     [Theory]
+    [InlineData("/api/backlogs", "get", "BacklogList")]
+    [InlineData("/api/backlogs", "post", "BacklogCreate")]
     [InlineData("/api/backlogs/{id}", "get", "BacklogGet")]
     [InlineData("/api/backlogs/{id}", "put", "BacklogUpdate")]
+    [InlineData("/api/backlogs/{id}/audit", "get", "BacklogAudit")]
     [InlineData("/api/tasks", "post", "TaskCreate")]
     [InlineData("/api/tasks/{id}/active", "put", "TaskSetActive")]
     [InlineData("/api/tasks/{id}/order", "put", "TaskSetOrder")]
