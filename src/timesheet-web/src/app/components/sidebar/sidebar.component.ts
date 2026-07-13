@@ -26,6 +26,18 @@ export class SidebarComponent {
     return name && name.length > 0 ? name.charAt(0).toUpperCase() : '?';
   });
 
+  /**
+   * M9/P6a. Gates the ADMIN section below -- until now the sidebar offered `/users` and `/settings` to
+   * EVERYONE, and `AuthService.currentUser().isAdmin` was read by nothing in the entire app.
+   *
+   * This hides the links; `adminGuard` (`app.routes.ts`) is what actually makes the routes unreachable. A
+   * hidden link is not a guard -- the URL is still typeable -- which is exactly why both exist.
+   *
+   * 🔴 `=== true`: `isAdmin` is `boolean | undefined` (every generated model field is optional). Undefined
+   * FAILS CLOSED, and the section stays hidden. Same rule as `adminGuard.decide`.
+   */
+  readonly isAdmin = computed(() => this.currentUser()?.isAdmin === true);
+
   readonly workspace: NavItem[] = [
     { link: '/log', label: 'Log Work', icon: 'log' },
     { link: '/backlog', label: 'Backlog', icon: 'backlog' },

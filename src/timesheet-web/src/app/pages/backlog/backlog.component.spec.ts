@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { Observable, Subject, of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 
 import { BacklogDto, BacklogListItemDto, NamedRefDto, PcaContactDto, UserDto } from '../../api/models';
-import { RealtimeService } from '../../core/realtime.service';
+import { DataChange, DataKind, RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
 import { BacklogEditorComponent } from './backlog-editor.component';
@@ -60,15 +60,27 @@ const BACKLOG: BacklogDto = {
   id: 2, backlogCode: 'ARMS-2001', project: 'ARMS', periodMonth: '2026-06', rowVersion: 4,
 };
 
+/**
+ * M9/P6d. `RealtimeService.dataChanged` used to be `Observable<void>` -- the hub handler took the server's
+ * `(kind, teamId)` and threw BOTH away, so no screen could tell what had changed. It now carries a real
+ * `DataChange`, and these stubs move with it: a `Subject<void>` here is a TS2322 against the widened type.
+ *
+ * This screen still re-reads on ANY change -- `.subscribe(() => this.refresh.next())` ignores the payload, and
+ * a zero-arg callback stays assignable to `(v: DataChange) => void`, which is why `backlog.component.ts` itself
+ * needed no edit. The payload is now merely AVAILABLE to it. Whether it filters on `kind` is its own call, and
+ * it does not, yet.
+ */
+const CHANGED: DataChange = { kind: DataKind.Backlogs, teamId: 1 };
+
 describe('BacklogComponent', () => {
   let fixture: ComponentFixture<BacklogComponent>;
   let component: BacklogComponent;
   let api: jasmine.SpyObj<WorklogService>;
-  let dataChanged: Subject<void>;
+  let dataChanged: Subject<DataChange>;
 
   /** The spies and their happy-path answers. Split from `mount` so a test can bend one BEFORE the load runs. */
   function arrange(): void {
-    dataChanged = new Subject<void>();
+    dataChanged = new Subject<DataChange>();
 
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
@@ -95,7 +107,7 @@ describe('BacklogComponent', () => {
 
     const realtime: Partial<RealtimeService> = {
       start: () => undefined,
-      dataChanged: dataChanged.asObservable() as Observable<void>,
+      dataChanged: dataChanged.asObservable(),
     };
 
     TestBed.configureTestingModule({
@@ -223,7 +235,7 @@ describe('BacklogComponent', () => {
     // ARMS-2001 is gone -- someone else deleted it. Without `coerceFilters` the user would now be staring at
     // an empty grid whose Project dropdown reads "ARMS", a value no longer in its own option list.
     api.getBacklogList.and.returnValue(of([ITEMS[0]]));
-    dataChanged.next();
+    dataChanged.next(CHANGED);
     fixture.detectChanges();
 
     expect(component.filters().project).toBe('All');
@@ -331,7 +343,7 @@ describe('BacklogComponent', () => {
   it('re-reads the list when SignalR says someone else changed the data', () => {
     setUp();
 
-    dataChanged.next();
+    dataChanged.next(CHANGED);
 
     expect(api.getBacklogList).toHaveBeenCalledTimes(2);
   });
@@ -375,7 +387,7 @@ describe('BacklogComponent', () => {
     mount();
 
     api.getBacklogList.and.returnValue(of(ITEMS));
-    dataChanged.next();
+    dataChanged.next(CHANGED);
     fixture.detectChanges();
 
     expect(rowCodes()).toEqual(['ARCS-1042', 'ARMS-2001']);

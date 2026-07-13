@@ -8,9 +8,62 @@ import { Observable, Subject } from 'rxjs';
 export const CONNECTION_ID_HEADER = 'X-Connection-Id';
 
 /** The hub method the server invokes on us (`SignalRChangeNotifier.ClientMethod`). Sent as
- *  `SendAsync("DataChanged", kind, teamId)`, so the handler receives two arguments -- neither of which we
- *  need: any change to this team's data means "re-read the week", and a re-read is authoritative. */
+ *  `SendAsync("DataChanged", kind, teamId)` -- BOTH arguments are carried through to `dataChanged`. */
 const DATA_CHANGED = 'DataChanged';
+
+/**
+ * The 11 kinds of change the server can announce -- BY ORDINAL.
+ *
+ * 🔴 THESE ARRIVE AS NUMBERS, NOT NAMES, AND THAT IS THE WHOLE POINT OF THIS BLOCK. `DataKind` is a bare C#
+ * enum (`TimesheetApp.Core/Services/DataChangedMessage.cs`) carrying no `[JsonConverter]`, and `Program.cs`
+ * registers `builder.Services.AddSignalR()` with NO `.AddJsonProtocol(...)` -- there is not one
+ * `JsonStringEnumConverter` anywhere in the solution. SignalR's default System.Text.Json hub protocol
+ * therefore serialises the enum as its INTEGER ORDINAL: `SendAsync("DataChanged", kind, teamId)` puts
+ * `DataChanged(3, 42)` on the wire, never `DataChanged("Logs", 42)`.
+ *
+ * 🔴 SO `kind === 'Logs'` WOULD COMPILE CLEAN UNDER `strict` AND MATCH NOTHING, FOREVER -- a filter that
+ * silently drops every event, on a feed whose entire purpose is filtering. Compare against these constants
+ * and the compiler keeps you honest: `if (e.kind === DataKind.Logs)`.
+ *
+ * 🔴 THE ORDINALS ARE POSITIONAL. The C# enum declares no explicit values, so each name's number is simply
+ * its declaration order. Reordering or inserting into that enum silently re-points every constant below.
+ * The two sides must move together; there is no test on either side that can see the other.
+ */
+export const DataKind = {
+  Backlogs: 0,
+  Tasks: 1,
+  Users: 2,
+  Logs: 3,
+  Templates: 4,
+  DefaultTasks: 5,
+  Standup: 6,
+  Tags: 7,
+  PcaContacts: 8,
+  Holidays: 9,
+  Teams: 10,
+} as const;
+export type DataKind = (typeof DataKind)[keyof typeof DataKind];
+
+/**
+ * WHAT changed, and for WHOM. The payload `dataChanged` now carries.
+ *
+ * Before M9/P6 this was `void`: the hub handler took the server's two arguments and threw both away, so
+ * every change anywhere re-fetched everything and no screen could filter. WPF's ViewModels have always
+ * filtered on `DataKind` (`DailyReportViewModel` reloads on `Standup` and nothing else); the web could not.
+ */
+export interface DataChange {
+  readonly kind: DataKind;
+
+  /**
+   * The team that owns the changed record.
+   *
+   * 🔴 `0` IS NOT A TEAM -- it is the reserved BROADCAST sentinel for the seven entities with no team column
+   * at all (Tag, PcaContact, User, Team, TaskTemplate, DefaultTask, Holiday). `SignalRChangeNotifier` sends
+   * those via `AllExcept` rather than to a group. A consumer that filters `teamId === myTeam` will therefore
+   * MISS every global change -- which includes every tag edit. Filter on `kind` first.
+   */
+  readonly teamId: number;
+}
 
 /** Same-origin relative path. The `ng serve` proxy forwards `/hubs` with `ws: true`. An absolute
  *  `http://localhost:5080/...` here would be cross-site, and the `SameSite=Lax` auth cookie would not be
@@ -45,10 +98,17 @@ export class RealtimeService {
    *  wrong; it is not worth blocking a write on. */
   readonly connectionId = this._connectionId.asReadonly();
 
-  private readonly _dataChanged = new Subject<void>();
-  /** Fires when SOMEONE ELSE changed this team's data. The server already excluded us, so there is no echo
-   *  of our own writes to filter out here. */
-  readonly dataChanged: Observable<void> = this._dataChanged.asObservable();
+  private readonly _dataChanged = new Subject<DataChange>();
+  /**
+   * Fires when SOMEONE ELSE changed data we can see, carrying WHAT changed and for WHICH team. The server
+   * already excluded us, so there is no echo of our own writes to filter out here.
+   *
+   * A consumer that does not care what changed can still ignore the payload -- `.subscribe(() => reload())`
+   * is assignable to `(v: DataChange) => void`, which is why the two screens that predate the payload
+   * (`backlog.component.ts`, `log-work.component.ts`) needed no edit. Filtering by `kind` is each screen's
+   * own decision, not an obligation.
+   */
+  readonly dataChanged: Observable<DataChange> = this._dataChanged.asObservable();
 
   /** Idempotent: a second call while already connected (or connecting) is a no-op. */
   start(): void {
@@ -60,7 +120,10 @@ export class RealtimeService {
       .build();
     this.hub = hub;
 
-    hub.on(DATA_CHANGED, () => this._dataChanged.next());
+    // Both of the server's arguments are carried through. They used to be DISCARDED (`() => next()`), which
+    // is why no screen could filter on what actually changed. See `DataKind`: `kind` is an integer ordinal.
+    hub.on(DATA_CHANGED, (kind: DataKind, teamId: number) =>
+      this._dataChanged.next({ kind, teamId }));
 
     // A reconnect mints a NEW connection id. Re-read it, or we keep sending the dead one and the server
     // starts echoing our own writes back to us.

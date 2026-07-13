@@ -1,0 +1,74 @@
+:host { display: inline-block; }
+
+.tf {
+  position: relative;
+}
+
+.tf__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+
+  &::-webkit-details-marker { display: none; }
+
+  &:hover { background: var(--surf2); }
+  &:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+}
+
+.tf__chev {
+  color: var(--muted);
+  transition: transform .15s ease;
+}
+
+.tf[open] .tf__chev { transform: rotate(180deg); }
+
+.tf__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 210px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 10px 28px -12px rgba(0, 0, 0, .3);
+}
+
+.tf__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover { background: var(--surf2); }
+
+  input { accent-color: var(--accent); cursor: pointer; }
+}
+
+.tf__name {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* The empty selection is a legal, deliberate state — styled as information, never as an error. */
+.tf__empty {
+  margin: 4px 0 2px;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}

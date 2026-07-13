@@ -1,0 +1,44 @@
+<!--
+  Hidden entirely when the user has 0 or 1 available teams (`visible()`): there is nothing to filter, and an
+  always-visible control reading "Teams (1)" over a single checkbox is noise. WPF hides it on the same rule.
+
+  The whole control is one <details> so it needs no outside-click handling and no focus trap: the browser
+  already closes it on Escape and re-opens it on Enter/Space, and it is keyboard-reachable for free.
+-->
+@if (visible()) {
+  <details class="tf">
+    <summary class="tf__head">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+           stroke-linejoin="round" aria-hidden="true">
+        <circle cx="9" cy="8" r="3"/>
+        <path d="M2 20a7 7 0 0 1 14 0M17 5a3 3 0 0 1 0 6M22 20a6 6 0 0 0-4-5.6"/>
+      </svg>
+      <span class="tf__label">{{ header() }}</span>
+      <svg class="tf__chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </summary>
+
+    <div class="tf__menu" role="group" [attr.aria-label]="header()">
+      @for (team of availableTeams(); track team.id) {
+        <label class="tf__row">
+          <input
+            type="checkbox"
+            [checked]="isChecked(team.id!)"
+            (change)="toggle(team.id!)"
+          />
+          <span class="tf__name">{{ team.name }}</span>
+        </label>
+      }
+
+      <!--
+        🔴 The user has unchecked everything. This is a LEGAL state and the screens must honour it by
+        rendering their own empty view WITHOUT calling the API: `teamIds: []` cannot be put on the wire (an
+        empty array appends no query key at all), and the server reads the absent key as "ALL MY TEAMS" — the
+        exact inverse. Saying so here is what stops it reading like a bug the user should "fix" by reloading.
+      -->
+      @if (empty()) {
+        <p class="tf__empty">No teams selected — nothing will be shown.</p>
+      }
+    </div>
+  </details>
+}

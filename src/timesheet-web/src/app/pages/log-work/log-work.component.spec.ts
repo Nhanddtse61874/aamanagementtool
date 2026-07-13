@@ -2,11 +2,11 @@ import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/d
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { Observable, Subject, of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 
 import { BacklogDto, SavedBody, TimeLogDto, WeekBacklogGroup } from '../../api/models';
 import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
-import { RealtimeService } from '../../core/realtime.service';
+import { DataChange, DataKind, RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
 import { TaskRow } from './grid-state';
@@ -142,18 +142,29 @@ function trashEvent(
   };
 }
 
+/**
+ * M9/P6d. `RealtimeService.dataChanged` used to be `Observable<void>` -- the hub handler took the server's
+ * `(kind, teamId)` and threw BOTH away, so no screen could tell what had changed. It now carries a real
+ * `DataChange`, and this stub moves with it: a `Subject<void>` here is a TS2322 against the widened type.
+ *
+ * This screen still re-reads on ANY change -- `.subscribe(() => this.refresh.next())` ignores the payload, and
+ * a zero-arg callback stays assignable to `(v: DataChange) => void`, which is why `log-work.component.ts`
+ * itself needed no edit. `Logs` is simply the kind a cell write really announces.
+ */
+const CHANGED: DataChange = { kind: DataKind.Logs, teamId: 1 };
+
 describe('LogWorkComponent', () => {
   let fixture: ComponentFixture<LogWorkComponent>;
   let component: LogWorkComponent;
   let api: jasmine.SpyObj<WorklogService>;
   let toast: jasmine.SpyObj<ToastService>;
-  let dataChanged: Subject<void>;
+  let dataChanged: Subject<DataChange>;
 
   /** The ISO date of the Monday the component actually derived for itself. */
   let mon: string;
 
   function setUp(initial: WeekBacklogGroup[] = week(4, 11)): void {
-    dataChanged = new Subject<void>();
+    dataChanged = new Subject<DataChange>();
 
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
@@ -168,7 +179,7 @@ describe('LogWorkComponent', () => {
 
     const realtime: Partial<RealtimeService> = {
       start: () => undefined,
-      dataChanged: dataChanged.asObservable() as Observable<void>,
+      dataChanged: dataChanged.asObservable(),
     };
 
     TestBed.configureTestingModule({
@@ -464,7 +475,7 @@ describe('LogWorkComponent', () => {
     setUp();
     api.getWeek.calls.reset();
 
-    dataChanged.next();
+    dataChanged.next(CHANGED);
 
     // The server already excluded us from its own broadcast (that is what X-Connection-Id buys), so anything
     // arriving here is genuinely somebody else's change and the week must be re-read.
