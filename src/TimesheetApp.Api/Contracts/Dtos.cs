@@ -126,6 +126,54 @@ public sealed record StandupIssueDto(
 /// every authenticated caller and quietly undoes the boundary <c>/api/users/all</c> is guarding.</para></summary>
 public sealed record NamedRefDto(int Id, string Name);
 
+// ---- Task List screen (M9 P3b) -------------------------------------------------------------------------
+
+/// <summary>The wire projection of <c>TaskListRow</c>. Structurally identical to the Core read-model EXCEPT
+/// for its last two members, which is the whole reason it exists: <c>TaskListRow.Tags</c> is a list of
+/// <c>Tag</c> ENTITIES and <c>.Tasks</c> a list of <c>TaskItem</c> ENTITIES, and serialising the read-model
+/// straight out would put entity shapes on the wire (a <c>Tag</c> carries a <c>createdAt</c> no client has any
+/// use for) and into the generated TypeScript client. The <c>Tasks</c> here are <see cref="TaskItemDto"/>s and
+/// so carry the <c>rowVersion</c> the Task List's inline status/type/assignee editors must send back.
+///
+/// <para><c>ScheduleState</c> passes through as the Core enum: it is a pure value with no entity behind it,
+/// exactly like the <c>WeeklyDayTotal</c> / <c>TeamNode</c> read-models the Reports responses already put on
+/// the wire.</para></summary>
+public sealed record TaskListRowDto(
+    int BacklogId, string BacklogCode, string Project, string? Type,
+    string? PctAssigneeName, string? PcaContactName,
+    DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate, DateOnly? EndDate,
+    int? ProgressPercent, decimal LoggedHours, decimal? EstimateHours,
+    ScheduleState ScheduleState, IReadOnlyList<TagDto> Tags, IReadOnlyList<TaskItemDto> Tasks);
+
+/// <summary>The whole Task List screen in ONE response — the grid rows and the Gantt built from those same
+/// rows, at one instant.
+///
+/// <para><b>One record rather than two calls, deliberately</b> (see <c>TaskListScreen</c> in Core): the grid's
+/// schedule chips and the Gantt's bar colours are the SAME <c>ScheduleState</c>. Fetched separately, a write
+/// landing between the two requests would let the chart and the grid disagree on screen with no way for the
+/// client to notice.</para>
+///
+/// <para><c>Gantt</c> is the Core <c>GanttModel</c> unchanged: it is a pure geometry read-model (a working-day
+/// axis and one bar per backlog) with no entity anywhere inside it, so there is nothing to project away.</para></summary>
+public sealed record TaskListScreenDto(IReadOnlyList<TaskListRowDto> Rows, GanttModel Gantt);
+
+// ---- Settings + archive (M9 P3d/P3e) --------------------------------------------------------------------
+
+/// <summary>One row of the DB-backed key/value <c>Settings</c> store.
+///
+/// <para><c>Value</c> is nullable because an UNSET key is the normal state, not an error: every key is unset
+/// on a fresh database, and the caller's correct response is to fall back to the documented default (3, for
+/// the <c>chua_log_n_days</c> warning window). <b>No <c>rowVersion</c>:</b> Settings is deliberately
+/// unversioned — key-addressed, last-write-wins IS the correct semantics there (see
+/// <c>DatabaseInitializer</c>), so there is no token to hand out and none is offered.</para></summary>
+public sealed record SettingDto(string Key, string? Value);
+
+/// <summary>The SERVER-SIDE path of a file an archive route just wrote. Not a download — the standup archive
+/// (DR-09) exists to accumulate markdown next to the database, where the backup job picks it up, and the path
+/// is what an admin needs in order to find it. A route that hands the CONTENT to a browser instead returns
+/// <c>text/markdown</c> and does not use this.</summary>
+public sealed record ArchivedFileDto(string Path);
+
 // ---- Deliberately UNVERSIONED -------------------------------------------------------------------------
 
 public sealed record TaskTemplateDto(int Id, string TemplateName, string TaskName, int OrderIndex);
@@ -189,4 +237,16 @@ public static class DtoMappings
     public static StandupEntryDto ToDto(this StandupEntry e) =>
         new(e.Id, e.UserId, e.WorkDate, e.Section, e.BacklogId, e.BacklogCode,
             e.TaskText, e.Description, e.Deadline, e.Status, e.OrderIndex, e.TeamId);
+
+    /// <summary>Read-model -> wire. The two entity collections are the only things that actually change
+    /// shape; everything else is copied across unchanged.</summary>
+    public static TaskListRowDto ToDto(this TaskListRow r) =>
+        new(r.BacklogId, r.BacklogCode, r.Project, r.Type, r.PctAssigneeName, r.PcaContactName,
+            r.DeadlineInternal, r.DeadlineExternal, r.StartDate, r.EndDate,
+            r.ProgressPercent, r.LoggedHours, r.EstimateHours, r.ScheduleState,
+            r.Tags.Select(t => t.ToDto()).ToList(),
+            r.Tasks.Select(t => t.ToDto()).ToList());
+
+    public static TaskListScreenDto ToDto(this TaskListScreen s) =>
+        new(s.Rows.Select(r => r.ToDto()).ToList(), s.Gantt);
 }

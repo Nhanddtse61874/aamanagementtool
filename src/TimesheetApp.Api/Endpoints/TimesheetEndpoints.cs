@@ -207,6 +207,15 @@ public static class TimesheetEndpoints
         .Produces(StatusCodes.Status404NotFound);
 
         // ==== Reports ======================================================================================
+        // M9 (P3a): the five routes below ALREADY EXISTED and already worked -- every one of them ended bare
+        // at `});` with no .WithName / .WithTags / .Produces at all. NOTHING about their behaviour changes
+        // here; only the OpenAPI document does. Unannotated they were invisible to the generated client
+        // THREE times over: no schema (an IResult from Results.Ok(x) infers nothing, so the document says
+        // `"200": {"description": "OK"}` and codegen emits a method typed `void` for a route that returns a
+        // whole report), no tag (an untagged minimal-API route falls through to the ASSEMBLY NAME as its tag,
+        // and ng-openapi-gen selects BY TAG, so it is omitted outright), and no operationId (Swashbuckle
+        // invents one, so the generated function gets a name nobody chose and it churns whenever an unrelated
+        // route is added).
 
         api.MapGet("/api/reports/weekly", async (
             [FromQuery] DateOnly monday,
@@ -226,7 +235,10 @@ public static class TimesheetEndpoints
             var stat = aggregator.DaysLogged(dayTotals, monday, holidaySet);
 
             return Results.Ok(new TimesheetWeeklyReportResponse(dayTotals, aggregator.WeeklyDetailRows(rows), stat));
-        });
+        })
+        .WithName("ReportsWeekly")
+        .WithTags("Reports")
+        .Produces<TimesheetWeeklyReportResponse>();
 
         api.MapGet("/api/reports/monthly", async (
             [FromQuery] int year,
@@ -243,7 +255,10 @@ public static class TimesheetEndpoints
 
             return Results.Ok(new TimesheetMonthlyReportResponse(
                 aggregator.MonthlyBacklogTaskTotals(rows), aggregator.BuildProjectTree(rows)));
-        });
+        })
+        .WithName("ReportsMonthly")
+        .WithTags("Reports")
+        .Produces<TimesheetMonthlyReportResponse>();
 
         // RPT-04. Scoped to ctx's active team INTERNALLY by GetUsersMissingLogsAsync -- no client team id
         // accepted here. N is the shared app-wide setting (SET-02), read server-side and never client-
@@ -257,7 +272,13 @@ public static class TimesheetEndpoints
 
             var missing = await logs.GetUsersMissingLogsAsync(n);
             return Results.Ok(missing.Select(u => new MissingLogWarning(u.Name)).ToList());
-        });
+        })
+        .WithName("ReportsMissingLogs")
+        .WithTags("Reports")
+        // MissingLogWarning is a CORE read-model (a bare user NAME, nothing else) and the handler passes it
+        // straight through. Declaring a richer type here would be a typed lie: the route deliberately does
+        // not expose the flagged users' ids.
+        .Produces<IReadOnlyList<MissingLogWarning>>();
 
         // ==== Export =======================================================================================
         // R6 (rule #5): GetExportRowsAsync has NO userId parameter at all, and ExportFilter.TeamIds is a
@@ -274,7 +295,15 @@ public static class TimesheetEndpoints
             return Results.File(bytes,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 $"Worklog-{year:D4}-{month:D2}.xlsx");
-        });
+        })
+        .WithName("ExportExcel")
+        .WithTags("Export")
+        // NOT JSON. Results.File hands back raw xlsx bytes; `byte[]` is what makes Swashbuckle emit
+        // `type: string, format: binary` under the spreadsheet media type rather than an invented object
+        // schema. An application/json schema here would be a TYPED LIE -- the generated client would call
+        // response.json() on a spreadsheet. See the Export note below.
+        .Produces<byte[]>(StatusCodes.Status200OK,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
         api.MapGet("/api/export/markdown", async (
             [FromQuery] int year, [FromQuery] int month,
@@ -284,7 +313,18 @@ public static class TimesheetEndpoints
             var filter = new ExportFilter(userId, year, month, project, TeamIds: EffectiveTeamIds(http, ctx));
             var markdown = await export.ExportMarkdownAsync(filter);
             return Results.Text(markdown, "text/markdown");
-        });
+        })
+        .WithName("ExportMarkdown")
+        .WithTags("Export")
+        // NOT JSON either -- Results.Text hands back a markdown document.
+        //
+        // BOTH EXPORT ROUTES ARE TAGGED FOR THE DOCUMENT'S HONESTY, NOT FOR CODEGEN. A route that says
+        // nothing about what it returns is indistinguishable in the document from a route that returns
+        // nothing, so they are annotated. But ng-openapi-gen cannot type a binary download or a raw text
+        // body usefully, so the "Export" tag is deliberately kept OUT of includeTags in ng-openapi-gen.json
+        // and no client method is generated for either. The browser reaches them by navigating to the URL,
+        // which is what a download is. Do not "fix" this by adding Export to includeTags.
+        .Produces<string>(StatusCodes.Status200OK, "text/markdown");
 
         return api;
     }
@@ -353,7 +393,14 @@ public static class TimesheetEndpoints
     // EMPTY array, never null, so a bound parameter's `is null` check is always false and "absent" would
     // fall into the intersect branch, producing an empty set instead of the required default (every one of
     // the caller's own teams).
-    private static IReadOnlyList<int> EffectiveTeamIds(HttpContext http, IClientContext ctx)
+    //
+    // INTERNAL, not private (M9 P3b): TaskListEndpoints needs the exact same scope resolution, and its
+    // repository contracts carry the exact same two-sided trap -- null means EVERY team, [] means NO teams.
+    // Sharing the ONE implementation that three tests already pin (Reports_weekly_with_no_teamIds...,
+    // Export_with_no_teamIds..., Reports_and_export_never_leak_a_team...) is strictly safer than a second
+    // hand-rolled copy that can drift from it silently. The BODY IS UNCHANGED -- do not "simplify" it into a
+    // [FromQuery] parameter; that is the bug this method exists to avoid.
+    internal static IReadOnlyList<int> EffectiveTeamIds(HttpContext http, IClientContext ctx)
     {
         if (!http.Request.Query.TryGetValue("teamIds", out var raw))
             return ctx.MemberTeamIds;

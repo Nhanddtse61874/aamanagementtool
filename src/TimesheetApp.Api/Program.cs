@@ -212,6 +212,13 @@ api.MapTimesheetEndpoints();  // W2-B
 api.MapBacklogEndpoints();    // W2-C
 api.MapSettingsEndpoints();   // W2-D
 
+// M9 (P3). `api`, NEVER `app` — same reason as every line above it. `app.MapTaskListEndpoints()` would
+// compile and route correctly, but it would BYPASS ClientContextFilter, so IClientContext would never be
+// populated: ctx.MemberTeamIds would be empty on every request, the Task List would render blank for
+// everyone, and ctx.IsAdmin would be false, silently 403-ing every admin route in AdminEndpoints.
+api.MapTaskListEndpoints();   // M9 P3b/P3f — the Task List screen + its monthly markdown
+api.MapAdminEndpoints();      // M9 P3c/P3d/P3e — admin flag, settings store, standup archive
+
 // OUTSIDE the `api` group on purpose: SignalR hubs do not run endpoint filters, so
 // ClientContextFilter would never fire for it anyway. DataHub authenticates and resolves the
 // caller's teams itself (see DataHub.cs). [Authorize] on the hub requires the connection be

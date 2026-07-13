@@ -174,6 +174,28 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
     [InlineData("/api/tasks/{id}/tags", "get", "200")]
     [InlineData("/api/tasks/{id}/tags", "put", "200")]
     [InlineData("/api/tasks/{id}/tags", "put", "409")]
+    // ---- M9 P3: Reports + the five new routes. The five Reports/Export handlers already EXISTED and
+    // already worked -- they ended bare at `});` with no .WithName/.WithTags/.Produces at all, so the
+    // document described them as an empty 200 under the assembly-name default tag and the generated client
+    // could not see them. Nothing about their behaviour changes here; only the document does.
+    //
+    // /api/export/* is deliberately ABSENT from this theory: it returns a binary xlsx and a text/markdown
+    // string, NEITHER of which is application/json. Asserting a JSON schema on them would fail, and forcing
+    // one would be a typed lie. They are pinned by Non_JSON_route_declares_the_media_type_it_actually_serves.
+    [InlineData("/api/reports/weekly", "get", "200")]
+    [InlineData("/api/reports/monthly", "get", "200")]
+    [InlineData("/api/reports/missing-logs", "get", "200")]
+    [InlineData("/api/tasklist", "get", "200")]
+    // The route CONSTRAINT is stripped by ApiExplorer: the C# declares "{id:int}" but the document key is
+    // "{id}" (see the note at the top of this theory).
+    [InlineData("/api/users/{id}/admin", "put", "200")]
+    [InlineData("/api/users/{id}/admin", "put", "409")]
+    [InlineData("/api/settings/{key}", "get", "200")]
+    [InlineData("/api/settings/{key}", "put", "400")]
+    [InlineData("/api/standup/archive", "post", "200")]
+    [InlineData("/api/standup/archive", "post", "400")]
+    // 400 only: the 200 is text/markdown, pinned in the non-JSON theory below.
+    [InlineData("/api/tasklist/export", "get", "400")]
     public void Route_declares_a_response_SCHEMA_not_just_a_status(string path, string verb, string status)
     {
         var response = _paths.GetProperty(path).GetProperty(verb)
@@ -184,6 +206,36 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
             $"{verb.ToUpperInvariant()} {path} declares {status} with NO response body. " +
             "Codegen will emit a method typed `void` for an endpoint that returns data.");
         Assert.True(content.GetProperty("application/json").TryGetProperty("schema", out _));
+    }
+
+    /// <summary>M9 P3. The three routes that do NOT serve JSON, and must not claim to.
+    ///
+    /// <para><c>/api/export/excel</c> is <c>Results.File</c> — raw xlsx bytes. <c>/api/export/markdown</c> and
+    /// <c>/api/tasklist/export</c> are <c>Results.Text</c> — a markdown document. An
+    /// <c>application/json</c> schema on any of them would be a TYPED LIE: <c>ng-openapi-gen</c> would emit a
+    /// client that calls <c>response.json()</c> on a spreadsheet.</para>
+    ///
+    /// <para>They are annotated anyway, because a route that says NOTHING about what it returns is
+    /// indistinguishable in the document from a route that returns nothing. The <c>Export</c> tag is
+    /// separately excluded from <c>ng-openapi-gen.json</c>'s <c>includeTags</c>, so no client method is
+    /// generated for the two export routes regardless — the document is simply honest about them now.</para></summary>
+    [Theory]
+    [InlineData("/api/export/excel", "get",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+    [InlineData("/api/export/markdown", "get", "text/markdown")]
+    [InlineData("/api/tasklist/export", "get", "text/markdown")]
+    public void Non_JSON_route_declares_the_media_type_it_actually_serves(
+        string path, string verb, string mediaType)
+    {
+        var response = _paths.GetProperty(path).GetProperty(verb)
+                             .GetProperty("responses").GetProperty("200");
+
+        Assert.True(response.TryGetProperty("content", out var content),
+            $"{verb.ToUpperInvariant()} {path} declares 200 with NO content at all.");
+        Assert.True(content.TryGetProperty(mediaType, out _),
+            $"{verb.ToUpperInvariant()} {path} must declare {mediaType} -- that is what it actually serves.");
+        Assert.False(content.TryGetProperty("application/json", out _),
+            $"{verb.ToUpperInvariant()} {path} must NOT claim application/json -- it serves {mediaType}.");
     }
 
     [Theory]
@@ -222,6 +274,10 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
     [InlineData("/api/standup/entries/reorder", "put", "204")]
     [InlineData("/api/standup/entries/{entryId}/issues/{issueId}", "delete", "204")]
     [InlineData("/api/ops/retention/run", "post", "202")]
+    // ---- M9 P3. Settings is DELIBERATELY UNVERSIONED (DatabaseInitializer: "key/date-keyed -- last-write-wins
+    // IS the correct semantics there"), so the write takes no expectedVersion, has no version to hand back and
+    // cannot 409. 204, not 200 with a SavedBody.
+    [InlineData("/api/settings/{key}", "put", "204")]
     public void Route_declares_the_body_less_status_it_actually_returns(string path, string verb, string status)
     {
         var responses = _paths.GetProperty(path).GetProperty(verb).GetProperty("responses");
@@ -306,6 +362,25 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
     [InlineData("/api/tasks/{id}/extended", "put", "Tasks")]
     [InlineData("/api/tasks/{id}/tags", "get", "Tasks")]
     [InlineData("/api/tasks/{id}/tags", "put", "Tasks")]
+    // ---- M9 P3. Five NEW tags -- Reports, Export, TaskList, Settings -- plus new routes joining the existing
+    // Users and Standup tags. Adding a tag to the DOCUMENT is only half the job: ng-openapi-gen selects
+    // operations BY TAG, so each new tag must also be added to includeTags in ng-openapi-gen.json or its
+    // routes are silently omitted from the generated client. That half is P4's.
+    //
+    // "Export" is the deliberate exception: its two routes serve xlsx bytes and a markdown string, which
+    // ng-openapi-gen cannot type usefully, so the tag exists for the document's honesty and is NOT expected
+    // to join includeTags.
+    [InlineData("/api/reports/weekly", "get", "Reports")]
+    [InlineData("/api/reports/monthly", "get", "Reports")]
+    [InlineData("/api/reports/missing-logs", "get", "Reports")]
+    [InlineData("/api/export/excel", "get", "Export")]
+    [InlineData("/api/export/markdown", "get", "Export")]
+    [InlineData("/api/tasklist", "get", "TaskList")]
+    [InlineData("/api/tasklist/export", "get", "TaskList")]
+    [InlineData("/api/users/{id}/admin", "put", "Users")]
+    [InlineData("/api/settings/{key}", "get", "Settings")]
+    [InlineData("/api/settings/{key}", "put", "Settings")]
+    [InlineData("/api/standup/archive", "post", "Standup")]
     public void Route_is_TAGGED_so_ng_openapi_gen_can_include_it(string path, string verb, string tag)
     {
         var tags = _paths.GetProperty(path).GetProperty(verb).GetProperty("tags")
@@ -412,6 +487,24 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
     [InlineData("/api/tasks/{id}/extended", "put", "TaskSetExtended")]
     [InlineData("/api/tasks/{id}/tags", "get", "TaskTags")]
     [InlineData("/api/tasks/{id}/tags", "put", "TaskSetTags")]
+    // ---- M9 P3.
+    //
+    // "TaskListScreen", NOT "TaskList": `.WithName("TaskList")` is ALREADY TAKEN by GET /api/tasks
+    // (BacklogEndpoints.cs). Endpoint names must be unique across the whole app -- a duplicate is an
+    // InvalidOperationException at startup, not a compile error, so it would take down every route in the
+    // API and not just this one. The name also reads correctly: this route returns the whole SCREEN (rows +
+    // Gantt from one snapshot), which is a different thing from the /api/tasks list.
+    [InlineData("/api/reports/weekly", "get", "ReportsWeekly")]
+    [InlineData("/api/reports/monthly", "get", "ReportsMonthly")]
+    [InlineData("/api/reports/missing-logs", "get", "ReportsMissingLogs")]
+    [InlineData("/api/export/excel", "get", "ExportExcel")]
+    [InlineData("/api/export/markdown", "get", "ExportMarkdown")]
+    [InlineData("/api/tasklist", "get", "TaskListScreen")]
+    [InlineData("/api/tasklist/export", "get", "TaskListExport")]
+    [InlineData("/api/users/{id}/admin", "put", "UserSetAdmin")]
+    [InlineData("/api/settings/{key}", "get", "SettingGet")]
+    [InlineData("/api/settings/{key}", "put", "SettingSet")]
+    [InlineData("/api/standup/archive", "post", "StandupArchiveWeek")]
     public void Route_has_the_operationId_the_generated_function_is_named_from(
         string path, string verb, string operationId)
     {
