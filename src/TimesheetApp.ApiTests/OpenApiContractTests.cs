@@ -4,27 +4,60 @@ using Xunit;                       // NOT covered by ImplicitUsings -- every tes
 
 namespace TimesheetApp.ApiTests;
 
-/// <summary>
-/// The generated TypeScript client can only contain a route whose C# DECLARES a response type. A route
-/// that returns IResult via Results.Ok(x) and says nothing else is described by OpenAPI as an empty 200,
-/// and codegen then emits a method typed `void` for an endpoint that returns data. That failure is
-/// SILENT -- codegen SUCCEEDS. This test is what makes the rule enforceable.
-/// </summary>
-public sealed class OpenApiContractTests : IAsyncLifetime
+/// <summary>Boots the API host ONCE for the whole of <see cref="OpenApiContractTests"/> and fetches the
+/// swagger document ONCE.
+///
+/// <para><b>Why this exists (M9 P2.5).</b> xUnit constructs a fresh instance of a test class for EVERY test
+/// CASE — and a <c>[Theory]</c> row is a case. <see cref="OpenApiContractTests"/> used to implement
+/// <c>IAsyncLifetime</c> directly, so its <c>InitializeAsync</c> — <c>new ApiFactory()</c> plus a swagger
+/// fetch — ran once per <c>[InlineData]</c> row. At 212 rows that was 212 full ASP.NET host boots for a
+/// document that is IDENTICAL every time. M9 P2 measured the cost as it grew: ApiTests went from 43s to
+/// 1m59s. A <c>IClassFixture&lt;T&gt;</c> is instantiated once per test class and shared by every case, so
+/// the boot count drops from "one per row" to exactly one.</para>
+///
+/// <para><b>Why sharing is SAFE here, and would not be for an endpoint test.</b> The swagger document is
+/// immutable for a given build, and these tests only READ it — nothing mutates the host, the database or the
+/// document. There is no per-row isolation to lose. Endpoint tests are the opposite (they seed and write), so
+/// they keep their own <c>ApiFactory</c> per test; do not "optimise" those the same way.</para>
+///
+/// <para><b>It exposes the PARSED paths, not the factory.</b> Fetching and parsing once is strictly better
+/// than booting once and re-fetching per row, and handing out only a <see cref="JsonElement"/> means no test
+/// can reach back into the host and mutate shared state. The element is <c>Clone()</c>d, which detaches it
+/// from the <c>JsonDocument</c>, so the document is disposed immediately rather than held for the run.</para>
+///
+/// <para>Each boot is also another roll of the dice on the known host-startup race (an intermittent
+/// <c>no such table: Backlogs</c>), so collapsing 212 boots into 1 removes 211 chances to flake.</para></summary>
+public sealed class SwaggerFixture : IAsyncLifetime
 {
     private ApiFactory _factory = null!;
-    private JsonElement _paths;
+
+    /// <summary>The <c>paths</c> object of <c>/swagger/v1/swagger.json</c>.</summary>
+    public JsonElement Paths { get; private set; }
 
     public async Task InitializeAsync()
     {
         _factory = new ApiFactory();
         var res = await _factory.AnonymousClient().GetAsync("/swagger/v1/swagger.json");  // deliberately anonymous
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        _paths = JsonDocument.Parse(await res.Content.ReadAsStringAsync())
-                             .RootElement.GetProperty("paths").Clone();
+
+        using var document = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        Paths = document.RootElement.GetProperty("paths").Clone();
     }
 
     public Task DisposeAsync() { _factory.Dispose(); return Task.CompletedTask; }
+}
+
+/// <summary>
+/// The generated TypeScript client can only contain a route whose C# DECLARES a response type. A route
+/// that returns IResult via Results.Ok(x) and says nothing else is described by OpenAPI as an empty 200,
+/// and codegen then emits a method typed `void` for an endpoint that returns data. That failure is
+/// SILENT -- codegen SUCCEEDS. This test is what makes the rule enforceable.
+/// </summary>
+public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
+{
+    private readonly JsonElement _paths;
+
+    public OpenApiContractTests(SwaggerFixture swagger) => _paths = swagger.Paths;
 
     // NOTE on "/api/backlogs/{id}/audit": the ROUTE is declared "{id:int}", but ApiExplorer STRIPS the route
     // constraint from the OpenAPI path. The key here is therefore "{id}" -- "{id:int}" is not in the document
@@ -115,6 +148,32 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     [InlineData("/api/ops/retention/preview", "post", "200")]
     [InlineData("/api/ops/export/run", "post", "200")]
     [InlineData("/api/ops/backup/run", "post", "200")]
+    // ---- M9 P2.5: the 8 routes BacklogEndpoints.cs had left unannotated. The two headline features of this
+    // milestone are built ON them -- the TagPicker (both tag routes on each entity) and the Task List's
+    // Continue button + inline status/type/assignee editors -- so an empty 200 here is not a cosmetic gap:
+    // it is the data those screens are made of, invisible to the generated client.
+    //
+    // Both tag READS return a BARE ARRAY OF INTS (GetTagIdsAsync -> IReadOnlyList<int>), NOT a list of
+    // TagDto: the picker resolves the ids against the tag list it already holds. A wrong .Produces<T>() here
+    // would generate a TYPED LIE -- worse than no method at all.
+    [InlineData("/api/backlogs/{id}/tags", "get", "200")]
+    [InlineData("/api/backlogs/{id}/tags", "put", "200")]
+    [InlineData("/api/backlogs/{id}/tags", "put", "409")]
+    // POST /continue has TWO distinct 400 paths (empty TargetPeriod; the code already exists in the target
+    // period, where ContinueAsync returns 0 rather than throwing) and NO 409 -- it takes no expectedVersion.
+    [InlineData("/api/backlogs/{id}/continue", "post", "200")]
+    [InlineData("/api/backlogs/{id}/continue", "post", "400")]
+    [InlineData("/api/tasks/{id}", "get", "200")]
+    [InlineData("/api/tasks/{id}/status", "put", "200")]
+    [InlineData("/api/tasks/{id}/status", "put", "400")]
+    [InlineData("/api/tasks/{id}/status", "put", "409")]
+    // /extended declares NO 400: both fields are nullable and the handler has no validation guard, so
+    // clearing either is legitimate. Declaring one would be a status the route cannot return.
+    [InlineData("/api/tasks/{id}/extended", "put", "200")]
+    [InlineData("/api/tasks/{id}/extended", "put", "409")]
+    [InlineData("/api/tasks/{id}/tags", "get", "200")]
+    [InlineData("/api/tasks/{id}/tags", "put", "200")]
+    [InlineData("/api/tasks/{id}/tags", "put", "409")]
     public void Route_declares_a_response_SCHEMA_not_just_a_status(string path, string verb, string status)
     {
         var response = _paths.GetProperty(path).GetProperty(verb)
@@ -235,6 +294,18 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     [InlineData("/api/ops/retention/run", "post", "Ops")]
     [InlineData("/api/ops/export/run", "post", "Ops")]
     [InlineData("/api/ops/backup/run", "post", "Ops")]
+    // ---- M9 P2.5: the 8 previously-unannotated routes. "Backlogs" and "Tasks" were ALREADY in
+    // ng-openapi-gen.json's includeTags (the annotated routes on this file carry them), so these eight were
+    // the only ones in their own file falling through to the assembly-name default tag -- and ng-openapi-gen
+    // selects BY TAG, so all eight were omitted from the generated client while their siblings were emitted.
+    [InlineData("/api/backlogs/{id}/tags", "get", "Backlogs")]
+    [InlineData("/api/backlogs/{id}/tags", "put", "Backlogs")]
+    [InlineData("/api/backlogs/{id}/continue", "post", "Backlogs")]
+    [InlineData("/api/tasks/{id}", "get", "Tasks")]
+    [InlineData("/api/tasks/{id}/status", "put", "Tasks")]
+    [InlineData("/api/tasks/{id}/extended", "put", "Tasks")]
+    [InlineData("/api/tasks/{id}/tags", "get", "Tasks")]
+    [InlineData("/api/tasks/{id}/tags", "put", "Tasks")]
     public void Route_is_TAGGED_so_ng_openapi_gen_can_include_it(string path, string verb, string tag)
     {
         var tags = _paths.GetProperty(path).GetProperty(verb).GetProperty("tags")
@@ -329,6 +400,18 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     [InlineData("/api/ops/retention/run", "post", "OpsRetentionRun")]
     [InlineData("/api/ops/export/run", "post", "OpsExportRun")]
     [InlineData("/api/ops/backup/run", "post", "OpsBackupRun")]
+    // ---- M9 P2.5: the 8 previously-unannotated routes. Names follow the conventions already set in this
+    // file: <Entity>Get for a read-by-id (BacklogGet), <Entity>Set<Field> for a sub-field write
+    // (TaskSetActive / TaskSetOrder), and the <Entity><Collection> / <Entity>Set<Collection> pair for a
+    // sub-collection read+write (TeamMembers / TeamSetMembers).
+    [InlineData("/api/backlogs/{id}/tags", "get", "BacklogTags")]
+    [InlineData("/api/backlogs/{id}/tags", "put", "BacklogSetTags")]
+    [InlineData("/api/backlogs/{id}/continue", "post", "BacklogContinue")]
+    [InlineData("/api/tasks/{id}", "get", "TaskGet")]
+    [InlineData("/api/tasks/{id}/status", "put", "TaskSetStatus")]
+    [InlineData("/api/tasks/{id}/extended", "put", "TaskSetExtended")]
+    [InlineData("/api/tasks/{id}/tags", "get", "TaskTags")]
+    [InlineData("/api/tasks/{id}/tags", "put", "TaskSetTags")]
     public void Route_has_the_operationId_the_generated_function_is_named_from(
         string path, string verb, string operationId)
     {
