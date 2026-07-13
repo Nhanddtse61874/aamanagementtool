@@ -2,11 +2,57 @@
 
 ## Current Position
 
-**Phase:** Step 6 — Plan (M8.5) · Plan Checker in flight
-**Status:** waiting_for_user
+**Phase:** Step 7 — Execute (M8.5, **task 7 of 7 in flight**)
+**Status:** in_progress
 **Last updated:** 2026-07-13
 
-**Next Action:** Plan Checker, then `subagent-driven-development` or `executing-plans` per the user's choice.
+## ▶ RESUME HERE
+
+**Branch:** `feature/m8.5-log-work-actions-2026-07-13`, HEAD `bd73887`. Cut from `main` (which has all of M8).
+**Suite:** **985 green** — 830 .NET (658 Core/WPF + 172 API) + **155 Angular**. 0 warnings.
+
+### M8.5 — six of seven tasks merged. Task 7 (drag to trash) is running.
+
+| | | |
+|---|---|---|
+| 1 · annotate 5 C# routes | ✅ `0b3b091` | `.WithName` + `.WithTags` + `.Produces<T>()`. Metadata only. 815 → 830. |
+| 2 · regenerate the TS client | ✅ `38431c1` | Tags `Backlogs` + `Tasks` added. |
+| 3 · the two pure functions | ✅ `be80326` | `move-month.ts` · `reorder.ts`. 124 → 136. |
+| 4 · **+ Add task** | ✅ `908a033` | → 137 |
+| 5 · **Move to next month** | ✅ `ee10a29` | → 145 |
+| 6 · **drag to reorder** | ✅ `3241eb5` | → 155 |
+| **7 · drag to trash** | 🔄 | worktree `.worktrees/m85w7`, branch `m8.5/w7`, base `bd73887` |
+
+**When task 7 lands:** merge → `npm test` → **the user clicks OT-13 and OT-14** (below) → then M8.6.
+
+🔴 **The user has the app OPEN right now.** An API on **:5080** (against their **real** database) and `ng serve` on **:4200**. Both are background processes of this session. **A `/compact` keeps them; a `/clear` kills them.** Admin password (printed once, already used): `tyxhHnPpVvygCXy_xEtFAnAW`.
+
+### Task 7's one non-negotiable — Task 6 proved it, and the plan gets it wrong
+
+**The trash must carry `id="trash"`, NOT `#trash="cdkDropList"`.** Task 6 wired each group with `[cdkDropListConnectedTo]="['trash']"` — a **string**, because `[…]="[trash]"` does not compile against a `#trash` that does not exist yet (`NG9`; a template ref is not a forward declaration). CDK resolves the string against its **static registry, lazily, on every drag start**. A template ref leaves the list on its auto-generated id, so `'trash'` **never resolves**: the row snaps back, `container === previousContainer`, and **the trash's `dropped` never fires.** A guaranteed silent no-op.
+
+*(Until task 7 lands, every drag logs `could not find connected drop list with id "trash"`. That warning disappearing is the fastest confirmation it was done right.)*
+
+### The two checks that matter, because no single-feature test catches either
+
+- **OT-13 — delete a task, THEN reorder, THEN reload.** The order must hold.
+- **OT-14 — delete a task, THEN add a task, THEN reload.** The new one must be **last**.
+
+Both are **interactions between the features in this one milestone**. Rev. 1 of the plan shipped the first as a silent corruption (`SetActiveAsync` leaves `order_index` alone, so a windowed reorder creates a **tie**, and `ORDER BY` with a tie is arbitrary). Rev. 2 shipped the second (`orderIndex = tasks.length` ties with a live row after any delete). **Both are fixed; both need a human to confirm.**
+
+### After M8.5 — the user's chosen priority
+
+**Wire the six remaining Angular screens, for real.** They are still the vendored design's shells: every button is a `toast.show(...)` that does nothing, and every list is empty because the service returns `of([])`. The user hit this by clicking *"+ New backlog"* and getting a toast and nothing else.
+
+**The backend already serves all of them** — 80 routes. Each screen is now the same three steps, with **no architectural unknowns left**: **annotate its routes (`.WithName` + `.WithTags` + `.Produces<T>()`) → regenerate the client → wire the Angular.**
+
+**M8.6 Backlog** → M8.7 Task List → M8.8 Daily Report → M8.9 Reports → M8.10 Users + Settings.
+
+*(M8.5 already annotated the five Backlog/Task routes, so M8.6 inherits them.)*
+
+---
+
+**Next Action:** merge task 7, gate, then M8.6 (brainstorm → spec → plan → Plan Checker → execute).
 **Approved Mode:** **Mode A** — approved 2026-07-13. Gate scored **1/5** Mode B signals (2 domains: C# + Angular). No hard exclusion: no migration, no auth change, no release gate, no compliance impact. *(M8 itself ran Mode B; M8.5 is materially smaller — the endpoints and the contracts already exist.)*
 
 **Plan:** `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md` (`15c950d`) — six tasks, three sequential waves.
