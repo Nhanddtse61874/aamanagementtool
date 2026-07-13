@@ -2,15 +2,42 @@
 
 ## Current Position
 
-**Phase:** Step 6 — Plan (M9; spec + plan written, **Plan Checker in flight**)
+**Phase:** Step 7 — Execute (M9; **Phase 1: P1 · P2 · P2.5 merged, P3 in flight** — 3 of 7)
 **Status:** in_progress
-**Last updated:** 2026-07-13
+**Last updated:** 2026-07-14
 
 ## ▶ RESUME HERE
 
-**Branch:** `feature/m9-remaining-screens-2026-07-13` @ `eff19a2`. Base `main` @ `28fd406` (M8.6 merged).
-**Suite:** **1142 green** — 868 .NET (658 Core/WPF + 210 API) + 274 Angular. 0 warnings.
-**The app is RUNNING** — API :5080 (**real DB**), `ng serve` :4200. **Kill the API before any .NET gate** (it locks `Core.dll`).
+**Branch:** `feature/m9-remaining-screens-2026-07-13` @ `03fcdbd`. Base `main` @ `28fd406` (M8.6 merged).
+**Suite:** **1370 green** — 1096 .NET (**681** Core/WPF + **415** API) + 274 Angular. 0 warnings.
+
+🔴 **THE API IS STOPPED** — a P-task killed it (it locks `TimesheetApp.Core.dll`, which makes the .NET gate a **false green**). `ng serve` on :4200 is up but has **no API to talk to**. **RESTART THE API BEFORE THE USER'S UAT.**
+
+### M9 — Phase 1 progress
+
+| | | |
+|---|---|---|
+| **P1** Core: `BuildGantt` **moved WPF → Core** · `SetIsAdminCheckedAsync` · **the TaskList read model** | ✅ `b8be891` `1aa44a2` `7544a2f` | 658 → **681** |
+| **P2** annotate **46 routes** in `SettingsEndpoints.cs` · **the `/all` guard MOVED, not deleted** · fix the teamless team bootstrap | ✅ `569b2e0` | 210 → **381** |
+| **P2.5** the **8 `BacklogEndpoints.cs` routes the plan forgot** · contract-test host now boots **ONCE** (1m57s → **41s**) | ✅ `246a67a` | → **415** |
+| **P3** reports/export + `GET /api/tasklist` + admin + settings/{key} + standup archive + tasklist export | 🔄 | |
+| **P4** regenerate ONCE · **P5** `WorklogService` (**ADD, retype nothing**) · **P6** team-filter · tag-picker · adminGuard · realtime | ⬜ | |
+| **PHASE 2** — 5 agents, true parallel | ⬜ | |
+| **P7** cleanup — `Tag` is shared A↔D, so **neither Phase-2 agent can delete it** | ⬜ | |
+
+### 🔴 The `/all` decision — read this before touching auth
+
+`/api/users/all` and `/api/pca-contacts/all` are **admin-only** and were deliberately kept **out** of the generated client, enforced by a contract test. **M9 TAGGED THEM ON PURPOSE.**
+
+**Why the old rule expired:** it rested on *"no admin-only screen exists"* — so an admin route in the client could only ever 403. **M9 creates the Users and Settings screens, which MUST list DEACTIVATED users** (USR-01; "Activate" is meaningless without them), and **only the `/all` routes carry those.**
+
+**The guard did not go away. It MOVED, and got stronger.** The old test asserted a **proxy** for the property (*the route is absent from the client*). Two tests now assert the **property itself**:
+- **API:** the `/all` routes **403 for a NON-admin** *(seeded non-admin, deliberately — `ApiFactory.SeedUserAsync(…, isAdmin)` lets you seed an admin and go green)*
+- **CLIENT:** `adminGuard` (P6) — `/users` and `/settings` unreachable for a non-admin, sidebar hides them
+
+🔴 **~30 admin-only methods are now in the generated client. A screen a non-admin can reach must NEVER call one.** That is the whole contract now.
+
+*(P2's agent found the old guard was **never load-bearing anyway** — `Users_all_list_is_admin_only_but_active_list_is_open` already seeded a non-admin and asserted 403. The real protection was somewhere I hadn't looked.)*
 
 ### 🔴 M9 — the FOUR remaining screens, as ONE milestone. Mode A.
 
