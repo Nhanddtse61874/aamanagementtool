@@ -3,12 +3,17 @@
 **Last updated:** 2026-07-13
 
 ## Active
-- **M8.5 — Log Work task actions** — started 2026-07-13, **Mode A**, plan written, Plan Checker in flight.
-  Restores the three controls M8.4/W4 removed because the vendored design **faked** them: `+ Add task` called `toast.show('Task added')` and added nothing, `Move to next month` had no handler, and the delete dropzone had no drop handler.
-  All five endpoints they need **already exist** — but `BacklogEndpoints.cs` has **zero `.Produces<T>()`**, so OpenAPI describes none of them and the generated TypeScript client cannot contain them. Three sequential waves: **A** annotate the C# (metadata only) → **B** regenerate the client → **C** the Angular.
-  Spec: `docs/superpowers/specs/2026-07-13-log-work-task-actions-design.md` · Plan: `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md`
+- **M8.6 — Backlog screen** — starting 2026-07-13. **STEP 2 (brainstorm).**
+  The screen the user clicked into and found dead: *"+ New backlog"* shows a toast and does nothing, and the list is empty because the service returns `of([])`. It is still the vendored design's shell.
+  **No architectural unknowns remain** — M8.5 established the pattern and already annotated five of the Backlog/Task routes, which M8.6 inherits: **annotate its routes (`.WithName` + `.WithTags` + `.Produces<T>()`) → regenerate the client → wire the Angular.**
 
 ## Shipped
+- **M8.5 — Log Work task actions** — **COMPLETE** (`ebfea32`, 2026-07-13), **Mode A**. **995 tests green** — 830 .NET + 165 Angular. 0 warnings.
+  Restored the three controls M8.4/W4 removed because the vendored design **faked** them: `+ Add task` called `toast.show('Task added')` and added nothing, `Move to next month` had no handler, and the delete dropzone had no drop handler. All three now work against the real API.
+  All five endpoints already existed — but `BacklogEndpoints.cs` had **zero `.Produces<T>()`**, so OpenAPI described none of them and the generated TypeScript client could not contain them. **Annotating the C# was Wave A, not optional cleanup** — and `OpenApiContractTests.cs` (15 cases) now fails the build if that invariant is ever broken again. Three sequential waves, seven tasks: **A** annotate (metadata only, 815→830) → **B** regenerate → **C** the Angular (124→165).
+  **UAT still open — the user must click OT-13 and OT-14**, the two interactions no single-feature test catches: *delete → reorder → reload* (the order must hold) and *delete → add → reload* (the new task must be last). Both are gap/tie hazards created by soft delete leaving `order_index` untouched.
+  **Known UX gap, undecided:** a mis-drop onto the trash deletes instantly — no undo, no confirmation. It is a *soft* delete and the restore path is tested, but **no screen calls it.**
+  Spec: `docs/superpowers/specs/2026-07-13-log-work-task-actions-design.md` · Plan: `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md` (rev. 3)
 - **M8 — Migrate WPF → Web (ASP.NET Core 8 + Angular 17)** — **MERGED to `main`** (`feature/m8-web-migration-2026-07-13`, 2026-07-13). **939 tests green** — 658 Core/WPF + 157 API + 124 Angular. 0 warnings. From 548 at the start of M8.2.
   Why: the WPF UI is defect-prone, and the app is architected around a SQLite file on a synced shared folder, where two people editing at once **silently overwrite each other**.
   - [x] **M8.0** — Research (4 agents). Found 5 blockers, **2 of which would have destroyed production data**.

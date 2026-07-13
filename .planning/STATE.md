@@ -2,16 +2,16 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute (M8.5, **task 7 of 7 in flight**)
-**Status:** in_progress
+**Phase:** Step 8 — UAT (M8.5; execute complete, **awaiting the user's two clicks**)
+**Status:** waiting_for_user
 **Last updated:** 2026-07-13
 
 ## ▶ RESUME HERE
 
-**Branch:** `feature/m8.5-log-work-actions-2026-07-13`, HEAD `bd73887`. Cut from `main` (which has all of M8).
-**Suite:** **985 green** — 830 .NET (658 Core/WPF + 172 API) + **155 Angular**. 0 warnings.
+**Branch:** `feature/m8.5-log-work-actions-2026-07-13`, HEAD `ebfea32`. Cut from `main` (which has all of M8).
+**Suite:** **995 green** — 830 .NET (658 Core/WPF + 172 API) + **165 Angular**. 0 warnings. Worktrees pruned; tree clean.
 
-### M8.5 — six of seven tasks merged. Task 7 (drag to trash) is running.
+### M8.5 — COMPLETE. All seven tasks merged.
 
 | | | |
 |---|---|---|
@@ -21,24 +21,24 @@
 | 4 · **+ Add task** | ✅ `908a033` | → 137 |
 | 5 · **Move to next month** | ✅ `ee10a29` | → 145 |
 | 6 · **drag to reorder** | ✅ `3241eb5` | → 155 |
-| **7 · drag to trash** | 🔄 | worktree `.worktrees/m85w7`, branch `m8.5/w7`, base `bd73887` |
-
-**When task 7 lands:** merge → `npm test` → **the user clicks OT-13 and OT-14** (below) → then M8.6.
+| 7 · **drag to trash** | ✅ `72cf0f4` (merge `ebfea32`) | → **165** |
 
 🔴 **The user has the app OPEN right now.** An API on **:5080** (against their **real** database) and `ng serve` on **:4200**. Both are background processes of this session. **A `/compact` keeps them; a `/clear` kills them.** Admin password (printed once, already used): `tyxhHnPpVvygCXy_xEtFAnAW`.
 
-### Task 7's one non-negotiable — Task 6 proved it, and the plan gets it wrong
+### 🔴 The ONE thing still open on M8.5: the user has not clicked OT-13 / OT-14
 
-**The trash must carry `id="trash"`, NOT `#trash="cdkDropList"`.** Task 6 wired each group with `[cdkDropListConnectedTo]="['trash']"` — a **string**, because `[…]="[trash]"` does not compile against a `#trash` that does not exist yet (`NG9`; a template ref is not a forward declaration). CDK resolves the string against its **static registry, lazily, on every drag start**. A template ref leaves the list on its auto-generated id, so `'trash'` **never resolves**: the row snaps back, `container === previousContainer`, and **the trash's `dropped` never fires.** A guaranteed silent no-op.
-
-*(Until task 7 lands, every drag logs `could not find connected drop list with id "trash"`. That warning disappearing is the fastest confirmation it was done right.)*
-
-### The two checks that matter, because no single-feature test catches either
+Everything automated is green. These two are **interactions between the features in this one milestone**, and **no single-feature test catches either** — that is precisely why they need a human.
 
 - **OT-13 — delete a task, THEN reorder, THEN reload.** The order must hold.
 - **OT-14 — delete a task, THEN add a task, THEN reload.** The new one must be **last**.
 
-Both are **interactions between the features in this one milestone**. Rev. 1 of the plan shipped the first as a silent corruption (`SetActiveAsync` leaves `order_index` alone, so a windowed reorder creates a **tie**, and `ORDER BY` with a tie is arbitrary). Rev. 2 shipped the second (`orderIndex = tasks.length` ties with a live row after any delete). **Both are fixed; both need a human to confirm.**
+Rev. 1 of the plan shipped the first as a silent corruption (`SetActiveAsync` leaves `order_index` alone, so a windowed reorder creates a **tie**, and `ORDER BY` with a tie is arbitrary). Rev. 2 shipped the second (`orderIndex = tasks.length` ties with a live row after any delete). **Both are fixed in code; both need a human to confirm.**
+
+**3-second smoke test first:** pick up a row by its ⠿ grip — the trash box must turn **red** immediately, and DevTools must show **no** `could not find connected drop list with id "trash"`. If it stays amber, the CDK connection never resolved and nothing below it works.
+
+### Known UX gap, flagged by Task 7's agent, not yet decided
+
+**No undo, no confirmation. A mis-drop deletes a task instantly.** It *is* soft (`setTaskActive(id, true)` restores it, and that path is tested) — but **no screen calls it.** There is no restore UI. WPF has the identical hole. **The user has not yet been asked whether to add a confirm dialog.**
 
 ### After M8.5 — the user's chosen priority
 
@@ -52,10 +52,9 @@ Both are **interactions between the features in this one milestone**. Rev. 1 of 
 
 ---
 
-**Next Action:** merge task 7, gate, then M8.6 (brainstorm → spec → plan → Plan Checker → execute).
-**Approved Mode:** **Mode A** — approved 2026-07-13. Gate scored **1/5** Mode B signals (2 domains: C# + Angular). No hard exclusion: no migration, no auth change, no release gate, no compliance impact. *(M8 itself ran Mode B; M8.5 is materially smaller — the endpoints and the contracts already exist.)*
+**Next Action:** M8.6 — Backlog screen (brainstorm → spec → Mode Gate → plan → Plan Checker → execute), while the user clicks OT-13 / OT-14 on M8.5.
 
-**Plan:** `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md` (`15c950d`) — six tasks, three sequential waves.
+**Plan:** `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md` (rev. 3, `25f5ee9`) — seven tasks, three sequential waves.
 
 ### M8 — SHIPPED. `main` has it.
 
@@ -72,11 +71,15 @@ Both are **interactions between the features in this one milestone**. Rev. 1 of 
 
 **Waiting on the user:** ① click through the web app (`.planning/M8.4-UAT.md` — 🔴 **the admin password prints ONCE** on first API start) · ② click through the WPF app (M8.2's OT-8, which no test proves) · ③ **decide how the web app reaches anyone else's browser** — nobody but the user can use it until that is chosen.
 
-### M8.5 — IN PLANNING. Restore the three Log Work controls M8.4/W4 removed.
+### M8.5 — COMPLETE. The three Log Work controls M8.4/W4 removed are back, and real.
 
 Spec: `docs/superpowers/specs/2026-07-13-log-work-task-actions-design.md` (`d97bd3e`).
 
-`+ Add task`, `Move to next month`, and the drag-to-reorder / drag-to-trash zone. All three were **fake in the vendored design** (`toast.show('Task added')` with no handler), so the WPF app is the source of truth. **All five endpoints they need already exist** — but `BacklogEndpoints.cs` has **zero `.Produces<T>()`**, so OpenAPI describes none of them and the generated client does not contain them. **Annotating the C# is Wave A, not optional cleanup.**
+`+ Add task`, `Move to next month`, and the drag-to-reorder / drag-to-trash zone. All three were **fake in the vendored design** (`toast.show('Task added')` with no handler), so the WPF app was the source of truth.
+
+**The pattern M8.5 established, and the reason M8.6–M8.10 have no architectural unknowns left:** `BacklogEndpoints.cs` had **zero `.Produces<T>()`**, so OpenAPI described none of its routes and the generated TypeScript client **could not contain them**. Annotating the C# was Wave A, not optional cleanup. `OpenApiContractTests.cs` (15 cases) now **fails the build** if a route in the generated client's tag list lacks a schema, a tag, or an `operationId` — the invariant in `ng-openapi-gen.json` is no longer a comment.
+
+**Every remaining screen is the same three steps: annotate its routes → regenerate the client → wire the Angular.**
 
 ### M8.3 — COMPLETE. The API exists, is authenticated, team-scoped, conflict-aware and live.
 
@@ -124,35 +127,18 @@ Spec: `docs/superpowers/specs/2026-07-13-log-work-task-actions-design.md` (`d97b
 | **M8.2 W3.5** — consolidation | ✅ **DONE, merged, gated** (`49cb9d0`). 621 green. One API; `row_version` reachable end to end. |
 | **M8.2 W4** — `ActiveTeamId` per-user | ✅ **DONE, merged, gated** (`6ac5621`). **628 green.** |
 | **M8.2** | ✅ **COMPLETE.** 548 → 628. Gate OT-1..OT-7 green; **OT-8 (WPF still launches) is a MANUAL check the user must do.** |
-| **M8.3** — API + auth + SignalR | 🔄 **Step 6.** Plan rev. 2 written (`f53cbed`) after Plan Checker returned **BLOCK** on rev. 1. Re-check in flight. |
-| **M8.4** — Angular shell + Log Work | ⬜ **First slice the user can actually click.** |
+| **M8.3** — API + auth + SignalR | ✅ **COMPLETE, merged.** 80 routes · cookie auth · Data Protection · SignalR. **809 green.** |
+| **M8.4** — Angular shell + Log Work | ✅ **COMPLETE, merged.** Login, guarded shell, **Log Work against the real API**. **939 green.** |
+| **M8.5** — Log Work task actions | ✅ **COMPLETE** (`ebfea32`). Add task · Move to next month · drag-reorder + drag-to-trash. **995 green.** UAT OT-13/OT-14 open. |
+| **M8.6** — **Backlog screen** | 🔄 **NEXT.** STEP 2 (brainstorm). |
+| **M8.7–M8.10** — Task List · Daily Report · Reports · Users + Settings | ⬜ Same three steps each: annotate → regenerate → wire. |
 
-Plan: `docs/superpowers/plans/2026-07-12-M8.2-core-hardening.md`
+Plan: `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md` (rev. 3)
 Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (rev. 3)
 
+**The one M8.2 gate item still open: OT-8 — "the WPF app still launches and works."** No test proves it; **the user must click it.**
+
 ---
-
-## ▶ RESUME HERE
-
-### M8.2 is CLOSED. 628 green on `m8.2/w3-integrate`.
-
-| Wave | Commit | What |
-|---|---|---|
-| W1 | `4b00e66` | schema v10 |
-| W2 | `fe794c2` | WAL profile · the backup blocker · 3 bug fixes |
-| W3 (A/B/C/D) | `3a89801` | `row_version` across 8 repositories — 4 agents, 0 merge conflicts |
-| W3.5 | `49cb9d0` | consolidation — **one** concurrency API; `row_version` reachable end to end |
-| W4 | `6ac5621` | `ActiveTeamId` → `Users.active_team_id` |
-
-**The one gate item still open: OT-8 — "the WPF app still launches and works."** No test proves it; **the user must click it.** Everything else (OT-1..OT-7) is green and automated.
-
-### Next: M8.3 — API + auth + SignalR. Currently at STEP 6.
-
-Plan: `docs/superpowers/plans/2026-07-12-M8.3-api-auth-signalr.md` (**rev. 2**, `f53cbed`).
-
-**Rev. 1 was BLOCKED by the Plan Checker** — six BLOCKs. Read the rev.-2 preamble before executing; it lists the four false premises rev. 1 rested on. Waves: **W0** (Core credential methods — auth has *nothing* to stand on today) → **W1a** (host boots, scoped identity, no captive deps) → **W1b** (auth, 409 contract, DTOs, OpenAPI) → **W2** (4 endpoint agents) → **W3** (SignalR).
-
-**Do not start W2 before W0 and W1 are merged and green.** Every one of the six BLOCKs was a thing W2's four agents would have needed and none would have owned.
 
 ### The three lessons M8.2 paid for. Do not re-learn them.
 
@@ -189,9 +175,20 @@ ls .worktrees/<name>/src/TimesheetApp.Core   # must exist
 
 Every agent prompt should open with a **Step 0** that re-verifies the base and stops if it is wrong.
 
-### EIGHT of my own claims turned out false — all caught by agents *running* them
+### TWENTY-PLUS of my own claims turned out false — every one caught by an agent *running* them
 
-This is the most important lesson in this file. Do not trust a claim about **how a failure presents** unless it has been executed. Note the rate: this did not stop after I noticed it. It kept happening, and every time it was caught by an agent that ran the thing instead of believing me.
+This is the most important lesson in this file. Do not trust a claim about **how a failure presents** unless it has been executed. Note the rate: this did not stop after I noticed it. It kept happening through M8.5, and every time it was caught by an agent that ran the thing instead of believing me.
+
+**M8.5 added four more, and two are instructive beyond their own bug:**
+
+| I claimed | Truth, measured |
+|---|---|
+| "A missing `DragDropModule` **builds clean** and nothing drags — a silent failure." | **Inverted.** Task 6's agent removed the module and ran it: the build goes **RED**, four `NG8002` errors. **A property *binding* is type-checked; only a bare *attribute* is silent.** The real hazard is `cdkDragHandle` — the one bare attribute — which, if dropped, makes CDK drag the whole row while everything still "works." I had warned about the safe half and missed the dangerous half. |
+| The plan's own reorder write (rev. 1), windowed to the moved range | **Corrupts order after any delete.** `SetActiveAsync` soft-deletes and **leaves `order_index` alone**, so survivors sit at 1,2,3 — a **gap**. A windowed write then produces a **tie**, and `ORDER BY` with a tie is arbitrary. Worse: **my own second test asserted the buggy behaviour.** Fixed by rewriting **every** row (self-healing; matches WPF `TimesheetViewModel.cs:421`). |
+| My DB-safety proof: "don't touch the live app on :5080" **and** "prove no `-wal` exists beside the real DB" | **Self-contradictory.** A live SQLite app in WAL mode **always** has a `-wal`, and checkpointing changes the file hash. Following my script literally would have aborted on a false alarm. The agent substituted **stronger** evidence: the startup log reading `AdminBootstrap: no users yet, nothing to bootstrap` — unforgeable proof it opened an *empty* DB. |
+| `.mini-ghost` (a CSS class I used in the plan) | **Does not exist.** I invented it. The house classes are `btn btn-ghost btn-sm` (`styles.scss:91-102`). |
+
+**And the fixture lesson, one more time, at its sharpest.** Task 7's agent mutated the template to the plan's broken `#trash` form and re-ran: **six of the seven `onTrash` tests stayed GREEN against a completely dead feature.** Only the test that asserted the *wiring* — that the drop list registers under the literal id `trash` — went red. Six green tests over a corpse. **A test that exercises a handler directly cannot tell you the handler is reachable.**
 
 | I claimed | Truth, measured |
 |---|---|
@@ -242,7 +239,9 @@ Each connection gets its **own** database, so a conflict can never occur — **t
 
 ## Approved Mode
 
-**Mode B** — approved 2026-07-12. Gate scored 4/5, and a hard exclusion applies independently: *"compliance, security audit, or data migration impact"* — this slice has both.
+**Mode A** — approved 2026-07-13, and it is the mode in force. The gate ran again for M8.5 and scored **1/5** Mode B signals (two domains: C# + Angular); no hard exclusion applies — no migration, no auth change, no release gate, no compliance impact.
+
+*(Superseded: **Mode B**, approved 2026-07-12 for M8.1–M8.4, which scored 4/5 and tripped the "data migration impact" hard exclusion. M8.5 onward is materially smaller — the endpoints and the contracts already exist — so the gate legitimately re-scored. This entry stays only to explain why the earlier commits look like Mode B; **do not resume in Mode B.** M8.6 re-runs the gate for itself, as every milestone must.)*
 
 ## Config
 
