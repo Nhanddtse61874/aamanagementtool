@@ -91,6 +91,16 @@
                    will sit right. `.grp` is a plain block, not a CSS grid, so this <div> is layout-neutral. -->
               <div class="grp__foot">
                 <button type="button" class="btn btn-ghost btn-sm" (click)="addingTo.set(g)">➕ Add task</button>
+
+                <!-- 🔴 The FIRST of the two DEFAULT guards: the hidden DEFAULT backlog holds the recurring
+                     default tasks and must appear in EVERY month, so it must never BELONG to one. The button
+                     is not merely disabled here, it is absent — and `onMoveMonth` refuses a second time.
+                     `.grp__foot` is `justify-content: space-between`, so with the button gone the Add button
+                     simply stays left; nothing else moves. -->
+                @if (canMoveMonth(g.code)) {
+                  <button type="button" class="btn btn-ghost btn-sm" [disabled]="moving()"
+                          (click)="onMoveMonth(g)">Move to next month ▶</button>
+                }
               </div>
             }
           </div>

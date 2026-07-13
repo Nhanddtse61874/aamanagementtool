@@ -9,6 +9,8 @@ import {
 import { ApiConfiguration } from '../api/api-configuration';
 import { ConnectionIdHttpClient } from '../core/realtime.service';
 import {
+  backlogGet as backlogGetFn,
+  backlogUpdate as backlogUpdateFn,
   login as loginFn,
   logout as logoutFn,
   me as meFn,
@@ -20,7 +22,8 @@ import {
   timesheetWeek as timesheetWeekFn,
 } from '../api/functions';
 import {
-  LoginResponse, MeResponse, SmartFillTaskRequest, TaskItemDto, TimeLogDto, WeekBacklogGroup,
+  BacklogDto, BacklogUpdateRequest, LoginResponse, MeResponse, SavedBody, SmartFillTaskRequest, TaskItemDto,
+  TimeLogDto, WeekBacklogGroup,
 } from '../api/models';
 
 /**
@@ -215,6 +218,39 @@ export class WorklogService {
   addTask(backlogId: number, taskName: string, orderIndex: number): Observable<TaskItemDto> {
     return taskCreateFn(this.mutatingHttp, this.rootUrl, { body: { backlogId, taskName, orderIndex } })
       .pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // BACKLOGS — GET /api/backlogs/{id} · PUT /api/backlogs/{id}
+  //
+  // These two exist as a PAIR, and the read half is not an optimisation you can skip:
+  //
+  //   - `PUT /api/backlogs/{id}` REPLACES THE WHOLE RECORD. An omitted field is written as NULL, not left
+  //     alone. M8.3 already paid for this once: a DTO that merely omitted `teamId` set `team_id = NULL` and
+  //     the backlog dropped out of every team — invisible to everyone, permanently, while every test passed.
+  //   - It is also a CHECKED write, so it demands an `expectedVersion`.
+  //
+  // The Log Work screen holds neither. All it has is `WeekBacklogGroup` — the WEEK read model — which carries
+  // the backlog's id, code, project, type and assignee and NOTHING else: no `rowVersion`, no `note`, no
+  // `progressPercent`, no dates. There is nowhere else to get them. So: GET the record, change the one field,
+  // PUT it back. See `move-month.ts` (`toUpdateRequest`), which is where the field-by-field copy lives.
+  // =====================================================================================================
+
+  /** A READ -> the plain `http`. A read notifies nobody, so there is no SignalR echo to suppress and no
+   *  reason to widen `X-Connection-Id`'s blast radius. */
+  getBacklog(id: number): Observable<BacklogDto> {
+    return backlogGetFn(this.http, this.rootUrl, { id }).pipe(map(r => r.body));
+  }
+
+  /**
+   * A CHECKED write: `body.expectedVersion` must be the `rowVersion` the GET above just returned, and the
+   * server 409s if anyone changed the record in between.
+   *
+   * A MUTATION, so `mutatingHttp` — see that field's comment. On the plain client this write echoes straight
+   * back to us over SignalR, we re-fetch, and we clobber our own screen.
+   */
+  updateBacklog(id: number, body: BacklogUpdateRequest): Observable<SavedBody> {
+    return backlogUpdateFn(this.mutatingHttp, this.rootUrl, { id, body }).pipe(map(r => r.body));
   }
 
   // =====================================================================================================
