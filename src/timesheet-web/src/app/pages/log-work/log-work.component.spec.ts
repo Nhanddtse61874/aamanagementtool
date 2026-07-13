@@ -113,6 +113,34 @@ function dropEvent(
   };
 }
 
+/**
+ * A drop onto the TRASH. Two things distinguish it from `dropEvent`, and `onTrash` reads exactly those two:
+ *
+ *   - `previousContainer !== container` — it ARRIVED from somewhere else. (`dropped` fires only on the
+ *     DESTINATION list, so this is what every real trash drop looks like, and a reorder never does.)
+ *   - `item.data` is POPULATED. It is the only thing that says WHICH row was dropped, and it comes from
+ *     `[cdkDragData]` on the row — Task 6's binding, asserted live further down. Without it `data` would be
+ *     `undefined` and `row.taskId` would throw a TypeError, at the moment a user first tries to delete.
+ */
+function trashEvent(
+  row: TaskRow,
+  opts: { ontoItself?: boolean } = {},
+): CdkDragDrop<readonly TaskRow[], readonly TaskRow[], TaskRow> {
+  const container = { id: 'trash' } as CdkDropList<readonly TaskRow[]>;
+  const previousContainer = opts.ontoItself
+    ? container
+    : ({ id: 'grp-rows' } as CdkDropList<readonly TaskRow[]>);
+
+  return {
+    previousIndex: 0, currentIndex: 0, container, previousContainer,
+    item: { data: row } as CdkDrag<TaskRow>,
+    isPointerOverContainer: true,
+    distance: { x: 0, y: 0 },
+    dropPoint: { x: 0, y: 0 },
+    event: new MouseEvent('mouseup'),
+  };
+}
+
 describe('LogWorkComponent', () => {
   let fixture: ComponentFixture<LogWorkComponent>;
   let component: LogWorkComponent;
@@ -129,7 +157,7 @@ describe('LogWorkComponent', () => {
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
       ['getWeek', 'saveHours', 'clearHours', 'smartFillApply', 'typeColor', 'avatarColor',
-       'getBacklog', 'updateBacklog', 'setTaskOrder'],
+       'getBacklog', 'updateBacklog', 'setTaskOrder', 'setTaskActive'],
     );
     api.getWeek.and.returnValue(of(initial));
     api.typeColor.and.returnValue({ bg: '#fff', c: '#000' });
@@ -598,15 +626,27 @@ describe('LogWorkComponent', () => {
     return Array.from(f.nativeElement.querySelectorAll('.row'));
   }
 
+  /** Every `CdkDropList` Angular actually INSTANTIATED, by its CDK id. Since Task 7 that is one per rendered
+   *  group PLUS the trash — so nothing here may index by position. */
+  function dropLists(f: ComponentFixture<LogWorkComponent>): CdkDropList<readonly TaskRow[]>[] {
+    return f.debugElement.queryAll(By.directive(CdkDropList))
+      .map(d => d.injector.get(CdkDropList) as CdkDropList<readonly TaskRow[]>);
+  }
+
   it('🔴 the drop-list directive is ACTUALLY APPLIED — an unknown attribute on a <div> would not be', () => {
     setUp();
     fixture.detectChanges();   // the DOM is one pass behind — see the DEFAULT-backlog test above
 
-    const lists = fixture.debugElement.queryAll(By.directive(CdkDropList));
-    expect(lists.length).toBe(1);                    // one drop list per rendered group
+    // 🔴 TWO, not one: one drop list per rendered group, PLUS the trash (Task 7). This count was `1` when Task
+    // 6 wrote it, because the trash did not exist yet — it is updated here rather than loosened, because the
+    // exact number is the point: a THIRD list would mean a group had sprouted one, and groups connect only to
+    // the trash and never to each other (a task must not be draggable into a different backlog).
+    const lists = dropLists(fixture);
+    expect(lists.length).toBe(2);
+
+    const list = lists.find(l => l.id !== 'trash')!;
 
     // The rows really are the list's data — not a stale array captured somewhere else.
-    const list = lists[0].injector.get(CdkDropList) as CdkDropList<readonly TaskRow[]>;
     expect(list.data.map(t => t.taskId)).toEqual([MONDAY_TASK, EMPTY_TASK]);
 
     // 🔴 Connected to the trash BY STRING ID, and pinned here because nothing else can pin it: the plan's
@@ -727,5 +767,158 @@ describe('LogWorkComponent', () => {
       // `group.tasks` would interleave with the first and leave an order neither drag asked for.
       expect(api.setTaskOrder).toHaveBeenCalledTimes(1);
       expect(component.reordering()).toBeTrue();        // batch 1 still in flight
+    });
+
+  // ---- 🔴 drag to trash (a SOFT delete) ----------------------------------------------------------------
+  //
+  // 🔴 THE HAND-OFF. Everything below the first test is ordinary handler testing; the FIRST test is the one
+  // that matters, and it is the only thing standing between this milestone and a feature that is silently,
+  // completely dead.
+  //
+  // Groups are connected to the trash BY STRING ID (`[cdkDropListConnectedTo]="['trash']"`) because the
+  // template-ref form the plan specified does not compile. CDK resolves that string against a STATIC REGISTRY,
+  // lazily, on every drag start, and FILTERS OUT what it cannot find:
+  //
+  //     const correspondingDropList = CdkDropList._dropLists.find(list => list.id === drop);
+  //     if (!correspondingDropList && ngDevMode) console.warn(`CdkDropList could not find connected drop
+  //                                                            list with id "${drop}"`);
+  //     …
+  //     ref.connectedTo(siblings.filter(drop => drop && drop !== this).map(list => list._dropListRef))
+  //                                                            (@angular/cdk 17.3.10, drag-drop.mjs:3510-3546)
+  //
+  // So an id that does not resolve is not an error — it is a CONSOLE WARNING and an empty sibling list. The
+  // row then snaps back, `container === previousContainer`, and `onTrash` NEVER FIRES. Every handler test
+  // below would still pass. A green build would still be green. That is why the first test drives CDK's real
+  // `beforeStarted` and captures what its resolution actually produces.
+
+  it('🔴 THE HAND-OFF: the group\'s connectedTo RESOLVES to the trash — proved through CDK\'s OWN resolution',
+    () => {
+      setUp();
+      fixture.detectChanges();   // the DOM is one pass behind
+
+      const trash = dropLists(fixture).find(l => l.id === 'trash');
+      const group = dropLists(fixture).find(l => l.id !== 'trash');
+
+      // HALF ONE — the trash is findable by the exact string CDK searches the registry by. A static
+      // `id="trash"` really does set `CdkDropList`'s `id` INPUT (it is declared as one: `inputs: { …, id:
+      // "id", … }`), and CDK host-binds it back out as `[attr.id]`. A `#trash="cdkDropList"` template ref
+      // would have left it on the auto-generated `cdk-drop-list-N` and BOTH of these would fail.
+      expect(trash).toBeDefined();
+      expect(trash!.id).toBe('trash');
+      expect(document.getElementById('trash')).not.toBeNull();
+
+      // HALF TWO — the group still asks for it by that same string (Task 6's binding).
+      expect(group!.connectedTo).toEqual(['trash']);
+
+      // 🔴 AND THE TWO HALVES ACTUALLY MEET. This is not an inference from the two above — it RUNS CDK's
+      // resolution. `_setupInputSyncSubscription` subscribes to `ref.beforeStarted`, and firing it is exactly
+      // what a real drag start does. Both `beforeStarted` and `connectedTo()` are public on `DropListRef`.
+      const warn = spyOn(console, 'warn');
+      const connectedTo = spyOn(group!._dropListRef, 'connectedTo').and.callThrough();
+
+      group!._dropListRef.beforeStarted.next();
+
+      // The TRASH'S OWN `DropListRef` came out the other end of `_dropLists.find(...)`. Had the id not
+      // resolved, `siblings` would be `[undefined]`, the `.filter(drop => drop && …)` would empty it, and this
+      // would be `[]` — the exact state in which a dragged row cannot enter the trash and `onTrash` is dead.
+      expect(connectedTo).toHaveBeenCalledTimes(1);
+      expect(connectedTo.calls.mostRecent().args[0]).toEqual([trash!._dropListRef]);
+
+      // ...and CDK's own miss-warning did NOT fire. Between Task 6 and Task 7 it fired on EVERY drag:
+      //   "CdkDropList could not find connected drop list with id "trash""
+      // Its disappearance is the fastest confirmation a human has that this is wired; this pins it.
+      const misses = warn.calls.allArgs()
+        .filter(args => String(args[0]).includes('could not find connected drop list'));
+      expect(misses).toEqual([]);
+    });
+
+  it('🔴 the trash survives an EMPTY week — it sits OUTSIDE the @if that guards the day-totals footer', () => {
+    setUp([]);
+    fixture.detectChanges();
+
+    // It is a direct child of `.grid`, at the root of the template. Tucked inside `@if (groups().length)` it
+    // would vanish exactly when the grid is empty — and, being a SIBLING view of the `@for`, a `#trash`
+    // declared there would not even be visible to the groups' bindings.
+    expect(component.groups().length).toBe(0);
+    expect(dropLists(fixture).map(l => l.id)).toEqual(['trash']);
+    expect(document.getElementById('trash')).not.toBeNull();
+  });
+
+  it('🔴 a drop on the trash SOFT-deletes the dropped row — is_active = false, nothing is destroyed',
+    async () => {
+      setUp();
+      api.setTaskActive.and.returnValue(of(void 0));
+      api.getWeek.calls.reset();
+
+      const row = component.groups()[0].tasks[0];
+      await component.onTrash(trashEvent(row));
+
+      // `false`, and the row read from `event.item.data` — NOT from an index into `groups()`, which a
+      // concurrent refresh could have re-pointed at a different task between the pick-up and the drop.
+      expect(api.setTaskActive).toHaveBeenCalledOnceWith(MONDAY_TASK, false);
+
+      // CDK does not remove the row for us — we never call `transferArrayItem`. The re-fetch is the ONLY thing
+      // that makes it leave the grid.
+      expect(api.getWeek).toHaveBeenCalled();
+      expect(component.deleting()).toBeFalse();       // released again
+    });
+
+  it('writes nothing when the drop\'s source and destination are the same list', async () => {
+    setUp();
+
+    await component.onTrash(trashEvent(component.groups()[0].tasks[0], { ontoItself: true }));
+
+    expect(api.setTaskActive).not.toHaveBeenCalled();
+  });
+
+  it('🔴 a second drop while the first delete is in flight is refused — the row SNAPS BACK and invites it',
+    async () => {
+      setUp();
+      api.setTaskActive.and.returnValue(new Subject<void>());   // never settles: still in flight
+
+      const row = component.groups()[0].tasks[0];
+      void component.onTrash(trashEvent(row));      // delete 1 — hangs
+      await component.onTrash(trashEvent(row));     // delete 2 — must be refused outright
+
+      // The row is still on screen (CDK snapped it back; only the refresh removes it), so on a slow link the
+      // user sees nothing happen and drags it to the bin again. Without this guard that is a second write and
+      // a second re-fetch for a task already being deleted.
+      expect(api.setTaskActive).toHaveBeenCalledTimes(1);
+      expect(component.deleting()).toBeTrue();      // delete 1 still in flight
+    });
+
+  it('🔴 404: someone else already deleted it — say so and RE-READ, do not die as an unhandled rejection',
+    async () => {
+      setUp();
+      // Reachable: another user can delete this task, or remove us from its team, while the screen is open.
+      api.setTaskActive.and.returnValue(throwError(() => httpError(404, null)));
+      api.getWeek.calls.reset();
+
+      await component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+
+      // `onTrash` is an async method bound to an output: an escaping error would be an UNHANDLED PROMISE
+      // REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would drag the row to the bin, watch it
+      // snap back, be told nothing, and drag it again.
+      expect(toast.show).toHaveBeenCalledWith('This task is no longer available.');
+      expect(api.getWeek).toHaveBeenCalled();      // the server is right and our screen is stale
+      expect(component.deleting()).toBeFalse();    // released, so the next delete is not dead
+    });
+
+  it('🔴 a failed delete toasts but does NOT re-read — unlike a reorder, one write has no HALF-done state',
+    async () => {
+      setUp();
+      api.setTaskActive.and.returnValue(throwError(() => httpError(500, null)));
+      api.getWeek.calls.reset();
+
+      await component.onTrash(trashEvent(component.groups()[0].tasks[0]));
+
+      expect(toast.show).toHaveBeenCalledWith('Could not delete this task. Please try again.');
+
+      // 🔴 The considered difference from `onReorderError`, which re-reads on EVERY error. A reorder is a
+      // SEQUENTIAL BATCH of N writes, so a failure on write 3 of 5 leaves the group half-renormalised on the
+      // server and the screen showing an order that does not exist. A delete is ONE write: it failed, so the
+      // server is unchanged, and CDK has already snapped the row back — the screen ALREADY matches the server.
+      expect(api.getWeek).not.toHaveBeenCalled();
+      expect(component.deleting()).toBeFalse();
     });
 });

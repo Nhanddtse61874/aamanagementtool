@@ -152,6 +152,35 @@
           }
         }
 
+        <!-- 🔴 THE TRASH. `id="trash"` — NOT `#trash="cdkDropList"`, and this is the single detail the whole
+             feature hangs on.
+
+             Each group above carries `[cdkDropListConnectedTo]="['trash']"` — a STRING, because the plan's
+             `[cdkDropListConnectedTo]="[trash]"` (a template ref to an element that did not exist yet) does
+             NOT COMPILE: `NG9: Property 'trash' does not exist on type 'LogWorkComponent'`. CDK resolves that
+             string against its static registry on EVERY drag start:
+
+                 CdkDropList._dropLists.find(list => list.id === drop)     (drag-drop.mjs:3513)
+
+             and silently FILTERS OUT anything it cannot find. `id` is a declared INPUT of `CdkDropList`
+             (`inputs: { …, id: "id", … }`), so this plain attribute sets it — that is CDK's own documented
+             mechanism, and its official connected-lists example is written exactly this way. A
+             `#trash="cdkDropList"` template ref would instead leave the drop list on its AUTO-GENERATED
+             `cdk-drop-list-N` id, the string would never resolve, the dragged row would snap back,
+             `container === previousContainer`, and `onTrash` WOULD NEVER FIRE AT ALL. Silently. A green build
+             says nothing about it — which is why `log-work.component.spec.ts` drives CDK's real
+             `beforeStarted` resolution and asserts the trash's own `DropListRef` comes out the other end.
+
+             🔴 And it lives HERE — a direct child of `.grid`, at the ROOT, OUTSIDE the `@if (groups().length)`
+             below — so it does not vanish when the week is empty. (`.grid` is a plain block; only
+             `.grid__head`, `.row` and `.grid__foot` are CSS grids, so this <div> is layout-neutral.) The trash
+             connects to NOTHING itself, which is what preserves "a task cannot be dragged into another
+             backlog". -->
+        <div id="trash" class="dropzone" cdkDropList [cdkDropListData]="noRows"
+             (cdkDropListDropped)="onTrash($event)">
+          🗑&nbsp; Drop a task here to delete
+        </div>
+
         @if (groups().length) {
           <div class="grid__foot">
             <div class="c-task">DAY TOTALS</div>
