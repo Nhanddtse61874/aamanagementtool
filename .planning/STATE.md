@@ -2,12 +2,33 @@
 
 ## Current Position
 
-**Phase:** Step 6 — Plan (M8.4) · M8.2 **COMPLETE** · M8.3 **COMPLETE**
-**Status:** in_progress
+**Phase:** Step 3 — Mode Gate (complete) → Step 6 (Plan) for **M8.5**
+**Status:** complete
 **Last updated:** 2026-07-13
 
-**Branch:** `m8.2/w3-integrate`. Cut from `feature/m8-core-extraction-2026-07-12`. **Never merged to `main`.**
-**Suite:** **809 passed, 0 failed, 0 warnings** — 656 in `TimesheetApp.Tests` + **153 in `TimesheetApp.ApiTests`**. Was 548 at the start of M8.2.
+**Next Action:** Run `writing-plans` to draft the M8.5 implementation plan.
+**Approved Mode:** **Mode A** — approved 2026-07-13. Gate scored **1/5** Mode B signals (2 domains: C# + Angular). No hard exclusion: no migration, no auth change, no release gate, no compliance impact. *(M8 itself ran Mode B; M8.5 is materially smaller — the endpoints and the contracts already exist.)*
+
+### M8 — SHIPPED. `main` has it.
+
+**Branch:** `feature/m8.5-log-work-actions-2026-07-13`, cut from `main`.
+**`main`:** M8.1 → M8.4 merged (`feature/m8-web-migration-2026-07-13`). 30 stale branches and 12 worktrees cleaned.
+**Suite:** **939 passed, 0 failed, 0 warnings** — 658 `TimesheetApp.Tests` + 157 `TimesheetApp.ApiTests` + **124 Angular**. Was 548 at the start of M8.2.
+
+| | | |
+|---|---|---|
+| **M8.1** | extract `TimesheetApp.Core` from the WPF project | 548 |
+| **M8.2** | schema v10 · optimistic concurrency · the backup blocker · `ActiveTeamId` per-user | 628 |
+| **M8.3** | ASP.NET Core API · cookie auth · **80 routes** · SignalR | 809 |
+| **M8.4** | Angular: login, guarded shell, **Log Work working against the real API** | **939** |
+
+**Waiting on the user:** ① click through the web app (`.planning/M8.4-UAT.md` — 🔴 **the admin password prints ONCE** on first API start) · ② click through the WPF app (M8.2's OT-8, which no test proves) · ③ **decide how the web app reaches anyone else's browser** — nobody but the user can use it until that is chosen.
+
+### M8.5 — IN PLANNING. Restore the three Log Work controls M8.4/W4 removed.
+
+Spec: `docs/superpowers/specs/2026-07-13-log-work-task-actions-design.md` (`d97bd3e`).
+
+`+ Add task`, `Move to next month`, and the drag-to-reorder / drag-to-trash zone. All three were **fake in the vendored design** (`toast.show('Task added')` with no handler), so the WPF app is the source of truth. **All five endpoints they need already exist** — but `BacklogEndpoints.cs` has **zero `.Produces<T>()`**, so OpenAPI describes none of them and the generated client does not contain them. **Annotating the C# is Wave A, not optional cleanup.**
 
 ### M8.3 — COMPLETE. The API exists, is authenticated, team-scoped, conflict-aware and live.
 
