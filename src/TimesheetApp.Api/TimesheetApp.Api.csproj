@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>TimesheetApp.Api</RootNamespace>
+    <!-- OpenAPI: M8.4 generates its TypeScript client from the document this emits. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WebApplicationFactory<Program> needs a non-internal Program; the test project also
+         reaches ApiClientContext.Populate + the ApiFactory seed helpers. -->
+    <InternalsVisibleTo Include="TimesheetApp.ApiTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The PasswordHasher<T> CLASS ONLY (PBKDF2 / HMAC-SHA512 / 100k iterations by default on
+         .NET 8). No Identity stack, no Identity schema, no EF Core: this package is pulled purely
+         for the hasher, which needs no DI and ignores its TUser argument. -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="8.0.10" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TimesheetApp.Core\TimesheetApp.Core.csproj" />
+  </ItemGroup>
+
+</Project>

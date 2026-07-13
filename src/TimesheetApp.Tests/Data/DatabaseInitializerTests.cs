@@ -141,8 +141,12 @@ public class DatabaseInitializerTests : IDisposable
         using var c = _factory.Create();
         var cols = c.Query<string>("SELECT name FROM pragma_table_info('Backlogs');").ToList();
         Assert.DoesNotContain("is_active", cols); // DATA-02 decision 4
-        Assert.Contains("windows_username",
-            c.Query<string>("SELECT name FROM pragma_table_info('Users');").ToList()); // DATA-02
+
+        // v10 renamed windows_username -> username. The identity column is still nullable (DATA-02);
+        // only its name changed.
+        var userCols = c.Query<string>("SELECT name FROM pragma_table_info('Users');").ToList();
+        Assert.Contains("username", userCols);
+        Assert.DoesNotContain("windows_username", userCols);
     }
 
     public void Dispose()

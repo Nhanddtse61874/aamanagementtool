@@ -76,6 +76,28 @@ public class ReportsViewModelTests
         repo.Verify(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), It.IsAny<IReadOnlyList<int>?>()), Times.Once);
     }
 
+    // M8.2 bug 2: "DAYS LOGGED" could never read 3/5. The denominator was WeeklyRows.Count, and
+    // WeeklyRows only holds days that HAVE logs, so numerator and denominator moved together (always N/N).
+    // The denominator is the count of WORKING days in the week (weekends + holidays excluded).
+    [Fact]
+    public async Task DaysLogged_counts_logged_days_over_the_working_days_of_the_week()
+    {
+        var (vm, repo, _, _, _) = Build(new DateOnly(2026, 6, 18));
+        vm.SelectedTarget = new ReportsViewModel.ReportTarget(7, "Greg");
+        vm.SelectedWeekMonday = new DateOnly(2026, 6, 15); // Mon 15 .. Fri 19, no holidays => 5 working days
+        repo.Setup(r => r.GetReportRowsAsync(7, new DateOnly(2026, 6, 15), new DateOnly(2026, 6, 19), It.IsAny<IReadOnlyList<int>?>()))
+            .ReturnsAsync(new[]
+            {
+                Row("P", "R1", 1, "T", "2026-06-15", 8m), // Mon
+                Row("P", "R1", 1, "T", "2026-06-16", 8m), // Tue
+                Row("P", "R1", 1, "T", "2026-06-17", 8m), // Wed  -> 3 logged of 5 working days
+            });
+
+        await vm.LoadWeeklyAsync();
+
+        Assert.Equal("3 / 5", vm.DaysLoggedText);
+    }
+
     // RPT-02 + RPT-03
     [Fact]
     public async Task LoadMonthly_queries_full_month_and_fills_monthly_rows_and_tree()

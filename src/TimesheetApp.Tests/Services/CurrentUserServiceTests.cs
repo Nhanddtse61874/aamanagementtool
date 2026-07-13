@@ -17,7 +17,7 @@ public class CurrentUserServiceTests
     public async Task ResolveAsync_match_returns_Resolved_and_sets_Current()
     {
         var u = new User(7, "Nguyen Van A", "DOMAIN\\nva", true);
-        _users.Setup(r => r.GetByWindowsUsernameAsync("DOMAIN\\nva")).ReturnsAsync(u);
+        _users.Setup(r => r.GetByUsernameAsync("DOMAIN\\nva")).ReturnsAsync(u);
         var svc = Make("DOMAIN\\nva");
 
         var result = await svc.ResolveAsync();
@@ -30,7 +30,7 @@ public class CurrentUserServiceTests
     [Fact]
     public async Task ResolveAsync_no_match_returns_NeedsSelection_and_null_Current()
     {
-        _users.Setup(r => r.GetByWindowsUsernameAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+        _users.Setup(r => r.GetByUsernameAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
         var svc = Make("DOMAIN\\unknown");
 
         var result = await svc.ResolveAsync();
@@ -49,7 +49,11 @@ public class CurrentUserServiceTests
 
         await svc.SetWindowsUsernameAsync(3, "DOMAIN\\pk");
 
-        _users.Verify(r => r.SetWindowsUsernameAsync(3, "DOMAIN\\pk"), Times.Once);
+        // BUMP-ONLY (W3.5). This runs when Current is null, so the service holds no version it could
+        // legitimately check against. W3-C pre-fetched the row to synthesize one — but a version
+        // invented immediately before the write checks nothing, and the fetch is the very read-back
+        // the checked methods exist to avoid. Claiming your own identity is a system write.
+        _users.Verify(r => r.SetUsernameAsync(3, "DOMAIN\\pk"), Times.Once);
         Assert.Equal(3, svc.Current!.Id);
         Assert.Equal("DOMAIN\\pk", svc.Current!.WindowsUsername);
     }

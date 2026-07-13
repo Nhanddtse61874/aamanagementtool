@@ -47,11 +47,12 @@ public sealed class TestDb : IConnectionFactory, IDisposable
     // ---- Seed helpers (raw SQL; reusable by T4 + T5 tests) -------------------------------
 
     // Inserts an active user; returns its new id.
+    // The column is `username` from schema v10 on (renamed from windows_username).
     public async Task<int> SeedUserAsync(string name = "Tester", string? windowsUsername = null, bool isActive = true)
     {
         using var c = Create();
         return await c.ExecuteScalarAsync<int>(
-            @"INSERT INTO Users(name, windows_username, is_active)
+            @"INSERT INTO Users(name, username, is_active)
               VALUES(@name, @win, @active);
               SELECT last_insert_rowid();",
             new { name, win = windowsUsername, active = isActive ? 1 : 0 });
@@ -111,7 +112,13 @@ public sealed class TestDb : IConnectionFactory, IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        // No ClearAllPools() here. It is PROCESS-GLOBAL, and 24 test classes use TestDb with only 6
+        // of them in an xUnit [Collection] -- so most run in parallel, and each teardown was reaching
+        // into every other class's connection pools mid-test. It was also pointless for its own
+        // stated purpose: TestDb builds its connections through SqliteProfile.Desktop, which sets
+        // Pooling=false, so there is no pool holding this database's file handle to begin with. A
+        // non-pooled connection releases the handle on Close(). The IOException catch below already
+        // covers the Windows case the call was presumably defending against.
         try
         {
             if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);

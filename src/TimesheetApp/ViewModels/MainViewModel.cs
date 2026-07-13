@@ -14,9 +14,8 @@ namespace TimesheetApp.ViewModels;
 /// Application shell VM (spec §5 MainViewModel row, §6 startup). Hosts the 5 tab VMs, shows the
 /// current user in the top corner (XC-07) and the conflict-copy startup banner (XC-08).
 /// <para>
-/// WPF-free: the SelectUserDialog is NOT opened here. On <see cref="CurrentUserOutcome.NeedsSelection"/>
-/// the View supplies a <c>Func&lt;IReadOnlyList&lt;User&gt;, User?&gt;</c> selector to
-/// <see cref="InitializeAsync"/>; the VM persists the chosen mapping via
+/// WPF-free: no dialog is opened here. An unmapped Windows account is auto-provisioned (see
+/// <c>ResolveCurrentUserAsync</c>), and the VM persists the mapping via
 /// <see cref="ICurrentUserService.SetWindowsUsernameAsync"/> so the DI <c>Func&lt;int&gt;</c>
 /// (<c>currentUser.Current?.Id</c>) resolves for the child VMs.
 /// </para>
@@ -195,16 +194,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Startup orchestration (spec §6, runs AFTER <see cref="IDatabaseInitializer.InitializeAsync"/>):
-    /// resolve the current user (prompting via <paramref name="selectUser"/> on NeedsSelection),
-    /// compute the conflict-copy warning (XC-08), then best-effort load each tab VM.
+    /// resolve the current user (auto-provisioning an unmapped Windows account), compute the
+    /// conflict-copy warning (XC-08), then best-effort load each tab VM.
     /// </summary>
-    /// <param name="selectUser">
-    /// View-supplied picker shown only on NeedsSelection. Returns the chosen user, or null if the
-    /// user cancelled. Kept as a delegate so the VM never references <c>System.Windows.*</c>.
-    /// </param>
-    public async Task InitializeAsync(Func<IReadOnlyList<User>, User?> selectUser)
+    public async Task InitializeAsync()
     {
-        var user = await ResolveCurrentUserAsync(selectUser);
+        var user = await ResolveCurrentUserAsync();
         await InitializeActiveTeamAsync(user);
         DetectConflictCopies();
         await LoadTabsAsync();
@@ -213,21 +208,30 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>
     /// P10 (TM-05/TM-09, architecture §6b): resolve the active-team context for the just-resolved
     /// user and populate the sidebar switcher. The startup bootstrap (App.OnStartup) already created
-    /// the team(s) and persisted the active id in <see cref="IAppConfig.ActiveTeamId"/>; here we make
-    /// sure the resolved user is a member of that team (idempotent INSERT OR IGNORE — a no-op for an
-    /// already-migrated user, the actual first-run join for a freshly auto-created one), then init the
-    /// current-team service so AvailableTeams includes the just-joined team and refresh the switcher.
+    /// the team(s); here we make sure the resolved user is a member of the bootstrap team (idempotent
+    /// INSERT OR IGNORE — a no-op for an already-migrated user, the actual first-run join for a
+    /// freshly auto-created one), then init the current-team service so AvailableTeams includes the
+    /// just-joined team and refresh the switcher.
+    /// <para>
+    /// M8.2 (Wave 4): the bootstrap team used to be read from IAppConfig.ActiveTeamId. That is gone —
+    /// the active team is now per-USER (Users.active_team_id), and a per-process config value cannot
+    /// answer "which team should a brand-new user join". The bootstrap team is instead derived from
+    /// the DB as the lowest-id team, which is the SAME rule TeamBootstrapService uses to detect an
+    /// existing bootstrap. Bonus: the join target is now machine-independent — it no longer depends on
+    /// whichever team the last user of this PC happened to switch to.
+    /// </para>
     /// </summary>
     private async Task InitializeActiveTeamAsync(User? user)
     {
         if (user is null) return; // user cancelled selection — no team context to resolve
 
-        // First-run join: ensure the resolved user is a member of the bootstrapped active team. Safe
-        // to call for any resolved user (idempotent). Guarded against an unset (0) active id so we
-        // never insert a bogus membership before bootstrap has run.
-        var activeTeamId = _config.ActiveTeamId;
-        if (activeTeamId > 0)
-            await _teams.AddMemberAsync(user.Id, activeTeamId);
+        // First-run join: bootstrap's own user sweep only saw the users that existed when it ran, so a
+        // user auto-provisioned just now (ResolveCurrentUserAsync) has no membership yet. Idempotent,
+        // so it is a no-op for everyone else. Guarded on "no team at all" so we never insert a bogus
+        // membership before bootstrap has run.
+        var bootstrapTeam = (await _teams.GetAllAsync()).OrderBy(t => t.Id).FirstOrDefault();
+        if (bootstrapTeam is not null)
+            await _teams.AddMemberAsync(user.Id, bootstrapTeam.Id);
 
         // Resolve AvailableTeams + active team for this user (now including the just-joined team),
         // then push the result into the switcher.
@@ -260,9 +264,8 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    // Returns the resolved current user (or null if selection was cancelled) so the caller can join
-    // them to the active team (TM-09 first-run join).
-    private async Task<User?> ResolveCurrentUserAsync(Func<IReadOnlyList<User>, User?> selectUser)
+    // Returns the resolved current user so the caller can join them to the active team (TM-09 first-run join).
+    private async Task<User?> ResolveCurrentUserAsync()
     {
         var result = await _currentUser.ResolveAsync();
         if (result.Outcome == CurrentUserOutcome.Resolved && result.User is { } resolved)
@@ -274,8 +277,7 @@ public sealed partial class MainViewModel : ObservableObject
         // Unmapped Windows account => auto-provision: create a user named after the Windows account, map
         // it, and open straight into a usable session — no manual "add user" step and no picker, whether
         // or not other users already exist (self-service onboarding). InitializeActiveTeamAsync then joins
-        // the new user to the active team. `selectUser` is retained as an unused fallback seam (keeps this
-        // VM WPF-free; a picker can be re-enabled without a signature change).
+        // the new user to the active team.
         var winName = _windowsUserName();
         var displayName = string.IsNullOrWhiteSpace(winName) ? "Me" : winName.Trim();
         var newId = await _users.InsertAsync(new User(0, displayName, null, true));

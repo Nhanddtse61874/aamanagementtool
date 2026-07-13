@@ -1,3 +1,4 @@
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Tests.Data;
@@ -152,6 +153,89 @@ public class StandupRepositoryTests
         using var db = await TestDb.CreateAsync();
         var repo = new StandupRepository(db);
         Assert.Empty(await repo.GetIssuesForEntriesAsync(Array.Empty<int>()));
+    }
+
+    // v10/M8.2: StandupIssues is check-and-bump (collaborative, DR-04 -- anybody may edit an issue).
+    // Deterministic, no threads: the conflict window IS the stale version number (M8.2 plan §Wave 3).
+    // Both "clients" read row_version 1; A saves first (succeeds); B saves second still holding 1
+    // (conflicts); A's write must survive untouched.
+    [Fact]
+    public async Task UpdateIssue_TwoConcurrentEdits_FirstWinsSecondConflicts()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new StandupRepository(db);
+        var u = await db.SeedUserAsync();
+        var entryId = await repo.InsertEntryAsync(NewEntry(u, Day));
+        var issueId = await repo.InsertIssueAsync(new StandupIssue(0, entryId, "blocked on API", null, "open", 0,
+            new DateTimeOffset(2026, 6, 25, 9, 0, 0, TimeSpan.Zero)));
+
+        var aliceSaw = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        var bobSaw = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        Assert.Equal(1, aliceSaw.RowVersion);
+        Assert.Equal(1, bobSaw.RowVersion);
+
+        await repo.UpdateIssueCheckedAsync(
+            aliceSaw with { SolutionText = "alice's fix", Status = "resolved" }, aliceSaw.RowVersion);
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => repo.UpdateIssueCheckedAsync(
+                bobSaw with { SolutionText = "bob's fix", Status = "resolved" }, bobSaw.RowVersion));
+        Assert.False(ex.Deleted);
+        Assert.Equal("StandupIssues", ex.Table);
+
+        var final = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        Assert.Equal("alice's fix", final.SolutionText);   // Bob did NOT silently overwrite it
+        Assert.Equal(2, final.RowVersion);                  // bumped exactly once
+    }
+
+    // OT-2: a client holding a stale version must not be able to silently resurrect an issue someone
+    // else deleted -- rowsAffected == 0 alone conflates "changed" and "deleted"; the existence check
+    // on the conflict path must tell them apart via ConcurrencyConflictException.Deleted.
+    [Fact]
+    public async Task UpdateIssue_OnDeletedIssue_ConflictsWithDeletedTrue()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new StandupRepository(db);
+        var u = await db.SeedUserAsync();
+        var entryId = await repo.InsertEntryAsync(NewEntry(u, Day));
+        var issueId = await repo.InsertIssueAsync(new StandupIssue(0, entryId, "blocked on API", null, "open", 0,
+            new DateTimeOffset(2026, 6, 25, 9, 0, 0, TimeSpan.Zero)));
+
+        var loaded = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        await repo.DeleteIssueAsync(issueId);
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => repo.UpdateIssueCheckedAsync(loaded with { Status = "resolved" }, loaded.RowVersion));
+        Assert.True(ex.Deleted);
+        Assert.Equal("StandupIssues", ex.Table);
+    }
+
+    // W3.5: UpdateIssueAsync KEPT its one-arg signature but its meaning flipped -- it was check-and-bump
+    // (version read off the record), it is now bump-only. Nothing in the compiler catches a change like
+    // that; every existing call site still built clean. The two tests above only went red because they
+    // assert on the exception. This one locks the new meaning down from the other side: a stale record
+    // must NOT throw here, and the write must still BUMP -- because a bump-only write that failed to
+    // bump would leave the version behind for a later checked write to match, which is precisely the
+    // lost update the whole mechanism exists to prevent.
+    [Fact]
+    public async Task UpdateIssue_BumpOnly_NeverConflicts_AndStillBumps()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new StandupRepository(db);
+        var u = await db.SeedUserAsync();
+        var entryId = await repo.InsertEntryAsync(NewEntry(u, Day));
+        var issueId = await repo.InsertIssueAsync(new StandupIssue(0, entryId, "blocked on API", null, "open", 0,
+            new DateTimeOffset(2026, 6, 25, 9, 0, 0, TimeSpan.Zero)));
+
+        var stale = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        await repo.UpdateIssueCheckedAsync(stale with { Status = "resolved" }, stale.RowVersion);  // row is now v2
+
+        // `stale` still carries v1. The bump-only path must ignore the version entirely.
+        await repo.UpdateIssueAsync(stale with { SolutionText = "system write" });
+
+        var final = (await repo.GetIssuesForEntriesAsync(new[] { entryId })).Single(x => x.Id == issueId);
+        Assert.Equal("system write", final.SolutionText);
+        Assert.Equal(3, final.RowVersion);   // bumped past the checked write, not left at 2
     }
 
     // P10 (TM-06/07): team_id round-trips on the entry, and GetEntriesForDayAsync filters by team.

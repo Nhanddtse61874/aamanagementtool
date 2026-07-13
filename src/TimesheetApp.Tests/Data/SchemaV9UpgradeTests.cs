@@ -130,7 +130,8 @@ PRAGMA user_version = 8;");
 
         using (var c = _factory.Create())
         {
-            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            // A v8 DB upgrades all the way to the latest schema (v10): the v9 step runs, then v10.
+            Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
 
             // Tasks gains type + assignee_user_id (nullable).
             var taskCols = Columns(c, "Tasks");
@@ -164,7 +165,7 @@ PRAGMA user_version = 8;");
 
         using (var c = _factory.Create())
         {
-            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
             Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM Backlogs WHERE backlog_code='REQ-OLD';"));
             Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM Tasks WHERE backlog_id=1;"));
         }

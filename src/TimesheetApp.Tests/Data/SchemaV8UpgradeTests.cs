@@ -105,9 +105,9 @@ PRAGMA user_version = 7;");
 
         using (var c = _factory.Create())
         {
-            // A v7 DB now upgrades all the way to the latest schema (v9) — the v8 step still runs
-            // (adds the team columns/tables below) and the v9 step runs after it.
-            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            // A v7 DB now upgrades all the way to the latest schema (v10) — the v8 step still runs
+            // (adds the team columns/tables below) and the v9/v10 steps run after it.
+            Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
 
             // team_id columns added (nullable) to both tables.
             Assert.Contains("team_id", Columns(c, "Backlogs"));
@@ -136,7 +136,7 @@ PRAGMA user_version = 7;");
 
         using (var c = _factory.Create())
         {
-            Assert.Equal(9, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
             Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM Backlogs WHERE backlog_code='REQ-OLD';"));
             Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM StandupEntries WHERE backlog_code='REQ-OLD';"));
         }

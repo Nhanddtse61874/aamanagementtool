@@ -36,3 +36,11 @@
 .sb__user-av .dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; background: #22C55E; border: 2px solid var(--surf2); }
 .u-name { font-weight: 700; font-size: 13.5px; }
 .u-status { font-size: 11px; color: #22A356; font-weight: 600; }
+
+.sb__logout {
+  margin-left: auto; flex: none; width: 30px; height: 30px; border-radius: 8px; border: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--faint); cursor: pointer;
+  transition: background .16s, color .16s;
+}
+.sb__logout:hover { background: var(--card); color: var(--danger-c); }

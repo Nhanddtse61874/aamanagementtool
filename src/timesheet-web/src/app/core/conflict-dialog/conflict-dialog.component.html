@@ -1,0 +1,38 @@
+<div class="cd-backdrop" role="presentation">
+  <div class="cd" role="alertdialog" aria-modal="true" aria-labelledby="cd-title" aria-describedby="cd-msg">
+    <h2 class="cd__title" id="cd-title">Someone else changed this cell</h2>
+
+    <p class="cd__msg" id="cd-msg">{{ conflict().message }}</p>
+
+    <div class="cd__cell">
+      <span class="cd__cell-name">{{ conflict().taskName }}</span>
+      <span class="cd__cell-day">{{ conflict().dayLabel }}</span>
+    </div>
+
+    <div class="cd__compare">
+      <div class="cd__side">
+        <div class="cd__lbl">On the server now</div>
+        <div class="cd__val cd__val--theirs">{{ display(conflict().theirs) }}</div>
+      </div>
+      <div class="cd__side">
+        <div class="cd__lbl">What you typed</div>
+        <div class="cd__val cd__val--yours">{{ display(conflict().yours) }}</div>
+      </div>
+    </div>
+
+    <!-- The server's own identifier for the cell. `id` is 0 for a timesheet cell -- this string is the only
+         thing that says which one, so it is shown rather than hidden. -->
+    <p class="cd__detail">{{ conflict().detail }}</p>
+
+    <div class="cd__actions">
+      <!-- The SAFE side is the primary button. Overwriting destroys a colleague's work; it must be chosen
+           on purpose, not landed on by hitting Enter. -->
+      <button type="button" class="btn btn-primary" (click)="keepTheirs.emit()" autofocus>
+        Keep their value
+      </button>
+      <button type="button" class="btn btn-ghost cd__danger" (click)="overwrite.emit()">
+        Overwrite with mine
+      </button>
+    </div>
+  </div>
+</div>

@@ -1,5 +1,6 @@
 using Dapper;
 using Xunit;
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 
@@ -12,19 +13,76 @@ public class RepositoryCrudTests : IAsyncLifetime
     public Task DisposeAsync() { _db.Dispose(); return Task.CompletedTask; }
 
     [Fact]
-    public async Task User_insert_get_softdelete_windowsusername_roundtrip()
+    public async Task User_insert_get_softdelete_username_roundtrip()
     {
         var repo = new UserRepository(_db);
         var id = await repo.InsertAsync(new User(0, "Alice", null, true));
 
-        await repo.SetWindowsUsernameAsync(id, "DOMAIN\\alice");
-        Assert.Equal(id, (await repo.GetByWindowsUsernameAsync("DOMAIN\\alice"))!.Id);
+        // row_version starts at 1 (schema v10 default); SetUsernameCheckedAsync is check-and-bump.
+        await repo.SetUsernameCheckedAsync(id, "DOMAIN\\alice", 1);
+        Assert.Equal(id, (await repo.GetByUsernameAsync("DOMAIN\\alice"))!.Id);
 
         await repo.SetActiveAsync(id, false);
         var all = await repo.GetAllAsync();
         var active = await repo.GetActiveAsync();
         Assert.Contains(all, u => u.Id == id && !u.IsActive);   // still present in GetAll
         Assert.DoesNotContain(active, u => u.Id == id);          // hidden from active
+    }
+
+    // v10/M8.2: SetUsernameAsync and UpdateNameAsync are check-and-bump -- two "clients" reading the
+    // same version, one saves, the other (stale) must conflict and the winner's write must survive.
+    // Deterministic (no threads): the conflict window IS the stale version number (per M8.2 plan §Wave 3).
+    [Fact]
+    public async Task SetUsernameAsync_TwoConcurrentEdits_FirstWinsSecondConflicts()
+    {
+        var repo = new UserRepository(_db);
+        var id = await repo.InsertAsync(new User(0, "Bob", null, true));
+
+        var aliceSaw = (await repo.GetByIdAsync(id))!.RowVersion;   // 1
+        var bobSaw = (await repo.GetByIdAsync(id))!.RowVersion;     // 1
+
+        var next = await repo.SetUsernameCheckedAsync(id, "DOMAIN\\bob1", aliceSaw);  // succeeds
+        Assert.Equal(2, next);   // the checked write RETURNS the new version — no racy read-back
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => repo.SetUsernameCheckedAsync(id, "DOMAIN\\bob2", bobSaw));
+        Assert.False(ex.Deleted);
+
+        var final = await repo.GetByIdAsync(id);
+        Assert.Equal("DOMAIN\\bob1", final!.WindowsUsername);   // the winner's write survived
+        Assert.Equal(2, final.RowVersion);
+    }
+
+    // v10/M8.2: UpdateNameAsync against a nonexistent user is a conflict too, and the existence
+    // check must report Deleted = true (rowsAffected == 0 alone cannot tell "gone" from "stale").
+    [Fact]
+    public async Task UpdateNameAsync_OnMissingUser_ConflictsWithDeletedTrue()
+    {
+        var repo = new UserRepository(_db);
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => repo.UpdateNameCheckedAsync(999_999, "Ghost", 1));
+
+        Assert.True(ex.Deleted);
+        Assert.Equal("Users", ex.Table);
+    }
+
+    // v10/M8.2, Part 3: Wave 4 depends on this pair to move ActiveTeamId from IAppConfig
+    // (per-process) to Users.active_team_id (per-user). Bump-only (system write) -- never conflicts.
+    [Fact]
+    public async Task ActiveTeamId_read_write_roundtrips_and_bumps_row_version()
+    {
+        var repo = new UserRepository(_db);
+        var id = await repo.InsertAsync(new User(0, "Cara", null, true));
+
+        Assert.Equal(0, await repo.GetActiveTeamIdAsync(id));   // column default (v10)
+
+        var before = (await repo.GetByIdAsync(id))!.RowVersion;
+        await repo.SetActiveTeamIdAsync(id, 42);
+
+        Assert.Equal(42, await repo.GetActiveTeamIdAsync(id));
+        var after = await repo.GetByIdAsync(id);
+        Assert.Equal(before + 1, after!.RowVersion);   // always bumps, per the bump-only template
     }
 
     [Fact]

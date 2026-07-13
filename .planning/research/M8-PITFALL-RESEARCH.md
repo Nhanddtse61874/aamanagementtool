@@ -1,5 +1,25 @@
 # M8 Backend Foundation — PITFALL RESEARCH
 
+> ## ⛔ CORRECTION — 2026-07-12, after execution
+>
+> **The claim in B3 that Dapper fails *silently* on the renamed column is WRONG, and it was tagged `[VERIFIED]`.**
+>
+> B3 states: *"rename the column but not the DTO and Dapper **silently returns null** (broken login, no exception)."* That claim propagated into spec §7.7, into the M8.2 plan, and into three task prompts — and it was the **sole justification** for scheduling the `UserRepository` fix into a *later* wave than the migration that renames the column.
+>
+> Running it says otherwise:
+>
+> ```
+> SqliteException: no such column: windows_username     x24
+> table Users has no column named windows_username        x4
+> -> 28 tests red
+> ```
+>
+> Silent-null happens only when a `SELECT` **does not name the column**. All six statements in `UserRepository` name it explicitly (`SELECT id, name, windows_username, is_active FROM Users …`), so SQLite throws. Loudly.
+>
+> **Consequence:** a schema rename and the SQL that reads it are **atomically coupled** — any commit holding one without the other leaves a red tree, and on a parallel wave hands every sibling agent a broken baseline. Wave 1 was amended to own both.
+>
+> **Treat the rest of this document accordingly.** A `[VERIFIED]` tag means the author believed they had checked it; it does not mean they executed it. Claims here about *how a failure presents* — silent vs. loud, at build time vs. at runtime — are the ones most likely to be wrong, and they are exactly the ones that change how work is sequenced. Measure before you rely on one.
+
 **Date:** 2026-07-12
 **Agent:** Pitfall Research (STEP 4, Mode B)
 **Spec under review:** `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md`

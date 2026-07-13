@@ -1,4 +1,5 @@
 using Xunit;
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 
@@ -54,6 +55,93 @@ public class TaskListRepositoryTests : IAsyncLifetime
         await repo.SetActiveAsync(id, false);
         Assert.Contains(await repo.GetAllAsync(), p => p.Id == id && !p.IsActive);  // still in GetAll
         Assert.DoesNotContain(await repo.GetActiveAsync(), p => p.Id == id);         // hidden from active
+    }
+
+    // ---- M8.2 optimistic concurrency (no threads needed: the stale version IS the race window) ----
+
+    [Fact]
+    public async Task Tag_UpdateAsync_TwoAdmins_SecondWithStaleVersionConflicts_FirstSurvives()
+    {
+        var tags = new TagRepository(_db);
+        var id = await tags.InsertAsync(new Tag(0, "Urgent", "!", "#111111", DateTimeOffset.UtcNow));
+        var loaded = (await tags.GetAllAsync()).Single(t => t.Id == id);
+        Assert.Equal(1, loaded.RowVersion);
+
+        // Both admins open the tag editor and read v1. Admin A saves first.
+        await tags.UpdateCheckedAsync(loaded with { Text = "Hot" }, loaded.RowVersion);
+
+        // Admin B, still holding stale v1, saves next -> conflict; A's edit is untouched.
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => tags.UpdateCheckedAsync(loaded with { Text = "Cold" }, loaded.RowVersion));
+        Assert.Equal("Tags", ex.Table);
+        Assert.False(ex.Deleted);
+
+        var current = (await tags.GetAllAsync()).Single(t => t.Id == id);
+        Assert.Equal("Hot", current.Text);
+        Assert.Equal(2, current.RowVersion);
+    }
+
+    [Fact]
+    public async Task Tag_UpdateAsync_NoExpectedVersion_IsBumpOnly_NeverThrows()
+    {
+        var tags = new TagRepository(_db);
+        var id = await tags.InsertAsync(new Tag(0, "Urgent", "!", "#111111", DateTimeOffset.UtcNow));
+        var loaded = (await tags.GetAllAsync()).Single(t => t.Id == id);
+
+        await tags.UpdateAsync(loaded with { Text = "Hot" });   // existing 1-arg call shape
+
+        var current = (await tags.GetAllAsync()).Single(t => t.Id == id);
+        Assert.Equal("Hot", current.Text);
+        Assert.Equal(2, current.RowVersion);
+    }
+
+    [Fact]
+    public async Task Tag_UpdateAsync_RowDeletedByOther_ThrowsWithDeletedTrue()
+    {
+        var tags = new TagRepository(_db);
+        var id = await tags.InsertAsync(new Tag(0, "Urgent", "!", "#111111", DateTimeOffset.UtcNow));
+        var loaded = (await tags.GetAllAsync()).Single(t => t.Id == id);
+
+        await tags.DeleteAsync(id);   // someone else hard-deletes it (Tags is hard-delete, per contract)
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => tags.UpdateCheckedAsync(loaded with { Text = "Hot" }, loaded.RowVersion));
+        Assert.True(ex.Deleted);
+        Assert.Equal("Tags", ex.Table);
+    }
+
+    [Fact]
+    public async Task PcaContact_UpdateNameAsync_TwoAdmins_SecondWithStaleVersionConflicts_FirstSurvives()
+    {
+        var repo = new PcaContactRepository(_db);
+        var id = await repo.InsertAsync(new PcaContact(0, "Acme Corp", true));
+        var loaded = await repo.GetByIdAsync(id);
+        Assert.Equal(1, loaded!.RowVersion);
+
+        await repo.UpdateNameCheckedAsync(id, "Acme Ltd", loaded.RowVersion);   // Admin A saves first
+
+        var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => repo.UpdateNameCheckedAsync(id, "Acme LLC", loaded.RowVersion));   // Admin B, stale v1
+        Assert.Equal("PcaContacts", ex.Table);
+        Assert.False(ex.Deleted);
+
+        var current = await repo.GetByIdAsync(id);
+        Assert.Equal("Acme Ltd", current!.Name);
+        Assert.Equal(2, current.RowVersion);
+    }
+
+    [Fact]
+    public async Task PcaContact_SetActive_IsBumpOnly_NeedsNoVersionAndNeverThrows()
+    {
+        var repo = new PcaContactRepository(_db);
+        var id = await repo.InsertAsync(new PcaContact(0, "Acme Corp", true));
+        Assert.Equal(1, (await repo.GetByIdAsync(id))!.RowVersion);
+
+        await repo.SetActiveAsync(id, false);   // deactivation carries no version at all
+
+        var after = await repo.GetByIdAsync(id);
+        Assert.False(after!.IsActive);
+        Assert.Equal(2, after.RowVersion);       // bumped even though nothing was checked
     }
 
     [Fact]

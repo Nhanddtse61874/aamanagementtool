@@ -54,20 +54,29 @@ public class JsonAppConfigTests : IDisposable
         Assert.Equal("", cfg.BackupFolderPath);
         Assert.False(cfg.AutoBackupEnabled);
         Assert.Equal(30, cfg.BackupKeepCount);
-        Assert.Equal(0, cfg.ActiveTeamId); // P10: missing key -> 0 (unset)
     }
 
-    // P10 (TM-05): the active team persists app-locally and survives a reload.
+    // M8.2 (Wave 4) UPGRADE SAFETY. ActiveTeamId moved to Users.active_team_id and was deleted from the
+    // config Model record — but EVERY already-installed appsettings.json still contains the key. If an
+    // unmapped member threw, LoadModel's `catch (JsonException) -> return null` would swallow it and
+    // fall back to the DEFAULT DbPath: every upgrading user silently opens an EMPTY database and their
+    // real one "disappears". System.Text.Json skips unmapped members by default, so it does not throw —
+    // this test pins that behaviour so nobody later "hardens" the deserializer into a data-loss bug.
     [Fact]
-    public void ActiveTeamId_Persists_And_Survives_Reload()
+    public void Legacy_ActiveTeamId_Key_Is_Ignored_And_DbPath_Survives()
     {
+        File.WriteAllText(_configPath,
+            "{\"DbPath\":\"D:\\\\OneDrive\\\\team\\\\timesheet.db\",\"ActiveTeamId\":7,\"BackupKeepCount\":15}");
+
         var cfg = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
-        Assert.Equal(0, cfg.ActiveTeamId); // default on a brand-new config
 
-        cfg.SetActiveTeamId(7);
+        // The stale key is ignored, NOT treated as corruption: the real DbPath survives the upgrade.
+        Assert.Equal(@"D:\OneDrive\team\timesheet.db", cfg.DbPath);
+        Assert.Equal(15, cfg.BackupKeepCount);
 
-        var reloaded = new JsonAppConfig(_configPath, defaultDbPath: @"C:\shared\timesheet.db");
-        Assert.Equal(7, reloaded.ActiveTeamId);
+        // And the next write drops the dead key rather than preserving it forever.
+        cfg.SetBackupKeepCount(20);
+        Assert.DoesNotContain("ActiveTeamId", File.ReadAllText(_configPath));
     }
 
     [Fact]

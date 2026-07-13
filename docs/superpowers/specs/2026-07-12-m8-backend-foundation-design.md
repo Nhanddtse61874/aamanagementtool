@@ -266,7 +266,14 @@ ALTER TABLE Users ADD COLUMN active_team_id INTEGER NOT NULL DEFAULT 0;   -- §6
 |---|---|
 | `TestDb.cs:54` seeds `INSERT INTO Users(name, windows_username, …)` | **Every DB-backed test dies at once.** |
 | `DatabaseInitializerTests.cs:144` asserts the old column name | Fails loudly (fine). |
-| **`UserRepository.cs:88` — `UserRaw.windows_username`** binds by column name | Rename the column but not the DTO and **Dapper silently returns `null`**: no exception, no log, **broken login**. |
+| `SchemaV7/V8/V9UpgradeTests.cs` | They assert "an old DB upgrades to the **latest** schema", with *latest* hard-coded as `9`. **Any** `SchemaVersion` bump forces them. |
+| **`UserRepository.cs` — 6 raw SQL statements + the `UserRaw` DTO** | Throws: `SqliteException: no such column: windows_username`. **28 tests red.** |
+
+**[REV4] The rename cannot be split across commits.** Rev. 3 claimed that renaming the column without the DTO would make **Dapper fail *silently*, returning `null`** — a claim carried up from `M8-PITFALL-RESEARCH.md:142` — and that belief was the entire reason the repository fix was scheduled into a *later* wave than the migration. **It is wrong**, and it was caught by running it rather than reasoning about it.
+
+Silent-null happens only when a `SELECT` **does not name the column**. All six statements in `UserRepository` name it explicitly (`SELECT id, name, windows_username, is_active FROM Users …`), so SQLite raises `no such column` and takes 28 tests down with it. **The schema rename and the SQL that reads it are atomically coupled**: any commit that contains one without the other leaves a red tree — and on a parallel wave, hands every sibling agent a broken baseline.
+
+The lesson generalises past this one column: a claim about *how a failure presents* is exactly the kind of thing that must be measured, not inherited. This one travelled from research → spec → plan → three separate task prompts without anyone executing it.
 
 Rename the repository members too (`GetByUsernameAsync` / `SetUsernameAsync`). Leaving `Windows` in the name of a method that has nothing to do with Windows is how stale vocabulary calcifies — this codebase already carries that scar (files named `Requests*` containing classes named `Backlogs*`, three migrations after the rename).
 
