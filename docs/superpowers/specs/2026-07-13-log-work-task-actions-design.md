@@ -144,7 +144,7 @@ They still **bump** `row_version` — *"bumping without checking is safe; checki
 
 | Wave | Scope | Gate |
 |---|---|---|
-| **A** — C# | `.Produces<T>()` on the five routes above. **Metadata only — zero behaviour change.** | **815 .NET tests, unchanged.** Any movement in that number is a bug. |
+| **A** — C# | `.WithName` + `.WithTags` + `.Produces<T>()` on the five routes above. **Metadata only — zero behaviour change.** | **The existing 815 are unchanged; the wave adds 15 → 830.** Movement in the *815* is a bug. **Do not reconcile a mismatch by deleting tests.** |
 | **B** — codegen | Add the `Backlog` tag to `ng-openapi-gen.json`; regenerate `src/app/api/`; **commit the output**. | `npm run build` clean with the API **not running**. The generated `BacklogDto` carries `rowVersion` and `periodMonth`; `TaskItemDto` carries `id`. |
 | **C** — Angular | The three features + `@angular/cdk`. | `npm test` — 124 existing plus the new ones. Zero failures. |
 
