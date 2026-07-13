@@ -2,12 +2,14 @@
 
 ## Current Position
 
-**Phase:** Step 3 — Mode Gate (complete) → Step 6 (Plan) for **M8.5**
-**Status:** complete
+**Phase:** Step 6 — Plan (M8.5) · Plan Checker in flight
+**Status:** waiting_for_user
 **Last updated:** 2026-07-13
 
-**Next Action:** Run `writing-plans` to draft the M8.5 implementation plan.
+**Next Action:** Plan Checker, then `subagent-driven-development` or `executing-plans` per the user's choice.
 **Approved Mode:** **Mode A** — approved 2026-07-13. Gate scored **1/5** Mode B signals (2 domains: C# + Angular). No hard exclusion: no migration, no auth change, no release gate, no compliance impact. *(M8 itself ran Mode B; M8.5 is materially smaller — the endpoints and the contracts already exist.)*
+
+**Plan:** `docs/superpowers/plans/2026-07-13-M8.5-log-work-task-actions.md` (`15c950d`) — six tasks, three sequential waves.
 
 ### M8 — SHIPPED. `main` has it.
 
