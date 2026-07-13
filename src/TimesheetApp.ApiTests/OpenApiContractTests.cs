@@ -35,7 +35,19 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     [InlineData("/api/backlogs/{id}", "get", "200")]
     [InlineData("/api/backlogs/{id}", "put", "200")]
     [InlineData("/api/backlogs/{id}/audit", "get", "200")]
+    [InlineData("/api/tasks", "get", "200")]
     [InlineData("/api/tasks", "post", "200")]
+    // M8.5 shipped POST /api/tasks declaring only 200 and 404 while the handler also returns
+    // 400 + ValidationBody for an empty TaskName. Nothing asserted the 400, so the generated client could
+    // not see it and treated a rejected create as an unexpected error. This row is what makes it stay fixed.
+    [InlineData("/api/tasks", "post", "400")]
+    [InlineData("/api/tasks/{id}", "put", "200")]
+    [InlineData("/api/tasks/{id}", "put", "400")]
+    [InlineData("/api/tasks/{id}", "put", "409")]
+    [InlineData("/api/users", "get", "200")]
+    [InlineData("/api/users/names", "get", "200")]
+    [InlineData("/api/pca-contacts", "get", "200")]
+    [InlineData("/api/pca-contacts/names", "get", "200")]
     public void Route_declares_a_response_SCHEMA_not_just_a_status(string path, string verb, string status)
     {
         var response = _paths.GetProperty(path).GetProperty(verb)
@@ -64,14 +76,45 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     [InlineData("/api/backlogs/{id}", "get", "Backlogs")]
     [InlineData("/api/backlogs/{id}", "put", "Backlogs")]
     [InlineData("/api/backlogs/{id}/audit", "get", "Backlogs")]
+    [InlineData("/api/tasks", "get", "Tasks")]
     [InlineData("/api/tasks", "post", "Tasks")]
+    [InlineData("/api/tasks/{id}", "put", "Tasks")]
     [InlineData("/api/tasks/{id}/active", "put", "Tasks")]
     [InlineData("/api/tasks/{id}/order", "put", "Tasks")]
+    [InlineData("/api/users", "get", "Users")]
+    [InlineData("/api/users/names", "get", "Users")]
+    [InlineData("/api/pca-contacts", "get", "PcaContacts")]
+    [InlineData("/api/pca-contacts/names", "get", "PcaContacts")]
     public void Route_is_TAGGED_so_ng_openapi_gen_can_include_it(string path, string verb, string tag)
     {
         var tags = _paths.GetProperty(path).GetProperty(verb).GetProperty("tags")
                          .EnumerateArray().Select(t => t.GetString()).ToList();
         Assert.Contains(tag, tags);
+    }
+
+    /// <summary>The INVERSE of the test above, and the one that actually protects the user.
+    ///
+    /// <para>ng-openapi-gen selects operations BY TAG. The moment "Users" / "PcaContacts" enter
+    /// <c>includeTags</c>, EVERY route carrying one of those tags joins the generated client — so tagging an
+    /// <c>AdminPolicy</c>-gated route would emit a correctly-typed method that 403s for every ordinary user,
+    /// which is strictly worse than no method at all: the client compiles, the call looks right, and the
+    /// screen dies at runtime for everyone who is not an admin.</para>
+    ///
+    /// <para>These two routes are admin-only AND expose <c>username</c> (the credential handle the gate
+    /// exists to protect). They must stay OUT of the client. The name-only routes are what the editor gets
+    /// instead. Verified empirically: an un-tagged minimal-API route defaults to the ASSEMBLY name
+    /// ("TimesheetApp.Api") as its tag, so leaving these alone genuinely keeps them out — it is not merely
+    /// an omission we are hoping nobody notices.</para></summary>
+    [Theory]
+    [InlineData("/api/users/all", "get", "Users")]
+    [InlineData("/api/pca-contacts/all", "get", "PcaContacts")]
+    public void Admin_gated_list_is_NOT_tagged_and_so_never_joins_the_generated_client(
+        string path, string verb, string forbiddenTag)
+    {
+        var tags = _paths.GetProperty(path).GetProperty(verb).GetProperty("tags")
+                         .EnumerateArray().Select(t => t.GetString()).ToList();
+
+        Assert.DoesNotContain(forbiddenTag, tags);
     }
 
     // ng-openapi-gen names each generated FUNCTION from the operationId, which in a minimal API comes
@@ -83,9 +126,15 @@ public sealed class OpenApiContractTests : IAsyncLifetime
     [InlineData("/api/backlogs/{id}", "get", "BacklogGet")]
     [InlineData("/api/backlogs/{id}", "put", "BacklogUpdate")]
     [InlineData("/api/backlogs/{id}/audit", "get", "BacklogAudit")]
+    [InlineData("/api/tasks", "get", "TaskList")]
     [InlineData("/api/tasks", "post", "TaskCreate")]
+    [InlineData("/api/tasks/{id}", "put", "TaskUpdate")]
     [InlineData("/api/tasks/{id}/active", "put", "TaskSetActive")]
     [InlineData("/api/tasks/{id}/order", "put", "TaskSetOrder")]
+    [InlineData("/api/users", "get", "UserListActive")]
+    [InlineData("/api/users/names", "get", "UserNames")]
+    [InlineData("/api/pca-contacts", "get", "PcaContactListActive")]
+    [InlineData("/api/pca-contacts/names", "get", "PcaContactNames")]
     public void Route_has_the_operationId_the_generated_function_is_named_from(
         string path, string verb, string operationId)
     {

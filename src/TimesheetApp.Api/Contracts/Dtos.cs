@@ -107,6 +107,25 @@ public sealed record StandupIssueDto(
     int Id, int EntryId, string IssueText, string? SolutionText, string Status,
     int OrderIndex, long RowVersion);
 
+// ---- Name-only projections ----------------------------------------------------------------------------
+
+/// <summary>Id + display name, and NOTHING else — deliberately narrower than <see cref="UserDto"/> and
+/// <see cref="PcaContactDto"/>.
+///
+/// <para><b>Why it exists.</b> The backlog editor must render the name of an assignee (or PCA contact) who
+/// has since been DEACTIVATED — otherwise opening such a backlog and saving without touching anything
+/// silently clears the assignee. The ACTIVE lists (<c>GET /api/users</c>, <c>GET /api/pca-contacts</c>) omit
+/// that person by construction, and the full lists (<c>/api/users/all</c>, <c>/api/pca-contacts/all</c>) are
+/// <c>AdminPolicy</c>-gated — an ordinary user reading one gets a 403, the list's forkJoin errors, and the
+/// whole screen dies with it.</para>
+///
+/// <para><b>Why it is safe to leave open to any authenticated caller.</b> It carries no <c>username</c> —
+/// the credential handle the admin gate on <c>/all</c> exists to protect — no <c>isAdmin</c>, and no
+/// <c>rowVersion</c>: there is nothing here to write back, so no version is needed and none is offered.
+/// <b>Do not "just reuse <see cref="UserDto"/>"</b> for these routes: that re-exposes <c>username</c> to
+/// every authenticated caller and quietly undoes the boundary <c>/api/users/all</c> is guarding.</para></summary>
+public sealed record NamedRefDto(int Id, string Name);
+
 // ---- Deliberately UNVERSIONED -------------------------------------------------------------------------
 
 public sealed record TaskTemplateDto(int Id, string TemplateName, string TaskName, int OrderIndex);

@@ -246,6 +246,12 @@ public static class BacklogEndpoints
 
         // ==== Tasks ======================================================================================
 
+        // The editor's task grid loads through here, and these DTOs are THE ONLY CARRIER of each task's
+        // `status` and `rowVersion`. Without this route the client has no expectedVersion to send to
+        // PUT /api/tasks/{id} below, and no status to echo back -- so a save would 409 on every row, or
+        // (worse, if someone "fixed" that by defaulting the field) write status = NULL over all of them.
+        // `backlogId` is non-nullable, hence REQUIRED: a caller omitting it gets a 400 from the binder,
+        // not a silent listing of every task in the database.
         api.MapGet("/api/tasks", async (
             [FromQuery] int backlogId,
             IClientContext ctx,
@@ -257,7 +263,11 @@ public static class BacklogEndpoints
 
             var found = await tasks.GetActiveByBacklogAsync(backlogId);
             return Results.Ok(found.Select(t => t.ToDto()).ToList());
-        });
+        })
+            .WithName("TaskList")
+            .WithTags("Tasks")
+            .Produces<List<TaskItemDto>>()
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapGet("/api/tasks/{id}", async (
             int id, IClientContext ctx, IBacklogRepository backlogs, ITaskRepository tasks) =>
@@ -291,6 +301,7 @@ public static class BacklogEndpoints
             .WithName("TaskCreate")
             .WithTags("Tasks")
             .Produces<TaskItemDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)   // the handler's empty-TaskName guard
             .Produces(StatusCodes.Status404NotFound);
 
         // Mirrors UpdateCheckedAsync(TaskItem, long): writes task_name + order_index + status together
@@ -324,7 +335,18 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.Ok(new SavedBody(newVersion));
-        });
+        })
+            // All four statuses are ones this handler can ACTUALLY produce: 400 from the empty-TaskName
+            // guard, 404 from the team gate, 200 + SavedBody on success, and 409 + ConflictBody from
+            // UpdateCheckedAsync's ConcurrencyConflictException -- which the handler deliberately does NOT
+            // catch, because ExceptionMapper (the outermost middleware) is what turns it into the 409.
+            // Declaring a status a route cannot return is its own kind of lie; none of these four is one.
+            .WithName("TaskUpdate")
+            .WithTags("Tasks")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         // The "sub-row Status dropdown" path (TaskRepository's own naming) -- audited, unlike the combined
         // editor above.
