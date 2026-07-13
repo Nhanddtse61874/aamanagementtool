@@ -95,6 +95,9 @@ builder.Services.AddSingleton<IExportService, ExportService>();
 builder.Services.AddSingleton<ISharePointDestinationValidator, SharePointDestinationValidator>();
 builder.Services.AddSingleton<IStandupArchiveService, StandupArchiveService>();
 builder.Services.AddSingleton<ITaskListArchiveService, TaskListArchiveService>();
+// M9 (P1c): the Task List read model. Singleton is safe BECAUSE teamIds is a method parameter — it
+// injects no per-user state, so it is not a captive dependency under ValidateScopes. P3 maps the endpoint.
+builder.Services.AddSingleton<ITaskListService, TaskListService>();
 builder.Services.AddSingleton<IExportHubService, ExportHubService>();
 builder.Services.AddSingleton<IPruneArchiver, PruneArchiver>();
 builder.Services.AddSingleton<IRetentionService, RetentionService>();

@@ -173,6 +173,27 @@ public sealed class UserRepository : IUserRepository
             new { h = hash, id = userId });
     }
 
+    // CHECK-AND-BUMP (M9): identical shape to UpdateNameCheckedAsync — the write lands only at
+    // expectedVersion, RETURNING hands back the new version from the same statement (a read-back would be
+    // racy), and a miss is disambiguated into stale-vs-deleted by the COUNT before throwing.
+    //
+    // Checked rather than bump-only because this is a PRIVILEGE change: two admins racing on one user's
+    // row must not silently lose one of the two decisions. See IUserRepository for the naming note.
+    public async Task<long> SetIsAdminAsync(int userId, bool isAdmin, long expectedVersion)
+    {
+        using var c = _factory.Create();
+        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
+            @"UPDATE Users SET is_admin = @a, row_version = row_version + 1
+              WHERE id = @id AND row_version = @expected
+              RETURNING row_version;",
+            new { a = isAdmin ? 1 : 0, id = userId, expected = expectedVersion });
+        if (newVersion is not null) return newVersion.Value;
+
+        var exists = await c.ExecuteScalarAsync<long>(
+            "SELECT COUNT(1) FROM Users WHERE id = @id;", new { id = userId });
+        throw new ConcurrencyConflictException("Users", userId, expectedVersion, deleted: exists == 0);
+    }
+
     // ATOMIC CLAIM. The `WHERE password_hash IS NULL` makes the check and the write one statement, so two
     // processes racing a bootstrap (an overlapped service restart) produce ONE winner and one no-op rather
     // than two passwords. It is also what stops bootstrap from ever overwriting a password that already

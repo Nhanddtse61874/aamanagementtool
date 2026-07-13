@@ -48,6 +48,24 @@ public interface IUserRepository
     /// client-held row_version to check against, and nobody else is racing to set your password.</summary>
     Task SetPasswordHashAsync(int userId, string hash);
 
+    /// <summary>Grants or revokes a user's admin flag (<c>Users.is_admin</c>) — until M9 the column was
+    /// written by NOTHING but the v10 migration, so admin was un-grantable and un-revocable at runtime.
+    ///
+    /// CHECK-AND-BUMP, like <see cref="UpdateNameCheckedAsync"/>: the write lands only while row_version
+    /// still equals <paramref name="expectedVersion"/>, otherwise <see cref="ConcurrencyConflictException"/>.
+    /// Returns the new row_version so the caller never re-reads it (a read-back is racy — see the note on
+    /// IBacklogRepository's checked pair). Checked, not bump-only, BECAUSE it is a privilege change: two
+    /// admins racing on one user's row must not silently lose one of the two decisions, and the loser of
+    /// a grant/revoke race is exactly the case you want surfaced rather than swallowed.
+    ///
+    /// NAMING (deliberate, flagged): this repo's convention is <c>*CheckedAsync</c> for check-and-bump and
+    /// the plain name for bump-only. This method is checked while wearing the plain name, because M9 P1
+    /// fixes the name as the contract P3's endpoint calls. It has NO bump-only sibling — do not add one
+    /// without deciding who is allowed to grant admin without holding a version.</summary>
+    /// <returns>The row_version AFTER the write — the caller's next expectedVersion.</returns>
+    /// <exception cref="ConcurrencyConflictException">Version moved on, or the row is gone.</exception>
+    Task<long> SetIsAdminAsync(int userId, bool isAdmin, long expectedVersion);
+
     /// <summary>Atomically claims the password slot of a user who has none: a single
     /// <c>UPDATE ... WHERE password_hash IS NULL</c>, so the check and the write cannot be split.
     /// Returns <c>true</c> only for the caller that actually landed the write.
