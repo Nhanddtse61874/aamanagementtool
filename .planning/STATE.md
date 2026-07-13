@@ -2,14 +2,58 @@
 
 ## Current Position
 
-**Phase:** Step 8 — UAT (M8.6 **COMPLETE and merged to `main`**; awaiting the user's click-through)
-**Status:** waiting_for_user
+**Phase:** Step 6 — Plan (M9; spec + plan written, **Plan Checker in flight**)
+**Status:** in_progress
 **Last updated:** 2026-07-13
 
 ## ▶ RESUME HERE
 
-**`main` @ `90151d4`.** M8.6 merged. **The app is RUNNING** — API :5080 (real DB), `ng serve` :4200.
-**Suite:** **1142 green** — 868 .NET (658 Core/WPF + **210** API) + **274** Angular. 0 warnings.
+**Branch:** `feature/m9-remaining-screens-2026-07-13` @ `eff19a2`. Base `main` @ `28fd406` (M8.6 merged).
+**Suite:** **1142 green** — 868 .NET (658 Core/WPF + 210 API) + 274 Angular. 0 warnings.
+**The app is RUNNING** — API :5080 (**real DB**), `ng serve` :4200. **Kill the API before any .NET gate** (it locks `Core.dll`).
+
+### 🔴 M9 — the FOUR remaining screens, as ONE milestone. Mode A.
+
+**Spec:** `docs/superpowers/specs/2026-07-13-m9-remaining-screens-design.md`
+**Plan:** `docs/superpowers/plans/2026-07-13-M9-remaining-screens.md`
+**Recon (the design brief):** `.planning/research/M8.7-M8.10-recon.md` · `M8.8-daily-report-recon.md`
+
+**The user said: "tự chạy cho xong, tôi sẽ test sau khi chạy xong toàn bộ."** Full autonomy. **They test only at the very end.**
+
+**Their five decisions (2026-07-13):**
+| | |
+|---|---|
+| **Gantt** | **BUILD IT.** *(My objection evaporated: the only reason to defer was to get Task List into their hands sooner, and they will not test until everything is done.)* |
+| **Settings infra config** | **DROP from the web.** Five sections → `appsettings.json` on the host. Keep the four `/api/ops/*` buttons. |
+| **Dark mode** | **`localStorage`, unchanged.** 🔴 **It is NOT one of the dropped sections** — it is a per-user preference and `ThemeService` already does it correctly. I wrongly lumped it in; the user caught it. |
+| **Tags + Templates** | **PULL IN.** Also repays M8.6's deferred TagPicker debt. |
+| **Admin promote/demote** | **ADD.** The entire codebase has **exactly one** statement that writes `is_admin`: the v10 migration. One admin, forever, unless someone edits the `.db` by hand. |
+
+**Why ONE milestone, not four:** five files are needed by every screen and owned by none. **`SettingsEndpoints.cs` alone is 49 routes in ONE file (4 annotated)** serving Users + Settings + Task List + Daily Report + Reports + Backlog — **all 10 standup routes live there.** Plus `includeTags` (one line), `OpenApiContractTests.cs`, the single contiguous stub block in `worklog.service.ts`, and the generated `api/**` tree, where **a regen is a GLOBAL event**.
+
+**PHASE 1 (sequential, one owner):** P1 Core (move `BuildGantt` out of the WPF ViewModel · `SetIsAdminAsync` · **the TaskList read model, which does not exist**) → P2 annotate all 49 settings routes + fix the teamless team bootstrap → P3 reports/export + 4 new routes → P4 regenerate ONCE → P5 every service method ONCE → P6 the shared Angular nobody owns (team-filter · tag-picker · adminGuard · **a realtime feed that finally says WHAT changed**).
+**PHASE 2 (five agents, TRUE parallel):** `task-list` | `daily-report` | `reports` | `users`+`settings` | the Backlog editor's TagPicker debt.
+
+**Good news on the Gantt:** `BuildGantt` is already **`internal static`** — a **pure function in the wrong project**. Moving it to Core is a **move, not a rewrite**, and `GanttModelTests` calls it directly so its tests come along.
+
+**🔴 R7 — THE WHOLE-RECORD TRAP, THIRD MILESTONE RUNNING.** It has already nulled a `team_id` (M8.3 — a backlog invisible to everyone, forever) and six Backlog fields (M8.6). **It is waiting in Task List's `CommitBacklogEditAsync`, which writes ALL FOUR of Type/Assignee/PCA/Progress whenever any ONE changes.** TypeScript cannot catch it — the generated DTOs are all-optional, so **a dropped field COMPILES**.
+
+### 🔴 R8 — "Don't edit a test to reconcile a gate" HAS AN EXCEPTION, and I got it wrong FOUR times in M8.6
+
+The rule stops you deleting a test that caught a real regression. **It does not apply when you deliberately changed the contract the test was pinning.** Every time, the implementing agent proved it rather than arguing:
+
+| Gate I wrote | Why it was wrong |
+|---|---|
+| T0: *"165 + yours, 0 failures"* | The task stops `onTrash` from writing; **five tests assert that it writes.** Rewritten. |
+| T1: *"the 172 is a fixed baseline"* | Two tests deserialised the **old DTO**, and `System.Text.Json` **binds by NAME and defaults the missing** — they'd stay **green while asserting nothing.** The 172 wouldn't move. **That was the problem.** |
+| T5: *"232 unchanged"* | `ConnectionIdHttpClient` only stamps its header **when a hub is connected** — so a write on the **wrong client** is **byte-identical** in a hub-less TestBed and **undetectable by every test in the repo.** |
+| T7: *"`npm run build` clean"* | `ng build` **exits 0** with `{{ noSuchSymbol() }}` in a component **nobody imports yet** — AOT never type-checks it. |
+
+**A gate that cannot move is a gate that cannot notice.**
+
+---
+
+### M8.6 — COMPLETE, merged to `main` (`90151d4`). 1142 green.
 
 ### M8.6 — the Backlog screen. COMPLETE. Mode A. Eight tasks.
 
