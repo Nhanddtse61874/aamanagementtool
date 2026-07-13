@@ -2,25 +2,44 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute (M8.6; **T0 + T1 merged, T2 in flight**, 3 of 8)
-**Status:** in_progress
+**Phase:** Step 8 — UAT (M8.6 **COMPLETE and merged to `main`**; awaiting the user's click-through)
+**Status:** waiting_for_user
 **Last updated:** 2026-07-13
 
 ## ▶ RESUME HERE
 
-**Branch:** `feature/m8.6-backlog-screen-2026-07-13`, HEAD `d973265`. Base `main` @ `fdd2026` (M8.5 merged).
-**Suite:** **1012 green** — 843 .NET (658 Core/WPF + **185** API) + **169** Angular. 0 warnings.
+**`main` @ `90151d4`.** M8.6 merged. **The app is RUNNING** — API :5080 (real DB), `ng serve` :4200.
+**Suite:** **1142 green** — 868 .NET (658 Core/WPF + **210** API) + **274** Angular. 0 warnings.
 
-| M8.6 task | | |
+### M8.6 — the Backlog screen. COMPLETE. Mode A. Eight tasks.
+
+| | | |
 |---|---|---|
-| **T0** · confirm before drag-to-trash delete | ✅ `6bd0ecb` | 165 → **169** Angular (5 rewritten, 4 added) |
-| **T1** · annotate list+create · `BacklogListItemDto`+TaskCount · **new** `GET /{id}/audit` · refuse the teamless create | ✅ `d973265` | 172 → **185** API |
-| **T2** · annotate `GET /api/tasks` + `PUT /api/tasks/{id}` · `POST /api/tasks` 400 · **2 new non-admin `/names` routes** | 🔄 | |
-| T3 regenerate · T4 pure functions · T5 service · T7 editor · T6 list | ⬜ | `T4/T7/T6` were BLOCKED until `EditForm`/`Row` were pinned — now done |
+| **T0** confirm before drag-to-trash delete | ✅ `6bd0ecb` | 165 → **169** Angular |
+| **T1** annotate list+create · `BacklogListItemDto`+TaskCount · **new** `GET /{id}/audit` · refuse the teamless create | ✅ `d973265` | 172 → **185** API |
+| **T2** annotate `GET /api/tasks` + `PUT /api/tasks/{id}` · `POST /api/tasks` 400 · **2 new NON-ADMIN `/names` routes** | ✅ `6780790` | → **210** API |
+| **T3** regenerate the client | ✅ `315d319` | 9 fns, 7 models. **Real DB byte-identical, proven.** |
+| **T4** the pure functions — **both data-loss traps** | ✅ `3d37afb` | → **219** Angular |
+| **T5** `WorklogService` — add 9, retype nothing | ✅ `eaef351` | → **232** Angular |
+| **T7** the editor — create, edit, audit history | ✅ `57c0b90` | → **255** Angular |
+| **T6** the list — **both toasts die here** | ✅ `ee54b02` | → **274** Angular |
 
-**The API is STOPPED** (it locks `TimesheetApp.Core.dll` — see below). `ng serve` on :4200 is up. **Restart the API before the user's final UAT.**
+**🔴 OPEN — the user has not clicked anything yet.** UAT: **OT-15 … OT-19** (below), plus M8.5's **OT-13 / OT-14**.
 
-### M8.6 — the Backlog screen. Mode A. Plan rev. 3 (`05b1a0d`) after TWO Plan Checker BLOCKs.
+### The next milestone is NOT M8.7 alone — it is M8.7–M8.10 with a shared PHASE 1
+
+**`.planning/research/M8.7-M8.10-recon.md`** and **`M8.8-daily-report-recon.md`** are the design briefs. Read them before planning anything.
+
+**FIVE files are needed by every remaining screen and owned by none** — the exact failure that cost M8.2 an entire consolidation wave:
+- 🔴🔴 **`SettingsEndpoints.cs` — 47 routes, ONE file, ZERO annotated**, needed by Users + Settings + Task List + Daily Report + Reports + Backlog. **All 10 standup routes live there.**
+- `ng-openapi-gen.json`'s `includeTags` — **one line, N writers**
+- `OpenApiContractTests.cs` — same three `[Theory]` blocks
+- `worklog.service.ts` — **one contiguous stub block** every screen rewrites
+- **`src/app/api/**` — a regen is a GLOBAL event.** Two agents regenerating in parallel: the second clobbers the first.
+
+**So: PHASE 1 (controller, sequential) annotates EVERYTHING, regenerates ONCE, writes every service method ONCE, and builds the two shared things nobody owns — a team-filter component (FOUR screens need it; it does not exist in Angular) and `GET /api/teams` (Reports needs team NAMES; `/api/me` gives ids only). THEN four agents own four page directories in true parallel.**
+
+**Also fix in Phase 1:** `realtime.service.ts:63` **discards the `(kind, teamId)` the server sends**, so **no screen can filter what it re-fetches.** It gets more expensive to fix with every screen that depends on the broken shape.
 
 **Spec:** `docs/superpowers/specs/2026-07-13-backlog-screen-design.md` (`a9fb870`)
 **Plan:** `docs/superpowers/plans/2026-07-13-M8.6-backlog-screen.md` (`a7c86fc`)

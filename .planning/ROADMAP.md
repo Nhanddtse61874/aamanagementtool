@@ -3,11 +3,23 @@
 **Last updated:** 2026-07-13
 
 ## Active
-- **M8.6 — Backlog screen** — starting 2026-07-13. **STEP 2 (brainstorm).**
-  The screen the user clicked into and found dead: *"+ New backlog"* shows a toast and does nothing, and the list is empty because the service returns `of([])`. It is still the vendored design's shell.
-  **No architectural unknowns remain** — M8.5 established the pattern and already annotated five of the Backlog/Task routes, which M8.6 inherits: **annotate its routes (`.WithName` + `.WithTags` + `.Produces<T>()`) → regenerate the client → wire the Angular.**
+- **M8.7–M8.10 — the four remaining screens, as ONE milestone with a shared Phase 1.** Not yet started.
+  **Task List · Daily Report · Reports · Users + Settings.**
+  🔴 **They cannot be done as four independent milestones, and they cannot be fanned out naively.** Five files are needed by every one of them and owned by none — chief among them **`SettingsEndpoints.cs`: 47 routes, one file, zero annotated**, needed by all four *and* by Backlog. Plus the `includeTags` one-liner, `OpenApiContractTests.cs`, the single stub block in `worklog.service.ts`, and the generated `api/**` tree, where **a regeneration is a global event**.
+  **Phase 1 (controller, sequential):** annotate every route for every screen → extend the contract tests once → widen `includeTags` once → **regenerate once** → write every `WorklogService` method once → build the two shared things nobody owns: a **team-filter component** (four screens need it; it does not exist in Angular) and **`GET /api/teams`** (Reports needs team *names*; `/api/me` returns ids only). Also fix `realtime.service.ts:63`, which throws away the `(kind, teamId)` the server sends, so no screen can filter what it re-fetches.
+  **Phase 2 (four agents, true parallel, zero overlap):** one page directory each.
+  **The hard one is Task List:** it has **no read model at all**. `GetLoggedHoursByBacklogAsync` is called by **no endpoint**, so logged-hours-per-backlog is **unobtainable by any route**; `IScheduleStateService` is DI-registered and called by nothing, so the Late / At-risk chips have **no wire representation**; and the Gantt's layout maths lives in the *WPF ViewModel*, not Core.
+  **The easy one is Reports:** **zero routes to invent**, no charts (two tables, a five-level tree, four stat cards), and its team-scoping is already defused and proven by two passing tests.
+  Recon: `.planning/research/M8.7-M8.10-recon.md` · `.planning/research/M8.8-daily-report-recon.md`
 
 ## Shipped
+- **M8.6 — Backlog screen** — **COMPLETE** (`90151d4`, 2026-07-13), **Mode A**. **1142 tests green** — 868 .NET (658 + 210) + 274 Angular. 0 warnings.
+  The screen the user clicked into and found dead. *"+ New backlog"* showed a toast and did nothing; the list was empty because the service returned `of([])`. **Both toasts are gone.** Now: a real list (server-side task counts via the batched `IN` query, no N+1), create, edit, a task sub-editor, and a change-history panel fed by a route that **did not exist** (`GET /api/backlogs/{id}/audit` — the repository method had been sitting unexposed since v2).
+  **Six WPF bugs fixed rather than ported** (all user-approved), including one the XAML comment *denies exists*: the `DEFAULT` pseudo-backlog is visible on the WPF Backlog list **with a working Edit button**, and its project isn't in the dropdown — so open-and-save writes `project = ''`.
+  **Two server bugs fixed.** A user in **zero teams** created a backlog with `team_id = NULL` — invisible to every read (admins included), no SignalR — and got **`200 OK` with the full DTO**. The same permanent-invisibility end state M8.3 paid for through `UPDATE`, reached this time through `INSERT`; the `INSERT` door was open only because no client could call the route.
+  **Two Plan Checker BLOCKs (7 defects, then 4) before a line of code was written.** The worst: `/api/users/all` is **admin-only**, so the list would have **403'd for every ordinary user** — *a correctly-typed client that 403s*, which is a class of lie the `.Produces<T>()` discipline does not catch on its own.
+  Spec: `docs/superpowers/specs/2026-07-13-backlog-screen-design.md` · Plan: `docs/superpowers/plans/2026-07-13-M8.6-backlog-screen.md` (rev. 3)
+  **UAT open — the user tests at the end, by their choice:** OT-13 … OT-19.
 - **M8.5 — Log Work task actions** — **COMPLETE** (`ebfea32`, 2026-07-13), **Mode A**. **995 tests green** — 830 .NET + 165 Angular. 0 warnings.
   Restored the three controls M8.4/W4 removed because the vendored design **faked** them: `+ Add task` called `toast.show('Task added')` and added nothing, `Move to next month` had no handler, and the delete dropzone had no drop handler. All three now work against the real API.
   All five endpoints already existed — but `BacklogEndpoints.cs` had **zero `.Produces<T>()`**, so OpenAPI described none of them and the generated TypeScript client could not contain them. **Annotating the C# was Wave A, not optional cleanup** — and `OpenApiContractTests.cs` (15 cases) now fails the build if that invariant is ever broken again. Three sequential waves, seven tasks: **A** annotate (metadata only, 815→830) → **B** regenerate → **C** the Angular (124→165).
