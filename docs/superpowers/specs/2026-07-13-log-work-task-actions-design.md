@@ -74,6 +74,16 @@ Response shapes were **read from the handlers**, not assumed.
 
 ---
 
+## 4.1 Correction: Log Work has **no** read-only team view
+
+The first draft of this spec said all three controls are *"disabled in the read-only team view"*, copying WPF's `IsEnabled="{Binding CanEdit}"`. **That view does not exist on the web Log Work screen.** `LogWorkComponent` calls `getWeek(monday)`; `allUsers` defaults to `false` and is **never** passed `true`. `grep -r readOnly src/app` returns **nothing**.
+
+So there is nothing to guard, and **no guard is written.** The alternative — a `readonly readOnly = signal(false)` that is always `false` — is a variable pretending to check a mode that cannot be entered: **the same species of lie as the `toast.show('Task added')` button M8.4/W4 deleted.**
+
+**When a later milestone adds `allUsers` to Log Work, the guard lands with it.** *(User's decision, 2026-07-13.)*
+
+---
+
 ## 5. The three features
 
 ### 5.1 `+ Add task`
@@ -82,7 +92,7 @@ Response shapes were **read from the handlers**, not assumed.
 - Opens a **modal dialog** (name, OK/Cancel). *User's explicit choice: match WPF rather than an inline input.*
 - `POST /api/tasks { backlogId, taskName, orderIndex }` where **`orderIndex` = the group's current task count** (append at the end). This is exactly what `RequestGroupVm.AddTaskAsync` does: `InsertAsync(new TaskItem(0, BacklogId, name, Tasks.Count, true))`.
 - On success: **re-fetch the week** — the new task must appear as a row.
-- **Disabled in the read-only team view** (`allUsers=true`).
+- **No read-only guard** — see §4.1. Log Work has no team view.
 
 ### 5.2 `Move to next month ▶`
 
@@ -97,7 +107,7 @@ Response shapes were **read from the handlers**, not assumed.
   ```
 - **The `GET` is mandatory, not an optimisation.** `PUT /api/backlogs/{id}` requires the **full** `BacklogUpdateRequest` (15 fields) *and* an `expectedVersion` — and `WeekBacklogGroup` carries `BacklogId`, `PeriodMonth` and `Type` but **not the backlog's `rowVersion`**. There is nowhere else to get it.
 - **Month derivation.** WPF uses `backlog.PeriodMonth ?? SelectedMonth` (its month filter). The web Log Work screen is a **week** grid with no month filter, so the fallback is **the month of the Monday currently on screen**. *User's explicit choice.* December rolls to the following January.
-- **Disabled in the read-only team view**, exactly as in WPF (`IsEnabled="{Binding DataContext.CanEdit}"`).
+- **No read-only guard** — see §4.1.
 - **Audited.** The server already passes `changedByUserId` / `changedByName` on every checked backlog write (M8.3 Wave-2 rule #4). Nothing to do client-side.
 - **On success:** re-fetch the week. **The ticket leaves the current view** — that is the whole point of the action.
 
@@ -117,7 +127,7 @@ So on a 409 from `PUT /api/backlogs/{id}`: **show the message, re-fetch the week
 - A **⠿ grip** on every task row. In WPF the same grip does **both** jobs, and its tooltip says so: *"Drag to reorder, or drop on the trash to delete."*
 - **Drag within the group** → reorder → `PUT /api/tasks/{id}/order { orderIndex }` **for each row whose index changed**.
 - **Drag onto the trash zone** → **soft delete** → `PUT /api/tasks/{id}/active { isActive: false }`. WPF does exactly this (`SetActiveAsync(taskId, false)`). **Nothing is hard-deleted.**
-- The trash zone is visible **only when the grid is editable** (hidden in the team view), pinned just above the day-totals footer — the same position as WPF.
+- The trash zone is pinned just above the day-totals footer — the same position as WPF. **No read-only guard** — see §4.1.
 - On either: re-fetch.
 
 #### 🔴 Both writes are BUMP-ONLY, and that is deliberate
