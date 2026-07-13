@@ -17,6 +17,7 @@ import {
   smartFillApply as smartFillApplyFn,
   smartFillValidate as smartFillValidateFn,
   taskCreate as taskCreateFn,
+  taskSetOrder as taskSetOrderFn,
   timesheetClearCell as timesheetClearCellFn,
   timesheetSaveCell as timesheetSaveCellFn,
   timesheetWeek as timesheetWeekFn,
@@ -203,7 +204,7 @@ export class WorklogService {
   }
 
   // =====================================================================================================
-  // TASKS — POST /api/tasks
+  // TASKS — POST /api/tasks · PUT /api/tasks/{id}/order
   // =====================================================================================================
 
   /**
@@ -218,6 +219,24 @@ export class WorklogService {
   addTask(backlogId: number, taskName: string, orderIndex: number): Observable<TaskItemDto> {
     return taskCreateFn(this.mutatingHttp, this.rootUrl, { body: { backlogId, taskName, orderIndex } })
       .pipe(map(r => r.body));
+  }
+
+  /**
+   * Move one task to a new `order_index`. A MUTATION, so `mutatingHttp` — see that field's comment.
+   *
+   * 🔴 BUMP-ONLY: the body is `{ orderIndex }` and NOTHING ELSE. There is no `expectedVersion` here and there
+   * must not be one — that is a recorded M8.2 decision, not an oversight. `reorderPlan` emits a write for EVERY
+   * row in the group (it has to: a soft delete leaves a GAP in `order_index`, and a windowed write would then
+   * produce a TIE that `ORDER BY order_index` resolves arbitrarily), so one ordinary drag calls this method
+   * once per row. A checked variant would therefore 409-STORM on the happy path: row 1's write bumps the
+   * group, and rows 2..n would each arrive holding a version the previous write already invalidated.
+   *
+   * Do not "harden" this by adding a version. The reason it is safe without one is that the client sends the
+   * WHOLE new order, so a lost update cannot leave the group half-ordered — the next drag renormalises it.
+   */
+  setTaskOrder(taskId: number, orderIndex: number): Observable<void> {
+    return taskSetOrderFn(this.mutatingHttp, this.rootUrl, { id: taskId, body: { orderIndex } })
+      .pipe(map(() => void 0));
   }
 
   // =====================================================================================================

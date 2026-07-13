@@ -1,11 +1,14 @@
+import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { Observable, Subject, of, throwError } from 'rxjs';
 
 import { BacklogDto, SavedBody, TimeLogDto, WeekBacklogGroup } from '../../api/models';
 import { RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
+import { TaskRow } from './grid-state';
 import { LogWorkComponent } from './log-work.component';
 
 /**
@@ -82,6 +85,34 @@ function moveButtons(f: ComponentFixture<LogWorkComponent>): HTMLButtonElement[]
   return all.filter(b => (b.textContent ?? '').includes('Move to next month'));
 }
 
+/**
+ * A `dropped` event, fabricated. CDK builds the real one from a live pointer gesture, which a headless unit
+ * test has no way to perform — so the SHAPE is what is exercised here, and the DOM-level tests below are what
+ * prove the directives that would emit it are actually attached.
+ *
+ * `container` / `previousContainer` are compared by REFERENCE in `onDrop`, so the identity of these two stubs
+ * is the whole point: same object = a reorder within one group; different objects = it came from elsewhere.
+ */
+function dropEvent(
+  previousIndex: number,
+  currentIndex: number,
+  opts: { fromAnotherList?: boolean } = {},
+): CdkDragDrop<readonly TaskRow[]> {
+  const container = { id: 'grp-rows' } as CdkDropList<readonly TaskRow[]>;
+  const previousContainer = opts.fromAnotherList
+    ? ({ id: 'trash' } as CdkDropList<readonly TaskRow[]>)
+    : container;
+
+  return {
+    previousIndex, currentIndex, container, previousContainer,
+    item: {} as CdkDrag<TaskRow>,
+    isPointerOverContainer: true,
+    distance: { x: 0, y: 0 },
+    dropPoint: { x: 0, y: 0 },
+    event: new MouseEvent('mouseup'),
+  };
+}
+
 describe('LogWorkComponent', () => {
   let fixture: ComponentFixture<LogWorkComponent>;
   let component: LogWorkComponent;
@@ -98,7 +129,7 @@ describe('LogWorkComponent', () => {
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
       ['getWeek', 'saveHours', 'clearHours', 'smartFillApply', 'typeColor', 'avatarColor',
-       'getBacklog', 'updateBacklog'],
+       'getBacklog', 'updateBacklog', 'setTaskOrder'],
     );
     api.getWeek.and.returnValue(of(initial));
     api.typeColor.and.returnValue({ bg: '#fff', c: '#000' });
@@ -539,5 +570,162 @@ describe('LogWorkComponent', () => {
       expect(api.getBacklog).toHaveBeenCalledTimes(1);
       expect(api.updateBacklog).toHaveBeenCalledTimes(1);
       expect(component.moving()).toBeTrue();        // chain 1 still in flight -> the button stays disabled
+    });
+
+  // ---- 🔴 drag to reorder ------------------------------------------------------------------------------
+  //
+  // These assert on directive INSTANCES (`By.directive`), not on markup, because `By.directive` can only find
+  // a directive Angular actually INSTANTIATED — which is the one thing that distinguishes a live `cdkDropList`
+  // from an inert attribute of the same name sitting on a <div>.
+  //
+  // 🔴 MEASURED, not assumed — and the received wisdom here is only half right. With `DragDropModule` removed
+  // from `LogWorkComponent.imports`:
+  //
+  //   - the build FAILS, with four errors: `NG8002: Can't bind to 'cdkDropListData' | 'cdkDropListConnectedTo'
+  //     | 'cdkDragData' since it isn't a known property of 'div'`, plus `NG5: Argument of type 'Event' is not
+  //     assignable to parameter of type 'CdkDragDrop<…>'` on `(cdkDropListDropped)`, because `$event` falls
+  //     back to the native `Event`. A PROPERTY BINDING and a TYPED OUTPUT are both checked. So the oft-repeated
+  //     "the build passes and nothing drags" is FALSE for this template — losing the module here is loud.
+  //   - but rewrite those same directives as BARE ATTRIBUTES and the identical module-less build reports
+  //     "Application bundle generation complete" — CLEAN. Angular errors on an unknown ELEMENT (NG8001) and
+  //     never on an unknown ATTRIBUTE. That is the real mechanism, and it is genuinely silent.
+  //
+  // 🔴 So the one directive here that CAN vanish silently is `cdkDragHandle`, the only bare attribute of the
+  // three — nothing is bound to it, so nothing type-checks it. Drop it and CDK falls back to dragging the whole
+  // row: the grid still works, and the bug is invisible. The handle assertion below is the only guard on it.
+
+  function rows(f: ComponentFixture<LogWorkComponent>): HTMLElement[] {
+    return Array.from(f.nativeElement.querySelectorAll('.row'));
+  }
+
+  it('🔴 the drop-list directive is ACTUALLY APPLIED — an unknown attribute on a <div> would not be', () => {
+    setUp();
+    fixture.detectChanges();   // the DOM is one pass behind — see the DEFAULT-backlog test above
+
+    const lists = fixture.debugElement.queryAll(By.directive(CdkDropList));
+    expect(lists.length).toBe(1);                    // one drop list per rendered group
+
+    // The rows really are the list's data — not a stale array captured somewhere else.
+    const list = lists[0].injector.get(CdkDropList) as CdkDropList<readonly TaskRow[]>;
+    expect(list.data.map(t => t.taskId)).toEqual([MONDAY_TASK, EMPTY_TASK]);
+
+    // 🔴 Connected to the trash BY STRING ID, and pinned here because nothing else can pin it: the plan's
+    // `[cdkDropListConnectedTo]="[trash]"` (a template ref to an element Task 7 creates) does NOT compile —
+    // `NG9: Property 'trash' does not exist on type 'LogWorkComponent'`. CDK resolves a STRING against its
+    // static registry lazily, on each drag start, so the target may not exist yet. The cost of that is that a
+    // typo'd id is no longer a compile error — it is a console warning. This assertion is what buys it back.
+    // TASK 7'S TRASH MUST THEREFORE CARRY `id="trash"`, NOT `#trash="cdkDropList"`.
+    expect(list.connectedTo).toEqual(['trash']);
+  });
+
+  it('🔴 every row carries [cdkDragData] — without it the trash gets `undefined` and throws on row.taskId',
+    () => {
+      setUp();
+      fixture.detectChanges();
+
+      const drags = fixture.debugElement.queryAll(By.directive(CdkDrag));
+      expect(drags.length).toBe(2);                  // one per task row
+
+      // Task 7 reads `event.item.data`. This is the only place that value comes from.
+      const dragged = drags.map(d => (d.injector.get(CdkDrag) as CdkDrag<TaskRow>).data);
+      expect(dragged.map(t => t.taskId)).toEqual([MONDAY_TASK, EMPTY_TASK]);
+      expect(dragged.every(t => t !== undefined)).toBeTrue();
+    });
+
+  it('🔴 the handle is the six-dot SVG INSIDE .c-task, and .row still has exactly SEVEN children', () => {
+    setUp();
+    fixture.detectChanges();
+
+    const handles = fixture.debugElement.queryAll(By.directive(CdkDragHandle));
+    expect(handles.length).toBe(2);                  // one per row, and it resolves — so the module is loaded
+
+    // 🔴 `.row` is a CSS grid of exactly seven columns
+    // (`--gcols: minmax(230px,1.8fr) repeat(5,1fr) 92px`) and has exactly seven children: `.c-task`, five
+    // `.c-day`, `.c-total`. A `<span class="grip">` added as an EIGHTH child — the obvious way to build a drag
+    // handle, and the way the first draft of this milestone did it — shifts every column by one and wraps
+    // `.c-total` onto a second implicit row, on every task row in the grid. So the handle goes on the SVG that
+    // was already nested inside `.c-task`, and this assertion is what stops anyone undoing that.
+    const all = rows(fixture);
+    expect(all.length).toBe(2);
+    all.forEach(r => expect(r.children.length).toBe(7));
+
+    handles.forEach(h => {
+      const svg = h.nativeElement as SVGElement;
+      expect(svg.tagName.toLowerCase()).toBe('svg');
+      expect(svg.closest('.c-task')).not.toBeNull();      // nested INSIDE the first column, not beside it
+    });
+  });
+
+  it('🔴 a drag rewrites the orderIndex of EVERY row — a windowed write would TIE after a soft delete',
+    async () => {
+      setUp();
+      api.setTaskOrder.and.returnValue(of(void 0));
+      api.getWeek.calls.reset();
+
+      // Drag the first row (position 0) down to position 1.
+      await component.onDrop(component.groups()[0], dropEvent(0, 1));
+
+      // BOTH rows are rewritten, not just the one that moved. `SetActiveAsync` soft-deletes by setting
+      // `is_active = 0` and LEAVES `order_index` alone, so a delete leaves a GAP in the survivors — and a
+      // write of only the displaced rows, at absolute index `lo + i`, then produces a TIE that
+      // `ORDER BY order_index` resolves arbitrarily. Rewriting every row renormalises the gap on every drag.
+      expect(api.setTaskOrder).toHaveBeenCalledTimes(2);
+      expect(api.setTaskOrder.calls.allArgs()).toEqual([[EMPTY_TASK, 0], [MONDAY_TASK, 1]]);
+
+      expect(api.getWeek).toHaveBeenCalled();       // ...and the new order is re-read from the server
+      expect(component.reordering()).toBeFalse();   // released again
+    });
+
+  it('writes nothing when a row is dropped back where it started', async () => {
+    setUp();
+
+    await component.onDrop(component.groups()[0], dropEvent(1, 1));
+
+    expect(api.setTaskOrder).not.toHaveBeenCalled();
+  });
+
+  it('🔴 a drop that came from ANOTHER list is not a reorder — that is the TRASH, and it writes no order',
+    async () => {
+      setUp();
+
+      await component.onDrop(component.groups()[0], dropEvent(0, 1, { fromAnotherList: true }));
+
+      // `dropped` fires only on the DESTINATION list, so a drag to the trash fires the TRASH's handler, never
+      // this one. The guard asserts that: if this method ever DOES see a cross-list index, something is wired
+      // wrong and writing an order would be the wrong answer.
+      expect(api.setTaskOrder).not.toHaveBeenCalled();
+    });
+
+  it('🔴 a failed order write TOASTS and re-reads — it must not die as an unhandled rejection', async () => {
+    setUp();
+    // Reachable: another user can delete one of these tasks (M8.5 ships exactly that) mid-drag. And the writes
+    // are sequential, so a failure part-way leaves the group HALF-renormalised on the server — re-reading is
+    // mandatory, not tidy.
+    api.setTaskOrder.and.returnValue(throwError(() => httpError(404, null)));
+    api.getWeek.calls.reset();
+
+    await component.onDrop(component.groups()[0], dropEvent(0, 1));
+
+    expect(toast.show).toHaveBeenCalledWith('One of those tasks is no longer available. Reloaded.');
+    expect(api.getWeek).toHaveBeenCalled();
+    expect(component.reordering()).toBeFalse();     // released, so the next drag is not dead
+  });
+
+  it('🔴 a second drag while the first batch is in flight is refused — two batches would interleave',
+    async () => {
+      setUp();
+      // Never settles: batch 1's first write hangs.
+      api.setTaskOrder.and.returnValue(new Subject<void>());
+
+      const group = component.groups()[0];
+      void component.onDrop(group, dropEvent(0, 1));    // batch 1 — in flight
+      await component.onDrop(group, dropEvent(1, 0));   // batch 2 — must be refused outright
+
+      // CDK does not move the row for us (we never call `moveItemInArray`; the re-fetch is what re-renders
+      // it), so between the drop and the refresh landing the row SNAPS BACK. On a slow link that reads as "the
+      // drag didn't work" — exactly when a user drags again. A second batch computed from the still-stale
+      // `group.tasks` would interleave with the first and leave an order neither drag asked for.
+      expect(api.setTaskOrder).toHaveBeenCalledTimes(1);
+      expect(component.reordering()).toBeTrue();        // batch 1 still in flight
     });
 });
