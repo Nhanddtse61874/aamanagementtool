@@ -38,7 +38,9 @@
     "Counts drift as screens land, so do not treat them as an invariant -- as of M8.6: 7 tags, 24 operations,",
     "30 models. Everything else in `TimesheetApp.Api` is still unannotated and therefore still invisible."
   ],
-  "includeTags": ["Auth", "Timesheet", "SmartFill", "Backlogs", "Tasks", "Users", "PcaContacts"],
+  "includeTags": ["Auth", "Timesheet", "SmartFill", "Backlogs", "Tasks", "Users", "PcaContacts",
+                  "Tags", "Teams", "Templates", "Holidays", "DefaultTasks", "Standup", "Reports",
+                  "Ops", "Me", "TaskList", "Settings"],
 
   "//ignoreUnusedModels": "Keeps the emitted model set to what the included operations actually reference.",
   "ignoreUnusedModels": true
