@@ -109,6 +109,20 @@
   border-top: 1px solid var(--line-soft);
 }
 
+// The template dropdown sits above the grid it appends into. CREATE only -- see the component.
+.bed__tpl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bed__tpl-pick {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+}
+
 // One task row: the name takes the space, the three controls keep their size.
 .bed__task {
   display: flex;

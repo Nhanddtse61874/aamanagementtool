@@ -7,10 +7,12 @@ import { FormsModule } from '@angular/forms';
 import { forkJoin, firstValueFrom } from 'rxjs';
 
 import {
-  BacklogAuditDto, BacklogDto, NamedRefDto, PcaContactDto, TaskItemDto, UserDto, ValidationBody,
+  BacklogAuditDto, BacklogDto, NamedRefDto, PcaContactDto, TagDto, TaskItemDto, TaskTemplateDto, UserDto,
+  ValidationBody,
 } from '../../api/models';
+import { TagPickerComponent } from '../../components/tag-picker/tag-picker.component';
 import { ToastService } from '../../services/toast.service';
-import { WorklogService } from '../../services/worklog.service';
+import { WorklogService, requireRowVersion } from '../../services/worklog.service';
 import { EditForm, EditRow, periodMonth, toCreateRequest, toUpdateRequest, validate } from './backlog-form';
 import { TaskWritePlan, planTaskWrites } from './task-edit';
 
@@ -24,6 +26,17 @@ export interface PickOption {
 export interface AuditLine {
   change: string;
   who: string;
+}
+
+/**
+ * One template, ASSEMBLED ON THE CLIENT.
+ *
+ * 🔴 There is no template ENTITY on the wire. `GET /api/templates` returns FLAT ROWS -- one per task,
+ * `(id, templateName, taskName, orderIndex)` -- and the grouping is ours to do. See `templates`.
+ */
+export interface TemplateGroup {
+  name: string;
+  taskNames: string[];
 }
 
 /** The type and project pick lists, from the SERVER's own enums -- BacklogType.All / BacklogProjects.All
@@ -110,7 +123,9 @@ function splitPeriod(yyyymm: string | null | undefined): { year: number; month: 
  * WHICH FIELDS SHOW, and why it is not symmetric (WPF's rule, verbatim):
  *
  *   create AND edit : code · project · assignee · month/year · type · rough est · official est · note · tasks
+ *                     · TAGS
  *   CREATE only     : start date · end date · internal deadline · external deadline · progress · PCA contact
+ *                     · the TEMPLATE dropdown
  *   EDIT only       : change history
  *
  * The six create-only fields are edited INLINE on the Task List screen, so the editor does not offer a second
@@ -119,11 +134,25 @@ function splitPeriod(yyyymm: string | null | undefined): { year: number; month: 
  * LOADED DTO. This component's whole job on that front is to call it and not undermine it: never hand it a
  * form value for a hidden field. `form.startDate` compiles -- `EditForm` carries it because CREATE genuinely
  * owns it -- and passing it would null the record.
+ *
+ * TAGS are on BOTH paths (M9 -- the debt M8.6 deferred). WPF exposes the picker on create only, but its edit
+ * path REPLACE-ALLs the same set behind the user's back anyway, so showing it on edit is the honest version.
+ * The TEMPLATE dropdown is create-only: it seeds a task list, and an existing backlog already has one.
+ *
+ * 🔴 THE WRITE IS NOW FIVE PHASES, NOT FOUR, AND THE NEW ONE IS THE DANGEROUS ONE:
+ *
+ *     1.  PUT/POST the record            -- checked against the BACKLOG's row_version. RETURNS THE NEXT ONE.
+ *     1b. PUT the tags                   -- 🔴 CHECKED AGAINST THE SAME row_version, because BacklogTags has
+ *                                           none of its own. It MUST carry what phase 1 RETURNED.
+ *     2.  deletes · 3. inserts · 4. updates  -- per-TASK versions; they never touch Backlogs.row_version.
+ *
+ * See `writeTags`. Getting 1b's version from the DTO we loaded instead of from phase 1's response 409s on the
+ * happy path, every single time.
  */
 @Component({
   selector: 'app-backlog-editor',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, TagPickerComponent],
   templateUrl: './backlog-editor.component.html',
   styleUrl: './backlog-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -165,6 +194,28 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
   private readonly userNames = signal<NamedRefDto[]>([]);
   private readonly pcaContacts = signal<PcaContactDto[]>([]);
   private readonly audit = signal<BacklogAuditDto[]>([]);
+
+  // ---- tags (M9: the debt M8.6 deferred) -----------------------------------------------------------
+
+  /** The tag CATALOGUE -- `getTagList()` (`GET /api/tags`, OPEN). The picker renders it; it does not read it. */
+  readonly allTags = signal<TagDto[]>([]);
+
+  /** The tag ids the SERVER has, as last read. The baseline `tagsDirty` compares against. */
+  private readonly loadedTagIds = signal<number[]>([]);
+
+  /** The tag ids the USER has checked. The picker emits the COMPLETE set; the write REPLACES with it. */
+  readonly selectedTagIds = signal<number[]>([]);
+
+  // ---- templates (CREATE only) ---------------------------------------------------------------------
+
+  /** 🔴 The FLAT rows `GET /api/templates` returns. Grouped by `templates()`, below. */
+  private readonly templateRows = signal<TaskTemplateDto[]>([]);
+
+  /** The dropdown's bound value. Always driven back to `''`: it is an ACTION, not a field. See `applyTemplate`. */
+  readonly templateChoice = signal('');
+
+  /** Which templates have already been stacked into the grid. The guard against DOUBLE-APPLYING one. */
+  readonly appliedTemplates = signal<ReadonlySet<string>>(new Set());
 
   readonly types = TYPES;
   readonly projects = PROJECTS;
@@ -245,6 +296,62 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
    */
   readonly blankTask = computed(() => this.visibleRows().some(r => r.name.trim() === ''));
 
+  /**
+   * Did the user actually change the tag set?
+   *
+   * 🔴 It gates the write, and that is not a micro-optimisation. `setBacklogTags` is a replace-all that
+   * CHECKS AND BUMPS THE BACKLOG'S `row_version` (see `writeTags`), so re-writing the set we already have is
+   * not a free no-op: it costs a round trip AND it invalidates the version every other client is holding,
+   * for nothing. An untouched save must send no tag write at all.
+   *
+   * An EMPTY selection against a non-empty loaded set is DIRTY -- "clear every tag" is a real edit, and the
+   * write expresses it as `[]`. (That is a JSON body, not a query array: none of the `teamIds: []` inversion
+   * the service warns about applies here.)
+   */
+  private readonly tagsDirty = computed(() => {
+    const loaded = this.loadedTagIds();
+    const selected = this.selectedTagIds();
+    if (loaded.length !== selected.length) return true;
+
+    const have = new Set(loaded);
+    return selected.some(id => !have.has(id));
+  });
+
+  /**
+   * The templates, GROUPED -- because the wire does not group them.
+   *
+   * 🔴 `GET /api/templates` returns FLAT ROWS: one per task, each carrying `templateName` and `orderIndex`.
+   * There is no template entity to fetch. So the grouping is ours, AND SO IS THE ORDERING: the row order the
+   * server happens to return is not the task order, `orderIndex` is. Sorting on a COPY, because a signal's
+   * value is shared and `Array.prototype.sort` mutates in place.
+   *
+   * A row with no name, and a template with no rows left after that, are dropped rather than rendered as a
+   * choice that would silently append nothing.
+   */
+  readonly templates = computed<TemplateGroup[]>(() => {
+    const groups = new Map<string, TaskTemplateDto[]>();
+
+    for (const row of this.templateRows()) {
+      const name = (row.templateName ?? '').trim();
+      if (name === '') continue;
+
+      const rows = groups.get(name);
+      if (rows === undefined) groups.set(name, [row]);
+      else rows.push(row);
+    }
+
+    return [...groups.entries()]
+      .map(([name, rows]) => ({
+        name,
+        taskNames: [...rows]
+          .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+          .map(r => (r.taskName ?? '').trim())
+          .filter(taskName => taskName !== ''),
+      }))
+      .filter(group => group.taskNames.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  });
+
   /** Barred while a load or a save is in flight, and barred if an EDIT never loaded (there is no DTO to
    *  round-trip the hidden fields from, so a save could only null them). */
   readonly canSave = computed(() =>
@@ -277,10 +384,18 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
    *
    * The two paths read DIFFERENT things, and deliberately not a superset:
    *
-   *   CREATE reads the two pick lists it renders. There is no record, no tasks and no history to read.
-   *   EDIT reads the record, its tasks, its history, and BOTH halves of the assignee list (see
+   *   CREATE reads the two pick lists it renders, plus the TEMPLATES (the template dropdown is create-only:
+   *   an existing backlog already has its tasks). There is no record, no tasks, no history and no tag join
+   *   to read -- a backlog that does not exist yet cannot have tags.
+   *   EDIT reads the record, its tasks, its history, its TAG JOIN, and BOTH halves of the assignee list (see
    *   `assigneeOptions`). It does NOT read the PCA lists -- the PCA contact field is CREATE-ONLY, so there is
-   *   no dropdown for them to fill, and the saved `pcaContactId` round-trips from the DTO.
+   *   no dropdown for them to fill, and the saved `pcaContactId` round-trips from the DTO. It does not read
+   *   the templates either, for the same reason.
+   *
+   * 🔴 BOTH read the tag CATALOGUE (`getTagList`), and both may: `GET /api/tags` and `GET /api/templates` are
+   * OPEN. That is load-bearing, not incidental -- this dialog is reachable by an ORDINARY USER, and an
+   * [ADMIN] route inside this forkJoin would 403 and take THE WHOLE SCREEN down with it, not just the panel
+   * that asked. (`getTagsAll` / `getTemplatesAll` do not exist. The catalogue reads are the open ones.)
    */
   private async load(): Promise<void> {
     const id = this.currentId();
@@ -288,24 +403,32 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
 
     try {
       if (id === null) {
-        const [users, pcaContacts] = await firstValueFrom(forkJoin([
+        const [users, pcaContacts, tags, templates] = await firstValueFrom(forkJoin([
           this.api.getUsersActive(),
           this.api.getPcaContactsActive(),
+          this.api.getTagList(),
+          this.api.getTemplateList(),
         ]));
 
         this.users.set(users);
         this.pcaContacts.set(pcaContacts);
+        this.allTags.set(tags);
+        this.templateRows.set(templates);
+        this.loadedTagIds.set([]);        // a backlog that does not exist yet has no tags
+        this.selectedTagIds.set([]);
         this.form.set(blankForm());
         this.rows.set([]);
         return;
       }
 
-      const [dto, tasks, audit, users, userNames] = await firstValueFrom(forkJoin([
+      const [dto, tasks, audit, users, userNames, tags, tagIds] = await firstValueFrom(forkJoin([
         this.api.getBacklog(id),
         this.api.getTasks(id),
         this.api.getBacklogAudit(id),
         this.api.getUsersActive(),
         this.api.getUserNames(),
+        this.api.getTagList(),
+        this.api.getBacklogTags(id),
       ]));
 
       this.dto.set(dto);
@@ -313,6 +436,14 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
       this.audit.set(audit);
       this.users.set(users);
       this.userNames.set(userNames);
+      this.allTags.set(tags);
+
+      // 🔴 The SERVER's set is BOTH the baseline and the initial selection. `tagsDirty` compares the two, so
+      // they must start equal -- and they must be SEPARATE arrays, or a later selection would silently
+      // rewrite the baseline it is measured against and every save would look clean.
+      this.loadedTagIds.set([...tagIds]);
+      this.selectedTagIds.set([...tagIds]);
+
       this.form.set(this.hydrate(dto));
       this.rows.set(this.toRows(tasks));
     } catch (err: unknown) {
@@ -386,6 +517,54 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
   patch<K extends keyof EditForm>(key: K, value: EditForm[K]): void {
     this.form.update(f => ({ ...f, [key]: value }));
     this.error.set(null);   // they are fixing something; stop shouting the last problem at them
+  }
+
+  // ---- tags ----------------------------------------------------------------------------------------
+
+  /**
+   * The picker emits the COMPLETE new set, never a delta -- because the write REPLACES. Storing it verbatim
+   * is the whole contract; there is nothing to merge here.
+   */
+  onTagsChange(tagIds: number[]): void {
+    this.selectedTagIds.set(tagIds);
+    this.error.set(null);
+  }
+
+  // ---- templates -----------------------------------------------------------------------------------
+
+  /**
+   * 🔴 IT APPENDS, AND IT REFUSES TO APPLY THE SAME TEMPLATE TWICE.
+   *
+   * Picking a template AUTO-APPLIES it -- there is no Apply button, exactly as in WPF. Picking a SECOND,
+   * DIFFERENT one STACKS its rows on top of the first's; it does NOT replace them.
+   *
+   * The control is an ACTION ("Add a template"), not a bound field, so it drives itself back to the
+   * placeholder after every apply. That is the honest rendering -- once two templates have been stacked, no
+   * single value could name what is in the grid -- and it is exactly what makes `appliedTemplates`
+   * LOAD-BEARING: with the select sitting back at the placeholder, choosing the SAME template again fires
+   * `change` again, and without the guard every row it carries would be appended a SECOND TIME. (The already
+   * -applied options are also disabled in the template, so the refusal is visible rather than mysterious.)
+   *
+   * The rows it appends are ORDINARY new rows: `existingTaskId: 0`, renameable, removable, reorderable, and
+   * INSERTED by `planTaskWrites` at their array position. `orderIndex: 0` is not a position -- it means "the
+   * server has never seen this row", the same as `addRow`.
+   */
+  applyTemplate(name: string): void {
+    this.templateChoice.set('');   // an ACTION, not a field -- always back to the placeholder
+
+    if (name === '' || this.appliedTemplates().has(name)) return;
+
+    const group = this.templates().find(t => t.name === name);
+    if (group === undefined) return;
+
+    this.appliedTemplates.update(applied => new Set(applied).add(name));
+    this.rows.update(all => [
+      ...all,
+      ...group.taskNames.map(taskName => (
+        { existingTaskId: 0, name: taskName, orderIndex: 0, removed: false }
+      )),
+    ]);
+    this.error.set(null);
   }
 
   // ---- the task grid -------------------------------------------------------------------------------
@@ -510,26 +689,50 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
    *     the two that succeeded.
    */
   private async runCreate(): Promise<void> {
+    let created: BacklogDto;
     let id: number;
     try {
-      const created = await firstValueFrom(this.api.createBacklog(toCreateRequest(this.form())));
+      created = await firstValueFrom(this.api.createBacklog(toCreateRequest(this.form())));
       id = requireBacklogId(created);
     } catch (err: unknown) {
       this.onCreateError(err);   // nothing was written: no re-read, no mode change, their form is untouched
       return;
     }
 
+    // 🔴 THE RECORD EXISTS FROM HERE DOWN. Every failure below therefore recovers into EDIT mode, because the
+    // user's answer to a failure is to press Save again -- and in create mode that posts a TWIN.
+
+    // 🔴 The tags carry the version THE CREATE JUST RETURNED. See `writeTags`.
+    //
+    // A tag failure does NOT abort the task writes, and that is deliberate. It cannot invalidate them -- a
+    // task write is checked against the TASK's own row_version, and neither `POST /api/tasks` nor
+    // `PUT /api/tasks/{id}` touches `Backlogs.row_version` (TaskRepository.cs) -- so the tasks are still
+    // perfectly writable. Aborting would strand the user with a REAL backlog holding NONE of the tasks they
+    // typed, which the re-read below would then wipe off the screen and make them type again.
+    let tagsFailed = false;
+    try {
+      await this.writeTags(id, created);
+    } catch {
+      tagsFailed = true;
+    }
+
     try {
       await this.writeTasks(planTaskWrites([], this.rows(), id), id);
     } catch {
       // The status is deliberately not inspected. Every way this can fail has the same remedy and the same
-      // honest sentence -- and the re-read below shows the truth far better than a status name could.
-      this.currentId.set(id);
-      await this.load();
-      this.error.set(
-        'The backlog was created, but its tasks could not all be saved. ' +
+      // honest sentence -- and the re-read shows the truth far better than a status name could.
+      await this.onPartialCreate(
+        id,
+        'The backlog was created, but its tasks could not all be saved.',
         'Add the missing ones below and save again.');
-      this.toast.show('The backlog was created, but its tasks could not all be saved.');
+      return;
+    }
+
+    if (tagsFailed) {
+      await this.onPartialCreate(
+        id,
+        'The backlog was created, but its tags could not be saved.',
+        'Re-check them below and save again.');
       return;
     }
 
@@ -537,7 +740,18 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
     this.saved.emit();
   }
 
-  /** The four-phase write, in the only order that works. See `writeTasks` for phases 2-4. */
+  /**
+   * The shared recovery for a create that PARTLY landed: stop being a create dialog, rebuild FROM THE SERVER,
+   * and say plainly what happened. Both halves matter -- see `runCreate`.
+   */
+  private async onPartialCreate(id: number, problem: string, remedy: string): Promise<void> {
+    this.currentId.set(id);
+    await this.load();
+    this.error.set(`${problem} ${remedy}`);
+    this.toast.show(problem);
+  }
+
+  /** The five-phase write, in the only order that works. See `writeTags` and `writeTasks`. */
   private async runEdit(id: number): Promise<void> {
     const dto = this.dto();
     // Unreachable from the UI -- `canSave` bars a save on an edit that never loaded -- but it is also the
@@ -548,7 +762,13 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
       // 1. The record itself -- CHECKED, against its OWN rowVersion. This is the call that can 409.
       //    🔴 `toUpdateRequest(dto, form)` -- the DTO first. It is what round-trips the six hidden fields.
       //    Building this body by hand, or "helpfully" passing `form.startDate`, nulls them.
-      await firstValueFrom(this.api.updateBacklog(id, toUpdateRequest(dto, this.form())));
+      //
+      //    🔴 AND ITS RESPONSE IS NOT DISCARDABLE ANY MORE. It carries the row_version this PUT just bumped
+      //    the record to, and phase 1b is checked against exactly that. See `writeTags`.
+      const saved = await firstValueFrom(this.api.updateBacklog(id, toUpdateRequest(dto, this.form())));
+
+      // 1b. The tags. 🔴 `saved`, NEVER `dto`. Hand it the version we LOADED and it 409s against our own PUT.
+      await this.writeTags(id, saved);
 
       await this.writeTasks(planTaskWrites(this.loaded(), this.rows(), id), id);
     } catch (err: unknown) {
@@ -558,6 +778,37 @@ export class BacklogEditorComponent implements OnInit, AfterViewInit {
 
     this.toast.show('Backlog saved.');
     this.saved.emit();
+  }
+
+  /**
+   * Phase 1b -- the tag replace-all. 🔴 THE ONE PLACE THE VERSION THREADING MATTERS.
+   *
+   * `BacklogTags` HAS NO `row_version` OF ITS OWN. `SetTagsCoreAsync` (BacklogRepository.cs) runs
+   *
+   *     UPDATE Backlogs SET row_version = row_version + 1
+   *     WHERE id = @bid AND (@expected IS NULL OR row_version = @expected) RETURNING row_version;
+   *
+   * -- so this is a CHECKED WRITE AGAINST THE BACKLOG ITSELF. It can 409, and it BUMPS the very version the
+   * record write above just bumped.
+   *
+   * 🔴 THEREFORE `source` IS THE RESPONSE OF THE BACKLOG WRITE THAT IMMEDIATELY PRECEDED THIS ONE -- the PUT
+   * on edit, the POST on create -- AND ITS `rowVersion` IS THE ONLY CORRECT `expectedVersion` HERE. Pass the
+   * version we LOADED instead and we 409 AGAINST OUR OWN WRITE, ON THE HAPPY PATH, EVERY SINGLE TIME. (And
+   * re-reading it rather than storing what the write returned is racy -- the same rule `saveHours` follows.)
+   *
+   * That is why the two backlog-versioned writes are ADJACENT: nothing can be slipped between them without
+   * the author having to think about the version. The task phases sit AFTER them precisely because they are
+   * versioned per TASK and never touch `Backlogs.row_version`, so they can neither be invalidated by this
+   * write nor invalidate it.
+   *
+   * 🔴 SKIPPED WHEN THE SET DID NOT CHANGE -- see `tagsDirty`. An EMPTY set is not "no change": it is "clear
+   * every tag", and it is written.
+   */
+  private async writeTags(backlogId: number, source: { rowVersion?: number }): Promise<void> {
+    if (!this.tagsDirty()) return;
+
+    await firstValueFrom(
+      this.api.setBacklogTags(backlogId, this.selectedTagIds(), requireRowVersion(source.rowVersion)));
   }
 
   /**

@@ -1,16 +1,17 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Subject, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 
 import {
-  BacklogAuditDto, BacklogDto, NamedRefDto, PcaContactDto, SavedBody, TaskItemDto, UserDto,
+  BacklogAuditDto, BacklogDto, NamedRefDto, PcaContactDto, SavedBody, TagDto, TaskItemDto, TaskTemplateDto,
+  UserDto,
 } from '../../api/models';
 import { ToastService } from '../../services/toast.service';
-import { WorklogService } from '../../services/worklog.service';
+import { WorklogService, requireRowVersion } from '../../services/worklog.service';
 import { BacklogEditorComponent } from './backlog-editor.component';
 
 /**
- * The editor's job is to be BORING about six things that are each a real bug someone has already paid for:
+ * The editor's job is to be BORING about seven things that are each a real bug someone has already paid for:
  *
  *   H1  a reorder is expressed by MOVING THE ARRAY ELEMENT -- `planTaskWrites` reindexes from POSITION, and
  *       mutating `EditRow.orderIndex` instead is a silent no-op
@@ -19,6 +20,11 @@ import { BacklogEditorComponent } from './backlog-editor.component';
  *   H3  six fields are HIDDEN on edit and must still be WRITTEN, from the DTO
  *   H4  a 409 gets a message and a re-read -- never the cell merge dialog, and NEVER a silent retry
  *   H5  create is NOT transactional, and a half-created backlog must not be reported as a success
+ *   H6  🔴 A TAG WRITE IS A CHECKED WRITE AGAINST THE *BACKLOG* -- `BacklogTags` has no row_version of its
+ *       own, so `SetTagsCheckedAsync` checks and BUMPS THE PARENT'S. The tag write must therefore carry the
+ *       version THE RECORD WRITE BEFORE IT RETURNED, not the one the dialog loaded -- or it 409s against our
+ *       OWN write, ON THE HAPPY PATH, EVERY SINGLE TIME.
+ *   H7  the template dropdown APPENDS, and applying the same template twice DUPLICATES every row it carries
  *   --  `validate` refuses a bad save BEFORE any request is sent
  */
 
@@ -76,6 +82,27 @@ const AUDIT: BacklogAuditDto[] = [
 
 const CREATED: BacklogDto = { ...BACKLOG, id: 42, rowVersion: 1 };
 
+/** The tag CATALOGUE -- `GET /api/tags`, OPEN. What the picker renders. */
+const TAGS: TagDto[] = [
+  { id: 1, text: 'Urgent', color: '#DC2626', icon: '🔥', rowVersion: 1 },
+  { id: 2, text: 'Backend', color: '#2563EB', icon: '⚙️', rowVersion: 1 },
+];
+
+/** The tags the backlog CURRENTLY has. Ticking 2 is a real change; unticking 1 is a real change too. */
+const TAG_IDS = [1];
+
+/**
+ * 🔴 FLAT ROWS, UNGROUPED AND DELIBERATELY SHUFFLED -- which is exactly what `GET /api/templates` returns:
+ * one row per task, each carrying `templateName` and `orderIndex`. There is no template entity on the wire.
+ * The grouping AND the ordering are the client's job, so the fixture refuses to do either of them for it.
+ */
+const TEMPLATES: TaskTemplateDto[] = [
+  { id: 3, templateName: 'Standard', taskName: 'Build', orderIndex: 1 },
+  { id: 1, templateName: 'Standard', taskName: 'Design', orderIndex: 0 },
+  { id: 2, templateName: 'Bugfix', taskName: 'Reproduce', orderIndex: 0 },
+  { id: 4, templateName: 'Standard', taskName: 'Test', orderIndex: 2 },
+];
+
 function httpError(status: number, error: unknown = null): HttpErrorResponse {
   return new HttpErrorResponse({ status, error });
 }
@@ -96,7 +123,11 @@ describe('BacklogEditorComponent', () => {
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
       ['getBacklog', 'getTasks', 'getBacklogAudit', 'getUsersActive', 'getUserNames', 'getPcaContactsActive',
-       'createBacklog', 'updateBacklog', 'addTask', 'updateTask', 'setTaskActive'],
+       'createBacklog', 'updateBacklog', 'addTask', 'updateTask', 'setTaskActive',
+       // 🔴 `getTagList` / `getTemplateList` -- NOT `getTagsAll` / `getTemplatesAll`, which do not exist. The
+       // two that do exist are the OPEN ones, which is what a dialog an ordinary user can reach requires: an
+       // [ADMIN] route inside the load's forkJoin would 403 and take the whole screen down.
+       'getTagList', 'getBacklogTags', 'setBacklogTags', 'getTemplateList'],
     );
 
     api.getBacklog.and.returnValue(of(BACKLOG));
@@ -105,9 +136,13 @@ describe('BacklogEditorComponent', () => {
     api.getUsersActive.and.returnValue(of(USERS));
     api.getUserNames.and.returnValue(of(NAMES));
     api.getPcaContactsActive.and.returnValue(of(CONTACTS));
+    api.getTagList.and.returnValue(of(TAGS));
+    api.getBacklogTags.and.returnValue(of(TAG_IDS));
+    api.getTemplateList.and.returnValue(of(TEMPLATES));
 
     api.createBacklog.and.callFake(() => { calls.push('create'); return of(CREATED); });
     api.updateBacklog.and.callFake(() => { calls.push('update-backlog'); return of<SavedBody>({ rowVersion: 6 }); });
+    api.setBacklogTags.and.callFake(() => { calls.push('set-tags'); return of<SavedBody>({ rowVersion: 7 }); });
     api.setTaskActive.and.callFake((id: number) => { calls.push(`delete-${id}`); return of(void 0); });
     api.addTask.and.callFake((_b: number, name: string) => { calls.push(`insert-${name}`); return of(TASKS[0]); });
     api.updateTask.and.callFake((id: number) => { calls.push(`update-task-${id}`); return of<SavedBody>({ rowVersion: 9 }); });
@@ -448,6 +483,242 @@ describe('BacklogEditorComponent', () => {
       expect(saved).toBe(0);
       expect(component.isEdit()).toBeFalse();   // nothing was written -- it is still a create dialog
     });
+
+  // ---- H6: THE TAG WRITE BUMPS THE *BACKLOG'S* VERSION ------------------------------------------------
+
+  it('🔴 sends the tag write the version THE PUT RETURNED -- not the one it loaded', async () => {
+    await setUp();
+
+    component.onTagsChange([2]);        // loaded is [1]; this is a real change
+    await component.save();
+
+    // 🔴 The PUT bumped the record 5 -> 6. `PUT /api/backlogs/{id}/tags` is CHECKED AGAINST THE SAME ROW --
+    // `BacklogTags` has no row_version of its own, so `SetTagsCoreAsync` checks and bumps the PARENT's:
+    //
+    //     UPDATE Backlogs SET row_version = row_version + 1
+    //     WHERE id = @bid AND (@expected IS NULL OR row_version = @expected) RETURNING row_version;
+    //
+    // So it must carry 6. Hand it the LOADED 5 and it 409s against OUR OWN PUT.
+    expect(api.setBacklogTags).toHaveBeenCalledWith(7, [2], 6);
+
+    // ...and explicitly NOT the version the dialog LOADED. That is the whole bug, stated on its own line.
+    expect(api.setBacklogTags.calls.mostRecent().args[2]).not.toBe(requireRowVersion(BACKLOG.rowVersion));
+  });
+
+  it('🔴 does NOT 409 against its own PUT on the happy path -- against a fake that enforces the real rule',
+    async () => {
+      await setUp();
+
+      // 🔴 THE SERVER'S ACTUAL RULE, IN A FAKE. Both `PUT /api/backlogs/{id}` and `PUT /api/backlogs/{id}/tags`
+      // check-and-bump the SAME `Backlogs.row_version` (BacklogRepository.cs -- UpdateCoreAsync and
+      // SetTagsCoreAsync run the identical `... row_version = row_version + 1 WHERE id = @id AND row_version =
+      // @expected RETURNING row_version`). A stale expectedVersion is a 409 here exactly as it is in prod.
+      //
+      // This is the test that cannot be satisfied by a decorative assertion: the ONLY way it goes green is if
+      // the tag write actually carries what the PUT returned.
+      let version = 5;                                   // BACKLOG.rowVersion
+      const checkedBump = (expected: number | undefined): Observable<SavedBody> => {
+        if (expected !== version) return throwError(() => httpError(409, {}));
+        version += 1;
+        return of<SavedBody>({ rowVersion: version });
+      };
+
+      api.updateBacklog.and.callFake((_id, body) => checkedBump(body.expectedVersion));
+      api.setBacklogTags.and.callFake((_id, _ids, expected) => checkedBump(expected));
+
+      component.onTagsChange([1, 2]);
+      await component.save();
+      await settle();
+
+      expect(component.error()).toBeNull();
+      expect(saved).toBe(1);                             // it CLOSED. No conflict, no re-read, no toast.
+      expect(toast.show).toHaveBeenCalledWith('Backlog saved.');
+      expect(version).toBe(7);                           // 5 -> 6 (the PUT) -> 7 (the tags)
+    });
+
+  it('slots the tag write BETWEEN the backlog PUT and the task phases', async () => {
+    await setUp();
+
+    component.onTagsChange([2]);
+    component.remove(0);                // Design (11) -> soft delete
+    component.newTaskName.set('Ship');
+    component.addRow();
+
+    await component.save();
+
+    // The two BACKLOG-versioned writes are ADJACENT, and in that order: nothing can be slipped between them
+    // without having to think about the version. The task phases are versioned per TASK and follow.
+    expect(calls).toEqual(['update-backlog', 'set-tags', 'delete-11', 'insert-Ship', 'update-task-12']);
+  });
+
+  it('writes NO tags when the set did not change -- a replace-all BUMPS the version for nothing', async () => {
+    await setUp();
+
+    component.patch('note', 'only the note');
+    await component.save();
+
+    expect(api.updateBacklog).toHaveBeenCalledTimes(1);
+    expect(api.setBacklogTags).not.toHaveBeenCalled();
+  });
+
+  it('WRITES an empty set when the last tag is unticked -- the write REPLACES, so [] is a real edit', async () => {
+    await setUp();
+    expect(component.selectedTagIds()).toEqual([1]);      // the server's set, as loaded
+
+    component.onTagsChange([]);
+    await component.save();
+
+    // 🔴 `[]` is not "no change" and it is not "skip" -- it is "clear every tag". (And it is a JSON body, so
+    // it has nothing to do with the `teamIds: []` query-array inversion.)
+    expect(api.setBacklogTags).toHaveBeenCalledWith(7, [], 6);
+  });
+
+  it('on CREATE the tags carry the version the CREATE returned, and go before the tasks', async () => {
+    await setUp(null);
+    fillCreate();
+    component.onTagsChange([1, 2]);
+
+    await component.save();
+
+    expect(api.setBacklogTags).toHaveBeenCalledWith(42, [1, 2], 1);   // CREATED.rowVersion
+    expect(calls).toEqual(['create', 'set-tags', 'insert-Design']);
+    expect(saved).toBe(1);
+  });
+
+  it('reads no tag join on CREATE, and writes none when nothing was ticked', async () => {
+    await setUp(null);
+    fillCreate();
+
+    await component.save();
+
+    expect(api.getBacklogTags).not.toHaveBeenCalled();   // there is no id yet to have tags
+    expect(api.setBacklogTags).not.toHaveBeenCalled();
+    expect(component.selectedTagIds()).toEqual([]);
+  });
+
+  it('keeps the dialog open in EDIT mode when the backlog is created but its TAGS are not -- and still ' +
+    'saves the tasks the user typed', async () => {
+    await setUp(null);
+    fillCreate();
+    component.onTagsChange([1]);
+    api.setBacklogTags.and.returnValue(throwError(() => httpError(500)));
+
+    await component.save();
+    await settle();
+
+    expect(saved).toBe(0);
+    expect(component.error()).toContain('created, but its tags could not be saved');
+
+    // 🔴 It STOPPED being a create dialog. A second Save must UPDATE the record that exists, not post a TWIN.
+    expect(component.isEdit()).toBeTrue();
+    expect(api.getBacklog).toHaveBeenCalledWith(42);
+
+    // 🔴 And the tag failure did NOT cost the user their tasks. A task write is checked against the TASK's own
+    // version and never touches Backlogs.row_version, so it was still perfectly writable -- and aborting would
+    // have left a real backlog with none of the tasks they typed, which the re-read then wipes off the screen.
+    expect(api.addTask).toHaveBeenCalledWith(42, 'Design', 0);
+  });
+
+  it('on a tag 409 says so, RE-READS, and does not silently retry', async () => {
+    await setUp();
+    api.setBacklogTags.and.returnValue(throwError(() => httpError(409, {})));
+
+    component.onTagsChange([1, 2]);
+    await component.save();
+    await settle();
+
+    expect(component.error()).toContain('Someone else changed this backlog');
+    expect(toast.show).toHaveBeenCalledWith('Someone else just changed this backlog.');
+    expect(api.getBacklog).toHaveBeenCalledTimes(2);      // re-read
+    expect(api.setBacklogTags).toHaveBeenCalledTimes(1);  // 🔴 NOT retried
+    expect(saved).toBe(0);
+  });
+
+  it('renders the picker on EDIT, checked from the server -- and never a "+ New tag" button', async () => {
+    await setUp();
+
+    expect(api.getBacklogTags).toHaveBeenCalledWith(7);
+    expect(api.getTagList).toHaveBeenCalled();
+    expect(component.selectedTagIds()).toEqual([1]);
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-tag-picker')).not.toBeNull();
+
+    // 🔴 `tagCreate` / `tagUpdate` / `tagDelete` are ADMIN-ONLY and this dialog is reachable by an ordinary
+    // user. The picker SELECTS; tag CRUD lives on the Settings screen.
+    expect(html()).not.toContain('New tag');
+  });
+
+  it('renders the picker on CREATE too -- tags are create-AND-edit here', async () => {
+    await setUp(null);
+
+    expect(api.getTagList).toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-tag-picker')).not.toBeNull();
+  });
+
+  // ---- H7: the template applier -----------------------------------------------------------------------
+
+  it('GROUPS the flat template rows by name, and orders each one by orderIndex', async () => {
+    await setUp(null);
+
+    // 🔴 `GET /api/templates` is FLAT: `(id, templateName, taskName, orderIndex)` per ROW, ungrouped. The
+    // fixture hands them back SHUFFLED, so array order cannot pass for task order -- `orderIndex` is.
+    expect(component.templates().map(t => t.name)).toEqual(['Bugfix', 'Standard']);
+    expect(component.templates().find(t => t.name === 'Standard')?.taskNames)
+      .toEqual(['Design', 'Build', 'Test']);
+  });
+
+  it('AUTO-APPLIES on selection and APPENDS -- a second template stacks, it does not replace', async () => {
+    await setUp(null);
+    component.newTaskName.set('Kickoff');
+    component.addRow();
+
+    component.applyTemplate('Standard');   // no Apply button: selecting it IS the action
+    expect(component.visibleRows().map(r => r.name)).toEqual(['Kickoff', 'Design', 'Build', 'Test']);
+
+    component.applyTemplate('Bugfix');     // 🔴 a DIFFERENT one stacks ON TOP
+    expect(component.visibleRows().map(r => r.name))
+      .toEqual(['Kickoff', 'Design', 'Build', 'Test', 'Reproduce']);
+  });
+
+  it('🔴 REFUSES to apply the same template twice -- it would DUPLICATE every row it carries', async () => {
+    await setUp(null);
+
+    component.applyTemplate('Standard');
+    component.applyTemplate('Standard');
+
+    // Without the guard the control -- which resets to the placeholder, because it is an ACTION and not a
+    // field -- happily fires again and lands all three rows a SECOND time.
+    expect(component.visibleRows().map(r => r.name)).toEqual(['Design', 'Build', 'Test']);
+    expect(component.templateChoice()).toBe('');
+    expect(component.appliedTemplates().has('Standard')).toBeTrue();
+  });
+
+  it('turns the applied rows into ORDINARY editable rows -- they rename, they reorder, and they INSERT',
+    async () => {
+      await setUp(null);
+      component.patch('code', 'ARCS-9');
+      component.applyTemplate('Bugfix');
+
+      component.rename(0, 'Reproduce the crash');   // an ordinary row, not a frozen one
+      await component.save();
+
+      expect(api.addTask).toHaveBeenCalledWith(42, 'Reproduce the crash', 0);
+      expect(saved).toBe(1);
+    });
+
+  it('offers the template dropdown on CREATE', async () => {
+    await setUp(null);
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('#bed-template')).not.toBeNull();
+    expect(api.getTemplateList).toHaveBeenCalled();
+  });
+
+  it('offers NO template dropdown on EDIT, and does not even READ the templates there', async () => {
+    await setUp(7);
+
+    // An existing backlog already HAS its task list. Seeding one is a create-time act.
+    expect((fixture.nativeElement as HTMLElement).querySelector('#bed-template')).toBeNull();
+    expect(api.getTemplateList).not.toHaveBeenCalled();
+  });
 
   // ---- re-entrancy ----------------------------------------------------------------------------------
 
