@@ -25,6 +25,40 @@
 | **PHASE 2** — 5 agents, true parallel | ⬜ | |
 | **P7** cleanup — `Tag` is shared A↔D, so **neither Phase-2 agent can delete it** | ⬜ | |
 
+### 🔴🔴 THE DB-SAFETY RULE WAS WRONG FOR THREE MILESTONES. Read this before any agent starts the API.
+
+Every brief since M8.4 has said: *"pin all three seams — `DbPath`, `ConfigPath`, `KeyRingPath`."* **That is NOT SUFFICIENT**, and M9/P4's agent found the real failure mode:
+
+```csharp
+// JsonAppConfig.cs:57
+_dbPath = model?.DbPath ?? defaultDbPath;
+```
+
+**The `TimesheetApp:DbPath` you pass is only a DEFAULT.** If `ConfigPath` points at a config file that **EXISTS** and carries a `DbPath` key, **that file's `DbPath` WINS and yours is silently ignored.** And the real `%APPDATA%\TimesheetApp\appsettings.json` contains exactly:
+```json
+"DbPath": "C:\\Users\\Admin\\Documents\\TimesheetApp\\timesheet.db"
+```
+
+**So an agent that pinned all three seams AND aimed `ConfigPath` at the production config would have PASSED MY CHECK AND OPENED THE LIVE COMPANY DATABASE.** The rule protected against the accident I imagined, not the one that was actually there.
+
+## 🔴 THE TRUE INVARIANT: **`ConfigPath` MUST POINT AT A PATH THAT DOES NOT EXIST.**
+
+A fresh `mktemp -d` guarantees it. Pin all three **into that fresh directory**.
+
+**And the proof still stands:** grep the startup log for the substring **`no users yet, nothing to bootstrap`** — it fires only on `all.Count == 0`, i.e. a database with **zero users**. *(Grep the SUBSTRING. The line reads "**Admin bootstrap:** …" — space, lowercase `b`; `AdminBootstrap` is only the logger category on the line before. An earlier plan searched for the wrong string, which matches nothing — so an obedient agent would have aborted a safe run, **or concluded the check was broken and disabled it.** Disabling the check is how the real database gets opened.)*
+
+**Corroborating, and free:** `t.db` appearing in the temp dir is itself proof the seams held, because `Program.cs` uses `||` — the custom-path branch runs only if `ConfigPath` **and** `DbPath` are both set. *(`c.json` may never be written — `JsonAppConfig` persists lazily. **Its absence is NOT a failed seam.** Do not read it as one.)*
+
+**`KeyRingPath` is NOT load-bearing for DB safety** — `Program.cs` derives it from `appConfig.DbPath` when unset. Pin it anyway; it's free.
+
+**Never** try to prove safety via the absence of a `-wal` sidecar — a live WAL database **always** has one.
+
+### 🔴 A query param the handler reads off `HttpContext` is INVISIBLE to the generated client
+
+`EffectiveTeamIds()` reads `teamIds` from `HttpContext.Request.Query` **by hand** — deliberately, because a bound `[FromQuery] int[]?` **cannot tell "key absent" from "key present but empty"** (both bind to an **empty array, never `null`**) while `null` means **EVERY TEAM** to the repository. **That hand-read is a data-leak guard and must stay.**
+
+**But ApiExplorer cannot see it**, so `TaskListScreen$Params` came out as `{year, month}` — **no `teamIds`** — and **the team filter that four screens need had nothing to send.** Fixed in P4.5 by declaring a **bound-but-unused** `[FromQuery] int[]? teamIds` purely so the generator emits it. **Delete that unused param and four screens silently lose their team filter, with nothing going red.**
+
 ### 🔴 The `/all` decision — read this before touching auth
 
 `/api/users/all` and `/api/pca-contacts/all` are **admin-only** and were deliberately kept **out** of the generated client, enforced by a contract test. **M9 TAGGED THEM ON PURPOSE.**
