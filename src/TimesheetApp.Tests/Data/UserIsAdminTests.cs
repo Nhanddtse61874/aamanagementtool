@@ -9,7 +9,7 @@ namespace TimesheetApp.Tests.Data;
 // codebase that wrote it was the v10 migration itself (`UPDATE Users SET is_admin = 1 WHERE id =
 // (SELECT MIN(id) FROM Users)`). So admin was granted exactly once, by a migration, and was
 // un-grantable and un-revocable at runtime — there was no way to appoint a second admin, and no way
-// to demote the first one. SetIsAdminAsync is the write path; these tests pin it.
+// to demote the first one. SetIsAdminCheckedAsync is the write path; these tests pin it.
 //
 // CHECK-AND-BUMP, mirroring UpdateNameCheckedAsync: lands only at expectedVersion, returns the new
 // version, throws ConcurrencyConflictException on stale/missing.
@@ -32,7 +32,7 @@ public class UserIsAdminTests
 
         Assert.False((await repo.GetByIdAsync(id))!.IsAdmin);   // nobody is admin on a fresh DB
 
-        var v1 = await repo.SetIsAdminAsync(id, isAdmin: true, expectedVersion: v0);
+        var v1 = await repo.SetIsAdminCheckedAsync(id, isAdmin: true, expectedVersion: v0);
 
         Assert.Equal(v0 + 1, v1);
         Assert.Equal(v1, await RowVersionAsync(db, id));         // the RETURNING value is the real version
@@ -49,11 +49,11 @@ public class UserIsAdminTests
         var id = await db.SeedUserAsync("Alice", "alice");
         var v0 = await RowVersionAsync(db, id);
 
-        var v1 = await repo.SetIsAdminAsync(id, isAdmin: true, expectedVersion: v0);
+        var v1 = await repo.SetIsAdminCheckedAsync(id, isAdmin: true, expectedVersion: v0);
         Assert.True((await repo.GetByIdAsync(id))!.IsAdmin);
 
         // v1 came straight out of the previous write — no re-read, which is the point of returning it.
-        var v2 = await repo.SetIsAdminAsync(id, isAdmin: false, expectedVersion: v1);
+        var v2 = await repo.SetIsAdminCheckedAsync(id, isAdmin: false, expectedVersion: v1);
 
         Assert.Equal(v1 + 1, v2);
         Assert.False((await repo.GetByIdAsync(id))!.IsAdmin);
@@ -70,11 +70,11 @@ public class UserIsAdminTests
         var stale = await RowVersionAsync(db, id);
 
         // Someone else grants admin first, moving the version on.
-        await repo.SetIsAdminAsync(id, isAdmin: true, expectedVersion: stale);
+        await repo.SetIsAdminCheckedAsync(id, isAdmin: true, expectedVersion: stale);
 
         // The second admin still holds the OLD version and tries to revoke.
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => repo.SetIsAdminAsync(id, isAdmin: false, expectedVersion: stale));
+            () => repo.SetIsAdminCheckedAsync(id, isAdmin: false, expectedVersion: stale));
 
         Assert.Equal("Users", ex.Table);
         Assert.False(ex.Deleted);                                 // stale, not gone
@@ -90,7 +90,7 @@ public class UserIsAdminTests
         var repo = new UserRepository(db);
 
         var ex = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => repo.SetIsAdminAsync(9999, isAdmin: true, expectedVersion: 1));
+            () => repo.SetIsAdminCheckedAsync(9999, isAdmin: true, expectedVersion: 1));
 
         Assert.True(ex.Deleted);
     }
@@ -106,7 +106,7 @@ public class UserIsAdminTests
         var bystander = await db.SeedUserAsync("Bob", "bob");
         var bystanderV0 = await RowVersionAsync(db, bystander);
 
-        await repo.SetIsAdminAsync(target, isAdmin: true, expectedVersion: await RowVersionAsync(db, target));
+        await repo.SetIsAdminCheckedAsync(target, isAdmin: true, expectedVersion: await RowVersionAsync(db, target));
 
         Assert.True((await repo.GetByIdAsync(target))!.IsAdmin);
         Assert.False((await repo.GetByIdAsync(bystander))!.IsAdmin);         // not promoted

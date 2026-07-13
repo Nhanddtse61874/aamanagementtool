@@ -64,7 +64,7 @@ public interface IUserRepository
     /// without deciding who is allowed to grant admin without holding a version.</summary>
     /// <returns>The row_version AFTER the write — the caller's next expectedVersion.</returns>
     /// <exception cref="ConcurrencyConflictException">Version moved on, or the row is gone.</exception>
-    Task<long> SetIsAdminAsync(int userId, bool isAdmin, long expectedVersion);
+    Task<long> SetIsAdminCheckedAsync(int userId, bool isAdmin, long expectedVersion);
 
     /// <summary>Atomically claims the password slot of a user who has none: a single
     /// <c>UPDATE ... WHERE password_hash IS NULL</c>, so the check and the write cannot be split.

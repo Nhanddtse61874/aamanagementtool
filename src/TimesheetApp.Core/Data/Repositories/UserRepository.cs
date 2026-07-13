@@ -179,7 +179,7 @@ public sealed class UserRepository : IUserRepository
     //
     // Checked rather than bump-only because this is a PRIVILEGE change: two admins racing on one user's
     // row must not silently lose one of the two decisions. See IUserRepository for the naming note.
-    public async Task<long> SetIsAdminAsync(int userId, bool isAdmin, long expectedVersion)
+    public async Task<long> SetIsAdminCheckedAsync(int userId, bool isAdmin, long expectedVersion)
     {
         using var c = _factory.Create();
         var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
