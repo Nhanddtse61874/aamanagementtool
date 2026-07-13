@@ -2,14 +2,43 @@
 
 ## Current Position
 
-**Phase:** Step 8 — UAT (M8.5; execute complete, **awaiting the user's two clicks**)
-**Status:** waiting_for_user
+**Phase:** Step 6 — Plan (M8.6; plan written, **Plan Checker in flight**)
+**Status:** in_progress
 **Last updated:** 2026-07-13
 
 ## ▶ RESUME HERE
 
-**Branch:** `feature/m8.5-log-work-actions-2026-07-13`, HEAD `ebfea32`. Cut from `main` (which has all of M8).
+**Branch:** `feature/m8.6-backlog-screen-2026-07-13`, HEAD `a7c86fc`. Base `main` @ `fdd2026` (M8.5 merged).
 **Suite:** **995 green** — 830 .NET (658 Core/WPF + 172 API) + **165 Angular**. 0 warnings. Worktrees pruned; tree clean.
+
+### 🔴 A RUNNING API MAKES THE .NET GATE LIE. This bit us today.
+
+`TimesheetApp.Api` (when running on :5080) **holds `TimesheetApp.Core.dll` open**, so `dotnet build`/`dotnet test` of the API project fails with `MSB3027: the file is locked by TimesheetApp.Api (<pid>)` — **and `dotnet test` STILL EXITS 0 and prints `Passed!`** for whichever assembly did build.
+
+The gate reported **`Passed! … 658 … TimesheetApp.Tests.dll`** while **`TimesheetApp.ApiTests.dll` never appeared at all** — 172 tests silently did not run. Exit code 0. Green text.
+
+**Before any .NET gate: nothing may be listening on 5080. After it: BOTH `Passed!` lines must be present.** The API is currently **stopped** for this reason; `ng serve` on :4200 is still up. Restart the API before the user's final UAT.
+
+### M8.6 — the Backlog screen. Mode A. Plan written (`a7c86fc`), Plan Checker running.
+
+**Spec:** `docs/superpowers/specs/2026-07-13-backlog-screen-design.md` (`a9fb870`)
+**Plan:** `docs/superpowers/plans/2026-07-13-M8.6-backlog-screen.md` (`a7c86fc`)
+
+**Graph:** `T0 ∥ (T1 → T2 → T3 → T4 → T5 → {T6 ∥ T7})`
+
+**Scope B** (user's choice): list + create + edit + assignee + PCA + task sub-editor + audit history. **Tags and templates deferred to their own slice.** No TEAM column (consistent with Log Work).
+
+**The user approved fixing all six WPF bugs** — including the one the XAML comment *denies exists* (DEFAULT is visible AND editable on the Backlog list; its project isn't in the dropdown, so open+save writes `project = ''`).
+
+**The two traps the whole plan is built around, both silent data loss:**
+1. `toUpdateRequest` **must start from the loaded DTO, not the form.** `PUT` replaces the whole record and **six fields are hidden on edit**.
+2. `PUT /api/tasks/{id}` writes `task_name` **AND `order_index` AND `status`** in one checked call. **The editor never shows status.** Build the request from the form → `status = NULL` → every `Todo`/`In-process`/`Done`/`Pending` wiped. The Task List is built on that column.
+
+Trap 2 is also a gift: rename and reorder are **one** write, so the rename-before-reorder ordering hazard **cannot exist**.
+
+**Also confirmed by the user:** a **confirm dialog** before drag-to-trash delete (T0, runs in parallel).
+
+**M8.5 UAT:** drag & drop **confirmed working by the user**. OT-13/OT-14 (the two interaction checks) deferred — the user will do a full pass at the end.
 
 ### M8.5 — COMPLETE. All seven tasks merged.
 
