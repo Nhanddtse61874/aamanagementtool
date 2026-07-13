@@ -35,16 +35,30 @@ public static class BacklogEndpoints
 
         // R6: client teamIds (attacker-controlled) INTERSECTED with ctx.MemberTeamIds; absent defaults to
         // ctx.MemberTeamIds. NEVER passes null to SearchAsync (null there means "every team").
+        //
+        // Returns BacklogListItemDto, NOT BacklogDto: the list needs a TaskCount the editor does not, and
+        // must NOT carry a rowVersion (stale by construction on a list row -- see the DTO).
+        //
+        // The TASKS column's count comes from the already-batched ITaskRepository.GetActiveByBacklogsAsync
+        // -- ONE `IN` query for every backlog on the page. Do not loop this into an N+1.
         api.MapGet("/api/backlogs", async (
             [FromQuery] string? term,
             HttpContext http,
             IClientContext ctx,
-            IBacklogRepository backlogs) =>
+            IBacklogRepository backlogs,
+            ITaskRepository tasks) =>
         {
             var effectiveTeamIds = EffectiveTeamIds(http, ctx);
             var found = await backlogs.SearchAsync(term, effectiveTeamIds);
-            return Results.Ok(found.Select(b => b.ToDto()).ToList());
-        });
+            var byBacklog = await tasks.GetActiveByBacklogsAsync(found.Select(b => b.Id).ToList());
+            return Results.Ok(found.Select(b => new BacklogListItemDto(
+                b.Id, b.BacklogCode, b.Project,
+                byBacklog.TryGetValue(b.Id, out var t) ? t.Count : 0,
+                b.PeriodMonth, b.Type, b.AssigneeUserId)).ToList());
+        })
+            .WithName("BacklogList")
+            .WithTags("Backlogs")
+            .Produces<List<BacklogListItemDto>>();
 
         api.MapGet("/api/backlogs/{id}", async (
             int id, IClientContext ctx, IBacklogRepository backlogs) =>
@@ -72,6 +86,20 @@ public static class BacklogEndpoints
 
             int? teamId = currentTeam.ActiveTeamId > 0 ? currentTeam.ActiveTeamId : null;
 
+            // REFUSE THE ORPHAN. ApiCurrentTeamService.InitializeAsync resolves ActiveTeamId to 0 for a user
+            // in ZERO teams, which lands here as teamId = null -- i.e. team_id = NULL. Such a row is
+            // unreachable the moment it is written: GET /{id} 404s it (the team guard rejects
+            // `TeamId is not { } teamId` for EVERYONE, admins included), GET /api/backlogs never returns it
+            // (`team_id IN (…)` cannot match NULL), and no SignalR fires (`if (teamId is { } tid)` below).
+            // Yet the handler used to answer 200 OK with the full DTO, so the UI rendered the backlog and
+            // then lost it forever on the next refresh. Same end state M8.3 closed structurally on UPDATE --
+            // reached through INSERT instead. Nobody had walked through this door only because no client
+            // could call the route yet; M8.6 wires the button that makes it reachable.
+            if (teamId is null)
+                return Results.BadRequest(new ValidationBody(
+                    "You are not a member of any team, so this backlog would be invisible to everyone. " +
+                    "Ask an admin to add you to a team."));
+
             var toInsert = new Backlog(0, req.BacklogCode.Trim(), req.Project, clock.UtcNow,
                 req.StartDate, req.EndDate, req.PeriodMonth, req.Type, req.AssigneeUserId,
                 req.DeadlineInternal, req.DeadlineExternal, req.RoughEstimateHours, req.OfficialEstimateHours,
@@ -89,7 +117,11 @@ public static class BacklogEndpoints
             if (teamId is { } tid) await notifier.DataChangedAsync(DataKind.Backlogs, tid, ctx.ConnectionId);
 
             return Results.Ok(created!.ToDto());
-        });
+        })
+            .WithName("BacklogCreate")
+            .WithTags("Backlogs")
+            .Produces<BacklogDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
 
         api.MapPut("/api/backlogs/{id}", async (
             int id,
@@ -138,6 +170,23 @@ public static class BacklogEndpoints
             .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
             .Produces<ConflictBody>(StatusCodes.Status409Conflict);
+
+        // The editor's change-history panel. IBacklogRepository.GetAuditAsync has existed since v2 and was
+        // never exposed over HTTP -- without this route the panel renders an empty box forever. Same team
+        // guard as every other single-backlog route, so another team's history is 404 for free.
+        api.MapGet("/api/backlogs/{id:int}/audit", async (
+            int id, IBacklogRepository backlogs, IClientContext ctx) =>
+        {
+            if (await AuthorizedBacklogAsync(id, backlogs, ctx) is null) return Results.NotFound();
+
+            var entries = await backlogs.GetAuditAsync(id);
+            return Results.Ok(entries.Select(e => new BacklogAuditDto(
+                e.Id, e.Field, e.OldValue, e.NewValue, e.ChangedByName, e.ChangedAt, e.Note)).ToList());
+        })
+            .WithName("BacklogAudit")
+            .WithTags("Backlogs")
+            .Produces<List<BacklogAuditDto>>()
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapGet("/api/backlogs/{id}/tags", async (
             int id, IClientContext ctx, IBacklogRepository backlogs) =>
@@ -197,6 +246,12 @@ public static class BacklogEndpoints
 
         // ==== Tasks ======================================================================================
 
+        // The editor's task grid loads through here, and these DTOs are THE ONLY CARRIER of each task's
+        // `status` and `rowVersion`. Without this route the client has no expectedVersion to send to
+        // PUT /api/tasks/{id} below, and no status to echo back -- so a save would 409 on every row, or
+        // (worse, if someone "fixed" that by defaulting the field) write status = NULL over all of them.
+        // `backlogId` is non-nullable, hence REQUIRED: a caller omitting it gets a 400 from the binder,
+        // not a silent listing of every task in the database.
         api.MapGet("/api/tasks", async (
             [FromQuery] int backlogId,
             IClientContext ctx,
@@ -208,7 +263,11 @@ public static class BacklogEndpoints
 
             var found = await tasks.GetActiveByBacklogAsync(backlogId);
             return Results.Ok(found.Select(t => t.ToDto()).ToList());
-        });
+        })
+            .WithName("TaskList")
+            .WithTags("Tasks")
+            .Produces<List<TaskItemDto>>()
+            .Produces(StatusCodes.Status404NotFound);
 
         api.MapGet("/api/tasks/{id}", async (
             int id, IClientContext ctx, IBacklogRepository backlogs, ITaskRepository tasks) =>
@@ -242,6 +301,7 @@ public static class BacklogEndpoints
             .WithName("TaskCreate")
             .WithTags("Tasks")
             .Produces<TaskItemDto>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)   // the handler's empty-TaskName guard
             .Produces(StatusCodes.Status404NotFound);
 
         // Mirrors UpdateCheckedAsync(TaskItem, long): writes task_name + order_index + status together
@@ -275,7 +335,18 @@ public static class BacklogEndpoints
 
             await notifier.DataChangedAsync(DataKind.Tasks, teamId, ctx.ConnectionId);
             return Results.Ok(new SavedBody(newVersion));
-        });
+        })
+            // All four statuses are ones this handler can ACTUALLY produce: 400 from the empty-TaskName
+            // guard, 404 from the team gate, 200 + SavedBody on success, and 409 + ConflictBody from
+            // UpdateCheckedAsync's ConcurrencyConflictException -- which the handler deliberately does NOT
+            // catch, because ExceptionMapper (the outermost middleware) is what turns it into the 409.
+            // Declaring a status a route cannot return is its own kind of lie; none of these four is one.
+            .WithName("TaskUpdate")
+            .WithTags("Tasks")
+            .Produces<SavedBody>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces<ConflictBody>(StatusCodes.Status409Conflict);
 
         // The "sub-row Status dropdown" path (TaskRepository's own naming) -- audited, unlike the combined
         // editor above.

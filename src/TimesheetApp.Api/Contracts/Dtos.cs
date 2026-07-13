@@ -72,6 +72,25 @@ public sealed record BacklogDto(
     int? ProgressPercent, string? Note, int? PcaContactId, int? TeamId,
     long RowVersion);
 
+/// <summary>The LIST shape (<c>GET /api/backlogs</c>). Deliberately NOT <see cref="BacklogDto"/>:
+/// <c>BacklogDto</c> is the EDITOR's shape (what <c>GET /{id}</c> and <c>POST</c> return), and a
+/// <c>TaskCount</c> on it would force every single-backlog read to compute a number nobody uses.
+///
+/// <para><b>No <c>rowVersion</c>, deliberately.</b> The Edit button does a fresh <c>GET /{id}</c>, which
+/// returns the authoritative version. A version carried on a list row is STALE BY CONSTRUCTION — and a
+/// stale version is exactly the thing that gets narrowed with a <c>!</c> and silently overwrites somebody.
+/// This is the one DTO on a versioned entity that must NOT expose the token (see the file header).</para></summary>
+public sealed record BacklogListItemDto(
+    int Id, string BacklogCode, string Project, int TaskCount,
+    string? PeriodMonth, string? Type, int? AssigneeUserId);
+
+/// <summary>Projected from <c>BacklogAuditEntry</c> (<c>Models/Entities.cs</c>). <c>BacklogId</c> is dropped
+/// (it is the path param); <c>ChangedByUserId</c> is dropped (the panel renders the NAME — and the
+/// repository audits by name precisely so a deleted user's history still reads).</summary>
+public sealed record BacklogAuditDto(
+    int Id, string Field, string? OldValue, string? NewValue,
+    string? ChangedByName, DateTimeOffset ChangedAt, string? Note);
+
 public sealed record TaskItemDto(
     int Id, int BacklogId, string TaskName, int OrderIndex, bool IsActive,
     string Status, string? Type, int? AssigneeUserId, long RowVersion);
@@ -87,6 +106,25 @@ public sealed record PcaContactDto(int Id, string Name, bool IsActive, long RowV
 public sealed record StandupIssueDto(
     int Id, int EntryId, string IssueText, string? SolutionText, string Status,
     int OrderIndex, long RowVersion);
+
+// ---- Name-only projections ----------------------------------------------------------------------------
+
+/// <summary>Id + display name, and NOTHING else — deliberately narrower than <see cref="UserDto"/> and
+/// <see cref="PcaContactDto"/>.
+///
+/// <para><b>Why it exists.</b> The backlog editor must render the name of an assignee (or PCA contact) who
+/// has since been DEACTIVATED — otherwise opening such a backlog and saving without touching anything
+/// silently clears the assignee. The ACTIVE lists (<c>GET /api/users</c>, <c>GET /api/pca-contacts</c>) omit
+/// that person by construction, and the full lists (<c>/api/users/all</c>, <c>/api/pca-contacts/all</c>) are
+/// <c>AdminPolicy</c>-gated — an ordinary user reading one gets a 403, the list's forkJoin errors, and the
+/// whole screen dies with it.</para>
+///
+/// <para><b>Why it is safe to leave open to any authenticated caller.</b> It carries no <c>username</c> —
+/// the credential handle the admin gate on <c>/all</c> exists to protect — no <c>isAdmin</c>, and no
+/// <c>rowVersion</c>: there is nothing here to write back, so no version is needed and none is offered.
+/// <b>Do not "just reuse <see cref="UserDto"/>"</b> for these routes: that re-exposes <c>username</c> to
+/// every authenticated caller and quietly undoes the boundary <c>/api/users/all</c> is guarding.</para></summary>
+public sealed record NamedRefDto(int Id, string Name);
 
 // ---- Deliberately UNVERSIONED -------------------------------------------------------------------------
 

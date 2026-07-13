@@ -4,49 +4,91 @@
       <div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></svg></div>
       <div><h1>Backlog</h1><p>Manage backlogs &amp; their tasks</p></div>
     </div>
-    <button class="btn btn-primary" (click)="notify('New backlog created')">+ New backlog</button>
+    <!-- Opens the editor. It used to raise a toast that said "New backlog created" and create no backlog. -->
+    <button class="btn btn-primary" (click)="openCreate()">+ New backlog</button>
   </div>
 
   <div class="search">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
-    <input class="input" style="padding-left:40px;" placeholder="Search code or project..." [ngModel]="search()" (ngModelChange)="search.set($event)" />
+    <input class="input" style="padding-left:40px;" placeholder="Search code or project..." [ngModel]="filters().term" (ngModelChange)="patch('term', $event)" />
   </div>
 
+  <!-- All four option lists come from `rebuildOptions(rows)` — the data that actually loaded. They were
+       hard-coded literals until M8.6/T6, which meant a month nobody had a backlog in was an offered filter
+       that could only ever return nothing, and a month somebody DID have one in was simply missing. -->
   <div class="filters">
     <label>Project
-      <span class="select-wrap"><select class="select" [ngModel]="fProject()" (ngModelChange)="fProject.set($event)">@for (o of projectOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+      <span class="select-wrap"><select class="select" [ngModel]="filters().project" (ngModelChange)="patch('project', $event)">@for (o of options().projects; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
     <label>Type
-      <span class="select-wrap"><select class="select" [ngModel]="fType()" (ngModelChange)="fType.set($event)">@for (o of typeOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+      <span class="select-wrap"><select class="select" [ngModel]="filters().type" (ngModelChange)="patch('type', $event)">@for (o of options().types; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
     <label>Assignee
-      <span class="select-wrap"><select class="select" [ngModel]="fAssignee()" (ngModelChange)="fAssignee.set($event)">@for (o of assigneeOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+      <span class="select-wrap"><select class="select" [ngModel]="filters().assignee" (ngModelChange)="patch('assignee', $event)">@for (o of options().assignees; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
     <label>Month
-      <span class="select-wrap"><select class="select" [ngModel]="fMonth()" (ngModelChange)="fMonth.set($event)">@for (o of monthOpts; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
-    <span class="count">{{ filtered().length }} backlogs</span>
+      <span class="select-wrap"><select class="select" [ngModel]="filters().month" (ngModelChange)="patch('month', $event)">@for (o of options().months; track o) { <option>{{ o }}</option> }</select><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg></span></label>
+    @if (loading()) { <span class="bl-loading">Loading…</span> }
+    <span class="count">{{ visible().length }} backlogs</span>
   </div>
+
+  @if (loadError(); as err) {
+    <div class="bl-error" role="alert">
+      <span>{{ err }}</span>
+      <button class="btn btn-soft btn-sm" (click)="reload()">Retry</button>
+    </div>
+  }
 
   <div class="card table-card">
     <div class="table-scroll"><div class="tbl">
       <div class="tbl__head">
         <div>CODE</div><div>PROJECT</div><div>MONTH</div><div>TYPE</div><div>ASSIGNEE</div><div class="ctr">TASKS</div><div></div>
       </div>
-      @for (b of filtered(); track b.code + b.month) {
+      @for (r of visible(); track r.id) {
         <div class="tbl__row">
-          <div class="code">{{ b.code }}</div>
-          <div class="muted">{{ b.project }}</div>
-          <div class="muted mono">{{ b.month }}</div>
-          <div>@if (b.type) { <span class="badge" [style.background]="typeColor(b.type)?.bg" [style.color]="typeColor(b.type)?.c">{{ b.type }}</span> }</div>
-          <div>@if (b.assignee) { <span class="asg"><span class="avatar" [style.background]="avatar(b.assignee)" style="width:22px;height:22px;font-size:10px;">{{ b.assignee[0] }}</span>{{ b.assignee }}</span> }</div>
-          <div class="ctr"><span class="pill">{{ b.tasks }}</span></div>
-          <div class="right"><button class="btn btn-ghost btn-sm" (click)="notify('Editing ' + b.code)">Edit</button></div>
+          <div class="code">{{ r.code }}</div>
+          <div class="muted">{{ r.project }}</div>
+          <div class="muted mono">{{ r.month ?? '—' }}</div>
+          <div>@if (r.type) { <span class="badge" [style.background]="typeColor(r.type)?.bg" [style.color]="typeColor(r.type)?.c">{{ r.type }}</span> }</div>
+          <div>
+            <!-- A name here may belong to a DEACTIVATED user — `/api/users/names` returns her precisely so her
+                 row does not go blank the day she leaves. `—` means genuinely unassigned. -->
+            @if (r.assigneeName; as name) {
+              <span class="asg"><span class="avatar" [style.background]="avatar(name)" style="width:22px;height:22px;font-size:10px;">{{ name[0] }}</span>{{ name }}</span>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </div>
+          <div class="ctr"><span class="pill">{{ r.taskCount }}</span></div>
+          <!-- Opens the editor ON THIS BACKLOG. It used to raise a toast that said "Editing ARCS-1042" and
+               open nothing at all. -->
+          <div class="right"><button class="btn btn-ghost btn-sm" (click)="openEdit(r)">Edit</button></div>
         </div>
       } @empty {
-        <div class="empty">
-          <div class="empty__icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg></div>
-          <div class="empty__title">No backlogs to show</div>
-          <div class="empty__sub">Connect <code>WorklogService.getBacklogs()</code> or clear your filters.</div>
-          <button class="btn btn-soft btn-sm" (click)="clearFilters()">Clear filters</button>
-        </div>
+        <!-- Not while a load is in flight: an empty `rows` during the first fetch is not an empty LIST, and
+             flashing "No backlogs yet" at someone whose list is still arriving is a lie with a button on it. -->
+        @if (!loading() && !loadError()) {
+          <div class="empty">
+            <div class="empty__icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg></div>
+            <!-- Two DIFFERENT empty states, and they need different words and different buttons: "your filters
+                 exclude everything" is fixed by clearing them; "there is nothing here" is fixed by creating one.
+                 Offering Clear filters to a user with no backlogs at all just wastes their click. -->
+            @if (rows().length) {
+              <div class="empty__title">No backlogs match your filters</div>
+              <div class="empty__sub">Nothing in the list fits the search box and the four dropdowns.</div>
+              <button class="btn btn-soft btn-sm" (click)="clearFilters()">Clear filters</button>
+            } @else {
+              <div class="empty__title">No backlogs yet</div>
+              <div class="empty__sub">Create the first one to start logging work against it.</div>
+              <button class="btn btn-soft btn-sm" (click)="openCreate()">+ New backlog</button>
+            }
+          </div>
+        }
       }
     </div></div>
   </div>
 </section>
+
+<!-- The editor brings its own fixed backdrop, so it hangs at the ROOT rather than inside `.page` — the same
+     place `LogWorkComponent` puts its four dialogs. `e.id` is `null` for a create and a real id for an edit;
+     see the `Editing` interface for why that null cannot be collapsed into `editing` itself. -->
+@if (editing(); as e) {
+  <app-backlog-editor [backlogId]="e.id" (saved)="onSaved()" (cancel)="closeEditor()" />
+}

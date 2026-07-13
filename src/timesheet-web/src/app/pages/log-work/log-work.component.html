@@ -211,6 +211,26 @@
   <app-add-task-dialog (confirm)="onAddTaskConfirmed($event)" (cancel)="addingTo.set(null)" />
 }
 
+<!-- 🔴 THE DROP ONLY ARMS THE DELETE — this is what commits it. Dragging is the easiest gesture in the app to
+     perform by accident, and until now a mis-drop was final: the delete is SOFT, so `setTaskActive(id, true)`
+     would restore the task, but NO SCREEN CALLS THE RESTORE and none is planned. Asking first is far cheaper
+     than building an undo.
+
+     Once, at the ROOT, like the other two dialogs — WHICH row is pending lives in the `pendingDelete` signal,
+     not in the DOM. `[busy]` disables the destructive button (never Cancel) while the write is in flight: the
+     row snaps back and stays on screen until the refresh lands, so the user CAN re-drag it and re-open this
+     dialog over an in-flight delete, and a Delete button that silently did nothing would be the exact trap
+     `confirmDelete`'s guard exists to close. -->
+@if (pendingDelete()) {
+  <app-confirm-dialog
+    [title]="confirmDeleteTitle()"
+    message="Logged hours are kept."
+    confirmLabel="Delete"
+    [busy]="deleting()"
+    (confirm)="confirmDelete()"
+    (cancel)="cancelDelete()" />
+}
+
 @if (sfOpen()) {
   <div class="sf-backdrop" role="presentation" (click)="closeSmartFill()">
     <div class="sf" role="dialog" aria-modal="true" aria-labelledby="sf-title" (click)="$event.stopPropagation()">

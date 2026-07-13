@@ -1,0 +1,46 @@
+// Only the global CSS custom properties (styles.scss), so the dialog follows light/dark automatically rather
+// than hard-coding a palette that would be unreadable in one of the two themes. The same shape as
+// `.cd-backdrop` and `.atd-backdrop`: a flex-centred backdrop WRAPPING the card, with padding so the card
+// never goes edge-to-edge on a narrow viewport. There is no global modal class in this app — each dialog
+// ships its own.
+
+.cfd-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 38%);
+}
+
+.cfd {
+  width: 100%;
+  max-width: 380px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 22%);
+}
+
+.cfd__title {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.cfd__msg {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cfd__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

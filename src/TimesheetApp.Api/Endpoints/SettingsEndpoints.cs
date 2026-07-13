@@ -255,8 +255,34 @@ public static class SettingsEndpoints
     private static void MapPcaContactEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/api/pca-contacts", async (IPcaContactRepository contacts) =>
-            Results.Ok((await contacts.GetActiveAsync()).Select(c => c.ToDto()).ToList()));
+                Results.Ok((await contacts.GetActiveAsync()).Select(c => c.ToDto()).ToList()))
+            .WithName("PcaContactListActive")
+            .WithTags("PcaContacts")
+            .Produces<List<PcaContactDto>>();
 
+        // M8.6. Id + NAME ONLY, for the backlog editor -- which must render the name of a contact that has
+        // since been DEACTIVATED. The active list above omits it by construction, and the editor CANNOT read
+        // /all for it: that route is AdminPolicy-gated, so for an ordinary user it is a 403, the list's
+        // forkJoin errors, and the whole Backlog screen dies with it.
+        //
+        // NO .RequireAuthorization, DELIBERATELY. The `api` MapGroup carries only ClientContextFilter, and
+        // AuthSetup's FallbackPolicy already requires an authenticated cookie on every route that declares no
+        // authorization metadata of its own -- the admin gates in this file are all PER-ROUTE. NamedRefDto
+        // crosses no privacy boundary: no username, no admin flag, no rowVersion (see the DTO).
+        //
+        // No route conflict with PUT /api/pca-contacts/{id:int}: a literal segment outranks a parameter one,
+        // and "names" is not an int besides.
+        api.MapGet("/api/pca-contacts/names", async (IPcaContactRepository contacts) =>
+                Results.Ok((await contacts.GetAllAsync()).Select(c => new NamedRefDto(c.Id, c.Name)).ToList()))
+            .WithName("PcaContactNames")
+            .WithTags("PcaContacts")
+            .Produces<List<NamedRefDto>>();
+
+        // DELIBERATELY NOT TAGGED / NOT ANNOTATED -- and it must stay that way. It is AdminPolicy-gated, and
+        // ng-openapi-gen's includeTags now pulls in "PcaContacts": tag this route and it joins the generated
+        // client as a correctly-typed method that 403s for every non-admin -- worse than no method at all.
+        // OpenApiContractTests pins this. It returns the full PcaContactDto (username-free but version- and
+        // is_active-bearing); the name-only projection above is what the editor gets instead.
         api.MapGet("/api/pca-contacts/all", async (IPcaContactRepository contacts) =>
                 Results.Ok((await contacts.GetAllAsync()).Select(c => c.ToDto()).ToList()))
             .RequireAuthorization(AuthSetup.AdminPolicy);
@@ -303,8 +329,29 @@ public static class SettingsEndpoints
     private static void MapUserEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/api/users", async (IUserRepository users) =>
-            Results.Ok((await users.GetActiveAsync()).Select(u => u.ToDto()).ToList()));
+                Results.Ok((await users.GetActiveAsync()).Select(u => u.ToDto()).ToList()))
+            .WithName("UserListActive")
+            .WithTags("Users")
+            .Produces<List<UserDto>>();
 
+        // M8.6. Id + NAME ONLY -- see /api/pca-contacts/names above for the full reasoning. The case that
+        // forces this route to exist: a backlog whose assignee has since LEFT. Open it, save without touching
+        // anything, and if the client could not resolve that id to a name it would silently clear the
+        // assignee. /api/users/all can name her but is admin-only; /api/users is open but omits her.
+        //
+        // This is the ONE projection of a User that is safe to hand an ordinary caller: no `username` -- the
+        // credential handle the admin gate on /all exists to protect -- no is_admin, no rowVersion.
+        api.MapGet("/api/users/names", async (IUserRepository users) =>
+                Results.Ok((await users.GetAllAsync()).Select(u => new NamedRefDto(u.Id, u.Name)).ToList()))
+            .WithName("UserNames")
+            .WithTags("Users")
+            .Produces<List<NamedRefDto>>();
+
+        // DELIBERATELY NOT TAGGED / NOT ANNOTATED -- and it must stay that way. It is AdminPolicy-gated, and
+        // ng-openapi-gen's includeTags now pulls in "Users": tag this route and it joins the generated client
+        // as a correctly-typed method that 403s for every non-admin -- worse than no method at all. It also
+        // exposes `username`, which the name-only route above exists precisely to avoid. OpenApiContractTests
+        // pins both facts.
         api.MapGet("/api/users/all", async (IUserRepository users) =>
                 Results.Ok((await users.GetAllAsync()).Select(u => u.ToDto()).ToList()))
             .RequireAuthorization(AuthSetup.AdminPolicy);

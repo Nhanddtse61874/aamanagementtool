@@ -2,30 +2,40 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable, of } from 'rxjs';
 import {
-  Backlog, DailyEntry, LogGroup, Metric, MonthlyRow, Tag, TaskCard,
+  DailyEntry, LogGroup, Metric, MonthlyRow, Tag, TaskCard,
   TaskTemplate, TeamMember, TreeNode, User, WeeklyRow, DayColumn,
 } from '../models/worklog.models';
 
 import { ApiConfiguration } from '../api/api-configuration';
 import { ConnectionIdHttpClient } from '../core/realtime.service';
 import {
+  backlogAudit as backlogAuditFn,
+  backlogCreate as backlogCreateFn,
   backlogGet as backlogGetFn,
+  backlogList as backlogListFn,
   backlogUpdate as backlogUpdateFn,
   login as loginFn,
   logout as logoutFn,
   me as meFn,
+  pcaContactListActive as pcaContactListActiveFn,
+  pcaContactNames as pcaContactNamesFn,
   smartFillApply as smartFillApplyFn,
   smartFillValidate as smartFillValidateFn,
   taskCreate as taskCreateFn,
+  taskList as taskListFn,
   taskSetActive as taskSetActiveFn,
   taskSetOrder as taskSetOrderFn,
+  taskUpdate as taskUpdateFn,
   timesheetClearCell as timesheetClearCellFn,
   timesheetSaveCell as timesheetSaveCellFn,
   timesheetWeek as timesheetWeekFn,
+  userListActive as userListActiveFn,
+  userNames as userNamesFn,
 } from '../api/functions';
 import {
-  BacklogDto, BacklogUpdateRequest, LoginResponse, MeResponse, SavedBody, SmartFillTaskRequest, TaskItemDto,
-  TimeLogDto, WeekBacklogGroup,
+  BacklogAuditDto, BacklogCreateRequest, BacklogDto, BacklogListItemDto, BacklogUpdateRequest, LoginResponse,
+  MeResponse, NamedRefDto, PcaContactDto, SavedBody, SmartFillTaskRequest, TaskItemDto, TaskUpdateRequest,
+  TimeLogDto, UserDto, WeekBacklogGroup,
 } from '../api/models';
 
 /**
@@ -41,10 +51,31 @@ import {
  * redirect loop. The dev proxy makes the whole app same-origin; an absolute `http://localhost:5080/...`
  * anywhere in this file silently re-breaks it. Never introduce one.
  *
- * ONLY the methods M8.4 actually runs through are wired: auth, the week grid, Smart Fill, and the cell write.
- * The other five screens (backlog, task list, daily report, reports, settings) keep their view models and
- * their `of(...)` stubs until their own milestone — their routes have no response schema in the OpenAPI
- * document yet (see ng-openapi-gen.json), so there is nothing honest to generate for them.
+ * WIRED, AND REAL:
+ *   - M8.4 — auth, the week grid, Smart Fill, the cell write.
+ *   - M8.6/T5 — the Backlog screen's transport: the backlog list / create / audit, the task list and the
+ *     checked task update, and the four user + PCA lookups.
+ *
+ * 🔴 STILL STUBS (the `of(...)` block at the bottom of the class) — AND THEY ARE NOT DEAD CODE YOU MAY
+ * RETYPE IN PLACE. Each is still CONSUMED by a screen that binds the VENDORED view model, under
+ * `strictTemplates`:
+ *
+ *     getUsers()     -> User[]       users.component.ts       (the Users page is OUT OF SCOPE: no task in
+ *                                                              this milestone owns it)
+ *     getTaskCards() -> TaskCard[]   task-list.component.ts
+ *     getContacts()  -> string[]     settings.component.ts
+ *
+ * The vendored view models DO NOT MATCH the wire DTOs. `User` is `{name, active}` with NO `id` at all where
+ * `UserDto` is `{id?, name?, isActive?, …}`. So changing a stub's return type does not "wire up a screen" —
+ * it BREAKS THE BUILD of a component the current task is not allowed to touch.
+ *
+ * Hence the convention: a real method is ADDED BESIDE its stub under a NEW NAME, and each screen's own task
+ * then swaps its component over and deletes the stub it was using. That is why `getPcaContactsActive()` sits
+ * next to `getContacts()`. Deliberate, not duplication.
+ *
+ * M8.6/T6 is the convention running to completion for the first time: `BacklogComponent` now reads
+ * `getBacklogList()`, so `getBacklogs()` — the `of([])` stub it used to bind — is deleted here, along with the
+ * `Backlog` view model's last consumer.
  */
 @Injectable({ providedIn: 'root' })
 export class WorklogService {
@@ -205,8 +236,28 @@ export class WorklogService {
   }
 
   // =====================================================================================================
-  // TASKS — POST /api/tasks · PUT /api/tasks/{id}/order
+  // TASKS — GET /api/tasks · POST /api/tasks · PUT /api/tasks/{id} · PUT /api/tasks/{id}/order
+  //         PUT /api/tasks/{id}/active
   // =====================================================================================================
+
+  /**
+   * The tasks of ONE backlog. A READ -> the plain `http`.
+   *
+   * 🔴 LOAD-BEARING, and not merely "the editor needs rows to display". This response is the ONLY carrier of
+   * each task's `status` and `rowVersion`, and BOTH are required to write the task back:
+   *
+   *   1. `rowVersion` IS the `expectedVersion` of the checked `updateTask` below. There is nowhere else to
+   *      get it: the WEEK read model carries a version per CELL, never per task row.
+   *   2. `status` must be ROUND-TRIPPED. `PUT /api/tasks/{id}` writes name, order AND status in one call and
+   *      binds `Status = req.Status` with no null-guard — while the backlog editor never SHOWS a status. Build
+   *      the update body from the form alone and `status` lands as null, silently wiping Todo / In-process /
+   *      Done / Pending off every task in the backlog — the column the whole Task List screen is built on.
+   *
+   * `planTaskWrites` (pages/backlog/task-edit.ts) is what consumes this, and it round-trips both.
+   */
+  getTasks(backlogId: number): Observable<TaskItemDto[]> {
+    return taskListFn(this.http, this.rootUrl, { backlogId }).pipe(map(r => r.body));
+  }
 
   /**
    * Append a task to a backlog. A MUTATION, so `mutatingHttp` — see the field's comment. On the plain client
@@ -220,6 +271,23 @@ export class WorklogService {
   addTask(backlogId: number, taskName: string, orderIndex: number): Observable<TaskItemDto> {
     return taskCreateFn(this.mutatingHttp, this.rootUrl, { body: { backlogId, taskName, orderIndex } })
       .pipe(map(r => r.body));
+  }
+
+  /**
+   * Rename / reorder / re-status ONE task in a single CHECKED write: `body.expectedVersion` must be the
+   * `rowVersion` `getTasks` returned for that row, and the server 409s if anyone changed it in between.
+   *
+   * A MUTATION, so `mutatingHttp` — see that field's comment.
+   *
+   * 🔴 The body MUST carry `status`, round-tripped from the loaded task — see `getTasks` above. The generated
+   * `TaskUpdateRequest` types it `status?: string | null`, so OMITTING it compiles perfectly clean and wipes
+   * the column at runtime. TypeScript cannot catch this one. `planTaskWrites` is where it is prevented.
+   *
+   * Because a rename and a reorder ride together in THIS one write, the backlog editor never calls
+   * `setTaskOrder` — so the rename-before-reorder ordering hazard cannot arise on that screen.
+   */
+  updateTask(id: number, body: TaskUpdateRequest): Observable<SavedBody> {
+    return taskUpdateFn(this.mutatingHttp, this.rootUrl, { id, body }).pipe(map(r => r.body));
   }
 
   /**
@@ -298,18 +366,104 @@ export class WorklogService {
   }
 
   // =====================================================================================================
-  // NOT YET ON THE WIRE — the five screens outside M8.4.
+  // THE BACKLOG GRID — GET /api/backlogs · POST /api/backlogs · GET /api/backlogs/{id}/audit
   //
-  // These keep returning empty streams ON PURPOSE. Their routes exist in C# but declare no response schema
-  // in the OpenAPI document (they return `IResult` via `Results.Ok(x)`, which ApiExplorer cannot infer a type
-  // from), so there is nothing honest to generate for them — a generated method would be typed `void` for an
-  // endpoint that in fact returns data. Each screen's own milestone annotates its C# with `.Produces<T>()`,
-  // regenerates, and wires these up. Until then an empty stream is the truthful answer.
+  // (The single-record GET/PUT pair lives in the section directly above. It predates M8.6 and is unchanged.)
   // =====================================================================================================
-  getUsers(): Observable<User[]> { return of([]); }                 // TODO: GET /api/users
-  getBacklogs(): Observable<Backlog[]> { return of([]); }           // TODO: GET /api/backlogs
-  getLogGroups(): Observable<LogGroup[]> { return of([]); }         // TODO: superseded by getWeek() in W4
-  getTaskCards(): Observable<TaskCard[]> { return of([]); }         // TODO: GET /api/tasklist
+
+  /**
+   * Every backlog, as grid rows. A READ -> the plain `http`.
+   *
+   * 🔴 The endpoint ALSO accepts a `?term=` filter (see `BacklogList$Params`), and this method DELIBERATELY
+   * does not expose it. The screen searches CLIENT-side, in `filterRows` (pages/backlog/backlog-list.ts), and
+   * it has to: `rebuildOptions` derives the four dropdowns' contents FROM THE LOADED ROWS. Filter on the
+   * server and every keystroke in the search box would silently delete entries out of the Project / Type /
+   * Assignee / Month dropdowns — the user would watch their own filters vanish as they type. If you ever do
+   * need the server-side filter, it needs its own method and its own row set, not this one.
+   *
+   * Returns EVERY backlog, the hidden `DEFAULT` one included. Excluding it is `buildRows`' job, on the client,
+   * because Log Work needs DEFAULT and this endpoint is shared with it.
+   */
+  getBacklogList(): Observable<BacklogListItemDto[]> {
+    return backlogListFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /**
+   * Create a backlog. A MUTATION, so `mutatingHttp` — see that field's comment.
+   *
+   * The returned `BacklogDto` is not discardable: it carries the new `id` (which the task inserts that follow
+   * a create need as their `backlogId`) and the first `rowVersion` (which the next checked PUT needs as its
+   * `expectedVersion`). `toCreateRequest` (pages/backlog/backlog-form.ts) is what builds the body.
+   */
+  createBacklog(body: BacklogCreateRequest): Observable<BacklogDto> {
+    return backlogCreateFn(this.mutatingHttp, this.rootUrl, { body }).pipe(map(r => r.body));
+  }
+
+  /** One backlog's change history. A READ -> the plain `http`. */
+  getBacklogAudit(id: number): Observable<BacklogAuditDto[]> {
+    return backlogAuditFn(this.http, this.rootUrl, { id }).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // PEOPLE — the two lookup PAIRS behind the editor's Assignee and PCA Contact dropdowns.
+  //
+  // The split inside each pair is not redundancy. It is a permission boundary AND a lifecycle one:
+  //
+  //   - `/api/users` · `/api/pca-contacts`             the ACTIVE rows, in full  -> what you may PICK.
+  //   - `/api/users/names` · `/api/pca-contacts/names`  id+name for EVERYONE,
+  //                                                     DEACTIVATED INCLUDED     -> what you may RENDER.
+  //
+  // A departed assignee must still render her name on the record she is already on; the active list no longer
+  // contains her, so the grid resolves names from `/names` and offers choices from the active list.
+  //
+  // 🔴 `/api/users/all` and `/api/pca-contacts/all` are a TRAP, and they are not in the generated client on
+  // purpose. Both are `.RequireAuthorization(AuthSetup.AdminPolicy)`, so an ordinary user reading one gets a
+  // 403 — which takes the screen's whole forkJoin down with it. A contract test
+  // (`Admin_gated_list_is_NOT_tagged_and_so_never_joins_the_generated_client`) pins them OUT of the client so
+  // they cannot be reached for by accident. `/names` exists precisely because `/all` cannot be used here.
+  //
+  // All four are READS -> the plain `http`.
+  // =====================================================================================================
+
+  /** The ACTIVE users — the Assignee dropdown's options. You do not assign new work to a departed person. */
+  getUsersActive(): Observable<UserDto[]> {
+    return userListActiveFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** id + name for EVERY user, deactivated included — for RENDERING a name the active list no longer has. */
+  getUserNames(): Observable<NamedRefDto[]> {
+    return userNamesFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** The ACTIVE PCA contacts — the PCA Contact dropdown's options. */
+  getPcaContactsActive(): Observable<PcaContactDto[]> {
+    return pcaContactListActiveFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** id + name for EVERY PCA contact, deactivated included — the RENDER half of the pair above. */
+  getPcaContactNames(): Observable<NamedRefDto[]> {
+    return pcaContactNamesFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  // =====================================================================================================
+  // THE VENDORED STUBS — empty streams, ON PURPOSE, and STILL LIVE.
+  //
+  // 🔴 DO NOT RETYPE ONE IN PLACE. Every stub marked "bound by" below is still the data source of a component
+  // that binds the VENDORED view model under `strictTemplates` — changing its return type breaks that
+  // component's build, and those components belong to other tasks (or, for Users, to no task at all). Add a
+  // real method BESIDE the stub under a new name; the screen's own task then swaps its component over and
+  // deletes the stub. See the class comment for the full shape mismatch this rule exists for.
+  //
+  // The reason the REST are still stubs is unchanged: their C# routes return `IResult` via `Results.Ok(x)`,
+  // which ApiExplorer cannot infer a response type from, so the OpenAPI document declares no schema and there
+  // is nothing honest to generate — a generated method would be typed `void` for an endpoint that in fact
+  // returns data. Each screen's milestone annotates its C# with `.Produces<T>()`, regenerates, and wires them
+  // up. That is exactly what M8.4 did for the timesheet routes and M8.6 just did for the backlog, task, user
+  // and PCA routes above.
+  // =====================================================================================================
+  getUsers(): Observable<User[]> { return of([]); }                 // SUPERSEDED by getUsersActive()/getUserNames(); bound by users.component.ts
+  getLogGroups(): Observable<LogGroup[]> { return of([]); }         // SUPERSEDED by getWeek() in W4
+  getTaskCards(): Observable<TaskCard[]> { return of([]); }         // TODO: GET /api/tasklist; bound by task-list.component.ts
   getDailyEntries(date: string): Observable<DailyEntry[]> { return of([]); }   // TODO
   getTeamBoard(date: string): Observable<TeamMember[]> { return of([]); }      // TODO
   getMetrics(): Observable<Metric[]> { return of([]); }             // TODO: GET /api/reports/metrics
@@ -319,7 +473,7 @@ export class WorklogService {
   getDrilldown(): Observable<TreeNode | null> { return of(null); }  // TODO
   getTags(): Observable<Tag[]> { return of([]); }                   // TODO
   getTemplates(): Observable<TaskTemplate[]> { return of([]); }     // TODO
-  getContacts(): Observable<string[]> { return of([]); }            // TODO
+  getContacts(): Observable<string[]> { return of([]); }            // SUPERSEDED by getPcaContactsActive(); bound by settings.component.ts
   getTeams(): Observable<string[]> { return of([]); }               // TODO
   getHolidays(): Observable<string[]> { return of([]); }            // TODO: ISO date strings
 

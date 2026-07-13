@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using TimesheetApp.Api.Contracts;
@@ -184,6 +185,38 @@ public sealed class SettingsEndpointsTests
         Assert.DoesNotContain(activeList!, c => c.Id == contact.Id);
     }
 
+    /// <summary>M8.6. The same contract as the users' name route, for the editor's PCA-contact field:
+    /// readable by an ORDINARY user (<c>/api/pca-contacts/all</c> is AdminPolicy-gated), and still naming a
+    /// DEACTIVATED contact (the active list omits it). Seeded NON-admin ON PURPOSE — see the users' test.
+    ///
+    /// <para>Arranged through the admin routes the test above already proves, rather than hand-rolled SQL
+    /// against a schema this test does not own.</para></summary>
+    [Fact]
+    public async Task Pca_contact_names_is_readable_by_a_NON_admin_and_still_names_a_deactivated_contact()
+    {
+        using var factory = new ApiFactory();
+        await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);      // NOT an admin
+
+        using var admin = await factory.AdminClientAsync();
+        var created = await admin.PostAsJsonAsync("/api/pca-contacts", new SettingsNameRequest("Globex"));
+        var contact = await created.Content.ReadFromJsonAsync<PcaContactDto>();
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await admin.PutAsJsonAsync($"/api/pca-contacts/{contact!.Id}/active",
+                new SettingsSetActiveRequest(false))).StatusCode);
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.GetAsync("/api/pca-contacts/names");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var names = await response.Content.ReadFromJsonAsync<List<NamedRefDto>>();
+        Assert.Contains(names!, c => c.Id == contact.Id && c.Name == "Globex");
+
+        // The route is NECESSARY: the open active list cannot name it.
+        var active = await (await alice.GetAsync("/api/pca-contacts")).Content
+            .ReadFromJsonAsync<List<PcaContactDto>>();
+        Assert.DoesNotContain(active!, c => c.Id == contact.Id);
+    }
+
     // ===== Users =============================================================================================
 
     [Fact]
@@ -219,6 +252,45 @@ public sealed class SettingsEndpointsTests
 
         Assert.Equal(HttpStatusCode.OK, (await alice.GetAsync("/api/users")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await alice.GetAsync("/api/users/all")).StatusCode);
+    }
+
+    /// <summary>M8.6. The backlog editor resolves an assignee's NAME through this route, and that assignee
+    /// may have been DEACTIVATED since the backlog was filed. So the route must do two things the two
+    /// existing lists each fail at: answer an ORDINARY user (<c>/api/users/all</c> is AdminPolicy-gated —
+    /// a client reading THAT to resolve the name gets a 403 and the whole screen dies with it), and still
+    /// contain the deactivated user (whom <c>/api/users</c> omits by construction). Both halves are asserted
+    /// below, including the omission, because that omission is the entire reason this route exists.
+    ///
+    /// <para><b>The seeded user is a NON-admin ON PURPOSE.</b> <c>SeedUserAsync</c> takes an
+    /// <c>isAdmin</c> flag, and seeding an admin here would sail straight through an admin-gated route and
+    /// prove exactly nothing. If this route ever gains a policy, THIS TEST IS THE THING THAT FAILS.</para></summary>
+    [Fact]
+    public async Task User_names_is_readable_by_a_NON_admin_and_still_names_a_deactivated_user()
+    {
+        using var factory = new ApiFactory();
+        await factory.SeedUserAsync("alice", ApiFactory.DefaultPassword);      // NOT an admin
+        var zoeId = await factory.SeedUserAsync("zoe", ApiFactory.DefaultPassword);
+        await factory.SetUserActiveAsync(zoeId, false);                        // the assignee who has left
+
+        using var alice = await factory.ClientAsync("alice");
+        var response = await alice.GetAsync("/api/users/names");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var names = JsonSerializer.Deserialize<List<NamedRefDto>>(
+            json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Contains(names, u => u.Id == zoeId && u.Name == ApiFactory.DisplayNameFor("zoe"));
+
+        // The route is NECESSARY: the open active list cannot name her.
+        var active = await (await alice.GetAsync("/api/users")).Content.ReadFromJsonAsync<List<UserDto>>();
+        Assert.DoesNotContain(active!, u => u.Id == zoeId);
+
+        // `username` is the credential handle the admin gate on /api/users/all exists to protect, and it
+        // must not ride along here. The fixture makes the display name ("Zoe Nguyen") and the login handle
+        // ("zoe") deliberately DIFFERENT, so a leak is visible instead of structurally invisible.
+        Assert.DoesNotContain("username", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"zoe\"", json, StringComparison.Ordinal);
     }
 
     // ===== Templates =========================================================================================

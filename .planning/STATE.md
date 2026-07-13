@@ -2,14 +2,44 @@
 
 ## Current Position
 
-**Phase:** Step 8 — UAT (M8.5; execute complete, **awaiting the user's two clicks**)
-**Status:** waiting_for_user
+**Phase:** Step 7 — Execute (M8.6; **T0 + T1 merged, T2 in flight**, 3 of 8)
+**Status:** in_progress
 **Last updated:** 2026-07-13
 
 ## ▶ RESUME HERE
 
-**Branch:** `feature/m8.5-log-work-actions-2026-07-13`, HEAD `ebfea32`. Cut from `main` (which has all of M8).
-**Suite:** **995 green** — 830 .NET (658 Core/WPF + 172 API) + **165 Angular**. 0 warnings. Worktrees pruned; tree clean.
+**Branch:** `feature/m8.6-backlog-screen-2026-07-13`, HEAD `d973265`. Base `main` @ `fdd2026` (M8.5 merged).
+**Suite:** **1012 green** — 843 .NET (658 Core/WPF + **185** API) + **169** Angular. 0 warnings.
+
+| M8.6 task | | |
+|---|---|---|
+| **T0** · confirm before drag-to-trash delete | ✅ `6bd0ecb` | 165 → **169** Angular (5 rewritten, 4 added) |
+| **T1** · annotate list+create · `BacklogListItemDto`+TaskCount · **new** `GET /{id}/audit` · refuse the teamless create | ✅ `d973265` | 172 → **185** API |
+| **T2** · annotate `GET /api/tasks` + `PUT /api/tasks/{id}` · `POST /api/tasks` 400 · **2 new non-admin `/names` routes** | 🔄 | |
+| T3 regenerate · T4 pure functions · T5 service · T7 editor · T6 list | ⬜ | `T4/T7/T6` were BLOCKED until `EditForm`/`Row` were pinned — now done |
+
+**The API is STOPPED** (it locks `TimesheetApp.Core.dll` — see below). `ng serve` on :4200 is up. **Restart the API before the user's final UAT.**
+
+### M8.6 — the Backlog screen. Mode A. Plan rev. 3 (`05b1a0d`) after TWO Plan Checker BLOCKs.
+
+**Spec:** `docs/superpowers/specs/2026-07-13-backlog-screen-design.md` (`a9fb870`)
+**Plan:** `docs/superpowers/plans/2026-07-13-M8.6-backlog-screen.md` (`a7c86fc`)
+
+**Graph:** `T0 ∥ (T1 → T2 → T3 → T4 → T5 → {T6 ∥ T7})`
+
+**Scope B** (user's choice): list + create + edit + assignee + PCA + task sub-editor + audit history. **Tags and templates deferred to their own slice.** No TEAM column (consistent with Log Work).
+
+**The user approved fixing all six WPF bugs** — including the one the XAML comment *denies exists* (DEFAULT is visible AND editable on the Backlog list; its project isn't in the dropdown, so open+save writes `project = ''`).
+
+**The two traps the whole plan is built around, both silent data loss:**
+1. `toUpdateRequest` **must start from the loaded DTO, not the form.** `PUT` replaces the whole record and **six fields are hidden on edit**.
+2. `PUT /api/tasks/{id}` writes `task_name` **AND `order_index` AND `status`** in one checked call. **The editor never shows status.** Build the request from the form → `status = NULL` → every `Todo`/`In-process`/`Done`/`Pending` wiped. The Task List is built on that column.
+
+Trap 2 is also a gift: rename and reorder are **one** write, so the rename-before-reorder ordering hazard **cannot exist**.
+
+**Also confirmed by the user:** a **confirm dialog** before drag-to-trash delete (T0, runs in parallel).
+
+**M8.5 UAT:** drag & drop **confirmed working by the user**. OT-13/OT-14 (the two interaction checks) deferred — the user will do a full pass at the end.
 
 ### M8.5 — COMPLETE. All seven tasks merged.
 
@@ -106,7 +136,33 @@ Spec: `docs/superpowers/specs/2026-07-13-log-work-task-actions-design.md` (`d97b
 - **A demoted admin keeps admin for up to 30 days** — `RequireClaim("is_admin","1")` reads the *cookie* claim, fixed at login. The four destructive `/api/ops/*` routes additionally check `ctx.IsAdmin` (DB-fresh), so the blast radius is bounded.
 - **`RestoreAsync` is deliberately NOT exposed.** It overwrites the live `.db` in place under open connections — it corrupts live readers. Needs its own design.
 - **Retention runs on a bare `Task.Run`**, not a hosted queue (a queue needs `Program.cs`, which Wave 2 was forbidden). No shutdown awareness.
-- **An unreproduced test flake** (~1 run in 4, a *different* test each time, never reproduces in isolation). `TestDb`'s process-global `ClearAllPools()` was removed — it was a **no-op there** (`Pooling=false`) that still reached into every other pool. `ApiFactory` still calls it, and there the call **is** load-bearing (`Pooling=true`; it releases the file handle). **Hypothesis, not evidence** — nobody has reproduced the flake, so nothing further was changed on a hunch.
+- 🔴 **THE FLAKE IS REPRODUCED AND NAMED** (2026-07-13, M8.6/T1). It was previously logged here as *"unreproduced, ~1 run in 4, a different test each time, never reproduces in isolation."* An agent hit it on a **clean tree, at HEAD, before editing anything**:
+  ```
+  Failed! - Failed: 1, Passed: 171, Total: 172 - TimesheetApp.ApiTests.dll
+    SqliteException: SQLite Error 1: 'no such table: Backlogs'.
+  ```
+  Re-running ApiTests alone → 172/172. Re-running the full solution → green. **There is a pre-existing race in the ApiTests host-startup / migration path.**
+
+  **It is the mirror of the build-lock bug below: that one is a false GREEN; this one is a false RED.**
+
+  **Rule:** a lone `no such table: Backlogs` failure is **not** a regression — **re-run before concluding anything**, and **run the baseline before touching the tree** so a pre-existing flake can be told apart from something you caused. *(The message also appears in fully-green runs as a caught/logged exception, so its mere presence in the log means nothing.)*
+
+  Still open: the root cause. `TestDb`'s process-global `ClearAllPools()` was removed (a **no-op there** — `Pooling=false` — that still reached into every other pool). `ApiFactory` still calls it, and there it **is** load-bearing (`Pooling=true`; it releases the file handle). That remains a hypothesis; the race is now the better lead.
+
+### 🔴 A running API makes the .NET gate LIE — a FALSE GREEN
+
+`TimesheetApp.Api` on :5080 **holds `TimesheetApp.Core.dll` open**, so `dotnet test` fails to *build* the API project (`MSB3027`) — **and still exits 0 and prints `Passed!`** for whichever assembly did build. On 2026-07-13 the gate reported `Passed! … 658 … TimesheetApp.Tests.dll` while **`TimesheetApp.ApiTests.dll` never appeared at all** — 172 tests silently did not run.
+
+**Nothing may listen on 5080 during a gate. After it, BOTH `Passed!` lines must be present. An absent line is a failed gate, not a passed one.**
+
+### 🔴 "Do not edit a test to reconcile a gate" — the rule has an exception, and I got it wrong TWICE in one milestone
+
+The rule exists to stop you deleting a test that caught a real regression. **It does not apply when you deliberately changed the contract the test was pinning.** Both times, the implementing agent proved it rather than arguing:
+
+- **M8.6/T0.** The gate said *"165 + yours, 0 failures."* **Impossible** — the task stops `onTrash` from writing, and **five existing tests assert that it writes.** They had to be **rewritten**, not preserved. 165 → 169.
+- **M8.6/T1.** The gate said *"the 172 is a fixed baseline; movement is a bug."* **Also wrong** — two tests deserialised `GET /api/backlogs` into `List<BacklogDto>`, and after the route began returning `List<BacklogListItemDto>`, **`System.Text.Json` binds record ctor params by NAME and DEFAULTS the missing ones**, so both would have **stayed green while asserting nothing**. The 172 would not have moved — *that was the problem.* Proven: in the red phase the test failed **only** because the agent added a non-zero `TaskCount` assertion. **A bare retype would have stayed green.**
+
+**A test gate that cannot move is a test gate that cannot notice.**
 
 **Two W1 concerns awaiting a decision (neither blocks W2):**
 1. **Greenfield deadlock (latent).** Migration v10 promotes `MIN(id)` to admin — so a database with **zero users has zero admins**. `AdminBootstrap` then no-ops, nobody can log in, and `/api/users` is admin-gated, so the first user cannot be created over HTTP. **Safe today** (M8.3 targets the existing desktop DB, which always has an admin) but **a fresh install cannot bootstrap itself.** Belongs in the deploy runbook.

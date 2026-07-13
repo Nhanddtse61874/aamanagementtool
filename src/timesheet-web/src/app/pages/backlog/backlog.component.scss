@@ -27,6 +27,18 @@
 .pill { display: inline-flex; min-width: 26px; justify-content: center; padding: 2px 8px; border-radius: 7px; background: var(--surf2); font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
 .right { text-align: right; padding-right: 12px !important; }
 
+/* ---- M8.6/T6: real-API states the vendored design never had ----------------------------------------- */
+
+.bl-loading { color: var(--faint); font-size: 12.5px; font-weight: 600; }
+
+.bl-error {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px; padding: 11px 14px;
+  border: 1px solid var(--danger-bd); border-radius: 10px;
+  background: var(--danger-bg); color: var(--danger-c);
+  font-size: 13px; font-weight: 600;
+}
+
 .empty { padding: 56px 20px; text-align: center; }
 .empty__icon { width: 56px; height: 56px; border-radius: 16px; background: var(--surf2); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; color: var(--faint); }
 .empty__title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }

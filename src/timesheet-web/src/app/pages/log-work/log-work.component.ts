@@ -10,6 +10,7 @@ import { EMPTY, Subject, catchError, firstValueFrom, map, merge, switchMap } fro
 
 import { ConflictBody, TimeLogDto, ValidationBody, WeekBacklogGroup } from '../../api/models';
 import { cellKey } from '../../core/cell-key';
+import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
 import { CellConflict, ConflictDialogComponent } from '../../core/conflict-dialog/conflict-dialog.component';
 import { RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
@@ -30,6 +31,16 @@ interface PendingWrite {
   readonly isoDate: string;
   /** `null` = they were trying to CLEAR the cell. */
   readonly hours: number | null;
+}
+
+/**
+ * A task dragged to the bin and waiting on the user's confirmation. `taskName` is carried, not looked up: the
+ * dialog names the task the user actually dropped, and a refresh landing while the dialog is open must not be
+ * able to change WHICH name is on screen under their cursor.
+ */
+interface PendingDelete {
+  readonly taskId: number;
+  readonly taskName: string;
 }
 
 /**
@@ -72,7 +83,10 @@ interface PendingWrite {
   // CDK then falls back to making the WHOLE ROW draggable, so the grid still "works" and the bug is invisible.
   // `log-work.component.spec.ts` asserts `By.directive(CdkDragHandle)` finds it, and that assertion is the only
   // thing standing under it. A green build is not evidence for that one.
-  imports: [CommonModule, FormsModule, ConflictDialogComponent, AddTaskDialogComponent, DragDropModule],
+  imports: [
+    CommonModule, FormsModule, ConflictDialogComponent, ConfirmDialogComponent, AddTaskDialogComponent,
+    DragDropModule,
+  ],
   templateUrl: './log-work.component.html',
   styleUrl: './log-work.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -118,8 +132,26 @@ export class LogWorkComponent {
   readonly reordering = signal(false);
 
   /** True while a soft delete is in flight. The same shape as `reordering`, and for a closely related reason:
-   *  CDK does not remove the row for us, so it SNAPS BACK until the refresh lands — see `onTrash`. */
+   *  CDK does not remove the row for us, so it SNAPS BACK until the refresh lands — see `confirmDelete`. */
   readonly deleting = signal(false);
+
+  /**
+   * The task dropped on the bin and awaiting confirmation, or `null`. A signal plus an `@if` in the template —
+   * the same shape as `conflict` and `addingTo`, because this app has no dialog service and does not need one.
+   *
+   * 🔴 This signal IS the undo. The drop used to delete instantly; the delete is soft, so `setTaskActive(id,
+   * true)` would restore the task — but NO SCREEN CALLS THE RESTORE, and none is planned, so a mis-dropped row
+   * was gone for good as far as any user could tell. Dragging is the easiest gesture in this app to perform by
+   * accident. The cheapest fix is not to build an undo: it is to ask first.
+   */
+  readonly pendingDelete = signal<PendingDelete | null>(null);
+
+  /** The dialog's question. Built here rather than concatenated in the template — the template is not where
+   *  copy belongs, and this way the exact sentence the user reads is assertable. */
+  readonly confirmDeleteTitle = computed(() => {
+    const p = this.pendingDelete();
+    return p ? `Delete task “${p.taskName}”?` : '';
+  });
 
   /**
    * The trash's `[cdkDropListData]`. It holds no rows, and never will — but it is a TYPED empty array on a
@@ -711,10 +743,10 @@ export class LogWorkComponent {
     this.refresh.next();
   }
 
-  // ---- drag to trash (a SOFT delete) ---------------------------------------------------------------
+  // ---- drag to trash (a CONFIRMED soft delete) -----------------------------------------------------
 
   /**
-   * A row was dropped on the trash. Soft-delete it, then re-read the week.
+   * A row was dropped on the trash. ARM the delete and ask — `confirmDelete` is what actually writes.
    *
    * 🔴 **The trash is reached by STRING ID, not by a template ref**, and the whole feature is silently dead if
    * that is got wrong. Each group carries `[cdkDropListConnectedTo]="['trash']"`; CDK resolves that string
@@ -729,24 +761,52 @@ export class LogWorkComponent {
    * `dropped` fires ONLY on the DESTINATION list, so this handler sees only drags that ARRIVED at the trash —
    * and the guard below is the assertion of that, not a branch that does real work.
    */
-  async onTrash(event: CdkDragDrop<readonly TaskRow[], readonly TaskRow[], TaskRow>): Promise<void> {
+  onTrash(event: CdkDragDrop<readonly TaskRow[], readonly TaskRow[], TaskRow>): void {
     if (event.previousContainer === event.container) return;   // dropped on itself — not a delete
+
+    // `[cdkDragData]` on the row is the ONLY place this value comes from. Without it `data` is `undefined` and
+    // `row.taskId` throws — and only at the moment a user first tries to delete something.
+    const row = event.item.data;
+
+    // 🔴 ARMS the delete. It does NOT write, and there is no `deleting` guard here — the guard belongs on the
+    // WRITE, and re-opening a dialog is harmless where re-firing a PUT is not. Only the two fields the dialog
+    // needs are kept: `pendingDelete` is a snapshot of the row the user actually dropped, so a refresh landing
+    // while the dialog is open cannot re-point it at a different task.
+    this.pendingDelete.set({ taskId: row.taskId, taskName: row.taskName });
+  }
+
+  /** They changed their mind. Nothing was ever written, so there is nothing to undo. */
+  cancelDelete(): void {
+    this.pendingDelete.set(null);
+  }
+
+  /**
+   * They confirmed. THIS is the write — the only one on this path.
+   *
+   * The dialog closes FIRST: the decision is made, and leaving it up over an in-flight PUT would just be a
+   * modal the user has to watch. (`onAddTaskConfirmed` clears `addingTo` the same way, for the same reason.)
+   */
+  async confirmDelete(): Promise<void> {
+    const pending = this.pendingDelete();
+    if (!pending) return;
 
     // 🔴 Re-entrancy, and — as with `moving` and `reordering` — the reason is that CDK does NOT remove the row
     // for us. We never call `transferArrayItem`; the re-fetch is what makes the row disappear. So between the
-    // drop and the refresh landing, THE ROW SNAPS BACK to where it was. On a slow link that reads as "it
+    // confirm and the refresh landing, THE ROW SNAPS BACK to where it was. On a slow link that reads as "it
     // didn't work", which is exactly when a user drags it to the bin again — and a second delete of the same
     // task would fire a second write and a second re-fetch for nothing.
+    //
+    // 🔴 The guard is checked BEFORE the dialog is cleared, deliberately. Clearing first would close the dialog
+    // on a confirm that was then silently refused — the user would see the dialog vanish and the row stay, and
+    // conclude the delete worked. The dialog's own `[busy]="deleting()"` disables the button so this is not
+    // normally reachable from the UI at all; this is the second of the two guards, as with `canMoveMonth`.
     if (this.deleting()) return;
 
-    // `[cdkDragData]` on the row (Task 6) is the ONLY place this value comes from. Without it `data` is
-    // `undefined` and `row.taskId` throws — and only at the moment a user first tries to delete something.
-    const row = event.item.data;
-
+    this.pendingDelete.set(null);
     this.deleting.set(true);
     try {
-      await firstValueFrom(this.api.setTaskActive(row.taskId, false));   // SOFT — `is_active = 0`, nothing lost
-      this.refresh.next();                                               // the row leaves the grid
+      await firstValueFrom(this.api.setTaskActive(pending.taskId, false));  // SOFT — `is_active = 0`, nothing lost
+      this.refresh.next();                                                  // the row leaves the grid
     } catch (err: unknown) {
       this.onTrashError(err);
     } finally {
@@ -755,12 +815,12 @@ export class LogWorkComponent {
   }
 
   /**
-   * 🔴 Why `onTrash` has a `catch` at all, and why it must never re-throw.
+   * 🔴 Why `confirmDelete` has a `catch` at all, and why it must never re-throw.
    *
-   * `onTrash` is an `async` method bound to `(cdkDropListDropped)`, so anything escaping it is an UNHANDLED
-   * PROMISE REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would drag a row to the bin, watch it
-   * snap back, be told nothing, and drag it again. (`onAddTaskError`, `onMoveError` and `onReorderError` all
-   * exist for this identical reason.)
+   * `confirmDelete` is an `async` method bound to the dialog's `(confirm)` output, so anything escaping it is
+   * an UNHANDLED PROMISE REJECTION — console-only, and NOWHERE THE USER CAN SEE. They would confirm the delete,
+   * watch the dialog close and the row stay exactly where it was, be told nothing, and try again.
+   * (`onAddTaskError`, `onMoveError` and `onReorderError` all exist for this identical reason.)
    *
    * 🔴 Deliberately NOT `onMoveError`'s three-way switch. `PUT /api/tasks/{id}/active` declares exactly two
    * outcomes — `204 NoContent` and `404 NotFound`. It is bump-only (no version -> no 409) and its body is a

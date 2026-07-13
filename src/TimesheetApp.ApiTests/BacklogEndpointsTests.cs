@@ -68,24 +68,119 @@ public sealed class BacklogEndpointsTests
         Assert.Equal(before, CountBacklogs());
     }
 
+    /// <summary>The ORPHAN INSERT. <c>ApiCurrentTeamService.InitializeAsync</c> resolves <c>ActiveTeamId</c>
+    /// to the persisted team if it is still a membership, else the first available, ELSE 0 — so a caller in
+    /// ZERO teams reaches <c>POST</c> with <c>ActiveTeamId == 0</c>, which the handler maps to
+    /// <c>teamId = null</c>, i.e. <c>team_id = NULL</c>.
+    ///
+    /// <para>Such a row is unreachable the instant it is written: <c>GET /{id}</c> 404s it (the team guard
+    /// rejects <c>TeamId is not { } teamId</c> for EVERYONE, admins included), <c>GET /api/backlogs</c> never
+    /// returns it (<c>team_id IN (…)</c> cannot match NULL), and no SignalR fires. Before M8.6 the handler
+    /// nonetheless answered <c>200 OK</c> with the full DTO: the UI would render the backlog, then lose it
+    /// forever on the next refresh. This is the same end state M8.3 closed structurally on <c>UPDATE</c>,
+    /// reached instead through <c>INSERT</c>.</para>
+    ///
+    /// <para><b>A 400 that still wrote the row is exactly the failure this test exists to catch</b> — hence
+    /// the before/after count, not just the status code.</para></summary>
+    [Fact]
+    public async Task Creating_a_backlog_with_no_team_is_refused()
+    {
+        using var factory = new ApiFactory();
+
+        // Seeded WITHOUT SeedTeamAsync: a user in zero teams. (The fixture's own contract: "A user who is a
+        // member of NO team has an empty MemberTeamIds and an ActiveTeamId of 0".)
+        await factory.SeedUserAsync("carol", ApiFactory.DefaultPassword);
+        var client = await factory.ClientAsync("carol");
+
+        // Assert the PREMISE, don't assume it. TeamBootstrapService joins "every user" to the bootstrap team
+        // -- but it runs once at host startup, when carol did not yet exist. If that ever changes, this test
+        // would otherwise fail mysteriously on the status code below instead of naming the real cause.
+        var me = await client.GetFromJsonAsync<MeResponse>("/api/me");
+        Assert.Empty(me!.MemberTeamIds);
+        Assert.Equal(0, me.ActiveTeamId);
+
+        // The database is bootstrap-seeded with a hidden DEFAULT backlog, so a pristine Backlogs table is
+        // never empty — compare before/after rather than asserting zero.
+        long CountBacklogs()
+        {
+            using var db = factory.OpenDb();
+            return db.ExecuteScalar<long>("SELECT COUNT(*) FROM Backlogs;");
+        }
+        var before = CountBacklogs();
+
+        var response = await client.PostAsJsonAsync("/api/backlogs", MinimalCreate("ORPHAN-1"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(before, CountBacklogs());
+
+        // And specifically: no teamless row was left behind.
+        using var verifyDb = factory.OpenDb();
+        Assert.Equal(0, await verifyDb.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM Backlogs WHERE team_id IS NULL;"));
+    }
+
+    /// <summary>The LIST endpoint returns <see cref="BacklogListItemDto"/>, NOT <c>BacklogDto</c>.
+    ///
+    /// <para><b>The type argument here is load-bearing, and its being wrong is SILENT.</b> This test read
+    /// <c>List&lt;BacklogDto&gt;</c> until M8.6. System.Text.Json binds record constructor parameters BY NAME
+    /// and DEFAULTS the ones it cannot find — so it deserialises the list shape into the editor shape without
+    /// complaint, quietly filling <c>createdAt</c>/<c>rowVersion</c>/<c>teamId</c> with <c>default</c>. The
+    /// test stays green while asserting nothing about the shape actually on the wire. The
+    /// <c>TaskCount</c> assertion below is what makes the retype enforceable: it is NON-ZERO, so it cannot
+    /// be satisfied by a defaulted field.</para></summary>
     [Fact]
     public async Task Search_filters_by_term()
     {
         using var factory = new ApiFactory();
         var (client, _, teamId) = await ArrangeAsync(factory);
-        await factory.SeedBacklogAsync(teamId, "ALPHA-1");
+        var alphaId = await factory.SeedBacklogAsync(teamId, "ALPHA-1");
         await factory.SeedBacklogAsync(teamId, "BETA-1");
+        await factory.SeedTaskAsync(alphaId, "Some work");
 
         var response = await client.GetAsync("/api/backlogs?term=ALPHA");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var results = await response.Content.ReadFromJsonAsync<List<BacklogDto>>();
+        var results = await response.Content.ReadFromJsonAsync<List<BacklogListItemDto>>();
         Assert.Single(results!);
         Assert.Equal("ALPHA-1", results![0].BacklogCode);
+        Assert.Equal(1, results[0].TaskCount);
+    }
+
+    /// <summary>The TASKS column. Counts ACTIVE tasks only, per backlog — a soft-deleted task must drop out,
+    /// and a backlog with no tasks at all must report 0 rather than blowing up on a dictionary miss.</summary>
+    [Fact]
+    public async Task Backlog_list_carries_the_active_task_count()
+    {
+        using var factory = new ApiFactory();
+        var (client, _, teamId) = await ArrangeAsync(factory);
+        var backlogId = await factory.SeedBacklogAsync(teamId, "COUNT-1");
+        await factory.SeedTaskAsync(backlogId, "One");
+        await factory.SeedTaskAsync(backlogId, "Two");
+        var doomedTaskId = await factory.SeedTaskAsync(backlogId, "Three");
+
+        // A second backlog with NO tasks: proves the count is grouped PER BACKLOG (not one number applied to
+        // every row) and that the dictionary MISS maps to 0.
+        await factory.SeedBacklogAsync(teamId, "COUNT-2");
+
+        var deactivate = await client.PutAsJsonAsync(
+            $"/api/tasks/{doomedTaskId}/active", new TaskActiveRequest(false));
+        Assert.Equal(HttpStatusCode.NoContent, deactivate.StatusCode);
+
+        var response = await client.GetAsync("/api/backlogs?term=COUNT-");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var results = await response.Content.ReadFromJsonAsync<List<BacklogListItemDto>>();
+        Assert.Equal(2, results!.Single(b => b.BacklogCode == "COUNT-1").TaskCount);
+        Assert.Equal(0, results.Single(b => b.BacklogCode == "COUNT-2").TaskCount);
     }
 
     /// <summary>R6 (rule #5): a team id the caller is not a member of, on the query string, must never
-    /// leak that team's rows — empty, not 404 (this is a list endpoint, not a single resource).</summary>
+    /// leak that team's rows — empty, not 404 (this is a list endpoint, not a single resource).
+    ///
+    /// <para>Retyped to <see cref="BacklogListItemDto"/> in M8.6 for the reason on
+    /// <see cref="Search_filters_by_term"/>. There is no <c>TaskCount</c> to assert here — the list being
+    /// EMPTY is the whole subject of the test. It does, however, now exercise the batched task lookup with
+    /// an EMPTY id list, which is the one input that would throw on a naive <c>IN ()</c>.</para></summary>
     [Fact]
     public async Task A_team_id_the_caller_is_not_a_member_of_on_the_query_string_returns_empty_never_rows()
     {
@@ -99,7 +194,7 @@ public sealed class BacklogEndpointsTests
         var response = await client.GetAsync($"/api/backlogs?teamIds={otherTeamId}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var results = await response.Content.ReadFromJsonAsync<List<BacklogDto>>();
+        var results = await response.Content.ReadFromJsonAsync<List<BacklogListItemDto>>();
         Assert.Empty(results!);
     }
 
@@ -267,6 +362,52 @@ public sealed class BacklogEndpointsTests
         var stale = await client.PutAsJsonAsync(
             $"/api/backlogs/{backlogId}/tags", new BacklogTagsRequest(Array.Empty<int>(), current.RowVersion));
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+    }
+
+    /// <summary>The editor's change-history panel. <c>IBacklogRepository.GetAuditAsync</c> has existed since
+    /// v2 but was never exposed over HTTP, so the panel had nothing to read and would have rendered an empty
+    /// box forever.
+    ///
+    /// <para>Asserts the DISPLAY name ("Alice Nguyen"), not the login username ("alice") — the audit column
+    /// is <c>changed_by_name</c> and the repository audits by NAME precisely so a deleted user's history
+    /// still reads. The fixture makes the two strings genuinely different, so this distinguishes them.</para></summary>
+    [Fact]
+    public async Task Backlog_audit_returns_the_change_history()
+    {
+        using var factory = new ApiFactory();
+        var (client, _, teamId) = await ArrangeAsync(factory, "alice");
+        var backlogId = await factory.SeedBacklogAsync(teamId, "REQ-400");
+        var current = await GetBacklogAsync(client, backlogId);
+
+        var update = await client.PutAsJsonAsync(
+            $"/api/backlogs/{backlogId}", ToUpdateRequest(current, note: "audited note"));
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        var response = await client.GetAsync($"/api/backlogs/{backlogId}/audit");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var entries = await response.Content.ReadFromJsonAsync<List<BacklogAuditDto>>();
+        var noteChange = Assert.Single(entries!, e => e.Field == "note");
+        Assert.Equal(ApiFactory.DisplayNameFor("alice"), noteChange.ChangedByName);
+        // Pins the OldValue/NewValue ORDER: a swapped projection is otherwise invisible.
+        Assert.Equal("audited note", noteChange.NewValue);
+    }
+
+    /// <summary>The audit route carries the same team guard as every other single-backlog route, so another
+    /// team's history is 404 — not 403, and certainly not readable.</summary>
+    [Fact]
+    public async Task Backlog_audit_for_another_teams_backlog_is_404()
+    {
+        using var factory = new ApiFactory();
+        var (client, _, _) = await ArrangeAsync(factory, "alice");
+
+        var outsiderId = await factory.SeedUserAsync("bob", ApiFactory.DefaultPassword);
+        var otherTeamId = await factory.SeedTeamAsync("Team B", outsiderId);
+        var otherBacklogId = await factory.SeedBacklogAsync(otherTeamId, "SECRET-6");
+
+        var response = await client.GetAsync($"/api/backlogs/{otherBacklogId}/audit");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     /// <summary>Rule #1: "continue to next month" MUST go through <c>IBacklogContinuationService</c> — it
