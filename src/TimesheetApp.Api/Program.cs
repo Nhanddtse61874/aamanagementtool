@@ -163,11 +163,38 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     await scope.ServiceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
-    await scope.ServiceProvider.GetRequiredService<ITeamBootstrapService>().EnsureBootstrappedAsync();
 
-    await AdminBootstrap.EnsureAdminPasswordAsync(
+    var teamBootstrap = scope.ServiceProvider.GetRequiredService<ITeamBootstrapService>();
+    await teamBootstrap.EnsureBootstrappedAsync();
+
+    var seededFirstAdmin = await AdminBootstrap.EnsureAdminPasswordAsync(
         scope.ServiceProvider.GetRequiredService<IUserRepository>(),
-        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("AdminBootstrap"));
+        scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("AdminBootstrap"),
+        scope.ServiceProvider.GetRequiredService<IConfiguration>());
+
+    if (seededFirstAdmin)
+    {
+        // ORDERING HAZARD, AND THE REASON THIS SECOND CALL EXISTS.
+        //
+        // EnsureBootstrappedAsync above ran while Users was still EMPTY, so the two sweeps inside its
+        // backfill that exist to give users a team --
+        //     INSERT OR IGNORE INTO UserTeams(user_id, team_id) SELECT id, @t FROM Users;
+        //     UPDATE Users SET active_team_id = @t WHERE active_team_id = 0;
+        // -- both matched ZERO ROWS. The admin AdminBootstrap has just seeded therefore belongs to NO
+        // team and has active_team_id = 0 (the column default).
+        //
+        // That is not cosmetic. A user in zero teams can log in and then do nothing: ActiveTeamId
+        // resolves to 0, so POST /api/backlogs REFUSES them outright ("You are not a member of any
+        // team"), GET /api/backlogs matches nothing, and the Task List is empty. They would have been
+        // handed the keys to an empty room.
+        //
+        // Re-running it now that the admin exists costs one no-op pass over already-migrated rows --
+        // the backfill is idempotent BY DESIGN (INSERT OR IGNORE, WHERE team_id IS NULL,
+        // WHERE active_team_id = 0), which is the same property that lets it self-heal an interrupted
+        // migration on every startup. It takes the `existing is not null` branch, so it does NOT create
+        // a second team and does NOT take a backup.
+        await teamBootstrap.EnsureBootstrappedAsync();
+    }
 }
 
 // OUTERMOST: it must wrap every endpoint, including anything a later wave adds.

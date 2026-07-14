@@ -55,6 +55,13 @@ public sealed class SignalRTestFactory : WebApplicationFactory<Program>
         builder.UseSetting("TimesheetApp:ConfigPath", ConfigPath);
         builder.UseSetting("TimesheetApp:DbPath", DbPath);
         builder.UseSetting("TimesheetApp:KeyRingPath", KeyRingPath);
+        // Off for the same reason ApiFactory turns it off (see the long note there) -- and this factory
+        // demonstrated the sharp end of it: A_global_change_reaches_every_connected_client_except_the_caller
+        // seeds a user called "admin", AdminBootstrap seeds ANOTHER user called "admin" into the same empty
+        // database, and because Users.username carries no UNIQUE index BOTH rows exist happily. Login then
+        // dies in GetCredentialsAsync's QuerySingleOrDefaultAsync with "Sequence contains more than one
+        // element" -- not a 401, a 500. Two rows with one username is not a duplicate, it is a lockout.
+        builder.UseSetting("TimesheetApp:SeedFirstAdmin", "false");
         builder.UseEnvironment("Testing");
 
         builder.ConfigureLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
