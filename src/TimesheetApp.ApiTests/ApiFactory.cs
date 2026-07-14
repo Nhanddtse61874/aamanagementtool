@@ -36,6 +36,36 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>The username <see cref="AdminClientAsync"/> seeds and logs in as.</summary>
     public const string AdminUserName = "admin";
 
+    // =================================================================================================
+    // WHY THE PRODUCTION FIRST-ADMIN SEED IS OFF BY DEFAULT HERE.
+    //
+    // AdminBootstrap seeds "admin"/"admin" into any database that has ZERO users -- which is the state
+    // EVERY host in this suite starts from. Left on, it would:
+    //
+    //   1. COLLIDE WITH AdminClientAsync. AdminUserName is "admin" and AdminBootstrap.DefaultUsername is
+    //      ALSO "admin" -- the same string. AdminClientAsync's `if (exists == 0) SeedUserAsync(...)` would
+    //      find the bootstrap's row, skip its own seed, and then log in with DefaultPassword ("Pa55w0rd!")
+    //      against a row whose password is "admin". 401. Measured, not predicted: 36 tests failed exactly
+    //      this way.
+    //   2. Put a user nobody asked for into every other test's database. Two more tests failed on
+    //      `QuerySingleOrDefault` finding a second user ("Sequence contains more than one element").
+    //
+    // These ~489 tests are written against a database containing exactly what the test seeds and nothing
+    // else, and that premise is worth keeping -- an invisible extra user is the kind of thing that makes a
+    // future assertion pass for the wrong reason. So the seed is OFF here and ON in production, and the
+    // tests that exist to prove the production path turn it back ON explicitly, via `SeedFirstAdmin = true`.
+    // AdminBootstrapSeedTests is that file.
+    // =================================================================================================
+
+    /// <summary>Leave the production first-admin seed ON for this host (<c>TimesheetApp:SeedFirstAdmin</c>).
+    /// Off by default — see the note above. Turn it on to exercise what a fresh clone actually does.</summary>
+    public bool SeedFirstAdmin { get; init; }
+
+    /// <summary><c>TimesheetApp:BootstrapAdminUsername</c> / <c>:BootstrapAdminPassword</c> — the deployment
+    /// overrides for the seeded account. Null leaves them unset, so AdminBootstrap uses its own defaults.</summary>
+    public string? BootstrapAdminUsername { get; init; }
+    public string? BootstrapAdminPassword { get; init; }
+
     private readonly bool _ownsRoot;
 
     public string Root { get; }
@@ -74,6 +104,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("TimesheetApp:ConfigPath", ConfigPath);
         builder.UseSetting("TimesheetApp:DbPath", DbPath);
         builder.UseSetting("TimesheetApp:KeyRingPath", KeyRingPath);
+        builder.UseSetting("TimesheetApp:SeedFirstAdmin", SeedFirstAdmin ? "true" : "false");
+        if (BootstrapAdminUsername is not null)
+            builder.UseSetting("TimesheetApp:BootstrapAdminUsername", BootstrapAdminUsername);
+        if (BootstrapAdminPassword is not null)
+            builder.UseSetting("TimesheetApp:BootstrapAdminPassword", BootstrapAdminPassword);
         builder.UseEnvironment("Testing");
 
         // The host logs every request at Information by default, which buries the assertion that failed.
