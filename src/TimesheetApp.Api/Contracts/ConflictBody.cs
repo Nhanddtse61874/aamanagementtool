@@ -1,7 +1,10 @@
 namespace TimesheetApp.Api.Contracts;
 
-/// <summary>The 409 body. Produced ONLY by <see cref="Infrastructure.ExceptionMapper"/>, from a
-/// <c>ConcurrencyConflictException</c> — endpoints let it throw and never catch it.
+/// <summary>The 409 body. Produced ONLY by <see cref="Infrastructure.ExceptionMapper"/> — endpoints let the
+/// exception throw and never catch it. Two producers: a <c>ConcurrencyConflictException</c> (a version
+/// conflict, the fields below are shaped for it) and, from v11, a <c>DuplicateUsernameException</c> (a
+/// duplicate username, which carries no row identity — <see cref="Id"/> 0, <see cref="Deleted"/> false, and
+/// <see cref="Message"/> does the talking).
 ///
 /// <para><b><see cref="Detail"/> is not garnish.</b> <c>TimeLogs</c> is keyed by the natural
 /// <c>(user_id, task_id, work_date)</c> triple rather than an id, so its <see cref="Id"/> is <b>0</b>.

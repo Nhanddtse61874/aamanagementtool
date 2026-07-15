@@ -14,6 +14,10 @@ namespace TimesheetApp.Api.Infrastructure;
 /// the endpoint returns 200 on a rejected write.</description></item>
 /// <item><term>Version conflict</term><description><c>ConcurrencyConflictException</c> — thrown. Mapped
 /// here to 409 + <see cref="ConflictBody"/>.</description></item>
+/// <item><term>Duplicate username</term><description><c>DuplicateUsernameException</c> (v11) — thrown by the
+/// <c>/api/users</c> pre-check and, as the real backstop, by <c>UserRepository</c> when the
+/// <c>ux_users_username</c> UNIQUE index fires. Mapped here to 409 + <see cref="ConflictBody"/>, so a
+/// duplicate is never the raw <c>SqliteException</c> 500 it used to be.</description></item>
 /// </list>
 ///
 /// <para><b>Third channel, not in the original design and worth naming:</b> <c>IStandupService</c> throws
@@ -48,6 +52,17 @@ public sealed class ExceptionMapper
 
             await WriteAsync(context, StatusCodes.Status409Conflict,
                 new ConflictBody(ex.Table, ex.Id, ex.Deleted, ex.Detail, ex.Message));
+        }
+        catch (DuplicateUsernameException ex)
+        {
+            _logger.LogInformation("Rejected duplicate username '{Username}'.", ex.Username);
+
+            // A duplicate username is a conflict with the current state (409), like the version conflict
+            // above. Id 0 / Deleted false: no single row identifies the clash, and the row exists -- Message
+            // carries the meaning. This is the DB-constraint backstop (v11); the /api/users endpoints also
+            // pre-check and throw this themselves for a friendlier message on the common path.
+            await WriteAsync(context, StatusCodes.Status409Conflict,
+                new ConflictBody("Users", 0, false, null, ex.Message));
         }
         catch (ArgumentException ex)
         {

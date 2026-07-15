@@ -12,7 +12,7 @@ namespace TimesheetApp.Data;
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
     // Bump SchemaVersion and append a step to Migrations[] for any future additive change.
-    private const long SchemaVersion = 10;
+    private const long SchemaVersion = 11;
 
     private readonly IConnectionFactory _factory;
 
@@ -336,6 +336,24 @@ CREATE TABLE IF NOT EXISTS RequestAudit (
                   -- so MIN(id) is NULL and this matches no row -- correct, there is nobody to promote.
                   UPDATE Users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM Users);",
                 transaction: t),
+            // v11 -> UNIQUE, case-INsensitive username. Users.username never had an index: it was born as
+            // windows_username TEXT in the v1 DDL and merely RENAMED by v10 (see that step). With no unique
+            // constraint, two rows could share a username, and GetCredentialsAsync/GetByUsernameAsync -- both
+            // QuerySingleOrDefaultAsync over `WHERE username = @u` -- THROW on the second row: a 500 on login
+            // that locks BOTH users out.
+            //
+            // NOCASE is deliberately STRICTER than the binary `WHERE username = @u` the login lookup uses, so
+            // that lookup can PROVABLY never match two rows -> the 500 is gone by construction. It also stops
+            // the real footgun of creating `Nhan` and later `nhan` as two different accounts.
+            //
+            // `WHERE username IS NOT NULL` keeps the many NULL usernames legal (a freshly-migrated v10 user
+            // has none). SQLite already treats NULLs as distinct in a UNIQUE index, so the predicate changes
+            // no behaviour -- it states the intent unmistakably. IF NOT EXISTS: this initializer runs on
+            // every startup, so the step must be idempotent.
+            static (c, t) => c.Execute(
+                @"CREATE UNIQUE INDEX IF NOT EXISTS ux_users_username
+                    ON Users(username COLLATE NOCASE)
+                    WHERE username IS NOT NULL;", transaction: t),
         };
 
         var current = conn.ExecuteScalar<long>("PRAGMA user_version;", transaction: tx);
