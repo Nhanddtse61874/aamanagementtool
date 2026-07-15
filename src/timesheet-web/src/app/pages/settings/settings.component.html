@@ -40,10 +40,21 @@
         <div class="card card--pad">
           <div class="s-title">Appearance</div>
           <div class="s-desc">Switch between light and dark theme, and pick an accent. Only you see this.</div>
-          <label class="toggle-row">
-            <span class="switch" [class.on]="theme.dark()" (click)="theme.toggleDark()"><span class="knob"></span></span>
+          <!--
+            🔴 UAT round-1: this was a <label> wrapping a manual-click <span class="switch">. It is now an
+            ISOLATED, explicitly-clicked control — a real <button role="switch"> — with the caption as separate,
+            non-interactive text. Only the button toggles the theme; a click on the caption, the gap or the row
+            can never flip it. (A <label> forwards activation only to a labelable form control, never to a
+            <span>, so the old markup did not in fact forward — but a real button makes the whole class of
+            "a stray click toggled dark mode" structurally impossible.)
+          -->
+          <div class="toggle-row">
+            <button type="button" class="switch" role="switch" [class.on]="theme.dark()"
+                    [attr.aria-checked]="theme.dark()" aria-label="Dark mode" (click)="theme.toggleDark()">
+              <span class="knob"></span>
+            </button>
             <span class="s-strong">Dark mode</span>
-          </label>
+          </div>
           <div class="accent-row">
             <span class="s-strong">Accent</span>
             @for (c of theme.accentOptions; track c) {
