@@ -7,6 +7,7 @@ import {
   UserDto,
 } from '../../api/models';
 import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
+import { ThemeService } from '../../services/theme.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
 import { SettingsComponent } from './settings.component';
@@ -154,6 +155,52 @@ describe('SettingsComponent', () => {
   it('KEEPS dark mode and the accent picker — they are per-user, not cross-user', () => {
     expect(text()).toContain('Dark mode');
     expect(fixture.debugElement.queryAll(By.css('.swatch')).length).toBeGreaterThan(0);
+  });
+
+  // ══ the dark toggle misfire (UAT round-1) ═════════════════════════════════════════════════════════
+  //
+  // 🔴 UAT: "clicking around in Settings auto-toggles dark mode without touching the dark switch." The fix
+  // makes the dark toggle an ISOLATED control (a real <button role="switch">), so ONLY the switch flips it —
+  // clicking the caption text or the row can never toggle the theme.
+
+  /** The regression: clicking the "Dark mode" CAPTION (not the switch) must never flip the theme. */
+  it('clicking the "Dark mode" caption does NOT toggle the theme — only the switch control does', () => {
+    const theme = TestBed.inject(ThemeService);
+    const toggle = spyOn(theme, 'toggleDark').and.callThrough();
+
+    const caption = fixture.debugElement.queryAll(By.css('.toggle-row .s-strong'))
+      .find(d => ((d.nativeElement as HTMLElement).textContent ?? '').trim() === 'Dark mode');
+    expect(caption).withContext('the Dark mode caption should render').toBeTruthy();
+
+    (caption!.nativeElement as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  /** The switch itself is the one control that DOES flip it — the fix must not break that. */
+  it('clicking the dark switch itself toggles the theme exactly once', () => {
+    const theme = TestBed.inject(ThemeService);
+    const toggle = spyOn(theme, 'toggleDark');   // no callThrough: do not mutate real theme state
+
+    const sw = fixture.debugElement.query(By.css('.toggle-row .switch'));
+    expect(sw).withContext('the switch should render').toBeTruthy();
+
+    (sw.nativeElement as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+
+  /** The structural guarantee that makes the misfire impossible: an isolated button, not a <label>-span. */
+  it('renders the dark toggle as an isolated <button role="switch">, never a <label>-wrapped span', () => {
+    const sw = fixture.debugElement.query(By.css('.toggle-row .switch')).nativeElement as HTMLElement;
+    expect(sw.tagName).toBe('BUTTON');
+    expect(sw.getAttribute('role')).toBe('switch');
+
+    // The row is no longer a <label> — a <label> is the element that forwards a stray click onto a control.
+    const row = fixture.debugElement.query(By.css('.toggle-row')).nativeElement as HTMLElement;
+    expect(row.tagName).not.toBe('LABEL');
   });
 
   // ══ the warning window (SET-02) ═══════════════════════════════════════════════════════════════════

@@ -48,6 +48,17 @@ if (string.IsNullOrWhiteSpace(keyRingPath))
 
 builder.Services.AddSingleton(appConfig);
 
+// --- Startup diagnostics: log WHICH database and config the process actually opened -------------------
+// A second machine that "cannot log in" almost always means the API opened a DIFFERENT database than
+// expected (there is no appsettings.json here, so the path comes from JsonAppConfig defaults, invisibly).
+// Nothing else prints the resolved path, so make it loud. Console.WriteLine, not ILogger: the logging
+// pipeline is not built yet at this point (app = builder.Build() is below), and this must print regardless
+// of how logging is later configured.
+Console.WriteLine("======================================================================");
+Console.WriteLine($"  Database : {appConfig.DbPath}");
+Console.WriteLine($"  Config   : {(string.IsNullOrWhiteSpace(configPath) ? "(defaults)" : configPath)}");
+Console.WriteLine("======================================================================");
+
 // =====================================================================================================
 // SqliteProfile.Server — EXPLICIT, because the constructor's default is Desktop.
 //
@@ -209,6 +220,15 @@ app.UseMiddleware<ExceptionMapper>();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// Serve the built Angular app (if present) from wwwroot. A no-op in dev (no wwwroot) — `ng serve` still
+// proxies to the API as before. In a deployed build, deploy-local.bat copies the Angular output into
+// wwwroot so the API serves the UI and /api on ONE origin (no proxy, so the SameSite=Lax cookie is
+// same-origin and survives). These sit BEFORE UseAuthentication ON PURPOSE: the app shell, its JS/CSS and
+// the login page must load without a cookie. As MIDDLEWARE placed ahead of the authorization middleware,
+// static files are not subject to the FallbackPolicy, so they serve anonymously without AllowAnonymous.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -251,6 +271,15 @@ api.MapAdminEndpoints();      // M9 P3c/P3d/P3e — admin flag, settings store, 
 // caller's teams itself (see DataHub.cs). [Authorize] on the hub requires the connection be
 // authenticated the same way every other route under FallbackPolicy does.
 app.MapHub<DataHub>("/hubs/data");
+
+// SPA fallback: any non-API, non-file path serves index.html so Angular's client-side router handles it.
+// MapFallbackToFile is the LOWEST-priority endpoint, so it never shadows a mapped route — /api/*, /hubs/*,
+// /health and swagger all match first (asserted in SpaFallbackTests). AllowAnonymous is REQUIRED, not
+// cosmetic: FallbackPolicy = DefaultPolicy = RequireAuthenticatedUser, so without it a logged-out user
+// requesting a client route (or index.html itself) would get 401 and could never reach the login page —
+// AuthSetup.cs says exactly this ("the SPA fallback and static files MUST be explicitly [AllowAnonymous]").
+// A no-op when wwwroot is absent (dev / test): the file is not found and the request 404s, /api/* untouched.
+app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();
 

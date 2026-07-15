@@ -26,6 +26,9 @@ dist/
 *.tsbuildinfo
 npm-debug.log*
 
+## Built Angular UI copied into the API for single-process local deploy (deploy-local.bat). Build output — never commit.
+src/TimesheetApp.Api/wwwroot/
+
 ## OS
 .DS_Store
 Thumbs.db
