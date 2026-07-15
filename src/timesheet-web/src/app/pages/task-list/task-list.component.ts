@@ -4,15 +4,17 @@ import {
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 
-import { NamedRefDto, TagDto, TaskItemDto, TaskListRowDto, TaskListScreenDto, UserDto } from '../../api/models';
+import {
+  NamedRefDto, PcaContactDto, TagDto, TaskItemDto, TaskListRowDto, TaskListScreenDto, UserDto,
+} from '../../api/models';
 import { TagPickerComponent } from '../../components/tag-picker/tag-picker.component';
 import { TeamFilterComponent } from '../../components/team-filter/team-filter.component';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService, requireRowVersion } from '../../services/worklog.service';
 import {
-  ALL_MONTHS, Band, Chip, STATUSES, TYPES,
-  buildChips, groupRows, hoursText, isDone, messageOf, nextPeriod, parseProgress, progressText,
-  tagIdsOf, toTaskExtended, toUpdateRequest,
+  ALL_MONTHS, Band, Chip, PickOption, STATUSES, TYPES,
+  buildChips, groupRows, hoursText, isDone, messageOf, nextPeriod, parseProgress, pickOptions, progressText,
+  tagIdsOf, toPickOptions, toTaskExtended, toUpdateRequest,
 } from './task-list.model';
 
 /** Which entity's tag picker is open. Only ever one at a time. */
@@ -99,6 +101,8 @@ export class TaskListComponent {
   readonly tags = signal<readonly TagDto[]>([]);
   private readonly users = signal<readonly UserDto[]>([]);
   private readonly userNames = signal<readonly NamedRefDto[]>([]);
+  private readonly pcaContacts = signal<readonly PcaContactDto[]>([]);
+  private readonly pcaContactNames = signal<readonly NamedRefDto[]>([]);
 
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -131,6 +135,21 @@ export class TaskListComponent {
   /** The assignee dropdown's options: the ACTIVE users. You do not assign new work to a departed person. */
   readonly assignees = computed(() => this.users());
 
+  /** The active PCT (assignee) / PCA options, mapped once; the per-row `*OptionsFor` below add a deactivated
+   *  current value so a `<select>` seeded to a departed person is not a blank box (and round-trips). */
+  private readonly assigneeBase = computed<PickOption[]>(() => toPickOptions(this.users()));
+  private readonly pcaBase = computed<PickOption[]>(() => toPickOptions(this.pcaContacts()));
+
+  /** The PCT (assignee) dropdown options for one backlog row — active users, plus its deactivated current. */
+  assigneeOptionsFor(row: TaskListRowDto): PickOption[] {
+    return pickOptions(this.assigneeBase(), this.userNames(), row.assigneeUserId);
+  }
+
+  /** The PCA-contact dropdown options for one backlog row — active contacts, plus its deactivated current. */
+  pcaOptionsFor(row: TaskListRowDto): PickOption[] {
+    return pickOptions(this.pcaBase(), this.pcaContactNames(), row.pcaContactId);
+  }
+
   constructor() {
     void this.loadLookups();
     void this.load();
@@ -144,22 +163,27 @@ export class TaskListComponent {
    * The catalogue reads, once. `getTagList()` feeds every `<app-tag-picker [tags]>` on the screen — the
    * picker takes it as an INPUT precisely so that N rows do not fire N `/api/tags` calls.
    *
-   * `getUserNames()` is the RENDER half of the pair: a task assigned to a since-deactivated user must still
-   * show her name, and `getUsersActive()` no longer contains her.
+   * The `*Names()` reads are the RENDER halves of their pairs: a backlog assigned to a since-deactivated user
+   * (or PCA contact) must still show her name, and `getUsersActive()` / `getPcaContactsActive()` no longer
+   * contain her. See `pickOptions`.
    *
-   * Both are open reads. A failure here degrades the pickers, not the screen, so it does not touch
+   * All are open reads. A failure here degrades the pickers, not the screen, so it does not touch
    * `error()` — the grid is still perfectly usable without a tag catalogue.
    */
   private async loadLookups(): Promise<void> {
     try {
-      const [tags, users, names] = await Promise.all([
+      const [tags, users, names, pcaContacts, pcaNames] = await Promise.all([
         firstValueFrom(this.api.getTagList()),
         firstValueFrom(this.api.getUsersActive()),
         firstValueFrom(this.api.getUserNames()),
+        firstValueFrom(this.api.getPcaContactsActive()),
+        firstValueFrom(this.api.getPcaContactNames()),
       ]);
       this.tags.set(tags);
       this.users.set(users);
       this.userNames.set(names);
+      this.pcaContacts.set(pcaContacts);
+      this.pcaContactNames.set(pcaNames);
     } catch {
       this.toast.show('Tags and people could not be loaded. Editing them is unavailable.');
     }
@@ -464,6 +488,54 @@ export class TaskListComponent {
       await firstValueFrom(
         this.api.updateBacklog(pending.backlogId, toUpdateRequest(dto, patch, note === '' ? null : note)));
     }, 'The deadline could not be saved.');
+  }
+
+  // =====================================================================================================
+  // BACKLOG TYPE / PCT (assignee) / PCA CONTACT — the inline dropdowns this fix restores.
+  //
+  // 🔴 EACH IS THE SAME GET-mutate-PUT the progress/date edits use, AND THAT IS THE WHOLE POINT (R7).
+  // `PUT /api/backlogs/{id}` REPLACES the whole 15-column record, and `TaskListRowDto` is a SPARSE display
+  // projection — it has no startDate/endDate/note/rowVersion/… So the body MUST be built from a FRESH
+  // `getBacklog(id)` (the full DTO, with the version), with `toUpdateRequest` round-tripping every field
+  // except the one changed. Build it from `row` instead and you write NULL over startDate/note/deadlines/etc.
+  //
+  // 🔴 NO reason note — only a DEADLINE change needs one (`confirmDeadline`). Type/PCT/PCA pass none.
+  // =====================================================================================================
+
+  onBacklogType(row: TaskListRowDto, event: Event): void {
+    const id = row.backlogId;
+    const raw = (event.target as HTMLSelectElement).value;
+    const type = raw === '' ? null : raw;
+    if (id === undefined || type === (row.type ?? null)) return;      // unchanged — nothing to write
+
+    void this.mutate(async () => {
+      const dto = await firstValueFrom(this.api.getBacklog(id));
+      await firstValueFrom(this.api.updateBacklog(id, toUpdateRequest(dto, { type })));
+    }, 'The type could not be saved.');
+  }
+
+  onBacklogAssignee(row: TaskListRowDto, event: Event): void {
+    const id = row.backlogId;
+    const raw = (event.target as HTMLSelectElement).value;
+    const assigneeUserId = raw === '' ? null : Number(raw);
+    if (id === undefined || assigneeUserId === (row.assigneeUserId ?? null)) return;
+
+    void this.mutate(async () => {
+      const dto = await firstValueFrom(this.api.getBacklog(id));
+      await firstValueFrom(this.api.updateBacklog(id, toUpdateRequest(dto, { assigneeUserId })));
+    }, 'The assignee could not be saved.');
+  }
+
+  onBacklogPca(row: TaskListRowDto, event: Event): void {
+    const id = row.backlogId;
+    const raw = (event.target as HTMLSelectElement).value;
+    const pcaContactId = raw === '' ? null : Number(raw);
+    if (id === undefined || pcaContactId === (row.pcaContactId ?? null)) return;
+
+    void this.mutate(async () => {
+      const dto = await firstValueFrom(this.api.getBacklog(id));
+      await firstValueFrom(this.api.updateBacklog(id, toUpdateRequest(dto, { pcaContactId })));
+    }, 'The PCA contact could not be saved.');
   }
 
   // =====================================================================================================

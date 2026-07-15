@@ -326,8 +326,8 @@ public sealed class TaskListServiceTests : IAsyncLifetime
         Assert.Null(rows["EST-3"].EstimateHours);         // neither → null, not 0
     }
 
-    [Fact] // PCT / PCA names resolve, and tags come back ordered by tag id (Q4).
-    public async Task Names_and_tags_resolve_on_the_row()
+    [Fact] // PCT / PCA names AND ids resolve, and tags come back ordered by tag id (Q4).
+    public async Task Names_ids_and_tags_resolve_on_the_row()
     {
         var team = await SeedTeamAsync();
         var userId = await _db.SeedUserAsync("Ada", "ada");
@@ -342,8 +342,26 @@ public sealed class TaskListServiceTests : IAsyncLifetime
 
         Assert.Equal("Ada", row.PctAssigneeName);
         Assert.Equal("Grace", row.PcaContactName);
+        // 🔴 The ids SEED the inline PCT/PCA dropdowns — the name alone leaves a <select> with nothing to
+        //    preselect. Projected straight off the Backlog entity the service already read.
+        Assert.Equal(userId, row.AssigneeUserId);
+        Assert.Equal(pcaId, row.PcaContactId);
         // Ordered by Tag.Id (tagB was inserted first, so it has the lower id) — not by text.
         Assert.Equal(new[] { tagB, tagA }, row.Tags.Select(t => t.Id).ToArray());
+    }
+
+    [Fact] // No assignee / PCA on the backlog → the ids are NULL (not 0) so the dropdown shows "—".
+    public async Task Assignee_and_pca_ids_are_null_when_the_backlog_has_none()
+    {
+        var team = await SeedTeamAsync();
+        await SeedBacklogAsync("NOIDS-1", teamId: team);   // no assignee, no PCA
+
+        var row = Assert.Single((await LoadAsync(Today)).Rows);
+
+        Assert.Null(row.AssigneeUserId);
+        Assert.Null(row.PcaContactId);
+        Assert.Null(row.PctAssigneeName);
+        Assert.Null(row.PcaContactName);
     }
 
     // The snapshot guarantee, and the reason Rows + Gantt are ONE record rather than two calls: a bar's

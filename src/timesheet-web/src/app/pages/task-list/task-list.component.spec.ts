@@ -3,7 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 
 import {
-  BacklogDto, MeResponse, SavedBody, TagDto, TaskItemDto, TaskListRowDto, TaskListScreenDto, TeamDto, UserDto,
+  BacklogDto, MeResponse, PcaContactDto, SavedBody, TagDto, TaskItemDto, TaskListRowDto, TaskListScreenDto,
+  TeamDto, UserDto,
 } from '../../api/models';
 import { DataChange, RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
@@ -21,6 +22,7 @@ import { TaskListComponent } from './task-list.component';
 const ME: MeResponse = { id: 1, name: 'Nhan', isAdmin: false, activeTeamId: 2, memberTeamIds: [1, 2] };
 const TEAMS: TeamDto[] = [{ id: 1, name: 'Alpha', isActive: true }, { id: 2, name: 'Beta', isActive: true }];
 const USERS: UserDto[] = [{ id: 42, name: 'An', isActive: true }, { id: 43, name: 'Binh', isActive: true }];
+const PCA: PcaContactDto[] = [{ id: 9, name: 'Kim', isActive: true }, { id: 10, name: 'Lan', isActive: true }];
 const TAGS: TagDto[] = [{ id: 1, text: 'blocked', color: '#C0362C', icon: '🚧' }];
 
 /** 🔴 The loaded backlog: every field distinct, so a dropped one cannot hide behind a default. */
@@ -40,7 +42,7 @@ const TASK: TaskItemDto = {
 
 const ROW: TaskListRowDto = {
   backlogId: 100, backlogCode: 'ARCS-101', project: 'ARCS', type: 'Implement',
-  pctAssigneeName: 'An', pcaContactName: 'Kim',
+  pctAssigneeName: 'An', pcaContactName: 'Kim', assigneeUserId: 42, pcaContactId: 9,
   deadlineInternal: '2026-07-20', deadlineExternal: '2026-07-25',
   startDate: '2026-07-01', endDate: '2026-07-31',
   progressPercent: 30, loggedHours: 8, estimateHours: 20,
@@ -69,6 +71,7 @@ describe('TaskListComponent', () => {
   function arrange(): void {
     api = jasmine.createSpyObj<WorklogService>('WorklogService', [
       'me', 'getTeamsActive', 'getTagList', 'getUsersActive', 'getUserNames',
+      'getPcaContactsActive', 'getPcaContactNames',
       'getTaskListScreen', 'getBacklog', 'updateBacklog', 'setBacklogTags',
       'getTaskTags', 'setTaskTags', 'setTaskStatus', 'setTaskExtended',
       'continueBacklog', 'exportTaskListMarkdown',
@@ -78,7 +81,9 @@ describe('TaskListComponent', () => {
     api.getTeamsActive.and.returnValue(of(TEAMS));
     api.getTagList.and.returnValue(of(TAGS));
     api.getUsersActive.and.returnValue(of(USERS));
-    api.getUserNames.and.returnValue(of([{ id: 42, name: 'An' }, { id: 43, name: 'Binh' }]));
+    api.getUserNames.and.returnValue(of([{ id: 42, name: 'An' }, { id: 43, name: 'Binh' }, { id: 77, name: 'Departed' }]));
+    api.getPcaContactsActive.and.returnValue(of(PCA));
+    api.getPcaContactNames.and.returnValue(of([{ id: 9, name: 'Kim' }, { id: 10, name: 'Lan' }, { id: 88, name: 'Gone' }]));
     api.getTaskListScreen.and.returnValue(of(SCREEN));
     api.getBacklog.and.returnValue(of(BACKLOG));
     api.updateBacklog.and.returnValue(of(SAVED));
@@ -430,6 +435,80 @@ describe('TaskListComponent', () => {
     const body = api.setTaskExtended.calls.mostRecent().args[1];
     expect(body.assigneeUserId).toBe(42);
     expect(body.type).toBe('IT');                          // 🔴 the mirror-image bug
+  });
+
+  // ===================================================================================================
+  // 🔴 BACKLOG TYPE / PCT (assignee) / PCA — the inline dropdowns this fix restores. R7 all the way down.
+  // ===================================================================================================
+
+  it('🔴 a TYPE change LOADS THE BACKLOG FIRST and round-trips startDate + note (the row has NEITHER)', async () => {
+    await setUp();
+
+    component.onBacklogType(ROW, selectEvent('Investigate'));
+    await settle();
+
+    // The GET is the only source of the untouched fields AND the rowVersion — the sparse row has neither.
+    expect(api.getBacklog).toHaveBeenCalledWith(100);
+    const [id, body] = api.updateBacklog.calls.mostRecent().args;
+    expect(id).toBe(100);
+    expect(body.type).toBe('Investigate');                 // the edit
+    expect(body.startDate).toBe('2026-07-01');             // 🔴 survives — copied from the DTO, not the row
+    expect(body.note).toBe('keep me');                     // 🔴 survives
+    expect(body.expectedVersion).toBe(5);
+    expect(body.auditNote).toBeNull();                     // Type carries no reason note; only deadlines do
+  });
+
+  it('a PCT (assignee) change round-trips the record, overriding only assigneeUserId', async () => {
+    await setUp();
+
+    component.onBacklogAssignee(ROW, selectEvent('43'));
+    await settle();
+
+    const body = api.updateBacklog.calls.mostRecent().args[1];
+    expect(body.assigneeUserId).toBe(43);
+    expect(body.pcaContactId).toBe(9);                     // 🔴 the OTHER id survives
+    expect(body.startDate).toBe('2026-07-01');
+  });
+
+  it('a PCA change round-trips the record, overriding only pcaContactId', async () => {
+    await setUp();
+
+    component.onBacklogPca(ROW, selectEvent('10'));
+    await settle();
+
+    const body = api.updateBacklog.calls.mostRecent().args[1];
+    expect(body.pcaContactId).toBe(10);
+    expect(body.assigneeUserId).toBe(42);                  // untouched
+    expect(body.note).toBe('keep me');
+  });
+
+  it('clearing the PCT assignee ("—") sends null', async () => {
+    await setUp();
+
+    component.onBacklogAssignee(ROW, selectEvent(''));
+    await settle();
+
+    expect(api.updateBacklog.calls.mostRecent().args[1].assigneeUserId).toBeNull();
+  });
+
+  it('an UNCHANGED type writes nothing', async () => {
+    await setUp();
+
+    component.onBacklogType(ROW, selectEvent('Implement'));   // ROW.type is already 'Implement'
+    await settle();
+
+    expect(api.updateBacklog).not.toHaveBeenCalled();
+  });
+
+  it('🔴 a DEACTIVATED assignee / PCA is still OFFERED as "(inactive)" — not a blank box', async () => {
+    await setUp();
+
+    // 77 ('Departed') and 88 ('Gone') are in the /names lists but NOT in the active lists.
+    const assignee = component.assigneeOptionsFor({ ...ROW, assigneeUserId: 77 });
+    expect(assignee.some(o => o.id === 77 && o.label === 'Departed (inactive)')).toBe(true);
+
+    const pca = component.pcaOptionsFor({ ...ROW, pcaContactId: 88 });
+    expect(pca.some(o => o.id === 88 && o.label === 'Gone (inactive)')).toBe(true);
   });
 
   function selectEvent(value: string): Event {

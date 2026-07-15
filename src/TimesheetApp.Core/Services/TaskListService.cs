@@ -116,6 +116,7 @@ public sealed class TaskListService : ITaskListService
 
             rows.Add(new TaskListRow(
                 b.Id, b.BacklogCode, b.Project, b.Type, pctName, pcaName,
+                b.AssigneeUserId, b.PcaContactId,
                 b.DeadlineInternal, b.DeadlineExternal, b.StartDate, b.EndDate,
                 b.ProgressPercent, logged, estimate, state, tags, tasks));
 

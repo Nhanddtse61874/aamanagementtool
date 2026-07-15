@@ -178,6 +178,36 @@ public sealed class TaskListEndpointsTests
         Assert.True(task.GetProperty("rowVersion").GetInt64() > 0);
     }
 
+    /// <summary>The inline PCT/PCA dropdowns cannot preselect an option from a display NAME — they need the
+    /// id. This pins that <c>assigneeUserId</c> and <c>pcaContactId</c> actually reach the wire (the read-model
+    /// change this whole fix turns on), alongside the names that render the cell.</summary>
+    [Fact]
+    public async Task A_task_list_row_carries_the_assignee_and_pca_ids_for_the_inline_dropdowns()
+    {
+        using var factory = new ApiFactory();
+        var (client, userId, teamId) = await ArrangeAsync(factory);
+        var backlogId = await factory.SeedBacklogAsync(teamId, "REQ-IDS");
+        await SetPeriodAsync(factory, backlogId, "2026-07");
+
+        int pcaId;
+        using (var db = factory.OpenDb())
+        {
+            pcaId = await db.ExecuteScalarAsync<int>(
+                "INSERT INTO PcaContacts(name, is_active) VALUES('Grace', 1); SELECT last_insert_rowid();");
+            await db.ExecuteAsync(
+                "UPDATE Backlogs SET assignee_user_id = @u, pca_contact_id = @p WHERE id = @id;",
+                new { u = userId, p = pcaId, id = backlogId });
+        }
+
+        var response = await client.GetAsync("/api/tasklist?year=2026&month=7");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var screen = await response.Content.ReadFromJsonAsync<TaskListScreenDto>();
+        var row = Assert.Single(screen!.Rows);
+        Assert.Equal(userId, row.AssigneeUserId);
+        Assert.Equal(pcaId, row.PcaContactId);
+    }
+
     // ==== GET /api/tasklist/export ===========================================================================
 
     [Fact]

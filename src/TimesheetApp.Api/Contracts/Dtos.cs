@@ -137,10 +137,15 @@ public sealed record NamedRefDto(int Id, string Name);
 ///
 /// <para><c>ScheduleState</c> passes through as the Core enum: it is a pure value with no entity behind it,
 /// exactly like the <c>WeeklyDayTotal</c> / <c>TeamNode</c> read-models the Reports responses already put on
-/// the wire.</para></summary>
+/// the wire.</para>
+///
+/// <para><c>AssigneeUserId</c> / <c>PcaContactId</c> ride alongside <c>PctAssigneeName</c> /
+/// <c>PcaContactName</c>: the names render the cell, the ids SEED the inline Type/PCT/PCA <c>&lt;select&gt;</c>s
+/// (a dropdown bound to a name has no option to preselect). They are copied straight from the read-model.</para></summary>
 public sealed record TaskListRowDto(
     int BacklogId, string BacklogCode, string Project, string? Type,
     string? PctAssigneeName, string? PcaContactName,
+    int? AssigneeUserId, int? PcaContactId,
     DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate, DateOnly? EndDate,
     int? ProgressPercent, decimal LoggedHours, decimal? EstimateHours,
     ScheduleState ScheduleState, IReadOnlyList<TagDto> Tags, IReadOnlyList<TaskItemDto> Tasks);
@@ -242,6 +247,7 @@ public static class DtoMappings
     /// shape; everything else is copied across unchanged.</summary>
     public static TaskListRowDto ToDto(this TaskListRow r) =>
         new(r.BacklogId, r.BacklogCode, r.Project, r.Type, r.PctAssigneeName, r.PcaContactName,
+            r.AssigneeUserId, r.PcaContactId,
             r.DeadlineInternal, r.DeadlineExternal, r.StartDate, r.EndDate,
             r.ProgressPercent, r.LoggedHours, r.EstimateHours, r.ScheduleState,
             r.Tags.Select(t => t.ToDto()).ToList(),

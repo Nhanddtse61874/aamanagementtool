@@ -135,7 +135,11 @@
 
             <span class="tl-cell">
               <span class="tl-cell__lbl">PCT</span>
-              <span class="tl-cell__val">{{ row.pctAssigneeName ?? '—' }}</span>
+              <select class="tl-sel" [value]="row.assigneeUserId ?? ''" [disabled]="saving()"
+                      (change)="onBacklogAssignee(row, $event)" aria-label="PCT assignee">
+                <option value="">—</option>
+                @for (o of assigneeOptionsFor(row); track o.id) { <option [value]="o.id">{{ o.label }}</option> }
+              </select>
             </span>
 
             <span class="tl-cell">
@@ -206,8 +210,22 @@
           @if (isExpanded(row)) {
             <div class="tl-detail">
               <div class="tl-facts">
-                <span class="tl-fact"><span class="tl-cell__lbl">Type</span>{{ row.type ?? '—' }}</span>
-                <span class="tl-fact"><span class="tl-cell__lbl">PCA</span>{{ row.pcaContactName ?? '—' }}</span>
+                <span class="tl-fact">
+                  <span class="tl-cell__lbl">Type</span>
+                  <select class="tl-sel" [value]="row.type ?? ''" [disabled]="saving()"
+                          (change)="onBacklogType(row, $event)" aria-label="Type">
+                    <option value="">—</option>
+                    @for (t of TYPES; track t) { <option [value]="t">{{ t }}</option> }
+                  </select>
+                </span>
+                <span class="tl-fact">
+                  <span class="tl-cell__lbl">PCA</span>
+                  <select class="tl-sel" [value]="row.pcaContactId ?? ''" [disabled]="saving()"
+                          (change)="onBacklogPca(row, $event)" aria-label="PCA contact">
+                    <option value="">—</option>
+                    @for (o of pcaOptionsFor(row); track o.id) { <option [value]="o.id">{{ o.label }}</option> }
+                  </select>
+                </span>
                 <span class="tl-fact">
                   <span class="tl-cell__lbl">Start</span>
                   <input class="tl-date" type="date" [value]="row.startDate ?? ''"
