@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using TimesheetApp.Api.Auth;
 using TimesheetApp.Api.Contracts;
 using TimesheetApp.Api.Infrastructure;
+using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
 using TimesheetApp.Services;
@@ -499,6 +500,14 @@ public static class SettingsEndpoints
             {
                 if (string.IsNullOrWhiteSpace(req.Username))
                     return Results.BadRequest(new ValidationBody("Username is required."));
+
+                // Duplicate-username pre-check (v11): a friendly 409 on the common path, thrown (not
+                // returned) to match how every other 409 in this file arises. Case-insensitive to mirror
+                // ux_users_username, and excluding THIS user so re-setting one's own username (e.g. a case
+                // change) is not a self-conflict. The DB index + ExceptionMapper are the real backstop: a
+                // write that slips past this check (TOCTOU) still 409s rather than 500s.
+                if (await users.UsernameExistsAsync(req.Username, excludeUserId: id))
+                    throw new DuplicateUsernameException(req.Username);
 
                 var newVersion = await users.SetUsernameCheckedAsync(id, req.Username, req.ExpectedVersion);
                 await notifier.DataChangedAsync(DataKind.Users, teamId: 0, ctx.ConnectionId);

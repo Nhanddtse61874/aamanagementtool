@@ -67,6 +67,40 @@ public class RepositoryCrudTests : IAsyncLifetime
         Assert.Equal("Users", ex.Table);
     }
 
+    // v11: the NOCASE existence check behind the /api/users duplicate-username pre-check.
+    [Fact]
+    public async Task UsernameExistsAsync_is_case_insensitive_and_can_exclude_a_user()
+    {
+        var repo = new UserRepository(_db);
+        var id = await repo.InsertAsync(new User(0, "Nhan", null, true));
+        await repo.SetUsernameCheckedAsync(id, "nhan", 1);
+
+        Assert.True(await repo.UsernameExistsAsync("nhan"));
+        Assert.True(await repo.UsernameExistsAsync("NHAN"));            // case-insensitive, like the index
+        Assert.False(await repo.UsernameExistsAsync("chi.le"));         // a genuinely free username
+        Assert.False(await repo.UsernameExistsAsync("NHAN", excludeUserId: id)); // its own row does not count
+    }
+
+    // v11: the TOCTOU backstop the endpoint pre-check cannot cover. Bob's version check PASSES, so the write
+    // reaches the DB and the ux_users_username UNIQUE index fires -- it must become a DuplicateUsernameException
+    // (which ExceptionMapper turns into a 409), never a raw SqliteException 500.
+    [Fact]
+    public async Task SetUsernameCheckedAsync_onto_a_username_taken_by_another_throws_DuplicateUsername()
+    {
+        var repo = new UserRepository(_db);
+        var aliceId = await repo.InsertAsync(new User(0, "Alice", null, true));
+        await repo.SetUsernameCheckedAsync(aliceId, "nhan", 1);
+
+        var bobId = await repo.InsertAsync(new User(0, "Bob", null, true)); // row_version 1
+
+        var ex = await Assert.ThrowsAsync<DuplicateUsernameException>(
+            () => repo.SetUsernameCheckedAsync(bobId, "NHAN", 1));  // differs only in case
+        Assert.Equal("NHAN", ex.Username);
+
+        // The failed write left Bob untouched (still no username), and it is NOT a concurrency conflict.
+        Assert.Null((await repo.GetByIdAsync(bobId))!.WindowsUsername);
+    }
+
     // v10/M8.2, Part 3: Wave 4 depends on this pair to move ActiveTeamId from IAppConfig
     // (per-process) to Users.active_team_id (per-user). Bump-only (system write) -- never conflicts.
     [Fact]

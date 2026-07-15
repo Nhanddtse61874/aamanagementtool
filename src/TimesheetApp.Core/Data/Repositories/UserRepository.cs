@@ -1,4 +1,5 @@
 using Dapper;
+using Microsoft.Data.Sqlite;
 using TimesheetApp.Data;
 using TimesheetApp.Models;
 
@@ -59,6 +60,21 @@ public sealed class UserRepository : IUserRepository
         return row is null ? null : MapUser(row);
     }
 
+    // NOCASE existence check for the duplicate-username pre-check (v11). COLLATE NOCASE mirrors
+    // ux_users_username, and is deliberately STRICTER than GetByUsernameAsync's binary `= @w` above --
+    // that one is the login lookup and must stay case-sensitive. `id <> @exclude` lets a rename ignore the
+    // row being renamed. NULL usernames are never "taken" (`username = @u` is never true for NULL).
+    public async Task<bool> UsernameExistsAsync(string username, int? excludeUserId = null)
+    {
+        using var c = _factory.Create();
+        var count = await c.ExecuteScalarAsync<long>(
+            @"SELECT COUNT(1) FROM Users
+              WHERE username = @u COLLATE NOCASE
+                AND (@exclude IS NULL OR id <> @exclude);",
+            new { u = username, exclude = excludeUserId });
+        return count > 0;
+    }
+
     public async Task<int> InsertAsync(User user)
     {
         using var c = _factory.Create();
@@ -75,20 +91,38 @@ public sealed class UserRepository : IUserRepository
     public async Task SetUsernameAsync(int userId, string username)
     {
         using var c = _factory.Create();
-        await c.ExecuteAsync(
-            "UPDATE Users SET username = @w, row_version = row_version + 1 WHERE id = @id;",
-            new { w = username, id = userId });
+        try
+        {
+            await c.ExecuteAsync(
+                "UPDATE Users SET username = @w, row_version = row_version + 1 WHERE id = @id;",
+                new { w = username, id = userId });
+        }
+        catch (SqliteException e) when (IsDuplicateUsername(e))
+        {
+            throw new DuplicateUsernameException(username);
+        }
     }
 
     // CHECK-AND-BUMP: admin-driven UI edit, low frequency, worth surfacing a conflict.
     public async Task<long> SetUsernameCheckedAsync(int userId, string username, long expectedVersion)
     {
         using var c = _factory.Create();
-        var newVersion = await c.QuerySingleOrDefaultAsync<long?>(
-            @"UPDATE Users SET username = @w, row_version = row_version + 1
-              WHERE id = @id AND row_version = @expected
-              RETURNING row_version;",
-            new { w = username, id = userId, expected = expectedVersion });
+        long? newVersion;
+        try
+        {
+            // Only throws the UNIQUE violation when the WHERE matches (right version + row exists) AND the
+            // new username collides -- i.e. the TOCTOU the endpoint's pre-check cannot close. The index is
+            // the real backstop; this turns its 500 into a clean DuplicateUsernameException -> 409.
+            newVersion = await c.QuerySingleOrDefaultAsync<long?>(
+                @"UPDATE Users SET username = @w, row_version = row_version + 1
+                  WHERE id = @id AND row_version = @expected
+                  RETURNING row_version;",
+                new { w = username, id = userId, expected = expectedVersion });
+        }
+        catch (SqliteException e) when (IsDuplicateUsername(e))
+        {
+            throw new DuplicateUsernameException(username);
+        }
         if (newVersion is not null) return newVersion.Value;
 
         var exists = await c.ExecuteScalarAsync<long>(
@@ -207,6 +241,16 @@ public sealed class UserRepository : IUserRepository
             new { h = hash, id = userId });
         return rows == 1;
     }
+
+    // A UNIQUE-constraint failure (SQLITE_CONSTRAINT_UNIQUE == 2067) raised by a username write can only be
+    // ux_users_username: Users carries exactly one unique index, and these methods write only username +
+    // row_version. So an extended-code match here unambiguously means "that username is taken" -- no message
+    // string parsing, and no risk of swallowing TimeLogs' own UNIQUE(user_id,task_id,work_date) violation,
+    // which is raised by a different repository entirely.
+    private const int SqliteConstraintUnique = 2067;
+
+    private static bool IsDuplicateUsername(SqliteException e) =>
+        e.SqliteExtendedErrorCode == SqliteConstraintUnique;
 
     private static User MapUser(UserRaw r) =>
         new((int)r.id, r.name, r.username, r.is_active != 0, r.row_version, r.is_admin != 0);

@@ -212,7 +212,7 @@ INSERT INTO PcaContacts(id, name, is_active) VALUES (1, 'Mr. Tanaka', 1);", new 
     // ---- Upgrade path: v9 -> v10 -----------------------------------------------------------
 
     [Fact]
-    public async Task Upgrade_From_V9_Lands_On_Version_10()
+    public async Task Upgrade_From_V9_Lands_On_The_Latest_Version()
     {
         SeedV9Database();
         using (var before = _factory.Create())
@@ -221,7 +221,7 @@ INSERT INTO PcaContacts(id, name, is_active) VALUES (1, 'Mr. Tanaka', 1);", new 
         await _sut.InitializeAsync();
 
         using var c = _factory.Create();
-        Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
+        Assert.Equal(11, c.ExecuteScalar<long>("PRAGMA user_version;"));
     }
 
     [Fact] // The whole point: this migration runs against a database with real data in it.
@@ -325,7 +325,7 @@ INSERT INTO PcaContacts(id, name, is_active) VALUES (1, 'Mr. Tanaka', 1);", new 
         await _sut.InitializeAsync();
 
         using var c = _factory.Create();
-        Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
+        Assert.Equal(11, c.ExecuteScalar<long>("PRAGMA user_version;"));
         Assert.Equal(3, c.ExecuteScalar<long>("SELECT COUNT(*) FROM Users;"));
         Assert.Equal(1, c.ExecuteScalar<long>("SELECT COUNT(*) FROM Users WHERE is_admin = 1;"));
     }
@@ -333,14 +333,14 @@ INSERT INTO PcaContacts(id, name, is_active) VALUES (1, 'Mr. Tanaka', 1);", new 
     // ---- Fresh-install path ----------------------------------------------------------------
 
     [Fact] // Guards the CreateTables invariant. Fails loudly if the v1 DDL is ever "tidied".
-    public async Task FreshInstall_With_No_Database_File_Initialises_Straight_To_V10()
+    public async Task FreshInstall_With_No_Database_File_Initialises_Straight_To_The_Latest_Version()
     {
         Assert.False(File.Exists(_dbPath)); // genuinely from zero
 
         await _sut.InitializeAsync();
 
         using var c = _factory.Create();
-        Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
+        Assert.Equal(11, c.ExecuteScalar<long>("PRAGMA user_version;"));
 
         var cols = Columns(c, "Users");
         Assert.Contains("username", cols);
@@ -364,7 +364,7 @@ INSERT INTO PcaContacts(id, name, is_active) VALUES (1, 'Mr. Tanaka', 1);", new 
     }
 
     [Fact] // Deleting the file and starting over must reach the same place, not a half-migrated one.
-    public async Task FreshInstall_After_Deleting_The_Database_File_Reaches_V10_Again()
+    public async Task FreshInstall_After_Deleting_The_Database_File_Reaches_The_Latest_Version_Again()
     {
         await _sut.InitializeAsync();
         SqliteConnection.ClearAllPools();
@@ -374,7 +374,7 @@ INSERT INTO PcaContacts(id, name, is_active) VALUES (1, 'Mr. Tanaka', 1);", new 
         await _sut.InitializeAsync(); // rebuild from nothing
 
         using var c = _factory.Create();
-        Assert.Equal(10, c.ExecuteScalar<long>("PRAGMA user_version;"));
+        Assert.Equal(11, c.ExecuteScalar<long>("PRAGMA user_version;"));
         Assert.Contains("username", Columns(c, "Users"));
         Assert.Contains("row_version", Columns(c, "TimeLogs"));
     }

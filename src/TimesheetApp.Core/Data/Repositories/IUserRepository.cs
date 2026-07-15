@@ -27,6 +27,21 @@ public interface IUserRepository
     Task<IReadOnlyList<User>> GetAllAsync();          // Users tab shows inactive too (USR-01)
     Task<User?> GetByIdAsync(int id);
     Task<User?> GetByUsernameAsync(string username);  // XC-07 lookup
+
+    /// <summary>Case-INsensitive existence check for the duplicate-username pre-check on the /api/users
+    /// write paths (v11). Matches <c>ux_users_username</c>'s <c>COLLATE NOCASE</c>, which is deliberately
+    /// stricter than <see cref="GetByUsernameAsync"/>'s binary lookup — do NOT weaken that one, login
+    /// depends on its case sensitivity.
+    ///
+    /// <para><paramref name="excludeUserId"/> lets a RENAME re-check ignore the row being renamed, so
+    /// setting a user's own username to a case variant of itself is not reported as "taken". NULL usernames
+    /// never match (they are not "taken").</para>
+    ///
+    /// <para>This is only a friendlier message on the common path. The real guarantee is the DB index: a
+    /// write that slips past this check (TOCTOU) still fails the UNIQUE constraint and surfaces as
+    /// <see cref="DuplicateUsernameException"/>.</para></summary>
+    Task<bool> UsernameExistsAsync(string username, int? excludeUserId = null);
+
     Task<int> InsertAsync(User user);                 // returns new id (USR-02)
     Task SetUsernameAsync(int userId, string username);                      // XC-07 persist; bump-only
     Task<long> SetUsernameCheckedAsync(int userId, string username, long expectedVersion);
