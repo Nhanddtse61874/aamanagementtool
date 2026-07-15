@@ -33,11 +33,17 @@ export class ThemeService {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
     catch { return {}; }
   }
+  // 🔴 DEFAULT LIGHT — do NOT follow the OS. It used to fall back to
+  // `prefers-color-scheme: dark`, which produced a real UAT bug: ThemeService is
+  // injected ONLY by the Settings screen, so it is constructed the FIRST TIME you
+  // open Settings — and at that moment it read the OS preference and flipped the
+  // whole app to dark. The report was "just clicking into Settings switches it".
+  // main.ts (the pre-paint applier) only ever reads localStorage, never the OS, so
+  // the two disagreed and Settings was where the disagreement surfaced. Dark is now
+  // an EXPLICIT opt-in that persists; nothing switches the theme but the toggle.
   private readDark(): boolean {
     const v = this.read().dark;
-    return typeof v === 'boolean'
-      ? v
-      : window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+    return typeof v === 'boolean' ? v : false;
   }
   private readAccent(): string { return this.read().accent || '#0E7C66'; }
 }
