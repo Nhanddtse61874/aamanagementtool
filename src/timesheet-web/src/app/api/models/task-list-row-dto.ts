@@ -5,6 +5,7 @@ import { ScheduleState } from '../models/schedule-state';
 import { TagDto } from '../models/tag-dto';
 import { TaskItemDto } from '../models/task-item-dto';
 export interface TaskListRowDto {
+  assigneeUserId?: number | null;
   backlogCode?: string | null;
   backlogId?: number;
   deadlineExternal?: string | null;
@@ -12,6 +13,7 @@ export interface TaskListRowDto {
   endDate?: string | null;
   estimateHours?: number | null;
   loggedHours?: number;
+  pcaContactId?: number | null;
   pcaContactName?: string | null;
   pctAssigneeName?: string | null;
   progressPercent?: number | null;

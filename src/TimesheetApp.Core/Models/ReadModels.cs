@@ -119,9 +119,15 @@ public enum ScheduleState { Normal, Warning, Late }
 
 // One Task List grid row per non-DEFAULT backlog in the selected month. Logged hours are all-time;
 // EstimateHours is official ?? rough; Tasks are the backlog's tasks (for the expand panel).
+//
+// AssigneeUserId / PcaContactId are the raw ids behind PctAssigneeName / PcaContactName. Both the name
+// AND the id are carried, on purpose: the name RENDERS the cell (and resolves even for a deactivated
+// person, XC-06), while the id SEEDS the inline Type/PCT/PCA dropdowns — a `<select>` bound to a name has
+// no option to preselect. Projected straight off the Backlog entity, which already read them; no new query.
 public sealed record TaskListRow(
     int BacklogId, string BacklogCode, string Project, string? Type,
     string? PctAssigneeName, string? PcaContactName,
+    int? AssigneeUserId, int? PcaContactId,
     DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate, DateOnly? EndDate,
     int? ProgressPercent, decimal LoggedHours, decimal? EstimateHours,
     ScheduleState ScheduleState, IReadOnlyList<Tag> Tags, IReadOnlyList<TaskItem> Tasks);

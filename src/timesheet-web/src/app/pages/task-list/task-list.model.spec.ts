@@ -3,8 +3,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { BacklogDto, TaskItemDto, TaskListRowDto } from '../../api/models';
 import {
   SCHEDULE_LATE, SCHEDULE_NORMAL, SCHEDULE_WARNING,
-  buildChips, groupRows, isDone, messageOf, nextPeriod, parseProgress, tagIdsOf,
-  toTaskExtended, toUpdateRequest,
+  buildChips, groupRows, isDone, messageOf, nextPeriod, parseProgress, pickOptions, tagIdsOf,
+  toPickOptions, toTaskExtended, toUpdateRequest,
 } from './task-list.model';
 
 /** A backlog with EVERY wire field populated and DISTINCT, so a dropped one cannot hide behind a default. */
@@ -60,6 +60,46 @@ describe('toUpdateRequest — the WHOLE-RECORD trap', () => {
     //    assertion goes red. (Mutation-checked — see the report.)
     expect(body.type).toBe('Implement');
     expect(body.assigneeUserId).toBe(42);
+    expect(body.pcaContactId).toBe(9);
+  });
+
+  // ---- The NEW backlog edits this fix adds: Type / PCT (assignee) / PCA. Same trap, same defence. --------
+
+  it('🔴 changing ONLY the TYPE still carries startDate AND note — the sparse row cannot supply them (R7)', () => {
+    const dto = backlog();   // startDate '2026-07-01', note 'the original note'
+
+    const body = toUpdateRequest(dto, { type: 'Investigate' });
+
+    expect(body.type).toBe('Investigate');           // the edit itself
+    // 🔴 THE R7 ASSERTION. Delete `startDate: dto.startDate` (or `note: dto.note`) from `toUpdateRequest` and
+    //    exactly these two lines go red — the whole reason the write is built from the GET'd DTO, not the row.
+    expect(body.startDate).toBe('2026-07-01');
+    expect(body.note).toBe('the original note');
+    expect(body.expectedVersion).toBe(5);
+    expect(body.auditNote).toBeNull();               // Type carries no reason note; only deadlines do
+  });
+
+  it('🔴 changing ONLY the PCT assignee round-trips everything else (incl. the OTHER id, pcaContactId)', () => {
+    const body = toUpdateRequest(backlog(), { assigneeUserId: 99 });
+
+    expect(body.assigneeUserId).toBe(99);
+    expect(body.pcaContactId).toBe(9);               // 🔴 would be nulled by a body built from the assignee alone
+    expect(body.type).toBe('Implement');
+    expect(body.startDate).toBe('2026-07-01');
+  });
+
+  it('🔴 changing ONLY the PCA contact round-trips everything else (incl. assigneeUserId)', () => {
+    const body = toUpdateRequest(backlog(), { pcaContactId: 77 });
+
+    expect(body.pcaContactId).toBe(77);
+    expect(body.assigneeUserId).toBe(42);            // 🔴 the mirror-image bug
+    expect(body.note).toBe('the original note');
+  });
+
+  it('CLEARING the PCT assignee sends null (a real edit) without disturbing the PCA contact', () => {
+    const body = toUpdateRequest(backlog(), { assigneeUserId: null });
+
+    expect(body.assigneeUserId).toBeNull();
     expect(body.pcaContactId).toBe(9);
   });
 
@@ -133,6 +173,42 @@ describe('toTaskExtended', () => {
 
   it('an explicit null CLEARS — it is a real value, not "leave alone"', () => {
     expect(toTaskExtended(task({ type: 'IT' }), { type: null }).type).toBeNull();
+  });
+});
+
+// =====================================================================================================
+// The inline PCT / PCA dropdown options — the deactivated-value fallback (WPF bug #6)
+// =====================================================================================================
+describe('toPickOptions', () => {
+  it('maps an active {id,name} list to options and DROPS any row with no id', () => {
+    expect(toPickOptions([{ id: 1, name: 'An' }, { id: undefined, name: 'ghost' }, { id: 2, name: 'Binh' }]))
+      .toEqual([{ id: 1, label: 'An' }, { id: 2, label: 'Binh' }]);
+  });
+
+  it('tolerates a null/absent name', () => {
+    expect(toPickOptions([{ id: 5, name: null }, { id: 6 }])).toEqual([{ id: 5, label: '' }, { id: 6, label: '' }]);
+  });
+});
+
+describe('pickOptions', () => {
+  const active = [{ id: 1, label: 'An' }, { id: 2, label: 'Binh' }];
+  const names = [{ id: 1, name: 'An' }, { id: 2, name: 'Binh' }, { id: 9, name: 'Gone' }];
+
+  it('returns just the active options when the current value is null/undefined', () => {
+    expect(pickOptions(active, names, null)).toEqual(active);
+    expect(pickOptions(active, names, undefined)).toEqual(active);
+  });
+
+  it('returns just the active options when the current value IS active (no duplicate)', () => {
+    expect(pickOptions(active, names, 1)).toEqual(active);
+  });
+
+  it('🔴 appends a DEACTIVATED current as "Name (inactive)" so the <select> is not a blank box', () => {
+    expect(pickOptions(active, names, 9)).toEqual([...active, { id: 9, label: 'Gone (inactive)' }]);
+  });
+
+  it('falls back to the id when even /names cannot name the deactivated current', () => {
+    expect(pickOptions(active, names, 404)).toEqual([...active, { id: 404, label: '#404 (inactive)' }]);
   });
 });
 

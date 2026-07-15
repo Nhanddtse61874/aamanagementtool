@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
 import {
-  BacklogDto, BacklogUpdateRequest, TagDto, TaskItemDto, TaskListRowDto, ValidationBody,
+  BacklogDto, BacklogUpdateRequest, NamedRefDto, TagDto, TaskItemDto, TaskListRowDto, ValidationBody,
 } from '../../api/models';
 import { requireRowVersion } from '../../services/worklog.service';
 
@@ -191,9 +191,9 @@ export function nextPeriod(year: number, month: number): string {
 // for C# records), so a body missing `pcaContactId` COMPILES PERFECTLY CLEAN and silently wipes the column.
 //
 // So: START FROM THE LOADED DTO, override only what the user actually changed. `patch` is typed down to the
-// five fields this screen may touch, so nothing else can be patched by accident — and every OTHER field is
-// copied across from `dto` below, by hand, one line each. If you add a column to the backlog, it must be
-// added here too, or this screen will start nulling it.
+// eight fields this screen may touch (progress · the four dates · type · assignee · PCA), so nothing else can
+// be patched by accident — and every OTHER field is copied across from `dto` below, by hand, one line each.
+// If you add a column to the backlog, it must be added here too, or this screen will start nulling it.
 //
 // (`teamId` is the one field NOT copied — and must not be. `BacklogUpdateRequest` has no `teamId` property
 // at all, deliberately: "there is nothing on the wire that could ever null it out" (BacklogEndpoints.cs:140).
@@ -202,7 +202,8 @@ export function nextPeriod(year: number, month: number): string {
 
 /** The only fields the Task List may change on a backlog. Anything else is round-tripped, never patched. */
 export type BacklogPatch = Partial<Pick<BacklogUpdateRequest,
-  'progressPercent' | 'deadlineInternal' | 'deadlineExternal' | 'startDate' | 'endDate'>>;
+  'progressPercent' | 'deadlineInternal' | 'deadlineExternal' | 'startDate' | 'endDate'
+  | 'type' | 'assigneeUserId' | 'pcaContactId'>>;
 
 export function toUpdateRequest(
   dto: BacklogDto,
@@ -256,6 +257,48 @@ export function toTaskExtended(
     ...patch,
     expectedVersion: requireRowVersion(task.rowVersion),
   };
+}
+
+// =====================================================================================================
+// THE INLINE PCT / PCA DROPDOWN OPTIONS
+// =====================================================================================================
+
+/** One option of an id-dropdown: a concrete id and the label to show. The "—" (null / unassigned) choice is
+ *  rendered by the template, not here. */
+export interface PickOption {
+  readonly id: number;
+  readonly label: string;
+}
+
+/** Map an ACTIVE `{ id, name }` list (users or PCA contacts) to pick options, dropping any row with no id. */
+export function toPickOptions(rows: readonly { id?: number; name?: string | null }[]): PickOption[] {
+  return rows
+    .filter((r): r is { id: number; name?: string | null } => typeof r.id === 'number' && r.id > 0)
+    .map(r => ({ id: r.id, label: r.name ?? '' }));
+}
+
+/**
+ * The options for an inline PCT (assignee) / PCA dropdown seeded to `current`.
+ *
+ * 🔴 THE CHOICES ARE THE ACTIVE ROWS, BUT `current` MAY BE SOMEONE DEACTIVATED. `getUsersActive()` /
+ * `getPcaContactsActive()` no longer list a departed person, and a `<select>` bound to an id that is not
+ * among its options renders a BLANK box — the user cannot even see who is assigned. So when `current` is set
+ * but absent from `active`, its name is resolved from `names` (id+name for EVERYONE, deactivated included)
+ * and appended as "Name (inactive)". Same rule the backlog editor follows (WPF bug #6).
+ *
+ * The id still round-trips regardless — the write reads it from the freshly-GET'd DTO, not this dropdown — so
+ * this is a RENDER fix, not a data-loss one. But a blank box the user cannot read is its own bug.
+ */
+export function pickOptions(
+  active: readonly PickOption[],
+  names: readonly NamedRefDto[],
+  current: number | null | undefined,
+): PickOption[] {
+  if (current === null || current === undefined || active.some(o => o.id === current)) {
+    return [...active];
+  }
+  const name = names.find(n => n.id === current)?.name;
+  return [...active, { id: current, label: `${name ?? `#${current}`} (inactive)` }];
 }
 
 // =====================================================================================================
