@@ -2,9 +2,9 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute (**M9.1**, **Mode A**, **subagent-driven** — plan approved 2026-07-16). M9 UAT round-2 still open (user-driven, parallel).
+**Phase:** Step 7 — Execute (**M9.1**, Mode A, subagent-driven — **Wave A ✅ `0c0987c`**; REGEN next, then Wave B). M9 UAT round-2 still open (user-driven, parallel).
 **Status:** in_progress
-**Last updated:** 2026-07-16
+**Last updated:** 2026-07-17
 
 ## ▶ RESUME HERE
 
@@ -24,7 +24,9 @@
 **Shape:** 1 milestone, 1 regen. **Wave A** (C#, sequential — A1/A2 both edit `Dtos.cs`): teamId→`TaskListRowDto`, teamId→`BacklogListItemDto`, `GetAllAsync` + `GET /api/default-tasks/all` (admin) + contract tests → **REGEN once** (`npm run gen:api`, API up on SAFE config) → **Wave B** (Angular, parallel, zero overlap): task-list adaptive band · daily-report active-team filter · settings toggle.
 **Key decisions:** team NAME resolved client-side (no server join); DR picker hard-filters active team; default-task deactivate is reversible; **NO schema change** (all projection-only + 1 read route).
 **Plan:** `docs/superpowers/plans/2026-07-16-M9.1-read-model-scope-gaps.md` — 7 tasks (Wave A C# seq → REGEN → Wave B Angular parallel). Plan Checker: 11/11 PASS, 7/7 high-value checks MATCH real code, verdict **APPROVE** (2026-07-16).
-**Next action:** await user plan approval + execution mode → **baseline build/test** (mktemp ConfigPath, both `Passed!` lines) → Wave A → REGEN (safe config) → Wave B → STEP 8 UAT.
+**Baseline (2026-07-17, clean tree):** .NET `Tests.dll`=687 + `ApiTests.dll`=502 (1 flaky `DataHubTests` reconnect → green on re-run) · Angular=735. Total 1924. Tests use isolated temp DBs — never touch the real DB.
+**Progress:** ✅ Wave A (`0c0987c`) — .NET now 689+507 (+7). ▶ **NEXT: REGEN** (controller, DB-safety dance: API on `mktemp` config, `npm run gen:api` once, prove no `-wal`/`-shm`) → Wave B (B1 `opus` task-list band · B2 `sonnet` DR picker · B3 `sonnet` settings toggle) → STEP 8 UAT.
+**Wave A deviation (recorded):** plan/PlanChecker said `TaskListRow` has 1 ctor site; WPF `TaskListViewModel.cs:256` is a 2nd — implementer fixed it (mirror `b.TeamId`, projection-only) in the same commit.
 **Out of scope:** admin-window, RestoreAsync/backup-list, remote hosting.
 
 # 🎉 NO SCREEN IN THE APP IS FAKE ANY MORE.
