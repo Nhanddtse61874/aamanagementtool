@@ -2,8 +2,8 @@
 
 ## Current Position
 
-**Phase:** Step 6 — Plan (**M9.1** read-model/scope gaps — PLAN written + Plan Checker **APPROVE**, **Mode A**). M9 UAT round-2 still open (user-driven, parallel).
-**Status:** waiting_for_user (approve plan + pick execution mode)
+**Phase:** Step 7 — Execute (**M9.1**, **Mode A**, **subagent-driven** — plan approved 2026-07-16). M9 UAT round-2 still open (user-driven, parallel).
+**Status:** in_progress
 **Last updated:** 2026-07-16
 
 ## ▶ RESUME HERE
