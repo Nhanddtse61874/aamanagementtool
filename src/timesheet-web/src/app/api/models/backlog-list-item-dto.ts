@@ -8,5 +8,6 @@ export interface BacklogListItemDto {
   periodMonth?: string | null;
   project?: string | null;
   taskCount?: number;
+  teamId?: number | null;
   type?: string | null;
 }

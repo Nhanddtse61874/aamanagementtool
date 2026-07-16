@@ -22,5 +22,6 @@ export interface TaskListRowDto {
   startDate?: string | null;
   tags?: Array<TagDto> | null;
   tasks?: Array<TaskItemDto> | null;
+  teamId?: number | null;
   type?: string | null;
 }
