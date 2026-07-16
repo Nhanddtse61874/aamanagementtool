@@ -146,6 +146,22 @@ public sealed class BacklogEndpointsTests
         Assert.Equal(1, results[0].TaskCount);
     }
 
+    /// <summary>DR-11: the list item carries its owning team, so the Daily Report picker can scope to the
+    /// active team client-side. <c>SearchAsync</c> already reads team_id; this pins that it reaches the wire.</summary>
+    [Fact]
+    public async Task Backlog_list_carries_the_owning_teamId()
+    {
+        using var factory = new ApiFactory();
+        var (client, _, teamId) = await ArrangeAsync(factory);
+        await factory.SeedBacklogAsync(teamId, "TEAM-1");
+
+        var response = await client.GetAsync("/api/backlogs");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var results = await response.Content.ReadFromJsonAsync<List<BacklogListItemDto>>();
+        Assert.Equal(teamId, results!.Single(r => r.BacklogCode == "TEAM-1").TeamId);
+    }
+
     /// <summary>The TASKS column. Counts ACTIVE tasks only, per backlog — a soft-deleted task must drop out,
     /// and a backlog with no tasks at all must report 0 rather than blowing up on a dictionary miss.</summary>
     [Fact]

@@ -289,6 +289,16 @@ public sealed class TaskListServiceTests : IAsyncLifetime
         Assert.Equal(new[] { "MINE-1" }, screen.Rows.Select(r => r.BacklogCode).ToArray());
     }
 
+    [Fact] // TL-12: the owning team id rides the row — projected straight off the backlog, no join.
+    public async Task Row_carries_the_owning_teamId()
+    {
+        var team = await SeedTeamAsync();
+        await SeedBacklogAsync("TEAM-1", teamId: team);
+
+        var row = Assert.Single((await LoadAsync(Today)).Rows);
+        Assert.Equal(team, row.TeamId);
+    }
+
     // =================================================================================================
     // The roll-up + the resolved names + the Gantt.
     // =================================================================================================

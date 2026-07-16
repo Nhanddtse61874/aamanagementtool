@@ -82,7 +82,7 @@ public sealed record BacklogDto(
 /// This is the one DTO on a versioned entity that must NOT expose the token (see the file header).</para></summary>
 public sealed record BacklogListItemDto(
     int Id, string BacklogCode, string Project, int TaskCount,
-    string? PeriodMonth, string? Type, int? AssigneeUserId);
+    string? PeriodMonth, string? Type, int? AssigneeUserId, int? TeamId);
 
 /// <summary>Projected from <c>BacklogAuditEntry</c> (<c>Models/Entities.cs</c>). <c>BacklogId</c> is dropped
 /// (it is the path param); <c>ChangedByUserId</c> is dropped (the panel renders the NAME — and the
@@ -148,7 +148,8 @@ public sealed record TaskListRowDto(
     int? AssigneeUserId, int? PcaContactId,
     DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate, DateOnly? EndDate,
     int? ProgressPercent, decimal LoggedHours, decimal? EstimateHours,
-    ScheduleState ScheduleState, IReadOnlyList<TagDto> Tags, IReadOnlyList<TaskItemDto> Tasks);
+    ScheduleState ScheduleState, IReadOnlyList<TagDto> Tags, IReadOnlyList<TaskItemDto> Tasks,
+    int? TeamId);
 
 /// <summary>The whole Task List screen in ONE response — the grid rows and the Gantt built from those same
 /// rows, at one instant.
@@ -251,7 +252,8 @@ public static class DtoMappings
             r.DeadlineInternal, r.DeadlineExternal, r.StartDate, r.EndDate,
             r.ProgressPercent, r.LoggedHours, r.EstimateHours, r.ScheduleState,
             r.Tags.Select(t => t.ToDto()).ToList(),
-            r.Tasks.Select(t => t.ToDto()).ToList());
+            r.Tasks.Select(t => t.ToDto()).ToList(),
+            r.TeamId);
 
     public static TaskListScreenDto ToDto(this TaskListScreen s) =>
         new(s.Rows.Select(r => r.ToDto()).ToList(), s.Gantt);

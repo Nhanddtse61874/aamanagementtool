@@ -22,6 +22,16 @@ public sealed class DefaultTaskRepository : IDefaultTaskRepository
         return rows.Select(MapDefaultTask).ToList();
     }
 
+    public async Task<IReadOnlyList<DefaultTask>> GetAllAsync()
+    {
+        using var c = _factory.Create();
+        var rows = await c.QueryAsync<DefaultTaskRaw>(
+            @"SELECT id, task_name, order_index, is_active
+              FROM DefaultTasks
+              ORDER BY order_index;");
+        return rows.Select(MapDefaultTask).ToList();
+    }
+
     public async Task<int> InsertAsync(DefaultTask defaultTask)
     {
         using var c = _factory.Create();

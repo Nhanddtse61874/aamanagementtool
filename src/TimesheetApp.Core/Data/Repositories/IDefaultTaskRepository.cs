@@ -8,6 +8,7 @@ namespace TimesheetApp.Data.Repositories;
 public interface IDefaultTaskRepository
 {
     Task<IReadOnlyList<DefaultTask>> GetActiveAsync();   // active DefaultTasks, ordered (SET-04 source set)
+    Task<IReadOnlyList<DefaultTask>> GetAllAsync();       // SET-05: ALL default tasks incl. inactive (admin Settings)
     Task<int> InsertAsync(DefaultTask defaultTask);      // add a default-task row (SET-04)
     Task SetActiveAsync(int id, bool isActive);          // hide/show a default task (DATA-04/SET-04)
 }

@@ -319,6 +319,7 @@ public sealed class SettingsEndpointsTests
     [Theory]
     [InlineData("/api/users/all")]
     [InlineData("/api/pca-contacts/all")]
+    [InlineData("/api/default-tasks/all")]
     public async Task The_admin_gated_full_list_is_403_for_a_NON_admin(string route)
     {
         using var factory = new ApiFactory();

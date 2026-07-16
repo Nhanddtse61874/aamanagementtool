@@ -257,7 +257,8 @@ public sealed partial class TaskListViewModel : ObservableObject
                 b.Id, b.BacklogCode, b.Project, b.Type, pctName, pcaName,
                 b.AssigneeUserId, b.PcaContactId,
                 b.DeadlineInternal, b.DeadlineExternal, b.StartDate, b.EndDate,
-                b.ProgressPercent, logged, estimate, state, tags, taskList);
+                b.ProgressPercent, logged, estimate, state, tags, taskList,
+                b.TeamId);   // TL-12: already loaded by SearchAsync — no new query (mirrors TaskListService)
 
             // v9 (P13-W3): editable task sub-rows — each carries its own current type/assignee/tags so the
             // expand panel can edit them inline. Tag ids are loaded per task via the existing single fetch

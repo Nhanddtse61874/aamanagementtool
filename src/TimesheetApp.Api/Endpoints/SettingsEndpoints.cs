@@ -650,6 +650,17 @@ public static class SettingsEndpoints
             .WithTags("DefaultTasks")
             .Produces<List<DefaultTaskDto>>();
 
+        // SET-05. The admin FULL list — ALL default tasks, deactivated included. GET /api/default-tasks is
+        // GetActiveAsync and can never show a hidden one, so it cannot be re-activated from any client. This
+        // is the mirror of /api/users/all and /api/teams/all: admin-gated (403 for a non-admin), and the only
+        // route that returns an inactive default task so the Settings toggle can bring it back.
+        api.MapGet("/api/default-tasks/all", async (IDefaultTaskRepository defaults) =>
+                Results.Ok((await defaults.GetAllAsync()).Select(d => d.ToDto()).ToList()))
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("DefaultTaskListAll")
+            .WithTags("DefaultTasks")
+            .Produces<List<DefaultTaskDto>>();
+
         api.MapPost("/api/default-tasks", async (
                 [FromBody] SettingsDefaultTaskCreateRequest req,
                 IDefaultTaskRepository defaults, IDefaultTaskSyncService sync,

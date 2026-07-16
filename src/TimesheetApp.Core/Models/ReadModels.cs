@@ -130,7 +130,10 @@ public sealed record TaskListRow(
     int? AssigneeUserId, int? PcaContactId,
     DateOnly? DeadlineInternal, DateOnly? DeadlineExternal, DateOnly? StartDate, DateOnly? EndDate,
     int? ProgressPercent, decimal LoggedHours, decimal? EstimateHours,
-    ScheduleState ScheduleState, IReadOnlyList<Tag> Tags, IReadOnlyList<TaskItem> Tasks);
+    ScheduleState ScheduleState, IReadOnlyList<Tag> Tags, IReadOnlyList<TaskItem> Tasks,
+    // TL-12: the owning team. Projected trailing (see TimeLogReportRow) so the single positional ctor
+    // in TaskListService stays a one-line change. Null only for a pre-bootstrap backlog with no team.
+    int? TeamId);
 
 // One Gantt bar: start->internal-deadline over the working-day axis. Indices are positions on
 // GanttModel.Axis; HasStart=false => faint placeholder row (no start_date).

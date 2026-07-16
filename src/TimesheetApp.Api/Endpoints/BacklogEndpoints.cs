@@ -54,7 +54,7 @@ public static class BacklogEndpoints
             return Results.Ok(found.Select(b => new BacklogListItemDto(
                 b.Id, b.BacklogCode, b.Project,
                 byBacklog.TryGetValue(b.Id, out var t) ? t.Count : 0,
-                b.PeriodMonth, b.Type, b.AssigneeUserId)).ToList());
+                b.PeriodMonth, b.Type, b.AssigneeUserId, b.TeamId)).ToList());
         })
             .WithName("BacklogList")
             .WithTags("Backlogs")

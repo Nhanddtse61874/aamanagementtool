@@ -118,7 +118,8 @@ public sealed class TaskListService : ITaskListService
                 b.Id, b.BacklogCode, b.Project, b.Type, pctName, pcaName,
                 b.AssigneeUserId, b.PcaContactId,
                 b.DeadlineInternal, b.DeadlineExternal, b.StartDate, b.EndDate,
-                b.ProgressPercent, logged, estimate, state, tags, tasks));
+                b.ProgressPercent, logged, estimate, state, tags, tasks,
+                b.TeamId));   // TL-12: already loaded by SearchAsync — no new query
 
             ganttSource.Add((b, state));
         }
