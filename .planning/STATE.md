@@ -2,8 +2,8 @@
 
 ## Current Position
 
-**Phase:** Step 6 — Plan (**M9.1** read-model/scope gaps — brainstorm + Mode Gate done, **Mode A**). M9 UAT round-2 still open (user-driven, parallel).
-**Status:** in_progress
+**Phase:** Step 6 — Plan (**M9.1** read-model/scope gaps — PLAN written + Plan Checker **APPROVE**, **Mode A**). M9 UAT round-2 still open (user-driven, parallel).
+**Status:** waiting_for_user (approve plan + pick execution mode)
 **Last updated:** 2026-07-16
 
 ## ▶ RESUME HERE
@@ -23,7 +23,8 @@
 **REQ-IDs:** TL-12 (Task List group-by-team) · DR-11 (Daily Report picker → active team) · SET-05 (default-tasks reactivate).
 **Shape:** 1 milestone, 1 regen. **Wave A** (C#, sequential — A1/A2 both edit `Dtos.cs`): teamId→`TaskListRowDto`, teamId→`BacklogListItemDto`, `GetAllAsync` + `GET /api/default-tasks/all` (admin) + contract tests → **REGEN once** (`npm run gen:api`, API up on SAFE config) → **Wave B** (Angular, parallel, zero overlap): task-list adaptive band · daily-report active-team filter · settings toggle.
 **Key decisions:** team NAME resolved client-side (no server join); DR picker hard-filters active team; default-task deactivate is reversible; **NO schema change** (all projection-only + 1 read route).
-**Next action:** writing-plans → PLAN.md (goal-backward, `<model>` per task) → Plan Checker → user approve → pre-execute build baseline (mktemp ConfigPath) → Wave A.
+**Plan:** `docs/superpowers/plans/2026-07-16-M9.1-read-model-scope-gaps.md` — 7 tasks (Wave A C# seq → REGEN → Wave B Angular parallel). Plan Checker: 11/11 PASS, 7/7 high-value checks MATCH real code, verdict **APPROVE** (2026-07-16).
+**Next action:** await user plan approval + execution mode → **baseline build/test** (mktemp ConfigPath, both `Passed!` lines) → Wave A → REGEN (safe config) → Wave B → STEP 8 UAT.
 **Out of scope:** admin-window, RestoreAsync/backup-list, remote hosting.
 
 # 🎉 NO SCREEN IN THE APP IS FAKE ANY MORE.
