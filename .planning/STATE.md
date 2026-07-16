@@ -2,8 +2,8 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute **COMPLETE** (M9.1 all waves green) → Step 9 QA final review → Step 8 UAT. Mode A, subagent-driven. M9 UAT round-2 still open (user-driven, parallel).
-**Status:** in_progress (awaiting final QA review + user UAT)
+**Phase:** Step 8 — UAT (M9.1 executed + **Step 9 QA APPROVE**). Awaiting user click-through. Mode A, subagent-driven. M9 UAT round-2 also still open (user-driven).
+**Status:** waiting_for_user (STEP 8 UAT — do NOT merge until PASS)
 **Last updated:** 2026-07-17
 
 ## ▶ RESUME HERE
@@ -30,7 +30,8 @@
 - ✅ REGEN `46c9e55` (client regen; **real company DB PROVEN untouched** — sha unchanged, no -wal/-shm, sandbox positive control).
 - ✅ B1 `d2e4050` (task-list adaptive team/project band) · ✅ B2 `d7f72cf` (DR picker → active team) · ✅ B3 `7549c7a` (settings reversible toggle) — Angular 742.
 - **Final full suite: 689 + 507 + 742 = 1938 (baseline 1924 +14).** 0 fail, tree clean.
-**▶ NEXT:** Step 9 final code review → **Step 8 UAT: 3 👤 click-throughs** — G3 (2 teams→team bands, 1 team→project bands), G6 (DR picker only active-team backlogs), G10 (deactivate→reactivate a default task, Log Work reflects after sync). **Do NOT merge until these pass.**
+**Step 9 QA:** ✅ **APPROVE** (Mode A code review, 0 Critical/Important; 4 non-blocking suggestions incl. `getDefaultTasks()` now orphaned, `#id` vs `—` for unknown team).
+**▶ NEXT: Step 8 UAT — 3 👤 click-throughs** (`.planning/M9.1-UAT.md`): G3 (2 teams→team bands, 1 team→project bands), G6 (DR picker only active-team backlogs), G10 (deactivate→reactivate a default task). Run via `deploy-local.bat` (:5080, REAL DB). **Do NOT merge until PASS.** Then STEP 10/11 merge to `main`.
 **Wave A deviation (recorded):** plan/PlanChecker said `TaskListRow` has 1 ctor site; WPF `TaskListViewModel.cs:256` is a 2nd — implementer fixed it (mirror `b.TeamId`, projection-only) in the same commit.
 **Out of scope:** admin-window, RestoreAsync/backup-list, remote hosting.
 
