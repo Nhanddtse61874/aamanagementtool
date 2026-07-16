@@ -16,6 +16,7 @@ import {
   backlogUpdate as backlogUpdateFn,
   defaultTaskCreate as defaultTaskCreateFn,
   defaultTaskList as defaultTaskListFn,
+  defaultTaskListAll as defaultTaskListAllFn,
   defaultTaskSetActive as defaultTaskSetActiveFn,
   defaultTaskSync as defaultTaskSyncFn,
   holidayDelete as holidayDeleteFn,
@@ -1035,6 +1036,12 @@ export class WorklogService {
   /** The default tasks. OPEN. A READ -> the plain `http`. */
   getDefaultTasks(): Observable<DefaultTaskDto[]> {
     return defaultTaskListFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /** [ADMIN] EVERY default task, deactivated included — the Settings list, so an inactive one can be
+   *  re-activated. A READ -> the plain `http`. Admin-gated (403 for a non-admin), like /api/users/all. */
+  getDefaultTasksAll(): Observable<DefaultTaskDto[]> {
+    return defaultTaskListAllFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
   }
 
   /** [ADMIN] Add a default task. A MUTATION -> `mutatingHttp`. */

@@ -212,21 +212,18 @@
 
           @for (d of defaultTasks(); track d.id) {
             <div class="listrow">
-              <span class="s-strong">{{ d.taskName }}</span>
+              <span class="s-strong">{{ d.taskName }}{{ d.isActive === false ? ' (inactive)' : '' }}</span>
               <div class="acts">
-                <!--
-                  🔴 "Remove", not a toggle. GET /api/default-tasks is ACTIVE-ONLY and there is no GetAllAsync,
-                  so a removed default task can never be seen again and therefore never re-activated. WPF has
-                  the identical hole — this is parity. A toggle would imply a round-trip that does not exist.
-                -->
-                <button class="btn btn-danger btn-sm" [disabled]="busy()" (click)="askRemoveDefaultTask(d)">Remove</button>
+                <button class="btn btn-soft btn-sm" [disabled]="busy()" (click)="toggleDefaultTaskActive(d)">
+                  {{ d.isActive === false ? 'Activate' : 'Deactivate' }}
+                </button>
               </div>
             </div>
           } @empty { <div class="listempty">No default tasks.</div> }
 
-          <p class="warn-note">
-            Removing a default task is permanent. The API only ever returns <em>active</em> default tasks, so
-            once one is removed there is no way to list it again or bring it back.
+          <p class="s-desc">
+            Deactivating a default task removes it from NEW backlogs; existing backlogs keep it. Because the
+            full list is loaded here, a deactivated default task can be re-activated at any time.
           </p>
         </div>
       </div>

@@ -30,7 +30,10 @@ const TEMPLATES: TaskTemplateDto[] = [
 ];
 const CONTACTS: PcaContactDto[] = [{ id: 5, name: 'Ana', isActive: true, rowVersion: 2 }];
 const TEAMS: TeamDto[] = [{ id: 7, name: 'Core', isActive: true, rowVersion: 4 }];
-const DEFAULTS: DefaultTaskDto[] = [{ id: 9, taskName: 'Annual Leave', isActive: true, orderIndex: 2 }];
+const DEFAULTS: DefaultTaskDto[] = [
+  { id: 9, taskName: 'Annual Leave', isActive: true, orderIndex: 2 },
+  { id: 10, taskName: 'Old Ritual', isActive: false, orderIndex: 0 },   // inactive -> re-activatable
+];
 const USERS: UserDto[] = [
   { id: 1, name: 'Nhan', isActive: true }, { id: 2, name: 'Dana', isActive: true },
 ];
@@ -72,7 +75,7 @@ describe('SettingsComponent', () => {
       'getTemplateList', 'createTemplate', 'deleteTemplateByName',
       'getPcaContactsAll', 'createPcaContact', 'renamePcaContact', 'setPcaContactActive',
       'getTeamsAll', 'createTeam', 'renameTeam', 'setTeamActive', 'getTeamMembers', 'setTeamMembers',
-      'getDefaultTasks', 'createDefaultTask', 'setDefaultTaskActive', 'syncDefaultTasks',
+      'getDefaultTasksAll', 'createDefaultTask', 'setDefaultTaskActive', 'syncDefaultTasks',
       'getHolidayList', 'upsertHoliday', 'deleteHoliday', 'getUsersActive',
       'runBackup', 'runExport', 'previewRetention', 'runRetention', 'archiveStandupWeek',
     ]);
@@ -82,7 +85,7 @@ describe('SettingsComponent', () => {
     api.getTemplateList.and.returnValue(of(TEMPLATES));
     api.getPcaContactsAll.and.returnValue(of(CONTACTS));
     api.getTeamsAll.and.returnValue(of(TEAMS));
-    api.getDefaultTasks.and.returnValue(of(DEFAULTS));
+    api.getDefaultTasksAll.and.returnValue(of(DEFAULTS));
     api.getUsersActive.and.returnValue(of(USERS));
     api.getHolidayList.and.returnValue(of(HOLIDAYS));
     api.getTeamMembers.and.returnValue(of([1]));
@@ -327,30 +330,25 @@ describe('SettingsComponent', () => {
     expect(api.setPcaContactActive).toHaveBeenCalledOnceWith(5, false);
   });
 
-  // ══ default tasks: the one-way door ══════════════════════════════════════════════════════════════
+  // ══ default tasks: the reversible toggle ═════════════════════════════════════════════════════════
 
   /**
-   * 🔴 `GET /api/default-tasks` is ACTIVE-ONLY and there is no `GetAllAsync`. So a deactivated default task
-   * can never be listed again and therefore never re-activated. A TOGGLE would be a lie — it implies a
-   * round-trip that does not exist. It is rendered as a permanent Remove, and it is confirmed.
+   * 🔴 REVERSIBLE. `getDefaultTasksAll()` lists inactive rows, so the one-way "Remove" is gone: an active
+   * default shows Deactivate, an inactive one shows Activate, and the "cannot be restored" copy is deleted.
    */
-  it('a default task offers a permanent REMOVE, never a toggle it cannot round-trip', () => {
+  it('offers a reversible toggle — Activate re-activates an inactive default task', () => {
     tab('Workflow');
 
-    // The affordance is a REMOVE, and the screen says out loud that it is one-way.
-    expect(buttons('Remove').length).toBe(1);
-    expect(text()).toContain('there is no way to list it again or bring it back');
+    expect(buttons('Remove').length).toBe(0);            // the one-way affordance is GONE
+    expect(text()).not.toContain('there is no way');     // and so is the "cannot be restored" copy
 
-    buttons('Remove')[0].click();
-    fixture.detectChanges();
-    expect(api.setDefaultTaskActive).not.toHaveBeenCalled();   // it asks first
+    const deactivate = buttons('Deactivate');            // the ACTIVE default (id 9)
+    const activate = buttons('Activate');                // the INACTIVE default (id 10)
+    expect(deactivate.length).toBe(1);
+    expect(activate.length).toBe(1);
 
-    // And the dialog states the consequence that makes this different from every other soft delete here.
-    const dialog = fixture.debugElement.query(By.directive(ConfirmDialogComponent));
-    expect(dialog.componentInstance.message()).toContain('there is no way to see it again');
-
-    confirmYes();
-    expect(api.setDefaultTaskActive).toHaveBeenCalledOnceWith(9, false);
+    activate[0].click();
+    expect(api.setDefaultTaskActive).toHaveBeenCalledOnceWith(10, true);   // 🔴 the reactivate path
   });
 
   it('adding a default task appends past the highest INDEX, not the count — soft deletes leave gaps', () => {

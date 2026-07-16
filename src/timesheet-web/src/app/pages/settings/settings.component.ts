@@ -168,7 +168,7 @@ export class SettingsComponent {
       templates: this.api.getTemplateList(),
       contacts: this.api.getPcaContactsAll(),
       teams: this.api.getTeamsAll(),
-      defaults: this.api.getDefaultTasks(),
+      defaults: this.api.getDefaultTasksAll(),
       users: this.api.getUsersActive(),
       holidays: this.api.getHolidayList(),
     })
@@ -397,29 +397,18 @@ export class SettingsComponent {
   }
 
   /**
-   * 🔴 ONE-WAY, AND THE UI MUST SAY SO.
-   *
-   * `GET /api/default-tasks` is `GetActiveAsync()` and there is no `GetAllAsync` — not on the endpoint, not
-   * on `IDefaultTaskRepository`. So a deactivated default task CAN NEVER BE SEEN AGAIN, and therefore can
-   * never be re-activated from any client. WPF has the identical hole; this is PARITY, not a regression.
-   *
-   * Which is why this is presented as a DELETE and not as a toggle. A toggle implies a round-trip that does
-   * not exist: the user would switch it off, watch the row vanish, and have no way to get it back. Calling it
-   * "Remove" and saying plainly that it is permanent is the honest rendering of what the API can actually do.
+   * 🔴 REVERSIBLE now — the one-way door is gone. `getDefaultTasksAll()` (admin) lists inactive rows, so a
+   * deactivated default task is visible and can be brought back. `setDefaultTaskActive` flips is_active in
+   * either direction; the flag is passed through, never hard-coded. No confirm — this is a soft toggle,
+   * exactly like the Team / PCA-contact toggles above.
    */
-  askRemoveDefaultTask(d: DefaultTaskDto): void {
+  toggleDefaultTaskActive(d: DefaultTaskDto): void {
     const id = d.id;
-    if (typeof id !== 'number') return;
-
-    this.confirm.set({
-      title: `Remove “${d.taskName ?? 'this task'}”?`,
-      message:
-        'This removes it from the default task list for NEW backlogs. Existing backlogs keep it. ' +
-        'It cannot be restored from this app — the API only ever returns ACTIVE default tasks, so once it ' +
-        'is removed there is no way to see it again.',
-      confirmLabel: 'Remove permanently',
-      run: () => this.run(this.api.setDefaultTaskActive(id, false), 'Default task removed'),
-    });
+    if (this.busy() || typeof id !== 'number') return;   // ← re-entrancy guard
+    const next = !(d.isActive === true);
+    this.run(
+      this.api.setDefaultTaskActive(id, next),
+      next ? 'Default task activated' : 'Default task deactivated');
   }
 
   /** Pushes the default-task set into EXISTING backlogs. Bulk and cross-backlog — hence admin-gated. */
