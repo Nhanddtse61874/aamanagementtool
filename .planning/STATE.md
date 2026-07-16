@@ -2,14 +2,29 @@
 
 ## Current Position
 
-**Phase:** Step 8 — UAT (M9 **COMPLETE and merged to `main`**; awaiting the user's click-through)
-**Status:** waiting_for_user
-**Last updated:** 2026-07-14
+**Phase:** Step 6 — Plan (**M9.1** read-model/scope gaps — brainstorm + Mode Gate done, **Mode A**). M9 UAT round-2 still open (user-driven, parallel).
+**Status:** in_progress
+**Last updated:** 2026-07-16
 
 ## ▶ RESUME HERE
 
-**`main` @ `8c12f20`.** M9 merged. **The app is RUNNING** — API :5080 (**real DB**), web :4200.
-**Suite: 1882 green** — 1170 .NET (681 Core/WPF + 489 API) + 712 Angular. 0 warnings.
+**`main` @ `e710717`.** M9 merged; **UAT round-1 (2026-07-15) fixed 5 defects** (below). **The app is RUNNING** — API :5080 (**real DB**), web :4200. **New:** `deploy-local.bat` runs single-process (API serves the built UI on :5080 → one origin → Lax cookie survives; no proxy).
+**Suite: was 1882 green at `8c12f20`; advanced by round-1 — RE-VERIFY with a clean build (safe ConfigPath) before trusting a count.** 0-warnings target unchanged.
+
+### UAT round-1 (2026-07-15) — fixed (were NOT in the OT list)
+- **Dark-theme flip** ("opening Settings turns it dark"): `ThemeService.readDark()` followed `prefers-color-scheme` and disagreed with `main.ts`; dark is now explicit opt-in (`e710717`; toggle isolated to a real `role=switch` button in `60f7a17`).
+- **Single-process deploy**: API serves the Angular UI (`MapFallbackToFile`) — **partially retires the "reach anyone else's browser" blocker for local/single-host** (`60f7a17`). Remote multi-user hosting still open.
+- **Duplicate username → 500 login-lockout**: schema **v11** adds `ux_users_username` UNIQUE (NOCASE); `PUT username` pre-checks → clean **409** (`f327835`).
+- **Empty-DB unloggable**: seed a default admin on a fresh clone + re-run team bootstrap so it isn't in zero teams (`9f05fd8`, 2026-07-14). Gated by `TimesheetApp:SeedFirstAdmin`.
+- **Task List inline Type/PCT/PCA**: ids added to the read model; edits go GET-mutate-PUT (`9703b3b`).
+
+### ▶ M9.1 (ACTIVE) — close 3 read-model/scope gaps · Mode A · Step 6 Plan
+**Spec:** `docs/superpowers/specs/2026-07-16-m9.1-read-model-scope-gaps-design.md` (approved 2026-07-16).
+**REQ-IDs:** TL-12 (Task List group-by-team) · DR-11 (Daily Report picker → active team) · SET-05 (default-tasks reactivate).
+**Shape:** 1 milestone, 1 regen. **Wave A** (C#, sequential — A1/A2 both edit `Dtos.cs`): teamId→`TaskListRowDto`, teamId→`BacklogListItemDto`, `GetAllAsync` + `GET /api/default-tasks/all` (admin) + contract tests → **REGEN once** (`npm run gen:api`, API up on SAFE config) → **Wave B** (Angular, parallel, zero overlap): task-list adaptive band · daily-report active-team filter · settings toggle.
+**Key decisions:** team NAME resolved client-side (no server join); DR picker hard-filters active team; default-task deactivate is reversible; **NO schema change** (all projection-only + 1 read route).
+**Next action:** writing-plans → PLAN.md (goal-backward, `<model>` per task) → Plan Checker → user approve → pre-execute build baseline (mktemp ConfigPath) → Wave A.
+**Out of scope:** admin-window, RestoreAsync/backup-list, remote hosting.
 
 # 🎉 NO SCREEN IN THE APP IS FAKE ANY MORE.
 
@@ -22,19 +37,19 @@
 
 ---
 
-## 🔴 OPEN — the user has clicked NOTHING yet. They chose to test only at the very end.
+## 🔴 OPEN — round-2 click-through (round-1 done 2026-07-15). Code-audit 2026-07-16 verdicts inline.
 
 **M8.5:** OT-13 (delete → reorder → reload) · OT-14 (delete → add → reload)
 **M8.6:** OT-15 … OT-19
 **M9:** OT-20 … OT-25 (below)
 
-### 🔴 The three that would be silent data loss
+### The three that would be silent data loss — **code-audit 2026-07-16: all SAFE; user click still confirms**
 
-- **OT-16** — Backlog editor: open a backlog with a **start date and a PCA contact** (both **hidden on edit**). Change **only the note**. Save. Reload, reopen. **Both must still be there.**
-- **OT-17** — Backlog editor: rename a task that is **`Done`** on the Task List. Save. Check the Task List. **It must still be `Done`.**
-- **OT-20** — Task List: change **only the progress %**. Reload. **Type, Assignee and PCA must all survive.**
+- **OT-16** — Backlog editor: open a backlog with a **start date and a PCA contact** (both **hidden on edit**). Change **only the note**. Save. Reload, reopen. **Both must still be there.** — ✅ code-SAFE: `backlog-form.ts:159-164` round-trips the hidden fields from the loaded DTO.
+- **OT-17** — Backlog editor: rename a task that is **`Done`** on the Task List. Save. Check the Task List. **It must still be `Done`.** — ✅ code-SAFE: `task-edit.ts:85` round-trips `status`.
+- **OT-20** — Task List: change **only the progress %**. Reload. **Type, Assignee and PCA must all survive.** — ✅ **CLOSED** by `9703b3b` (GET-mutate-PUT, verified `task-list.component.ts:417`).
 
-*(All three are the SAME trap — a checked `PUT` replaces the whole record, and TypeScript cannot catch a dropped field because the generated DTOs are all-optional. It has now appeared in **four** places.)*
+*(All three are the SAME trap — a checked `PUT` replaces the whole record, DTOs all-optional so TS can't catch a dropped field. Now mitigated in all known places via GET-mutate-PUT.)*
 
 ### The rest
 - **OT-21** — Task List: a backlog past its internal deadline shows **⚠ Late**; one behind pace inside 2 working days shows **⚠ At risk**. Toggle to **Gantt** — the bars must **skip weekends and holidays**.

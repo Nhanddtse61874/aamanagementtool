@@ -3,7 +3,8 @@
 **Last updated:** 2026-07-13
 
 ## Active
-- **M8.7–M8.10 — the four remaining screens, as ONE milestone with a shared Phase 1.** Not yet started.
+- **M9 UAT round-2 + close remaining code gaps.** M9 (= the four screens M8.7–M8.10) **SHIPPED & merged** (`8c12f20`, 2026-07-14); **UAT round-1 fixed 5 defects** (`e710717`, 2026-07-15 — see STATE.md). Now open: round-2 click-through (OT-13…OT-25, minus **OT-20 closed**) + three code gaps still real per the 2026-07-16 audit — **Task List group-by-team** (`TaskListRowDto` has no teamId/team name), **Daily Report picker active-team scope** (`BacklogListItemDto` has no teamId), **default-tasks round-trip** (no `GetAllAsync`).
+- **M8.7–M8.10 — the four remaining screens, as ONE milestone with a shared Phase 1.** ✅ Shipped as **M9** (see above). *(Original plan notes retained below for history.)*
   **Task List · Daily Report · Reports · Users + Settings.**
   🔴 **They cannot be done as four independent milestones, and they cannot be fanned out naively.** Five files are needed by every one of them and owned by none — chief among them **`SettingsEndpoints.cs`: 47 routes, one file, zero annotated**, needed by all four *and* by Backlog. Plus the `includeTags` one-liner, `OpenApiContractTests.cs`, the single stub block in `worklog.service.ts`, and the generated `api/**` tree, where **a regeneration is a global event**.
   **Phase 1 (controller, sequential):** annotate every route for every screen → extend the contract tests once → widen `includeTags` once → **regenerate once** → write every `WorklogService` method once → build the two shared things nobody owns: a **team-filter component** (four screens need it; it does not exist in Angular) and **`GET /api/teams`** (Reports needs team *names*; `/api/me` returns ids only). Also fix `realtime.service.ts:63`, which throws away the `(kind, teamId)` the server sends, so no screen can filter what it re-fetches.
