@@ -2,8 +2,8 @@
 
 ## Current Position
 
-**Phase:** Step 7 — Execute (**M9.1**, Mode A, subagent-driven — **Wave A ✅ `0c0987c`**; REGEN next, then Wave B). M9 UAT round-2 still open (user-driven, parallel).
-**Status:** in_progress
+**Phase:** Step 7 — Execute **COMPLETE** (M9.1 all waves green) → Step 9 QA final review → Step 8 UAT. Mode A, subagent-driven. M9 UAT round-2 still open (user-driven, parallel).
+**Status:** in_progress (awaiting final QA review + user UAT)
 **Last updated:** 2026-07-17
 
 ## ▶ RESUME HERE
@@ -25,7 +25,12 @@
 **Key decisions:** team NAME resolved client-side (no server join); DR picker hard-filters active team; default-task deactivate is reversible; **NO schema change** (all projection-only + 1 read route).
 **Plan:** `docs/superpowers/plans/2026-07-16-M9.1-read-model-scope-gaps.md` — 7 tasks (Wave A C# seq → REGEN → Wave B Angular parallel). Plan Checker: 11/11 PASS, 7/7 high-value checks MATCH real code, verdict **APPROVE** (2026-07-16).
 **Baseline (2026-07-17, clean tree):** .NET `Tests.dll`=687 + `ApiTests.dll`=502 (1 flaky `DataHubTests` reconnect → green on re-run) · Angular=735. Total 1924. Tests use isolated temp DBs — never touch the real DB.
-**Progress:** ✅ Wave A (`0c0987c`) — .NET now 689+507 (+7). ▶ **NEXT: REGEN** (controller, DB-safety dance: API on `mktemp` config, `npm run gen:api` once, prove no `-wal`/`-shm`) → Wave B (B1 `opus` task-list band · B2 `sonnet` DR picker · B3 `sonnet` settings toggle) → STEP 8 UAT.
+**Progress (M9.1 execution COMPLETE, final gate 2026-07-17 all green):**
+- ✅ Wave A `0c0987c` (C#: teamId→both DTOs, GetAllAsync + admin `/api/default-tasks/all` + contract tests) — .NET 689+507.
+- ✅ REGEN `46c9e55` (client regen; **real company DB PROVEN untouched** — sha unchanged, no -wal/-shm, sandbox positive control).
+- ✅ B1 `d2e4050` (task-list adaptive team/project band) · ✅ B2 `d7f72cf` (DR picker → active team) · ✅ B3 `7549c7a` (settings reversible toggle) — Angular 742.
+- **Final full suite: 689 + 507 + 742 = 1938 (baseline 1924 +14).** 0 fail, tree clean.
+**▶ NEXT:** Step 9 final code review → **Step 8 UAT: 3 👤 click-throughs** — G3 (2 teams→team bands, 1 team→project bands), G6 (DR picker only active-team backlogs), G10 (deactivate→reactivate a default task, Log Work reflects after sync). **Do NOT merge until these pass.**
 **Wave A deviation (recorded):** plan/PlanChecker said `TaskListRow` has 1 ctor site; WPF `TaskListViewModel.cs:256` is a 2nd — implementer fixed it (mirror `b.TeamId`, projection-only) in the same commit.
 **Out of scope:** admin-window, RestoreAsync/backup-list, remote hosting.
 

@@ -1,1 +1,5 @@
 {"task_id":"M9.1-WaveA","req_ids":["TL-12","DR-11","SET-05"],"model":"claude-sonnet-5","wall_clock":"46:30","escalation":null,"result":"done","tokens":126808}
+{"task_id":"M9.1-REGEN","req_ids":["TL-12","DR-11","SET-05"],"model":"controller-opus","wall_clock":"~5m","escalation":null,"result":"done"}
+{"task_id":"B1","req_ids":["TL-12"],"model":"claude-opus","wall_clock":"12:04","escalation":null,"result":"done","tokens":83699}
+{"task_id":"B2","req_ids":["DR-11"],"model":"claude-sonnet-5","wall_clock":"10:12","escalation":null,"result":"done","tokens":107358}
+{"task_id":"B3","req_ids":["SET-05"],"model":"claude-sonnet-5","wall_clock":"16:16","escalation":null,"result":"done","tokens":100468}
