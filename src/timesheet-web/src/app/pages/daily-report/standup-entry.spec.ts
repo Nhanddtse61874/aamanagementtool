@@ -148,22 +148,22 @@ describe('standup-entry', () => {
   });
 
   /**
-   * 🔴 `GET /api/backlogs` returns DEFAULT — Log Work needs it, so the route cannot drop it. The standup
-   * picker must, client-side, exactly as `DailyReportViewModel.FillPicker` does.
+   * 🔴 The picker drops the hidden DEFAULT backlog (Log Work needs it, so the route cannot) AND scopes to
+   * the ACTIVE team, matching WPF's `SearchBacklogsAsync(new[] { ActiveTeamId })`.
    */
   describe('pickableBacklogs', () => {
     const list: BacklogListItemDto[] = [
-      { id: 1, backlogCode: 'ARCS-1001', project: 'ARCS' },
-      { id: 99, backlogCode: 'DEFAULT', project: 'Recurring' },
-      { id: 2, backlogCode: 'ARCS-1002', project: 'ARCS' },
+      { id: 1, backlogCode: 'ARCS-1001', project: 'ARCS', teamId: 2 },
+      { id: 99, backlogCode: 'DEFAULT', project: 'Recurring', teamId: 2 },
+      { id: 2, backlogCode: 'ARCS-1002', project: 'ARCS', teamId: 3 },   // another team
     ];
 
-    it('excludes the hidden DEFAULT backlog', () => {
-      expect(pickableBacklogs(list).map(b => b.backlogCode)).toEqual(['ARCS-1001', 'ARCS-1002']);
+    it('keeps only the ACTIVE team, and never DEFAULT', () => {
+      expect(pickableBacklogs(list, 2).map(b => b.backlogCode)).toEqual(['ARCS-1001']);
     });
 
-    it('keeps everything else', () => {
-      expect(pickableBacklogs(list).length).toBe(2);
+    it('when the active team is unknown (null — /api/me failed), drops only DEFAULT (safe degradation)', () => {
+      expect(pickableBacklogs(list, null).map(b => b.backlogCode)).toEqual(['ARCS-1001', 'ARCS-1002']);
     });
   });
 

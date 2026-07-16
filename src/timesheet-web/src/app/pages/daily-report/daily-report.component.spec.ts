@@ -57,8 +57,9 @@ const TEAMS: TeamDto[] = [
  * without it would pass by construction and assert nothing.
  */
 const BACKLOGS: BacklogListItemDto[] = [
-  { id: 1, backlogCode: 'ARCS-1001', project: 'ARCS' },
-  { id: 99, backlogCode: 'DEFAULT', project: 'Recurring' },
+  { id: 1, backlogCode: 'ARCS-1001', project: 'ARCS', teamId: 2 },       // ME.activeTeamId === 2 -> kept
+  { id: 99, backlogCode: 'DEFAULT', project: 'Recurring', teamId: 2 },   // hidden -> dropped by code
+  { id: 2, backlogCode: 'BETA-2002', project: 'ARMS', teamId: 3 },       // another team -> dropped by DR-11
 ];
 
 function issue(over: Partial<StandupIssueDto> = {}): StandupIssueDto {
@@ -393,6 +394,22 @@ describe('DailyReportComponent', () => {
       expect(api.getBacklogList).toHaveBeenCalled();
       expect(component.backlogs().map(b => b.backlogCode)).toEqual(['ARCS-1001']);
       expect(component.backlogs().map(b => b.backlogCode)).not.toContain('DEFAULT');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+  // 🔴 DR-11 — the picker is scoped to the ACTIVE team, matching WPF
+  // ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+
+  describe('🔴 DR-11 — the picker shows only the active team', () => {
+    it('excludes another team\'s backlogs — only activeTeamId (2) survives', async () => {
+      arrange();                 // ME.activeTeamId === 2
+      await settle();
+
+      const codes = component.backlogs().map(b => b.backlogCode);
+      expect(codes).toContain('ARCS-1001');       // active team
+      expect(codes).not.toContain('BETA-2002');   // 🔴 another team — DR-11 drops it
+      expect(codes).not.toContain('DEFAULT');     // hidden
     });
   });
 

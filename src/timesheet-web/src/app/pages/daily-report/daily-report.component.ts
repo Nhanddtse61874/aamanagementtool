@@ -62,23 +62,12 @@ export type DropZone = StandupSection | 'trash';
  * table that can be raced, precisely because they are collaborative), so the solution/status write is CHECKED
  * and can 409 — see `saveIssue`.
  *
- * ── 🔴 THE BACKLOG PICKER'S TEAM SCOPE DIVERGES FROM WPF, AND CANNOT BE MADE TO MATCH FROM HERE ─────────
+ * ── THE BACKLOG PICKER'S TEAM SCOPE (DR-11) ────────────────────────────────────────────────────────────
  * WPF's picker is ACTIVE-TEAM ONLY: `StandupService.SearchBacklogsAsync` passes `new[] { ActiveTeamId }`.
- * THE WEB CANNOT REPRODUCE THAT. `SearchBacklogsAsync` is a Core method with no HTTP surface of its own, and
- * the only backlog list on the wire is `GET /api/backlogs`, which scopes to `EffectiveTeamIds` — i.e. ALL MY
- * TEAMS. It cannot be narrowed:
- *
- *   - the generated `BacklogList$Params` is `{ term?: string }` — there is NO `teamIds` parameter (the C#
- *     hand-reads it off the raw query string, so ApiExplorer never saw it and none was generated); and
- *   - `BacklogListItemDto` carries NO `teamId`, so it cannot be filtered client-side either.
- *
- * So this picker offers the backlogs of every team the user belongs to, where WPF offers only the active
- * team's. It is a FIDELITY DIVERGENCE, not a leak — every backlog listed is one the server already authorises
- * this user to see, and the entry the server creates is stamped with the ACTIVE team regardless of which
- * backlog was picked (`AddEntryAsync`: `TeamId: _currentTeam.ActiveTeamId`). Closing it needs a new route or
- * a `teamId` on the DTO; both are API changes and neither is this screen's to make.
- *
- * `DEFAULT` IS excluded, client-side, exactly as WPF does — see `pickableBacklogs`.
+ * M9.1 made the web match it: `BacklogListItemDto` now carries `teamId`, so `pickableBacklogs` scopes the
+ * list to the active team (from the already-loaded `/api/me`) client-side, and `DEFAULT` is dropped the same
+ * way WPF does. If `/api/me` fails the active team is unknown and the picker degrades to "all my teams minus
+ * DEFAULT" rather than going blank.
  *
  * ── THE BOARD'S TEAM FILTER ────────────────────────────────────────────────────────────────────────────
  * 🔴 An empty selection CANNOT be sent: `teamIds: []` appends no query key, and the server reads an absent key
@@ -128,6 +117,10 @@ export class DailyReportComponent implements OnInit {
   readonly backlogs = signal<readonly BacklogListItemDto[]>([]);
   readonly tasks = signal<readonly TaskItemDto[]>([]);
   readonly isAdmin = signal(false);
+
+  /** The caller's active team, from /api/me — the scope the backlog picker is filtered to (DR-11). Null
+   *  only if /api/me failed, in which case the picker degrades to "all my teams minus DEFAULT". */
+  private readonly activeTeamId = signal<number | null>(null);
 
   /** Re-entrancy guard. One mutation at a time; a double-click is dropped, not queued. */
   readonly busy = signal(false);
@@ -192,13 +185,15 @@ export class DailyReportComponent implements OnInit {
   // ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
   private async boot(): Promise<void> {
-    // `me()` is read ONLY to decide whether to OFFER "Archive week". That route is
+    // `me()` is read for two things: whether to OFFER "Archive week", and `activeTeamId`, the scope the
+    // backlog picker is filtered to (DR-11). The archive route is
     // `.RequireAuthorization(AuthSetup.AdminPolicy)` and 403s a non-admin — and this screen is reachable by
     // every user, so per THE ADMIN CONTRACT it must not call an [ADMIN] method it has not first earned.
-    // A failure here is not fatal: we simply stay non-admin and hide the button.
+    // A failure here is not fatal: we simply stay non-admin, and the picker degrades — see `pickableBacklogs`.
     try {
       const me = await firstValueFrom(this.api.me());
       this.isAdmin.set(me.isAdmin === true);
+      this.activeTeamId.set(me.activeTeamId ?? null);
     } catch {
       this.isAdmin.set(false);
     }
@@ -221,10 +216,10 @@ export class DailyReportComponent implements OnInit {
         this.board.set(await firstValueFrom(this.api.getStandupBoard(day, this.teamIds())));
       }
 
-      // The picker. `DEFAULT` is dropped client-side; the team scope is all-my-teams and cannot be narrowed
-      // from here — see the class doc.
+      // The picker. `DEFAULT` is dropped client-side and the list is scoped to the active team — see
+      // `pickableBacklogs` and the class doc (DR-11).
       const backlogs = await firstValueFrom(this.api.getBacklogList());
-      this.backlogs.set(pickableBacklogs(backlogs));
+      this.backlogs.set(pickableBacklogs(backlogs, this.activeTeamId()));
     } catch (err) {
       this.report(err, 'Could not load the daily report.');
     } finally {

@@ -122,19 +122,23 @@ export function hasSolution(issue: StandupIssueDto): boolean {
 }
 
 /**
- * 🔴 `DEFAULT` IS EXCLUDED CLIENT-SIDE, and it has to be.
+ * 🔴 The picker excludes the hidden `DEFAULT` backlog AND scopes to the ACTIVE team — matching WPF exactly.
  *
- * `GET /api/backlogs` returns EVERY backlog including the hidden `DEFAULT` one, because Log Work genuinely
- * needs it (it holds the recurring default tasks and must appear in every month). The standup picker must not
- * offer it. WPF does exactly this, in `DailyReportViewModel.FillPicker`:
+ * `GET /api/backlogs` returns EVERY backlog of EVERY team the user belongs to, including `DEFAULT` (Log Work
+ * needs it, so the route cannot drop it). WPF's picker is active-team-only (`StandupService
+ * .SearchBacklogsAsync` passes `new[] { ActiveTeamId }`); until M9.1 the web could not reproduce that,
+ * because `BacklogListItemDto` carried no `teamId`. It does now (DR-11), so the scope is a client-side
+ * filter: keep `b.teamId === activeTeamId`.
  *
- *     foreach (var r in backlogs.Where(r => r.BacklogCode != "DEFAULT")) draft.Backlogs.Add(r);
- *
- * There is no server-side variant of this list to reach for instead — see the component's doc on why the
- * picker's team scope also cannot be narrowed from here.
+ * `activeTeamId` is `null` only when `/api/me` failed to load; in that degraded case we do not know the
+ * active team, so we drop only `DEFAULT` and show everything else rather than blanking the picker.
  */
-export function pickableBacklogs(backlogs: readonly BacklogListItemDto[]): BacklogListItemDto[] {
-  return backlogs.filter(b => b.backlogCode !== 'DEFAULT');
+export function pickableBacklogs(
+  backlogs: readonly BacklogListItemDto[],
+  activeTeamId: number | null | undefined,
+): BacklogListItemDto[] {
+  return backlogs.filter(b =>
+    b.backlogCode !== 'DEFAULT' && (activeTeamId == null || b.teamId === activeTeamId));
 }
 
 /**
