@@ -278,7 +278,7 @@ describe('groupRows', () => {
       row({ backlogId: 3, project: 'ARCS' }),
       row({ backlogId: 4, project: 'ARMS' }),
       row({ backlogId: 5, project: 'PlusArcs' }),
-    ]);
+    ], false, new Map());
 
     expect(bands.map(b => b.key)).toEqual(['ARCS', 'PlusArcs', 'ARMS', 'Other', 'Nonesuch']);
   });
@@ -288,14 +288,52 @@ describe('groupRows', () => {
       row({ backlogId: 1, backlogCode: 'A-1', project: 'ARCS' }),
       row({ backlogId: 2, backlogCode: 'A-2', project: 'ARCS' }),
       row({ backlogId: 3, backlogCode: 'A-3', project: 'ARCS' }),
-    ]);
+    ], false, new Map());
 
     expect(bands[0].rows.map(r => r.backlogCode)).toEqual(['A-1', 'A-2', 'A-3']);
   });
 
   it('a null project falls into its own band and sorts last', () => {
-    const bands = groupRows([row({ backlogId: 1, project: null }), row({ backlogId: 2, project: 'ARCS' })]);
+    const bands = groupRows([row({ backlogId: 1, project: null }), row({ backlogId: 2, project: 'ARCS' })], false, new Map());
     expect(bands.map(b => b.key)).toEqual(['ARCS', '—']);
+  });
+});
+
+// =====================================================================================================
+// Grouping — adaptive team banding (TL-12)
+// =====================================================================================================
+describe('groupRows — adaptive team banding (TL-12)', () => {
+  const names = new Map<number, string>([[1, 'Alpha'], [2, 'Beta']]);
+
+  it('bands by TEAM when byTeam is true — team name, alpha order, server row order within a band', () => {
+    const bands = groupRows([
+      row({ backlogId: 1, teamId: 2, project: 'ARCS' }),
+      row({ backlogId: 2, teamId: 1, project: 'Other' }),
+      row({ backlogId: 3, teamId: 2, project: 'ARMS' }),
+    ], true, names);
+
+    expect(bands.map(b => b.key)).toEqual(['Alpha', 'Beta']);
+    expect(bands.find(b => b.key === 'Beta')!.rows.map(r => r.backlogId)).toEqual([1, 3]);
+  });
+
+  it('a NULL teamId falls into a "—" band, which sorts LAST', () => {
+    const bands = groupRows([
+      row({ backlogId: 1, teamId: null }),
+      row({ backlogId: 2, teamId: 2 }),
+    ], true, names);
+    expect(bands.map(b => b.key)).toEqual(['Beta', '—']);
+  });
+
+  it('falls back to "#<id>" when the team name is unknown (a deactivated team not in the map)', () => {
+    expect(groupRows([row({ backlogId: 1, teamId: 99 })], true, names).map(b => b.key)).toEqual(['#99']);
+  });
+
+  it('bands by PROJECT (not team) when byTeam is false — even with teamIds present', () => {
+    const bands = groupRows([
+      row({ backlogId: 1, teamId: 2, project: 'Other' }),
+      row({ backlogId: 2, teamId: 1, project: 'ARCS' }),
+    ], false, names);
+    expect(bands.map(b => b.key)).toEqual(['ARCS', 'Other']);
   });
 });
 

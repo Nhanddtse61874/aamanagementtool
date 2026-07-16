@@ -692,6 +692,27 @@ describe('TaskListComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('ARCS-101');
   });
 
+  it('🔴 bands by TEAM when >1 team is checked, by PROJECT otherwise (TL-12)', async () => {
+    await setUp();
+
+    const twoTeamScreen: TaskListScreenDto = {
+      gantt: SCREEN.gantt,
+      rows: [
+        { ...ROW, backlogId: 100, teamId: 2, project: 'ARCS' },
+        { ...ROW, backlogId: 200, teamId: 1, project: 'ARMS' },
+      ],
+    };
+    api.getTaskListScreen.and.returnValue(of(twoTeamScreen));
+
+    component.onTeams([1, 2]);                       // >1 team -> team mode; names from getTeamsActive()
+    await settle();
+    expect(component.bands().map(b => b.key)).toEqual(['Alpha', 'Beta']);
+
+    component.onTeams([2]);                          // one team -> project mode
+    await settle();
+    expect(component.bands().map(b => b.key)).toEqual(['ARCS', 'ARMS']);
+  });
+
   it('shows exactly ONE system chip — Late, never Late AND At risk', async () => {
     await setUp();
 

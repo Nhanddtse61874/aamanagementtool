@@ -88,17 +88,13 @@ export function isDone(row: TaskListRowDto): boolean {
 }
 
 // =====================================================================================================
-// GROUPING — by PROJECT.
+// GROUPING — ADAPTIVE (TL-12).
 //
-// 🔴 GROUPING BY TEAM IS NOT IMPLEMENTABLE AND IS DELIBERATELY ABSENT. The desktop groups by team when >1
-// team is checked (TaskListViewModel:212, `GroupByTeam = showTeam`) — it reads `b.TeamId` straight off the
-// Backlog ENTITY. The WIRE HAS NO SUCH FIELD: `TaskListRowDto` (Api/Contracts/Dtos.cs:141) carries no
-// teamId and no team name, and neither does `BacklogListItemDto`. The only route that exposes a backlog's
-// team is `GET /api/backlogs/{id}` — one call PER ROW.
-//
-// So team-banding needs `TeamId`/`TeamName` added to `TaskListRowDto` (a C# + `npm run gen:api` change).
-// Until then this screen bands by project, always — which is precisely what the desktop does whenever a
-// single team is in scope, so nothing here contradicts it.
+// With >1 team checked the grid bands by TEAM (team name from the id->name map, alpha order, a null team
+// last); otherwise by PROJECT in the fixed order. This matches WPF (`GroupByTeam = showTeam`,
+// TaskListViewModel:212). The server sends only `teamId` (decision #2 in the spec); the NAME is resolved
+// client-side from /api/teams, exactly as WPF resolves it from `AvailableTeams`. `byTeam` and the name map
+// are supplied by the component's `bands` computed.
 // =====================================================================================================
 
 export interface Band {
@@ -112,25 +108,42 @@ export function projectOrder(project: string | null | undefined): number {
   return i === -1 ? Number.MAX_SAFE_INTEGER : i;
 }
 
+/** The team band a row belongs to: the resolved name, or "—" for a backlog with no team. */
+function teamBandKey(row: TaskListRowDto, teamNames: ReadonlyMap<number, string>): string {
+  const id = row.teamId;
+  if (id === null || id === undefined) return '—';
+  return teamNames.get(id) ?? `#${id}`;
+}
+
 /**
- * Group the rows into project bands, ordered ARCS → PlusArcs → ARMS → Other, unknown last.
+ * Group the rows into bands. `byTeam` chooses the axis:
+ *   - by TEAM: key on the resolved team name, alpha order, a "—" (no-team) band last.
+ *   - by PROJECT: key on the project, ordered ARCS -> PlusArcs -> ARMS -> Other, unknown last.
  *
- * Row order WITHIN a band is preserved — the server already sorts every row by `backlogCode`
- * (TaskListService:70), so re-sorting here would only risk disagreeing with it.
+ * Row order WITHIN a band is preserved — the server already sorts every row by `backlogCode`.
  */
-export function groupRows(rows: readonly TaskListRowDto[]): Band[] {
+export function groupRows(
+  rows: readonly TaskListRowDto[],
+  byTeam: boolean,
+  teamNames: ReadonlyMap<number, string>,
+): Band[] {
   const bands = new Map<string, TaskListRowDto[]>();
 
   for (const row of rows) {
-    const key = row.project ?? '—';
+    const key = byTeam ? teamBandKey(row, teamNames) : (row.project ?? '—');
     const bucket = bands.get(key);
     if (bucket) bucket.push(row);
     else bands.set(key, [row]);
   }
 
-  return [...bands.entries()]
-    .map(([key, bandRows]) => ({ key, rows: bandRows }))
-    .sort((a, b) => projectOrder(a.key) - projectOrder(b.key) || a.key.localeCompare(b.key));
+  const entries = [...bands.entries()].map(([key, bandRows]) => ({ key, rows: bandRows }));
+
+  if (byTeam) {
+    // "—" (no team) always sorts last; everything else is alpha by team name.
+    return entries.sort((a, b) =>
+      a.key === '—' ? 1 : b.key === '—' ? -1 : a.key.localeCompare(b.key));
+  }
+  return entries.sort((a, b) => projectOrder(a.key) - projectOrder(b.key) || a.key.localeCompare(b.key));
 }
 
 // =====================================================================================================

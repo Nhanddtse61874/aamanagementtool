@@ -103,6 +103,7 @@ export class TaskListComponent {
   private readonly userNames = signal<readonly NamedRefDto[]>([]);
   private readonly pcaContacts = signal<readonly PcaContactDto[]>([]);
   private readonly pcaContactNames = signal<readonly NamedRefDto[]>([]);
+  private readonly teamNames = signal<ReadonlyMap<number, string>>(new Map());
 
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -123,7 +124,10 @@ export class TaskListComponent {
 
   // ---- derived ---------------------------------------------------------------------------------------
   readonly rows = computed<readonly TaskListRowDto[]>(() => this.screen()?.rows ?? []);
-  readonly bands = computed<Band[]>(() => groupRows(this.rows()));
+  /** 🔴 True when >1 team is checked — WPF's `ShowTeamColumn` (_checked.size > 1). An UNLOADED/failed
+   *  filter leaves `teamIds` undefined, which is 0 here -> PROJECT bands, the safe default. */
+  readonly teamMode = computed(() => (this.teamIds()?.length ?? 0) > 1);
+  readonly bands = computed<Band[]>(() => groupRows(this.rows(), this.teamMode(), this.teamNames()));
   readonly gantt = computed(() => this.screen()?.gantt ?? null);
 
   /** 🔴 True ONLY when the user unchecked every team — never when the filter merely failed. */
@@ -172,18 +176,21 @@ export class TaskListComponent {
    */
   private async loadLookups(): Promise<void> {
     try {
-      const [tags, users, names, pcaContacts, pcaNames] = await Promise.all([
+      const [tags, users, names, pcaContacts, pcaNames, teams] = await Promise.all([
         firstValueFrom(this.api.getTagList()),
         firstValueFrom(this.api.getUsersActive()),
         firstValueFrom(this.api.getUserNames()),
         firstValueFrom(this.api.getPcaContactsActive()),
         firstValueFrom(this.api.getPcaContactNames()),
+        firstValueFrom(this.api.getTeamsActive()),
       ]);
       this.tags.set(tags);
       this.users.set(users);
       this.userNames.set(names);
       this.pcaContacts.set(pcaContacts);
       this.pcaContactNames.set(pcaNames);
+      this.teamNames.set(new Map(
+        teams.filter(t => t.id !== undefined).map(t => [t.id!, t.name ?? ''])));
     } catch {
       this.toast.show('Tags and people could not be loaded. Editing them is unavailable.');
     }
