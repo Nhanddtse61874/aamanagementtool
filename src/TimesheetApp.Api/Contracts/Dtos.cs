@@ -57,9 +57,15 @@ public sealed record SavedBody(long RowVersion);
 // ---- Versioned entities (rowVersion REQUIRED) ---------------------------------------------------------
 
 /// <summary>The entity property is still <c>WindowsUsername</c> (renaming it was judged out of scope at
-/// 28+ consumers), but the column and the wire field are both <c>username</c>.</summary>
+/// 28+ consumers), but the column and the wire field are both <c>username</c>.
+///
+/// <para><b><c>HasPassword</c> (M11)</b> is <c>password_hash IS NOT NULL</c> — a BOOLEAN, never the hash,
+/// its length, or any part of it. The admin Users screen needs it: a non-empty <c>username</c> alone does
+/// NOT mean the account can log in (an admin-created user has a username long before it has a password),
+/// so a client inferring "can log in" from <c>username</c> alone shows every account as reachable even when
+/// most cannot authenticate at all.</para></summary>
 public sealed record UserDto(
-    int Id, string Name, string? Username, bool IsActive, bool IsAdmin, long RowVersion);
+    int Id, string Name, string? Username, bool IsActive, bool IsAdmin, long RowVersion, bool HasPassword);
 
 public sealed record TeamDto(
     int Id, string Name, bool IsActive, DateTimeOffset CreatedAt, long RowVersion);
@@ -202,7 +208,7 @@ public sealed record StandupEntryDto(
 public static class DtoMappings
 {
     public static UserDto ToDto(this User u) =>
-        new(u.Id, u.Name, u.WindowsUsername, u.IsActive, u.IsAdmin, u.RowVersion);
+        new(u.Id, u.Name, u.WindowsUsername, u.IsActive, u.IsAdmin, u.RowVersion, u.HasPassword);
 
     public static TeamDto ToDto(this Team t) =>
         new(t.Id, t.Name, t.IsActive, t.CreatedAt, t.RowVersion);

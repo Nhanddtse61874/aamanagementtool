@@ -90,10 +90,18 @@
           <div class="mono">
             @if (canLogIn(u)) {
               {{ u.username }}
-            } @else {
+            } @else if ((u.username ?? '') === '') {
               <!-- The ghost, made visible. This is the state a half-finished create leaves behind. -->
               <span class="badge badge-warn" title="No username — this account cannot be logged into.">
                 No login
+              </span>
+            } @else {
+              <!-- Has a username, has never had a password. A DIFFERENT problem with a DIFFERENT fix:
+                   the ghost above needs a username typed, this one needs an admin to press Password.
+                   Collapsing both into "No login" would tell the admin to fix the wrong thing. -->
+              {{ u.username }}
+              <span class="badge badge-warn" title="No password has been set — an admin must set one before this account can log in.">
+                No password
               </span>
             }
           </div>

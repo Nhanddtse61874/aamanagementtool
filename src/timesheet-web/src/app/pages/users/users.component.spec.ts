@@ -18,14 +18,21 @@ import { UsersComponent } from './users.component';
  * state. `expect(component.users().length).toBe(3)` proves nothing about whether a user can log in.
  */
 
-/** Rob has no username — the exact ghost a one-step create leaves behind. Dana is DEACTIVATED. */
+/**
+ * Rob has no username — the exact ghost a one-step create leaves behind. Dana is DEACTIVATED.
+ * Priya (M11) has a username and has NEVER had a password: a DIFFERENT broken state with a different
+ * fix, and the one this screen used to report as perfectly able to log in.
+ */
 const ROWS: UserDto[] = [
-  { id: 1, name: 'Nhan', username: 'nhan', isActive: true, isAdmin: true, rowVersion: 4 },
-  { id: 2, name: 'Dana', username: 'dana', isActive: false, isAdmin: false, rowVersion: 2 },
-  { id: 3, name: 'Rob', username: null, isActive: true, isAdmin: false, rowVersion: 1 },
+  { id: 1, name: 'Nhan', username: 'nhan', isActive: true, isAdmin: true, rowVersion: 4, hasPassword: true },
+  { id: 2, name: 'Dana', username: 'dana', isActive: false, isAdmin: false, rowVersion: 2, hasPassword: true },
+  { id: 3, name: 'Rob', username: null, isActive: true, isAdmin: false, rowVersion: 1, hasPassword: false },
+  { id: 4, name: 'Priya', username: 'priya', isActive: true, isAdmin: false, rowVersion: 1, hasPassword: false },
 ];
 
-const CREATED: UserDto = { id: 9, name: 'Zoe', username: null, isActive: true, isAdmin: false, rowVersion: 1 };
+const CREATED: UserDto = {
+  id: 9, name: 'Zoe', username: null, isActive: true, isAdmin: false, rowVersion: 1, hasPassword: false,
+};
 
 describe('UsersComponent', () => {
   let api: jasmine.SpyObj<WorklogService>;
@@ -87,6 +94,36 @@ describe('UsersComponent', () => {
   it('marks an account with no username as unable to log in', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('No login');
+  });
+
+  /**
+   * 🔴 M11. `canLogIn` used to be `(u.username ?? '') !== ''` and nothing else, while its own doc comment
+   * claimed it also covered "created before a password was ever set". On a database holding accounts
+   * without passwords — which is EVERY account on a fresh install except the seeded admin — this screen
+   * reported all of them as able to log in when none of them could. It is the screen an admin provisions
+   * from, so it was lying about the exact thing they were there to fix.
+   */
+  it('marks an account that has a username but NO password as unable to log in', () => {
+    expect(fixture.componentInstance.canLogIn(ROWS[3])).toBe(false);   // Priya: username, no password
+    expect(fixture.componentInstance.canLogIn(ROWS[0])).toBe(true);    // Nhan:  username + password
+  });
+
+  /**
+   * The two broken states need DIFFERENT fixes — Rob needs a username typed, Priya needs an admin to
+   * press Password — so the screen must not collapse them into one badge and send the admin after the
+   * wrong one.
+   */
+  it('distinguishes "no username" from "no password" on screen', () => {
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('No login');       // Rob
+    expect(text).toContain('No password');    // Priya
+    expect(text).toContain('priya');          // ...and her username is still shown, unlike the ghost's
+  });
+
+  /** `boolean | undefined` on the wire: an absent field must read as "cannot", never as "can". */
+  it('treats an undefined hasPassword as cannot-log-in, not can', () => {
+    const noField = { id: 5, name: 'Old', username: 'old', isActive: true, isAdmin: false, rowVersion: 1 };
+    expect(fixture.componentInstance.canLogIn(noField as UserDto)).toBe(false);
   });
 
   it('shows a retry, not an empty table, when the read fails', () => {

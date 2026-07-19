@@ -2,13 +2,24 @@
 
 ## Current Position
 
-**Phase:** Step 7 — **M11 (configuration)** in progress. **M9.2 SHIPPED** (`1d044ec`) · **M10 SHIPPED — the WPF app is deleted** (`daa4192`, branch `feature/m10-delete-wpf-2026-07-19`).
-**Status:** in_progress — running autonomously by user instruction 2026-07-19; decisions taken from this session's recorded choices.
-**Last updated:** 2026-07-19
+**Phase:** Step 11 — **M9.2, M10 and M11 all SHIPPED.** The autonomous run is complete; nothing is in flight.
+**Status:** waiting_for_user — everything remaining needs a human's hands or a human's decision.
+**Last updated:** 2026-07-20
+
+**Gate: .NET 475 · ApiTests 541 · Angular 775 · 0 warnings.** Every figure re-run by the controller, none taken from an agent's report.
 
 ## Next Action
 
-M11: fix F1 (`Program.cs:34` uses `||`) and F2 (persisted store outranks the argument) so `DbPath` from `appsettings.json` actually works, per the go-live requirement. Spec: `docs/superpowers/specs/2026-07-19-m11-configuration-design.md`.
+**Click something.** The suite proves logic; it has never proved that a person sees the right thing. Cheapest first: `G-A` — open Log Work, type `abc` over a cell holding `4`, tab away. The `4` must survive and the cell must go red. Then `G-B`, then the batched `OT-13…OT-25`.
+
+Deployment is now a first run: copy `src/TimesheetApp.Api/appsettings.Example.json` to `appsettings.json`, set the three paths, start. A fresh database seeds `admin`/`admin` — change it immediately via the new Change Password screen.
+
+## ⚠️ WHAT THIS SESSION DID NOT PROVE
+
+- **Nobody has clicked anything.** Not `G-A`/`G-B`, not `G3`/`G6`/`G10`, not `OT-13…OT-25`. Three milestones merged un-accepted.
+- **The app has never been started against the new required-configuration code.** Every check was a test or a sandboxed regen; the "never run the app" rule held all the way through. The first real start is unproven ground — read the banner it prints.
+- **No test touches the DOM** for M9.2's red cell or its status line.
+- **Who hosts the API is unanswered**, and the startup jobs only run while the process runs. A console window nobody opens has *worse* liveness for the daily backup than the desktop trigger it replaced.
 
 ## 🔴 THE ORACLE IS GONE — read before doubting any behaviour
 

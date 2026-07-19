@@ -31,7 +31,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, username, is_active, is_admin, row_version FROM Users WHERE is_active = 1 ORDER BY name;");
+            "SELECT id, name, username, is_active, is_admin, row_version, password_hash FROM Users WHERE is_active = 1 ORDER BY name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -39,7 +39,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var rows = await c.QueryAsync<UserRaw>(
-            "SELECT id, name, username, is_active, is_admin, row_version FROM Users ORDER BY is_active DESC, name;");
+            "SELECT id, name, username, is_active, is_admin, row_version, password_hash FROM Users ORDER BY is_active DESC, name;");
         return rows.Select(MapUser).ToList();
     }
 
@@ -47,7 +47,8 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, username, is_active, is_admin, row_version FROM Users WHERE id = @id;", new { id });
+            "SELECT id, name, username, is_active, is_admin, row_version, password_hash FROM Users WHERE id = @id;",
+            new { id });
         return row is null ? null : MapUser(row);
     }
 
@@ -55,7 +56,7 @@ public sealed class UserRepository : IUserRepository
     {
         using var c = _factory.Create();
         var row = await c.QuerySingleOrDefaultAsync<UserRaw>(
-            "SELECT id, name, username, is_active, is_admin, row_version FROM Users WHERE username = @w;",
+            "SELECT id, name, username, is_active, is_admin, row_version, password_hash FROM Users WHERE username = @w;",
             new { w = username });
         return row is null ? null : MapUser(row);
     }
@@ -253,7 +254,8 @@ public sealed class UserRepository : IUserRepository
         e.SqliteExtendedErrorCode == SqliteConstraintUnique;
 
     private static User MapUser(UserRaw r) =>
-        new((int)r.id, r.name, r.username, r.is_active != 0, r.row_version, r.is_admin != 0);
+        new((int)r.id, r.name, r.username, r.is_active != 0, r.row_version, r.is_admin != 0,
+            HasPassword: r.password_hash != null);
 
     // SQLite-native shape (long/string) — narrowed at the boundary above (see Task 4 mapping note).
     private sealed class UserRaw
@@ -264,6 +266,11 @@ public sealed class UserRepository : IUserRepository
         public long is_active { get; set; }
         public long is_admin { get; set; }      // v10; projected so /api/users can show who is an admin
         public long row_version { get; set; }
+
+        // M11: nullable, same as CredentialsRaw's below -- only IS-NULL-ness crosses into User.HasPassword
+        // (MapUser). The hash string itself is discarded the instant this row is mapped; it never reaches a
+        // DTO or leaves this class.
+        public string? password_hash { get; set; }
     }
 
     // SQLite-native shape for the credential read. password_hash is nullable (a user who has never had
