@@ -24,6 +24,18 @@
 
 ⚠️ **But scenario 2 keeps a smaller version of it:** *"path already exists → open that database"* means an existing DB has users, so `admins.Count != 0` and **`admin`/`admin` is NOT seeded** — it falls to the random-password-logged-once path. Recovery is one line (`UPDATE Users SET password_hash = NULL WHERE id = <admin>`) plus a restart, not surgery. Recorded because the earlier version of this file overstated it.
 
+## 🟠 LIVE DEFECTS FOUND BY TEAM B — recorded, NOT fixed, with reasons
+
+Three things that are wrong on `main` today and are **not** M10 blockers. Each was verified at source by the controller, not taken from the memo.
+
+**1. `NoOpDbBackupHelper` is written, tested, and registered nowhere.** ✅ verified — it exists at `Core/Services/NoOpDbBackupHelper.cs` with its own `NoOpServicesTests.cs`, while both hosts register the real one (`Program.cs:103`, `App.xaml.cs:161`). Its own doc calls itself *"the `IDbBackupHelper` the API host registers"*. It is not. So the API takes a **full online DB backup before every bulk write** — Smart Fill apply, DefaultTask sync, retention, team bootstrap.
+**Deliberately NOT changed.** It is a genuine fork, not a clear bug: the class was written on the theory that per-bulk-write snapshots are wrong for a server, but XC-10 requires exactly that behaviour, and those snapshots are **restorable backups that exist right now**. Swapping to the no-op would remove a safety net at the precise moment M10 removes the other one. Revisit after the restore path is proven, not before.
+
+**2. `ExportHubService.cs:145` copies the whole database on every export run, ungated.** ✅ verified — the call sits outside every `if`, and prunes `{export_root}/db` to `BackupKeepCount` (default 30). Reachable today via `POST /api/ops/export/run`, so ~30 rapid admin clicks evict every older snapshot in that folder.
+⚠️ **The memo overstates this as evicting "every backup".** It prunes the *export root's* `db` folder — a different setting from the user's `BackupFolderPath`. Real, bounded, worth a ticket; not the catastrophe the one-liner implies. The keep-count assumes one run per period while the trigger is unbounded.
+
+**3. Smart Fill's two implementations disagree.** `distributeHours(8,3)` → `[2.7, 2.7, 2.6]` in TypeScript vs `[2.6, 2.6, 2.8]` in Core, while `smart-fill.ts:8` claims they are *"the same rule"*. Same total, different distribution — a user gets different per-day hours depending on which app they used. **Not yet verified by the controller**; carried from the audit at P10. Verify before acting.
+
 ## 📐 NUMBERS SETTLED 2026-07-19 — three sources disagreed, so they were counted
 
 - **The WPF deletion removes 205 tests across 22 files.** Counted, not relayed: ViewModels 13 files/179 · Views **6** files/9 · `CurrentTeamServiceTests` 9 · `CurrentTeamPerUserTests` 4 · `DependencyInjectionTests` 4. The audit's **205 was right** but its file count (23) was not; the blocker memo's **190 is wrong**. `TimesheetApp.Tests` 691 → ~486.
