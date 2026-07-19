@@ -19,6 +19,13 @@
   Recon: `.planning/research/M8.7-M8.10-recon.md` · `.planning/research/M8.8-daily-report-recon.md`
 
 ## Shipped
+- **M10 — Delete the WPF app** — **COMPLETE** (`daa4192`, 2026-07-19), **Mode A**. **.NET 692 → 465** (−227 test cases), **ApiTests 531**, **Angular 772**, **0 warnings**. `TimesheetApp.Core` untouched.
+  The desktop app the project started as is gone: `src/TimesheetApp/` entirely (ViewModels, Views, `Services/CurrentTeamService` + `ThemeService`, `App.xaml.cs` and its whole startup lifecycle), 23 test files, the `ProjectReference`, the `InternalsVisibleTo`, and the solution entry.
+  **The audit said DO NOT DELETE YET, and all three blockers were closed first** — that is why this was safe today and not this morning. Auth cutover **dissolved** when the user confirmed the database is disposable and go-live is a first run. The four scheduled jobs whose only caller was `App.xaml.cs` now run in the API (`a05b721`). Backup is configurable and inspectable from the web (`3866d63`, `b50b4d8`, `81beec4`), restore has an offline CLI + runbook (`4c075d8`) and refuses a non-database before deleting anything (`0c739f9`).
+  **Gate shape was the user's call:** only silently-failing items blocked the deletion; the ~7 affordance items are deferred and listed in `.planning/M10-BLOCKERS.md`, not forgotten. Four permanent losses were accepted by name.
+  **Two confident claims corrected by doing it:** the memo said `BackupServiceTests`/`WalBackupSafetyTests` were in the blast radius and needed relocating — they were not and did not. And the test loss is **227**, not the 205 this controller asserted nor the 190 the memo did: both counted `[Fact]`/`[Theory]` *attributes*, and a Theory with several `InlineData` rows is several cases.
+  🔴 **`OT-13…OT-25` was never clicked. From here the audit memo IS the record of what the desktop did.** The source remains in git history.
+  Audit: `.planning/M10-COVERAGE-AUDIT.md` · Blockers: `.planning/M10-BLOCKERS.md`
 - **M9.2 — UI write honesty** — **MERGED to `main`** (`1d044ec`, 2026-07-19), **Mode A**. **753 Angular tests green** (baseline 742). QA **APPROVE WITH CONDITIONS**, 0 Critical, all 3 Important closed before merge.
   Two live data-loss defects, one class — *the UI asserting a write that did not happen*. **BUG-1:** typing unparseable text over a Log Work cell **silently deleted the hours already stored there**, and dropped the day/week totals to `0` on screen while the database still held them. **BUG-2:** "Backup now" reported success when nothing had been written.
   **No REQ-IDs added** — both violate requirements that already existed (**TS-04/XC-02/XC-04**, **BK-02**), written for WPF, satisfied by WPF, never implemented by the web port. Debt closure, not new scope.

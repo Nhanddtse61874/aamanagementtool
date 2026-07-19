@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -11,7 +11,6 @@
     <!-- DateHelpers is `internal static` and is called by ReportsViewModel and
          TimesheetViewModel, which stay in WPF. Without the first line, moving
          Services/ in a later wave is a hard CS0122 x3. -->
-    <InternalsVisibleTo Include="TimesheetApp" />
     <InternalsVisibleTo Include="TimesheetApp.Tests" />
   </ItemGroup>
 

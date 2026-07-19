@@ -2,13 +2,21 @@
 
 ## Current Position
 
-**Phase:** Step 11 — **M9.2 SHIPPED** (`1d044ec`). M10 **parked on 3 human decisions**; M11 pre-req cleared, milestone not started.
-**Status:** waiting_for_user — everything still open needs the user's hands or the user's decisions, not more agent work.
+**Phase:** Step 7 — **M11 (configuration)** in progress. **M9.2 SHIPPED** (`1d044ec`) · **M10 SHIPPED — the WPF app is deleted** (`daa4192`, branch `feature/m10-delete-wpf-2026-07-19`).
+**Status:** in_progress — running autonomously by user instruction 2026-07-19; decisions taken from this session's recorded choices.
 **Last updated:** 2026-07-19
 
 ## Next Action
 
-**Two things, both the user's:** (1) click `G-A`/`G-B` plus the batched `OT-13…OT-25` and M9.1's `G3`/`G6`/`G10`; (2) decide the 3 M10 blockers from `.planning/M10-BLOCKERS.md`. Nothing downstream can be planned honestly until those land.
+M11: fix F1 (`Program.cs:34` uses `||`) and F2 (persisted store outranks the argument) so `DbPath` from `appsettings.json` actually works, per the go-live requirement. Spec: `docs/superpowers/specs/2026-07-19-m11-configuration-design.md`.
+
+## 🔴 THE ORACLE IS GONE — read before doubting any behaviour
+
+`src/TimesheetApp/` no longer exists. **`OT-13…OT-25` was never clicked**, and M9.1's `G3` is specified as *"matches the old WPF app"* — there is no running app left to match against.
+
+From here, the record of what the desktop did is `.planning/M10-COVERAGE-AUDIT.md` (369 behaviours) and `.planning/M10-BLOCKERS.md`. The source is recoverable from git history at `daa4192^`, but recovering it means building a WPF app on a machine that may no longer have the workload installed. **Treat the memo as the oracle, and if it is silent on something, say so rather than inventing what WPF "would have" done.**
+
+**Gate after the deletion:** .NET **465** + ApiTests **531** + Angular **772**, 0 warnings.
 
 ## ✅ USER DECISIONS 2026-07-19 — M10 unparked
 
