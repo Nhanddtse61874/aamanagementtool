@@ -1,8 +1,8 @@
 import { TimeLogDto, WeekBacklogGroup } from '../../api/models';
 import { cellKey } from '../../core/cell-key';
 import {
-  buildCellMap, buildGroups, CellMap, expectedVersionFor, formatHours, mergeSmartFill, nextOrderIndex,
-  parseHours, patchCell,
+  buildCellMap, buildGroups, CellInput, CellMap, expectedVersionFor, formatHours, mergeSmartFill,
+  nextOrderIndex, patchCell, readCell,
 } from './grid-state';
 import { weekDays } from './week';
 
@@ -174,28 +174,31 @@ describe('patchCell', () => {
   });
 });
 
-describe('parseHours', () => {
-  // The API rejects hours <= 0 with 400 "Hours must be greater than 0." (VERIFIED on the wire), so an empty
-  // box cannot mean "save 0" -- it means CLEAR, which is a DELETE.
-  it('reads a blank box as null -- meaning CLEAR, not zero', () => {
-    expect(parseHours('')).toBeNull();
-    expect(parseHours('   ')).toBeNull();
-  });
+describe('readCell', () => {
+  // 🔴 A DOCUMENTED DECISION IS BEING REVERSED HERE, ON PURPOSE (spec §5.3). This file used to assert that
+  // an explicit '0' was SENT TO THE SERVER, with the rationale "0 is NOT silently swallowed into clear --
+  // it is a real value the user typed, and the API has a specific message for it; sending it is more honest
+  // than guessing they meant to delete." That reasoning is superseded: M9.2 rejects '0' CLIENT-SIDE instead,
+  // matching WPF's `TimesheetRowVm.Validate` (rejects `hours <= 0`). The user-visible result is strictly
+  // better -- the message appears immediately instead of after a round-trip to the API -- so the old
+  // rationale no longer holds and is replaced rather than left contradicting the code.
+  const cases: ReadonlyArray<[text: string, expected: CellInput]> = [
+    ['', { kind: 'clear' }],
+    ['  ', { kind: 'clear' }],
+    ['4', { kind: 'value', hours: 4 }],
+    ['4.5', { kind: 'value', hours: 4.5 }],
+    ['0', { kind: 'invalid', reason: 'not-positive' }],
+    ['-1', { kind: 'invalid', reason: 'not-positive' }],
+    ['9', { kind: 'invalid', reason: 'over-cap' }],
+    ['2.55', { kind: 'invalid', reason: 'too-precise' }],
+    ['abc', { kind: 'invalid', reason: 'not-a-number' }],
+  ];
 
-  it('reads a number', () => {
-    expect(parseHours('4')).toBe(4);
-    expect(parseHours('4.5')).toBe(4.5);
-  });
-
-  it('reads gibberish as null rather than sending it', () => {
-    expect(parseHours('abc')).toBeNull();
-  });
-
-  // 0 is NOT silently swallowed into "clear": it is a real value the user typed, and the API has a specific
-  // message for it. Sending it and showing that message is more honest than guessing they meant to delete.
-  it('keeps an explicit 0 as 0, so the API can say what it thinks of it', () => {
-    expect(parseHours('0')).toBe(0);
-  });
+  for (const [text, expected] of cases) {
+    it(`reads ${JSON.stringify(text)} as ${JSON.stringify(expected)}`, () => {
+      expect(readCell(text)).toEqual(expected);
+    });
+  }
 });
 
 describe('formatHours', () => {

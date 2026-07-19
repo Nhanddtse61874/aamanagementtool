@@ -191,14 +191,52 @@ export function patchCell(cells: CellMap, taskId: number, isoDate: string, cell:
   return { ...cells, [cellKey(taskId, isoDate)]: cell };
 }
 
-/** Parse what the user typed. `''`/whitespace -> `null`, meaning CLEAR THE CELL (a DELETE, not a save --
- *  the API rejects `hours <= 0`, so "0" is not a way to empty a cell). Anything unparseable -> `null` too:
- *  the user cannot have meant to save gibberish. */
-export function parseHours(text: string): number | null {
+/** Why a cell's text was refused. */
+export type InvalidReason = 'not-a-number' | 'not-positive' | 'over-cap' | 'too-precise';
+
+/**
+ * The total, three-way answer for what the user typed into a cell.
+ *
+ * 🔴 `parseHours` used to return `number | null`, collapsing "the box is empty, clear the cell" and
+ * "this text is garbage" onto the SAME `null` -- and the caller turned every `null` into a DELETE. That is
+ * BUG-1 (spec §3): typing `abc` over a cell holding 4 hours silently destroyed the 4. `clear` and `invalid`
+ * are different intents and must stay different types all the way to the caller.
+ */
+export type CellInput =
+  | { kind: 'clear' }
+  | { kind: 'value'; hours: number }
+  | { kind: 'invalid'; reason: InvalidReason };
+
+/**
+ * Read what the user typed. Rules, in order (spec §5.2):
+ *
+ *   blank/whitespace           -> clear                 (unchanged from the old `parseHours`)
+ *   not a finite number        -> invalid 'not-a-number'
+ *   <= 0 (incl. '0', '-1')     -> invalid 'not-positive'
+ *   > 8                        -> invalid 'over-cap'
+ *   more than 1 decimal place  -> invalid 'too-precise'
+ *   otherwise                  -> value
+ *
+ * 🔴 `'0'` used to be sent to the server as a real value (spec §5.3 -- a documented decision, reversed on
+ * purpose here). WPF's `TimesheetRowVm.Validate` rejects `hours <= 0` client-side; the web app now matches
+ * it instead of round-tripping to the API to learn the same thing a beat later.
+ *
+ * Decimal-place count is read off the TRIMMED STRING, not the parsed `number` -- `Number` gives no reliable
+ * way to recover "how many digits were typed after the point" once it has rounded/normalised the value.
+ */
+export function readCell(text: string): CellInput {
   const trimmed = text.trim();
-  if (trimmed === '') return null;
+  if (trimmed === '') return { kind: 'clear' };
+
   const n = Number(trimmed);
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n)) return { kind: 'invalid', reason: 'not-a-number' };
+  if (n <= 0) return { kind: 'invalid', reason: 'not-positive' };
+  if (n > 8) return { kind: 'invalid', reason: 'over-cap' };
+
+  const decimalPlaces = trimmed.includes('.') ? trimmed.split('.')[1].length : 0;
+  if (decimalPlaces > 1) return { kind: 'invalid', reason: 'too-precise' };
+
+  return { kind: 'value', hours: n };
 }
 
 /** How a cell's hours are shown in its input box. `null` -> empty string, not `"0"`. */

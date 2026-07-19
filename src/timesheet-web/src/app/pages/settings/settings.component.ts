@@ -546,8 +546,17 @@ export class SettingsComponent {
     this.busy.set(true);
     this.api.runBackup().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: r => {
+        // 🔴 null/empty means the server ATTEMPTED NOTHING — BackupService.cs:43 collapses three
+        // different preconditions (blank folder, blank db path, missing db file) into this one value,
+        // and the client cannot tell them apart. Name none of them; a false specific cause is worse
+        // than an honest generic one. Route through fail() — the one channel this screen already uses
+        // for "the thing you asked for did not happen" — so there is no second, competing error surface.
+        if (!r.value) {
+          this.fail(new Error('Backup did not run — no file was written.'));
+          return;
+        }
         this.busy.set(false);
-        this.opsResult.set(`Backup written to ${r.value ?? 'the configured folder'}`);
+        this.opsResult.set(`Backup written to ${r.value}`);
         this.toast.show('Backup complete');
       },
       error: (err: unknown) => this.fail(err),

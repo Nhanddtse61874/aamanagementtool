@@ -326,17 +326,58 @@ describe('LogWorkComponent', () => {
     expect(api.clearHours).not.toHaveBeenCalled();
   });
 
+  // ---- 🔴 BUG-1 (spec 2026-07-19-m9.2): an invalid draft is kept, marked, and NEVER written --------------
+  // `readCell('abc')` used to collapse onto the SAME null a genuine clear produces, and `commitCell` turned
+  // every null into `clearCell()` -- a DELETE the user never asked for. These are the two regression tests
+  // that would have caught it.
+
+  it('typing gibberish over a filled cell issues NO request and leaves the stored value untouched', () => {
+    setUp(week(4, 11));
+
+    component.editCell(MONDAY_TASK, mon, 'abc');
+    component.commitCell(MONDAY_TASK, mon);
+
+    expect(api.saveHours).not.toHaveBeenCalled();
+    expect(api.clearHours).not.toHaveBeenCalled();
+    expect(component.isInvalidCell(MONDAY_TASK, mon)).toBe(true);
+
+    // Prove the server-truth cell itself was never touched, not merely that no request fired: a legitimate
+    // edit right after this one must still carry the ORIGINAL rowVersion (11) as its expectedVersion. If the
+    // invalid commit had reached clearCell/saveCell and mutated `cells`, this would carry a version that was
+    // never actually returned by a write.
+    api.saveHours.and.returnValue(of(12));
+    component.editCell(MONDAY_TASK, mon, '6');
+    component.commitCell(MONDAY_TASK, mon);
+
+    expect(api.saveHours).toHaveBeenCalledWith(MONDAY_TASK, mon, 6, 11);
+    expect(component.isInvalidCell(MONDAY_TASK, mon)).toBe(false);   // the fix clears the mark
+  });
+
+  it('an invalid cell contributes its last committed value to dayTotal, never 0', () => {
+    setUp(week(4, 11));
+    expect(component.dayTotal(mon)).toBe(4);        // sanity: the day starts at the stored 4h
+
+    component.editCell(MONDAY_TASK, mon, 'abc');    // typing gibberish over it, live -- no commit yet
+
+    expect(component.dayTotal(mon)).toBe(4);        // ...must not drop the total to 0
+    expect(component.rowTotal(MONDAY_TASK)).toBe(4);
+  });
+
   // ---- 🔴 the three error channels --------------------------------------------------------------------
 
+  // 🔴 M9.2: the input used to be '40' -- an over-8h value the SERVER rejected with 400. `readCell` (A1) now
+  // enforces the same per-cell cap CLIENT-SIDE, so '40' never reaches `saveHours` at all any more (it is
+  // 'invalid', not a request). This test still needs a genuine server-side 400, so it exercises a rule the
+  // client legitimately cannot check itself -- a client-valid value the server refuses for its own reason.
   it('400: shows the business rule\'s OWN message and reverts the cell', () => {
     setUp();
     api.saveHours.and.returnValue(
-      throwError(() => httpError(400, { error: 'A single cell cannot exceed 8h.' })));
+      throwError(() => httpError(400, { error: 'Hours cannot be logged on a public holiday.' })));
 
-    component.editCell(EMPTY_TASK, mon, '40');
+    component.editCell(EMPTY_TASK, mon, '6');
     component.commitCell(EMPTY_TASK, mon);
 
-    expect(toast.show).toHaveBeenCalledWith('A single cell cannot exceed 8h.');
+    expect(toast.show).toHaveBeenCalledWith('Hours cannot be logged on a public holiday.');
     expect(component.cellText(EMPTY_TASK, mon)).toBe('');    // nothing was written, so show the truth
     expect(component.conflict()).toBeNull();                 // a 400 is NOT a conflict
   });

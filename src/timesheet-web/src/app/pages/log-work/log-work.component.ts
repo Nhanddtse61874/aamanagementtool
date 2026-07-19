@@ -18,7 +18,7 @@ import { WorklogService } from '../../services/worklog.service';
 import { AddTaskDialogComponent } from './add-task-dialog.component';
 import {
   CellMap, Group, TaskRow, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill,
-  nextOrderIndex, parseHours, patchCell,
+  nextOrderIndex, patchCell, readCell,
 } from './grid-state';
 import { canMoveMonth, nextMonthFrom, toUpdateRequest } from './move-month';
 import { reorderPlan } from './reorder';
@@ -113,6 +113,16 @@ export class LogWorkComponent {
   private readonly cells = signal<CellMap>({});
   /** What the user is TYPING, before it is committed. Cleared per cell once the write resolves. */
   private readonly drafts = signal<Record<string, string>>({});
+  /**
+   * Cells whose draft `commitCell` refused to write, keyed by `cellKey(taskId, iso)` -- drives the red
+   * border, `aria-invalid` and the status line. NOT touched per keystroke: WPF's own contract ("Persist a
+   * single cell as soon as it commits") is commit-gated, so a cell reads red only after a real commit
+   * attempt, never mid-type ("4." is not "4.5" gone wrong). Cleared whenever the draft it belongs to is
+   * dropped -- see `dropDraft` -- so a fixed cell or a reload/Smart-Fill cannot leave a stale mark on screen.
+   */
+  private readonly invalidCells = signal<ReadonlySet<string>>(new Set());
+  /** Drives the single `role="alert"` status line -- the idiom at `backlog-editor.component.html:24-27`. */
+  readonly hasInvalidCell = computed(() => this.invalidCells().size > 0);
   readonly loading = signal(false);
   readonly loadError = signal<string | null>(null);
   readonly collapsed = signal<Record<number, boolean>>({});
@@ -237,6 +247,7 @@ export class LogWorkComponent {
     // time the response lands — otherwise a slow response for last week keys its cells onto this week.
     this.cells.set(buildCellMap(groups, weekDays(monday)));
     this.drafts.set({});
+    this.invalidCells.set(new Set());   // a fresh week read replaces every draft; no stale mark can survive it
   }
 
   // ---- reading the grid ----------------------------------------------------------------------------
@@ -247,9 +258,25 @@ export class LogWorkComponent {
     return this.drafts()[key] ?? formatHours(this.cells()[key]?.hours ?? null);
   }
 
+  /** Whether this cell's current draft was refused by `commitCell` -- the template's red border / aria-invalid. */
+  isInvalidCell(taskId: number, iso: string): boolean {
+    return this.invalidCells().has(cellKey(taskId, iso));
+  }
+
+  /**
+   * 🔴 An invalid draft must never lower the totals: the DB still holds whatever was last committed here, and
+   * `readCell` -- not a live parse of gibberish -- is what tells the difference (spec §5.5, the totals-side
+   * twin of BUG-1: typing "abc" over a 4h cell used to drop the row/day/week totals to 0 on screen while the
+   * database still held the 4). Checked LIVE, per keystroke, via the draft text itself -- not via
+   * `invalidCells`, which only updates on commit -- because the totals move as you type (see the class
+   * comment) and the lie appeared before any blur ever happened.
+   */
   private cellHours(taskId: number, iso: string): number {
-    const text = this.cellText(taskId, iso);
-    return parseHours(text) ?? 0;
+    const key = cellKey(taskId, iso);
+    const input = readCell(this.cellText(taskId, iso));
+    if (input.kind === 'value') return input.hours;
+    if (input.kind === 'clear') return 0;
+    return this.cells()[key]?.hours ?? 0;                 // 'invalid' -- fall back to the LAST COMMITTED value
   }
 
   rowTotal(taskId: number): number {
@@ -293,13 +320,39 @@ export class LogWorkComponent {
     const draft = this.drafts()[key];
     if (draft === undefined) return;                       // never touched — nothing to commit
 
-    const wanted = parseHours(draft);
+    const input = readCell(draft);
+
+    // 🔴 'invalid' is never "equal to current" and never reaches the API. It used to collapse onto
+    // `parseHours(draft) === null` -- the SAME null a genuine clear produces -- and the branch below turned
+    // every null into `clearCell()`: a DELETE of hours the user never asked to remove (BUG-1, spec §3). The
+    // draft stays exactly as typed; only the invalid mark changes.
+    if (input.kind === 'invalid') {
+      this.markInvalid(key);
+      return;
+    }
+
+    const wanted = input.kind === 'clear' ? null : input.hours;
     const current = this.cells()[key]?.hours ?? null;
+
+    this.clearInvalid(key);                                  // a legitimate clear/value -- any prior mark is gone
 
     if (wanted === current) { this.dropDraft(key); return; }  // typed it back to what it already was
 
-    if (wanted === null) this.clearCell(taskId, iso);
-    else this.saveCell(taskId, iso, wanted);
+    if (input.kind === 'clear') this.clearCell(taskId, iso);
+    else this.saveCell(taskId, iso, input.hours);
+  }
+
+  private markInvalid(key: string): void {
+    this.invalidCells.update(s => (s.has(key) ? s : new Set(s).add(key)));
+  }
+
+  private clearInvalid(key: string): void {
+    this.invalidCells.update(s => {
+      if (!s.has(key)) return s;
+      const next = new Set(s);
+      next.delete(key);
+      return next;
+    });
   }
 
   private saveCell(taskId: number, iso: string, hours: number): void {
@@ -352,6 +405,7 @@ export class LogWorkComponent {
       const { [key]: _removed, ...rest } = d;
       return rest;
     });
+    this.clearInvalid(key);   // the draft is gone -- an invalid mark with no draft behind it would be a lie
   }
 
   // ---- the three error channels --------------------------------------------------------------------
@@ -507,6 +561,7 @@ export class LogWorkComponent {
         this.sfOpen.set(false);
         this.cells.update(c => mergeSmartFill(c, rows));      // MERGE. Never replace.
         this.drafts.set({});
+        this.invalidCells.set(new Set());   // every draft just went with it -- no stale mark can survive it
         this.toast.show(`Smart fill applied to ${rows.length} cell${rows.length === 1 ? '' : 's'}.`);
       },
       error: (err: unknown) => {

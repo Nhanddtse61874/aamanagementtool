@@ -33,6 +33,13 @@
     </div>
   }
 
+  <!-- The one place a refused cell is spoken -- the idiom at backlog-editor.component.html:24-27. WPF's own
+       sentence (TimesheetViewModel.cs:374), unchanged: a red (invalid) cell is left on screen but never
+       written, neither saved nor deleted. -->
+  @if (hasInvalidCell()) {
+    <p class="lw-invalid-status" role="alert">Not saved — fix the highlighted cell</p>
+  }
+
   <div class="card grid-card">
     <div class="grid-scroll">
       <div class="grid">
@@ -112,6 +119,8 @@
                              a save per keystroke would fire "4", "4.", "4.5" as three concurrent PUTs
                              carrying the same expectedVersion, and the last two would 409 against the first. -->
                         <input inputmode="decimal" placeholder="·"
+                          [class.invalid]="isInvalidCell(t.taskId, d.iso)"
+                          [attr.aria-invalid]="isInvalidCell(t.taskId, d.iso)"
                           [attr.aria-label]="t.taskName + ' — ' + d.dow + ' ' + d.label"
                           [ngModel]="cellText(t.taskId, d.iso)"
                           (ngModelChange)="editCell(t.taskId, d.iso, $event)"

@@ -436,4 +436,21 @@ describe('SettingsComponent', () => {
     expect(api.runBackup).toHaveBeenCalled();
     expect(text()).toContain('/srv/backups/db.bak');
   });
+
+  /**
+   * 🔴 BUG-2 (M9.2 / BK-02). `value: null` means the server ATTEMPTED NOTHING — a blank folder, a blank
+   * db path, or a missing db file (BackupService.cs:43) — and the client cannot tell those apart. The
+   * screen must not report "Backup complete" for a write that never happened, and it must not guess a
+   * cause: no folder/path/file is named, only that nothing was written.
+   */
+  it('a null backup result is a FAILURE, not a success — no file was written', () => {
+    api.runBackup.and.returnValue(of({ value: null }));
+    tab('Operations');
+    buttons('Back up now')[0].click();
+    fixture.detectChanges();
+
+    expect(api.runBackup).toHaveBeenCalled();
+    expect(TestBed.inject(ToastService).message()).toBe('Backup did not run — no file was written.');
+    expect(text()).not.toContain('Backup written');   // opsResult must not carry a false success claim
+  });
 });
