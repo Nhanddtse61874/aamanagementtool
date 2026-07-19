@@ -2,13 +2,13 @@
 
 ## Current Position
 
-**Phase:** Step 3 — Mode Gate (complete) — **M9.2 UI write honesty** is the ACTIVE milestone. M10 is **parked** pending blocker disposition; M11 queued.
-**Status:** complete — brainstorm + Mode Gate done, proceeding to writing-plans.
+**Phase:** Step 6 — Plan **drafted**, Plan Checker **not yet run**. **M9.2 UI write honesty** is the ACTIVE milestone. M10 is **parked** pending blocker disposition; M11 queued.
+**Status:** waiting_for_user — plan is on disk and committed; the plan_check gate has not run.
 **Last updated:** 2026-07-19
 
 ## Next Action
 
-Run the `writing-plans` skill to draft `docs/superpowers/plans/2026-07-19-M9.2-ui-write-honesty.md` from the approved spec.
+Run **Plan Checker** against `docs/superpowers/plans/2026-07-19-M9.2-ui-write-honesty.md` (`workflow.plan_check: true`, 11 dimensions, max 3 revision loops) — **no `M9.2-PLANCHECK.md` exists yet**. Only then STEP 7 Wave A (A1 + A2 in parallel, zero file overlap) → Wave B.
 
 ## ▶ M9.2 (ACTIVE) — the UI must not report a write that did not happen · Mode A · Step 6 Plan
 
