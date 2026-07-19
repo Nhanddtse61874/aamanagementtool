@@ -49,7 +49,8 @@ static string RequireConfig(IConfiguration config, string key, string legacyHint
     Console.WriteLine( "  Refusing to start rather than guess -- an unset location key used to fall");
     Console.WriteLine( "  through to the wrong database with no warning at all.");
     Console.WriteLine();
-    Console.WriteLine( "  Set it in appsettings.json, e.g.:");
+    Console.WriteLine( "  Copy appsettings.Example.json (beside the executable) to appsettings.json and");
+    Console.WriteLine( "  edit the paths. Or set it directly, e.g.:");
     Console.WriteLine($"    {{ \"TimesheetApp\": {{ \"{key}\": \"...\" }} }}");
     Console.WriteLine($"  or as the environment variable TimesheetApp__{key}.");
     Console.WriteLine();
