@@ -187,7 +187,7 @@ public sealed class BacklogEndpointsTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var results = await response.Content.ReadFromJsonAsync<List<BacklogListItemDto>>();
         Assert.Equal(2, results!.Single(b => b.BacklogCode == "COUNT-1").TaskCount);
-        Assert.Equal(0, results.Single(b => b.BacklogCode == "COUNT-2").TaskCount);
+        Assert.Equal(0, results!.Single(b => b.BacklogCode == "COUNT-2").TaskCount);
     }
 
     /// <summary>R6 (rule #5): a team id the caller is not a member of, on the query string, must never
