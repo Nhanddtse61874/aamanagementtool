@@ -33,6 +33,13 @@
     </div>
   }
 
+  <!-- The one place a refused cell is spoken -- the idiom at backlog-editor.component.html:24-27. WPF's own
+       sentence (TimesheetViewModel.cs:374), unchanged: a red (invalid) cell is left on screen but never
+       written, neither saved nor deleted. -->
+  @if (hasInvalidCell()) {
+    <p class="lw-invalid-status" role="alert">Not saved — fix the highlighted cell</p>
+  }
+
   <div class="card grid-card">
     <div class="grid-scroll">
       <div class="grid">
@@ -111,7 +118,15 @@
                         <!-- (ngModelChange) updates the DRAFT only. The write happens on (blur)/Enter --
                              a save per keystroke would fire "4", "4.", "4.5" as three concurrent PUTs
                              carrying the same expectedVersion, and the last two would 409 against the first. -->
+                        <!-- `title` is not decoration: with no aria-describedby present it IS the input's
+                             accessible description (spec §5.6), so one attribute serves both a sighted user
+                             hovering a red cell and a screen reader. The role="alert" line near the top says
+                             only that SOMETHING was refused; this says the cap is 8. `|| null` so aria-invalid
+                             is dropped rather than rendered as aria-invalid="false" on every cell in the grid. -->
                         <input inputmode="decimal" placeholder="·"
+                          [class.invalid]="isInvalidCell(t.taskId, d.iso)"
+                          [attr.aria-invalid]="isInvalidCell(t.taskId, d.iso) || null"
+                          [attr.title]="invalidMessage(t.taskId, d.iso)"
                           [attr.aria-label]="t.taskName + ' — ' + d.dow + ' ' + d.label"
                           [ngModel]="cellText(t.taskId, d.iso)"
                           (ngModelChange)="editCell(t.taskId, d.iso, $event)"

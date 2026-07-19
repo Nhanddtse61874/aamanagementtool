@@ -436,4 +436,32 @@ describe('SettingsComponent', () => {
     expect(api.runBackup).toHaveBeenCalled();
     expect(text()).toContain('/srv/backups/db.bak');
   });
+
+  /**
+   * 🔴 BUG-2 (M9.2 / BK-02). `value: null` means the server ATTEMPTED NOTHING — a blank folder, a blank
+   * db path, or a missing db file (BackupService.cs:43) — and the client cannot tell those apart. The
+   * screen must not report "Backup complete" for a write that never happened, and it must not guess a
+   * cause: no folder/path/file is named, only that nothing was written.
+   */
+  it('a null backup result is a FAILURE, not a success — no file was written', () => {
+    tab('Operations');
+
+    // 🔴 Run a SUCCESSFUL backup first. Asserting "no success text" on a freshly-built component passes
+    // vacuously — `opsResult` was never set, so the absence proves nothing. The real hazard is a stale
+    // success card: `fail()` only toasts, and a toast fades, while `opsResult` persists until dismissed.
+    // Without an explicit clear, the screen would still read "Backup written to …" as the standing answer
+    // to the action that just failed.
+    api.runBackup.and.returnValue(of({ value: '/srv/backups/db.bak' }));
+    buttons('Back up now')[0].click();
+    fixture.detectChanges();
+    expect(text()).toContain('/srv/backups/db.bak');   // the card is genuinely on screen now
+
+    api.runBackup.and.returnValue(of({ value: null }));
+    buttons('Back up now')[0].click();
+    fixture.detectChanges();
+
+    expect(TestBed.inject(ToastService).message()).toBe('Backup did not run — no file was written.');
+    expect(text()).not.toContain('Backup written');      // the stale success claim is gone
+    expect(text()).not.toContain('/srv/backups/db.bak');
+  });
 });

@@ -49,6 +49,11 @@
   font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-700); outline: none; }
 .cell input:focus { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
 
+/* M9.2: an invalid draft is kept on screen, never written -- --danger-* only, the same tokens `.lw-error`
+   already uses below. No new colour is invented here. */
+.cell input.invalid { background: var(--danger-bg); color: var(--danger-c); box-shadow: inset 0 0 0 1px var(--danger-bd); }
+.cell input.invalid:focus { box-shadow: inset 0 0 0 2px var(--danger-bd); }
+
 .grp__foot { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
 /* ---- M8.5/Task 6: drag to reorder ------------------------------------------------------------------- */
@@ -104,6 +109,14 @@
 .lw-error {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-bottom: 12px; padding: 11px 14px;
+  border: 1px solid var(--danger-bd); border-radius: 10px;
+  background: var(--danger-bg); color: var(--danger-c);
+  font-size: 13px; font-weight: 600;
+}
+
+/* Same box as `.lw-error` -- a plain <p role="alert">, no retry button -- for the per-cell refusal. */
+.lw-invalid-status {
+  margin: 0 0 12px; padding: 11px 14px;
   border: 1px solid var(--danger-bd); border-radius: 10px;
   background: var(--danger-bg); color: var(--danger-c);
   font-size: 13px; font-weight: 600;
