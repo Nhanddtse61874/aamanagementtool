@@ -33,7 +33,22 @@
     {
       "id": "F3",
       "severity": "critical",
-      "finding": "UNVERIFIED precedence: ApiFactory.cs:104-106 and SignalRTestFactory.cs:55-57 sandbox tests via UseSetting. If a new appsettings.json in TimesheetApp.Api outranks UseSetting, both API suites point at the real DB. Must be proven empirically before shipping."
+      "status": "RESOLVED 2026-07-19 — proven empirically, with a positive control. UseSetting WINS.",
+      "finding": "UNVERIFIED precedence: ApiFactory.cs:104-106 and SignalRTestFactory.cs:55-57 sandbox tests via UseSetting. If a new appsettings.json in TimesheetApp.Api outranks UseSetting, both API suites point at the real DB. Must be proven empirically before shipping.",
+      "resolution": {
+        "answer": "An appsettings.json in TimesheetApp.Api does NOT outrank WebApplicationFactory.UseSetting. The API test suites are NOT retargeted. M11's blocking pre-req is cleared.",
+        "why_this_needed_three_runs": "The obvious experiment is not conclusive on its own. 'The sentinel DB was never created' is equally consistent with 'UseSetting won' AND with 'appsettings.json was never read at all' — so a naive pass would have produced a confident, unfounded all-clear.",
+        "method": [
+          "SAFETY: the experimental appsettings.json pointed ConfigPath and DbPath ONLY at a freshly-generated temp directory that did not exist (C:\\...\\Temp\\m11-f3-<random>). The real %APPDATA%\\TimesheetApp\\appsettings.json path was never written into the experiment. Even a total loss of precedence could therefore not touch the company database. Port 5080 was confirmed idle first, per the known false-green trap.",
+          "RUN 1 (observation): appsettings.json set ConfigPath + DbPath to the sentinel. Ran a Health test. The sentinel directory was never created -> appsettings did not take effect. NOT YET CONCLUSIVE.",
+          "RUN 2 (A/B on one key): appsettings.json set TimesheetApp:SeedFirstAdmin=true while ApiFactory sets it false via UseSetting. The startup log still reported 'SeedFirstAdmin=false' -> the UseSetting value was the effective one. Still not conclusive alone: identical result if the file is never read.",
+          "RUN 3 (positive control): appsettings.json was made DELIBERATELY MALFORMED. The tests FAILED with System.IO.InvalidDataException naming the exact file, wrapping System.Text.Json.JsonReaderException. This proves the file IS loaded by the test host from the API project source directory."
+        ],
+        "conclusion": "File loaded (run 3) + UseSetting value effective anyway (run 2) + sentinel never written (run 1) => UseSetting beats appsettings.json under WebApplicationFactory. Verified, not reasoned.",
+        "scope_limit_do_not_overread": "This was proven for WebApplicationFactory-hosted TESTS only. It says nothing about the real API process, where there is no UseSetting at all and appsettings.json WOULD be the configuration source — which is exactly the mechanism M11 wants. The good news is therefore two-sided: tests stay sandboxed, and production config still works as M11 intends.",
+        "cleanup": "The experimental src/TimesheetApp.Api/appsettings.json was DELETED. Verified absent, sentinel verified never created, git status clean of C# changes, and the Health tests re-run green afterwards. Nothing from this experiment remains in the repo.",
+        "still_open": "F1 and F2 are untouched by this result and remain critical. F1 (Program.cs:34 uses || not &&) means DbPath alone in appsettings is a silent no-op. F2 (JsonAppConfig.cs:57) means the persisted %APPDATA% config still beats the ctor argument on any machine that has run the app. M11 must address both."
+      }
     },
     {
       "id": "F4",
