@@ -363,6 +363,31 @@ describe('LogWorkComponent', () => {
     expect(component.rowTotal(MONDAY_TASK)).toBe(4);
   });
 
+  /**
+   * Spec §5.6: the reason is the input's accessible description, bound to `title`. A red box that never says
+   * WHY is only half a validation -- a user typing `9` must be told the per-cell cap is 8, not left guessing.
+   * The generic role="alert" line (WPF's verbatim sentence) cannot carry this; it is one line for the whole grid.
+   */
+  it('names WHY a cell was refused, per reason, and drops the description once it is fixed', () => {
+    setUp(week(4, 11));
+    const refuse = (typed: string) => {
+      component.editCell(MONDAY_TASK, mon, typed);
+      component.commitCell(MONDAY_TASK, mon);
+      return component.invalidMessage(MONDAY_TASK, mon);
+    };
+
+    expect(refuse('9')).toBe('At most 8h in one cell.');
+    expect(refuse('2.55')).toBe('At most 1 decimal place.');
+    expect(refuse('0')).toBe('Hours must be greater than 0.');
+    expect(refuse('abc')).toBe('Not a number.');
+
+    // ...and a valid value clears both the mark and its description.
+    api.saveHours.and.returnValue(of(12));
+    component.editCell(MONDAY_TASK, mon, '6');
+    component.commitCell(MONDAY_TASK, mon);
+    expect(component.invalidMessage(MONDAY_TASK, mon)).toBeNull();
+  });
+
   // ---- 🔴 the three error channels --------------------------------------------------------------------
 
   // 🔴 M9.2: the input used to be '40' -- an over-8h value the SERVER rejected with 400. `readCell` (A1) now

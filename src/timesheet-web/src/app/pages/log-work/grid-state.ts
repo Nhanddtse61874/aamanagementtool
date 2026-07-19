@@ -221,8 +221,13 @@ export type CellInput =
  * purpose here). WPF's `TimesheetRowVm.Validate` rejects `hours <= 0` client-side; the web app now matches
  * it instead of round-tripping to the API to learn the same thing a beat later.
  *
- * Decimal-place count is read off the TRIMMED STRING, not the parsed `number` -- `Number` gives no reliable
- * way to recover "how many digits were typed after the point" once it has rounded/normalised the value.
+ * 🔴 The precision test asks "does rounding to 1dp CHANGE the value", never "how many digits were typed".
+ * Counting characters after the '.' looks equivalent and is not, in both directions:
+ *   - it rejects `'4.50'`, which both oracles ACCEPT -- C# `decimal` compares value and ignores scale, so
+ *     `decimal.Round(4.50m, 1) != 4.50m` is false (`TimesheetRowVm.cs:53`, `TimeLogService.cs:360`).
+ *     A user pasting `8.00` out of a spreadsheet must not get a red cell for a legal value.
+ *   - it lets `'1e-9'` through, which has no '.' at all and so counted as 0 decimals.
+ * The numeric form is what WPF and the server both actually do, and it closes the exponent hole.
  */
 export function readCell(text: string): CellInput {
   const trimmed = text.trim();
@@ -232,9 +237,7 @@ export function readCell(text: string): CellInput {
   if (!Number.isFinite(n)) return { kind: 'invalid', reason: 'not-a-number' };
   if (n <= 0) return { kind: 'invalid', reason: 'not-positive' };
   if (n > 8) return { kind: 'invalid', reason: 'over-cap' };
-
-  const decimalPlaces = trimmed.includes('.') ? trimmed.split('.')[1].length : 0;
-  if (decimalPlaces > 1) return { kind: 'invalid', reason: 'too-precise' };
+  if (Math.round(n * 10) / 10 !== n) return { kind: 'invalid', reason: 'too-precise' };
 
   return { kind: 'value', hours: n };
 }

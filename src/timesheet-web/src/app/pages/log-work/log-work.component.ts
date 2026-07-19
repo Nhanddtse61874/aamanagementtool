@@ -17,8 +17,8 @@ import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
 import { AddTaskDialogComponent } from './add-task-dialog.component';
 import {
-  CellMap, Group, TaskRow, buildCellMap, buildGroups, expectedVersionFor, formatHours, mergeSmartFill,
-  nextOrderIndex, patchCell, readCell,
+  CellMap, Group, InvalidReason, TaskRow, buildCellMap, buildGroups, expectedVersionFor, formatHours,
+  mergeSmartFill, nextOrderIndex, patchCell, readCell,
 } from './grid-state';
 import { canMoveMonth, nextMonthFrom, toUpdateRequest } from './move-month';
 import { reorderPlan } from './reorder';
@@ -120,7 +120,7 @@ export class LogWorkComponent {
    * attempt, never mid-type ("4." is not "4.5" gone wrong). Cleared whenever the draft it belongs to is
    * dropped -- see `dropDraft` -- so a fixed cell or a reload/Smart-Fill cannot leave a stale mark on screen.
    */
-  private readonly invalidCells = signal<ReadonlySet<string>>(new Set());
+  private readonly invalidCells = signal<ReadonlyMap<string, InvalidReason>>(new Map());
   /** Drives the single `role="alert"` status line -- the idiom at `backlog-editor.component.html:24-27`. */
   readonly hasInvalidCell = computed(() => this.invalidCells().size > 0);
   readonly loading = signal(false);
@@ -247,7 +247,7 @@ export class LogWorkComponent {
     // time the response lands — otherwise a slow response for last week keys its cells onto this week.
     this.cells.set(buildCellMap(groups, weekDays(monday)));
     this.drafts.set({});
-    this.invalidCells.set(new Set());   // a fresh week read replaces every draft; no stale mark can survive it
+    this.invalidCells.set(new Map());   // a fresh week read replaces every draft; no stale mark can survive it
   }
 
   // ---- reading the grid ----------------------------------------------------------------------------
@@ -261,6 +261,28 @@ export class LogWorkComponent {
   /** Whether this cell's current draft was refused by `commitCell` -- the template's red border / aria-invalid. */
   isInvalidCell(taskId: number, iso: string): boolean {
     return this.invalidCells().has(cellKey(taskId, iso));
+  }
+
+  /**
+   * WHY the cell was refused, as a sentence -- spec §5.6's "the message as the input's accessible description".
+   *
+   * Bound to `title`, which is not merely a tooltip: per the accessible-name-and-description spec, `title` IS
+   * the accessible description when no `aria-describedby` is present. One attribute therefore serves both a
+   * sighted user hovering a red cell and a screen reader, without inventing a visually-hidden utility class
+   * this codebase does not have.
+   *
+   * The generic `role="alert"` line says only that SOMETHING was refused (WPF's own sentence, kept verbatim);
+   * without this, a user who types `9` sees red and is never told the per-cell cap is 8. WPF surfaces the
+   * specific reason per cell via `INotifyDataErrorInfo` -- strings below match its own wording where it has one.
+   */
+  invalidMessage(taskId: number, iso: string): string | null {
+    switch (this.invalidCells().get(cellKey(taskId, iso))) {
+      case 'not-a-number': return 'Not a number.';
+      case 'not-positive': return 'Hours must be greater than 0.';   // the API's own sentence
+      case 'over-cap':     return 'At most 8h in one cell.';         // XC-02
+      case 'too-precise':  return 'At most 1 decimal place.';        // TimesheetRowVm.cs:54, verbatim
+      default:             return null;
+    }
   }
 
   /**
@@ -327,7 +349,7 @@ export class LogWorkComponent {
     // every null into `clearCell()`: a DELETE of hours the user never asked to remove (BUG-1, spec §3). The
     // draft stays exactly as typed; only the invalid mark changes.
     if (input.kind === 'invalid') {
-      this.markInvalid(key);
+      this.markInvalid(key, input.reason);
       return;
     }
 
@@ -342,14 +364,14 @@ export class LogWorkComponent {
     else this.saveCell(taskId, iso, input.hours);
   }
 
-  private markInvalid(key: string): void {
-    this.invalidCells.update(s => (s.has(key) ? s : new Set(s).add(key)));
+  private markInvalid(key: string, reason: InvalidReason): void {
+    this.invalidCells.update(m => (m.get(key) === reason ? m : new Map(m).set(key, reason)));
   }
 
   private clearInvalid(key: string): void {
-    this.invalidCells.update(s => {
-      if (!s.has(key)) return s;
-      const next = new Set(s);
+    this.invalidCells.update(m => {
+      if (!m.has(key)) return m;
+      const next = new Map(m);
       next.delete(key);
       return next;
     });
@@ -561,7 +583,7 @@ export class LogWorkComponent {
         this.sfOpen.set(false);
         this.cells.update(c => mergeSmartFill(c, rows));      // MERGE. Never replace.
         this.drafts.set({});
-        this.invalidCells.set(new Set());   // every draft just went with it -- no stale mark can survive it
+        this.invalidCells.set(new Map());   // every draft just went with it -- no stale mark can survive it
         this.toast.show(`Smart fill applied to ${rows.length} cell${rows.length === 1 ? '' : 's'}.`);
       },
       error: (err: unknown) => {

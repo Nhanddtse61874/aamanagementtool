@@ -552,6 +552,11 @@ export class SettingsComponent {
         // than an honest generic one. Route through fail() — the one channel this screen already uses
         // for "the thing you asked for did not happen" — so there is no second, competing error surface.
         if (!r.value) {
+          // 🔴 Clear the card FIRST. `fail()` only toasts, and a toast fades; `opsResult` persists until
+          // the user dismisses it. Without this, a successful backup followed later by a failed one leaves
+          // "Backup written to …" on screen as the standing answer to the action that just failed —
+          // the very defect this milestone exists to remove, one layer up and inside this same function.
+          this.opsResult.set(null);
           this.fail(new Error('Backup did not run — no file was written.'));
           return;
         }

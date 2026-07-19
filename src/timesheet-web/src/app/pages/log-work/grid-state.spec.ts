@@ -192,6 +192,16 @@ describe('readCell', () => {
     ['9', { kind: 'invalid', reason: 'over-cap' }],
     ['2.55', { kind: 'invalid', reason: 'too-precise' }],
     ['abc', { kind: 'invalid', reason: 'not-a-number' }],
+
+    // 🔴 The two cases a character-counting precision check gets WRONG, in opposite directions. Both are
+    // pinned here so nobody "simplifies" the numeric test back into `split('.')[1].length`.
+    // '4.50' is a LEGAL value -- C# `decimal` compares value and ignores scale, so `4.50m == 4.5m` and both
+    // WPF (TimesheetRowVm.cs:53) and the server (TimeLogService.cs:360) accept it. Rejecting a spreadsheet
+    // paste of '8.00' would be the client inventing a rule neither oracle has.
+    ['4.50', { kind: 'value', hours: 4.5 }],
+    // '1e-9' contains no '.' at all, so a character count reads it as 0 decimals and lets it through to the
+    // API. It is exactly the kind of value the client-side gate is supposed to stop.
+    ['1e-9', { kind: 'invalid', reason: 'too-precise' }],
   ];
 
   for (const [text, expected] of cases) {
