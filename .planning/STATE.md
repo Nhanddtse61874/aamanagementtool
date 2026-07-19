@@ -2,13 +2,37 @@
 
 ## Current Position
 
-**Phase:** Step 2 — Brainstorm (**M10 — delete WPF**). M9.1 merged to `main` **without UAT** (guard lifted deliberately — see below).
-**Status:** in_progress — M10 coverage audit **COMPLETE**; verdict **DO NOT DELETE YET** (3 blockers). **M11 (config → IConfiguration) queued** with decisions locked.
+**Phase:** Step 3 — Mode Gate (complete) — **M9.2 UI write honesty** is the ACTIVE milestone. M10 is **parked** pending blocker disposition; M11 queued.
+**Status:** complete — brainstorm + Mode Gate done, proceeding to writing-plans.
 **Last updated:** 2026-07-19
 
 ## Next Action
 
-Decide disposition for the 3 M10 blockers + 2 live data-loss bugs (below). The WPF deletion **cannot be planned until those are dispositioned** — a delete-now plan would assert `PROJECT.md` §Success Criteria untested. Memo: `.planning/M10-COVERAGE-AUDIT.md`.
+Run the `writing-plans` skill to draft `docs/superpowers/plans/2026-07-19-M9.2-ui-write-honesty.md` from the approved spec.
+
+## ▶ M9.2 (ACTIVE) — the UI must not report a write that did not happen · Mode A · Step 6 Plan
+
+**Spec:** `docs/superpowers/specs/2026-07-19-m9.2-ui-write-honesty-design.md` (approved 2026-07-19, `27919e3`).
+**Origin:** the two `PARTIAL` findings the M10 audit's refuters rated more dangerous than most `MISSING` items. Both confirmed at the source before the spec was written.
+**Mode Gate:** 0/5 Mode B signals → **Mode A** (approved 2026-07-19). Risk scored **medium, not low** — the code being changed is a live data-loss path and `log-work.component.ts` is 44 KB — but medium is neutral and does not shift the mode.
+
+**REQ-IDs: NONE. Deliberately.** Both defects violate requirements that already exist — **TS-04 / XC-02 / XC-04** (an invalid cell is marked and never written) and **BK-02** (*"a no-op with a message if the DB file is missing or no folder is set"*). The requirements were written for WPF, WPF satisfies them, the web port never did. `REQUIREMENTS.md` is **not** edited. This is debt closure, not new scope.
+
+**Scope approved by the user:** full XC-02/TS-04 parity — all four invalid states (unparseable · `>8` · `≤0` · `>1` decimal) go red, keep the existing value, and **issue no request**, plus WPF's own status string `Not saved — fix the highlighted cell`. Angular only: **no C#, no schema, no API contract, no client regen.**
+
+**Two things in the design that are easy to miss and must survive into the plan:**
+- 🔴 **The totals lie too.** `log-work.component.ts:252` does `parseHours(text) ?? 0`, so gibberish drops the day/week total to 0 on screen while the DB still holds the real hours. Same defect class; fixed in the same change — an invalid cell contributes its **last committed value**, not 0.
+- ⚠️ **A recorded decision is being reversed.** `grid-state.spec.ts:194-198` asserts `'0'` is sent to the server *and argues in a comment that this is the more honest choice*. M9.2 rejects `'0'` client-side to match WPF. The comment must be replaced, not left contradicting the code.
+
+**Test-edit licence (recorded):** `grid-state.spec.ts:190` and `:196` pin the contract this milestone deliberately changes → the recorded exception applies, NOT gate-reconciliation. Both assert parse rules; **neither asserts a security property**, so STOP-AND-REPORT does not trigger. **The Angular gate number WILL move — that is expected, not a regression.**
+
+**Explicitly out of scope:** XC-03/TS-06 (>8h *day-total* gate — declined by the user during brainstorm), BK-01 (backup folder picker in web Settings), and all three M10 blockers.
+
+**UAT (batched, per the 2026-07-19 standing decision):** **G-A** type `abc` over a cell holding `4` → the `4` survives, cell red, status line shows, survives reload. **G-B** press "Backup now" with no backup folder configured → the UI reports failure.
+
+## ▶ M10 (PARKED) — delete the WPF app · blocked on 3 dispositions
+
+The audit's verdict is **DO NOT DELETE YET**. M10 cannot be planned until the 3 blockers below are dispositioned — a delete-now plan would assert `PROJECT.md` §Success Criteria untested. Memo: `.planning/M10-COVERAGE-AUDIT.md`.
 
 ## 🔴 M10 AUDIT RESULT (2026-07-19) — **DO NOT DELETE YET**
 
