@@ -14,6 +14,7 @@ export type { BacklogListItemDto } from './models/backlog-list-item-dto';
 export type { BacklogNode } from './models/backlog-node';
 export type { BacklogTagsRequest } from './models/backlog-tags-request';
 export type { BacklogUpdateRequest } from './models/backlog-update-request';
+export type { BackupInfo } from './models/backup-info';
 export type { ConflictBody } from './models/conflict-body';
 export type { DateEntry } from './models/date-entry';
 export type { DaysLoggedStat } from './models/days-logged-stat';
@@ -38,6 +39,8 @@ export type { SettingsActiveTeamRequest } from './models/settings-active-team-re
 export type { SettingsDefaultTaskCreateRequest } from './models/settings-default-task-create-request';
 export type { SettingsHolidayRequest } from './models/settings-holiday-request';
 export type { SettingsNameRequest } from './models/settings-name-request';
+export type { SettingsOpsBackupList } from './models/settings-ops-backup-list';
+export type { SettingsOpsBackupSettings } from './models/settings-ops-backup-settings';
 export type { SettingsOpsResult } from './models/settings-ops-result';
 export type { SettingsQuickImportRequest } from './models/settings-quick-import-request';
 export type { SettingsRenameRequest } from './models/settings-rename-request';

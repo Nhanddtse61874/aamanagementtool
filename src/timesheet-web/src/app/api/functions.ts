@@ -53,6 +53,12 @@ export type { OpsExportRun$Params as OpsExportRun$Params } from './fn/ops/ops-ex
 export { opsExportRun as opsExportRun } from './fn/ops/ops-export-run';
 export type { OpsBackupRun$Params as OpsBackupRun$Params } from './fn/ops/ops-backup-run';
 export { opsBackupRun as opsBackupRun } from './fn/ops/ops-backup-run';
+export type { OpsBackupSettingsGet$Params as OpsBackupSettingsGet$Params } from './fn/ops/ops-backup-settings-get';
+export { opsBackupSettingsGet as opsBackupSettingsGet } from './fn/ops/ops-backup-settings-get';
+export type { OpsBackupSettingsSet$Params as OpsBackupSettingsSet$Params } from './fn/ops/ops-backup-settings-set';
+export { opsBackupSettingsSet as opsBackupSettingsSet } from './fn/ops/ops-backup-settings-set';
+export type { OpsBackupList$Params as OpsBackupList$Params } from './fn/ops/ops-backup-list';
+export { opsBackupList as opsBackupList } from './fn/ops/ops-backup-list';
 export type { PcaContactListActive$Params as PcaContactListActive$Params } from './fn/pca-contacts/pca-contact-list-active';
 export { pcaContactListActive as pcaContactListActive } from './fn/pca-contacts/pca-contact-list-active';
 export type { PcaContactCreate$Params as PcaContactCreate$Params } from './fn/pca-contacts/pca-contact-create';
