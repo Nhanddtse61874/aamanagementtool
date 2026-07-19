@@ -1,6 +1,13 @@
 # B2-restore — Backup restore has no web path
 
 **Status:** options presented, NOT decided. A human decides.
+**Re-verification (second independent pass):** every load-bearing claim below was re-read from source in a
+second pass — `BackupService.cs:97-126`, `SqliteOnlineBackup.cs:39-105`, `SqliteConnectionFactory.cs:50-87`,
+`Program.cs:62-104,232-240`, `SettingsEndpoints.cs:38-44,1000-1060`, `DataHub.cs:15-44`,
+`WalBackupSafetyTests.cs:56-114`, `TinyDb.cs:86`, `settings.component.ts:45-60`, `deploy-local.bat`, and the
+resolved `%APPDATA%\TimesheetApp\appsettings.json`. **No claim was found to be wrong.** The two most
+consequential — (a) `RestoreAsync` is tested *only* in a quiesced, `Pooling=false` regime, and
+(b) `BackupFolderPath` is `null` so no backups exist today — both hold.
 **Scope:** M10 deletes `src/TimesheetApp/`. `IBackupService.RestoreAsync` and `ListBackups` lose their only
 callers and become dead code in a surviving Core project. This document establishes what restore actually
 does today, what "open connections" means for the API host specifically, and lays out three restore paths

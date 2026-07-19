@@ -1,399 +1,580 @@
-# B4-missing — Adversarial attack on the recommendation
+# B4-missing — Adversarial attack, pass 2 (on the REVISED recommendation)
 
-**Target:** `B4-missing-options.md`'s recommendation — *Option 2 (split gate), with the post-M10 milestone
-created in the same sitting as the deletion commit.*
+**Target:** the current `B4-missing-options.md` recommendation — *Option B, shape **B-ii** (out-of-process CLI
++ Windows Task Scheduler), with the post-M10 milestone created in the same sitting as the deletion commit*,
+and its stated lean toward config-fork shape **(b)+(c)**.
 
-**Method.** Every claim below was re-derived by opening the file. `[VERIFIED]` = I read that line in this
-pass. `[ASSUMED]` = inferred. No build was run, no test was run, no SQLite file was opened, nothing was edited.
+**This file supersedes the pass-1 attack** (H1-H8), whose findings the revised options file re-derived and
+absorbed. **None of H1-H8 is repeated here.** Everything below is new, found by opening files the previous
+two passes did not open, and it attacks the *revision*, not the version the revision already fixed.
 
-**Bottom line up front.** The *shape* of Option 2 is right and survives. The *contents of Gate 1 as
-specified* do not — Gate 1 can be built exactly as written and still leave the product with no working
-backup, no way to turn one on, and a green restore rehearsal for a procedure that will fail in the incident.
-Two of the holes below are the same "operator believes something worked" failure the audit exists to prevent,
-and Gate 1 **introduces** one of them rather than closing it. Option 2 needs three additions before it is
-executable. Details and the amended gate are at the end.
+**Method.** `[VERIFIED]` = I read that line in this pass. `[ASSUMED]` = inferred, and labelled where the
+inference is about Windows/SQLite behavior rather than about this repo. No code was edited, no build or test
+was run, no SQLite file was opened.
 
----
-
-## H1 — FATAL. After the deletion, nothing in the product can turn the backup on, and Gate 1 does not notice
-
-This defeats the entire stated purpose of Gate 1.
-
-`AutoBackupIfDueAsync` — the method the recommendation's P1 scheduler exists to call — opens with two
-silent, unlogged early returns:
-
-```
-BackupService.cs:61    if (!_config.AutoBackupEnabled) return false;
-BackupService.cs:62    if (string.IsNullOrWhiteSpace(_config.BackupFolderPath)) return false;
-```
-[VERIFIED: `src/TimesheetApp.Core/Services/BackupService.cs:61-62`]
-
-Both of those settings default to off/blank:
-
-```
-JsonAppConfig.cs:59    _backupFolderPath  = model?.BackupFolderPath ?? "";
-JsonAppConfig.cs:60    _autoBackupEnabled = model?.AutoBackupEnabled ?? false;
-```
-[VERIFIED: `src/TimesheetApp.Core/Config/JsonAppConfig.cs:59-60`]
-
-And **the WPF Settings view-model is the only writer of either one, anywhere in the repo**:
-
-```
-src/TimesheetApp/ViewModels/SettingsViewModel.cs:264    _config.SetBackupFolderPath(BackupFolder);
-src/TimesheetApp/ViewModels/SettingsViewModel.cs:265    _config.SetAutoBackupEnabled(AutoBackupEnabled);
-src/TimesheetApp/ViewModels/SettingsViewModel.cs:266    _config.SetBackupKeepCount(keep);
-```
-[VERIFIED: `grep -rn "SetBackupFolderPath\|SetAutoBackupEnabled\|SetBackupKeepCount" src --include=*.cs`
-returns these three lines plus the `IAppConfig` definitions and one doc-comment at
-`TimesheetApp.Api/Endpoints/SettingsEndpoints.cs:48`. **Zero callers in `TimesheetApp.Api`.**]
-
-So `git rm -r src/TimesheetApp/` deletes the only code path in the product that can set the backup folder or
-enable auto-backup. After that they are reachable only by hand-editing
-`%APPDATA%\TimesheetApp\appsettings.json` on the host — and because `JsonAppConfig` loads the file **once, in
-its constructor** [VERIFIED: `JsonAppConfig.cs:53-66`] and is registered as a singleton
-[VERIFIED: `Program.cs:49  builder.Services.AddSingleton(appConfig);`], even the hand-edit needs an API
-restart to take effect. There is no reload path.
-
-**The consequence for Gate 1 specifically.** Build P1 and P3 exactly as the recommendation specifies, delete
-WPF, and the resulting system is:
-
-- a nightly job that calls `AutoBackupIfDueAsync`, hits line 61 or 62, returns `false`, and logs nothing;
-- a Settings backup list that reads the same blank `BackupFolderPath`
-  [VERIFIED: `BackupService.cs:73  var folder = _config.BackupFolderPath;` → `ListBackups()` returns
-  `Array.Empty<BackupInfo>()` at `:74-75`], so it renders an **empty list**;
-- an operator looking at an empty list on day one, which is indistinguishable from "no backups yet".
-
-The recommendation's own justification for Gate 1 is that P3 "is what makes P1 and P2 trustworthy — without
-it, a silently-failing backup job is indistinguishable from a working one." As specified, **P3 does not
-achieve that**, because the failure mode is not "the job errored", it is "the job returned false before doing
-anything" and the list reads empty for that same reason. This is the third instance of the exact failure the
-brief warned against, and Gate 1 creates it.
-
-Note this is not hypothetical-only: if the production `appsettings.json` *does* already carry
-`AutoBackupEnabled: true` and a folder — set at some point from WPF — the safety net survives the deletion by
-accident, on a config value written by a deleted application, which nobody can subsequently change or verify
-from the product. That is not a safety net anyone should sign off.
-
-**What Gate 1 must add:** either an admin route that writes these three settings (plus a config reload or a
-documented restart), or — at minimum — the scheduler must log at **Error** and expose a status field when it
-is disabled or unconfigured, and the P3 list must distinguish *"backups are not configured"* from
-*"configured, none yet"*. Neither is in the recommendation.
+**Bottom line up front.** The split-gate *shape* survives a second attack — I tried to break it and could not.
+What does not survive is **the two sub-decisions the recommendation leaned on**: shape **B-ii** and config fork
+**(b)**. Both are broken by the same underlying property of this codebase — *`JsonAppConfig` treats an
+unreadable config as an empty one and silently repoints the production database* — and B-ii additionally
+splits the backup writer from the backup viewer, which is the one thing P3 exists to prevent. There is also a
+**live, shipped instance of "the operator believes it worked"** in the export path (the fourth in this app,
+and the first one nobody has reported yet), sitting in the exact subsystem P1 proposes to run unattended.
 
 ---
 
-## H2 — FATAL. There is no supervised host, so the ported scheduler has *worse* liveness than what it replaces
+## N1 — FATAL. The config fork has no safe branch, because an unreadable config silently repoints the production database
 
-The recommendation treats "port the trigger to an `IHostedService`" as restoring the safety net. Against this
-deployment it does not.
+This is the single most important finding in this pass. It kills the recommendation's stated lean, and it also
+kills the alternative it was leaning away from.
 
-How the API actually runs [VERIFIED: `deploy-local.bat`]:
+### The chain, verified end to end
 
 ```
-deploy-local.bat:38    dotnet run -c Release --urls http://localhost:5080
+JsonAppConfig.cs:166-169   catch (JsonException) { return null; }   // corrupt config -> fall back to default
+JsonAppConfig.cs:57        _dbPath = model?.DbPath ?? defaultDbPath;
+JsonAppConfig.cs:178-181   DefaultDbPath() => Documents\TimesheetApp\timesheet.db
 ```
+[VERIFIED: all three, `src/TimesheetApp.Core/Config/JsonAppConfig.cs`]
 
-and its own header, verbatim:
+A parse failure does not fail loudly — it returns `null`, and **every one of the ten fields, `DbPath`
+included, silently reverts to its default.** The file's own header comment says this is load-bearing and
+knows it is dangerous: *"LoadModel swallows JsonException and returns null, which would silently reset DbPath
+to the default — i.e. point every upgrading user at an EMPTY database"* [VERIFIED: `JsonAppConfig.cs:14-17`].
+A regression test was written for the *legacy-key* case only (`Legacy_ActiveTeamId_Key_Is_Ignored_And_DbPath_Survives`).
+**No guard exists for the malformed-JSON case** — it is the designed fallback.
 
-> `To let OTHER machines on the LAN reach it, change the --urls at the bottom to http://0.0.0.0:5080 and open
-> Windows Firewall for inbound TCP 5080. That is the deferred "who hosts it" decision, so this script defaults
-> to localhost only.`
-[VERIFIED: `deploy-local.bat:11-13`]
+And a wrong `DbPath` does not fail either. It **creates a new database and boots normally**:
 
-There is no Windows Service wrapper, no IIS/`web.config`, no scheduled task, no container, no
-auto-start-on-boot and no restart-on-crash anywhere in the repo [VERIFIED: repo contains exactly two scripts,
-`deploy-local.bat` and `start-web.bat`; `grep` for `AddHostedService|BackgroundService|IHostedService|
-PeriodicTimer` across `TimesheetApp.Api` and `TimesheetApp.Core` returns **nothing**].
+```
+SqliteConnectionFactory.cs:44-48   Directory.CreateDirectory(dir);      // creates the missing parent
+SqliteConnectionFactory.cs:52-53   DataSource = _config.DbPath, Mode = SqliteOpenMode.ReadWriteCreate
+Program.cs:176                     await ...GetRequiredService<IDatabaseInitializer>().InitializeAsync();
+DatabaseInitializer.cs:24-34       CreateTables + RunMigrations + EnsureDefaultBacklog + SeedDefaultTasksIfEmpty
+```
+[VERIFIED: all four]
 
-Now compare the two triggers honestly:
+So the API comes up healthy, fully migrated, seeded, serving — against the wrong file. The **only** signal
+that anything happened is a `Console.WriteLine` banner:
 
-| | WPF today | Ported `BackgroundService` |
-|---|---|---|
-| Fires when | **every launch of the app, by every user, every working day** [VERIFIED: `App.xaml.cs:63`] | only while one console window stays open on one machine |
-| Survives a reboot | yes — next user opens the app | no — until someone re-runs the .bat |
-| Number of independent chances per day | one per user per launch | zero if nobody started the process |
+```
+Program.cs:57-60   Console.WriteLine($"  Database : {appConfig.DbPath}");
+```
+[VERIFIED — and `Program.cs:52-53` explains it exists precisely because *"a second machine that 'cannot log in'
+almost always means the API opened a DIFFERENT database than expected … invisibly"*]
 
-`App.xaml.cs:63` runs `AutoBackupIfDueAsync()` inside the desktop startup path, and the once-per-day guard
-(`ListBackups().Any(b => b.Timestamp.Date == today)`, `BackupService.cs:65`) exists precisely because it fires
-so often. That redundancy — N users × daily launches — is the property that made the desktop safety net
-actually work. A single unsupervised `dotnet run` has none of it.
+### Why this is fatal for shape (b) specifically
 
-So Gate 1 can be fully and correctly built, and the backup still does not happen on the day it mattered,
-because the host machine rebooted on Tuesday and nobody re-ran the batch file until Thursday. **The
-recommendation's central claim — that Gate 1 closes the one unrecoverable loss before deletion — is not true
-against this deployment.** The unresolved "who hosts it" decision is not a detail to settle later; it is a
-precondition of Gate 1 meaning anything, and it is exactly the kind of five-minute-answer-from-the-right-person
-item the recommendation was willing to name for the team-switcher question but did not name here.
+Shape (b) is *"the operator edits `%APPDATA%\TimesheetApp\appsettings.json` by hand and restarts the API."*
+That procedure hands a human a JSON file containing **Windows paths**, and JSON's escape rules make Windows
+paths a minefield with two distinct failure modes, both silent:
 
-An out-of-process trigger (Windows Task Scheduler invoking a small CLI, which also serves H4's restore need)
-sidesteps this entirely and is arguably *less* work than a hosted service. The recommendation never considers
-it.
+- `"BackupFolderPath": "C:\data\backups"` → `\d` is not a legal JSON escape → **`JsonException` → the whole
+  config reverts to defaults → the API opens/creates a different database.** [VERIFIED for the code chain;
+  the JSON escape rule is [ASSUMED] standard `System.Text.Json` strict behavior.]
+- `"BackupFolderPath": "C:\backups"` → `\b` **is** a legal JSON escape (backspace) → **no exception at all** →
+  `BackupFolderPath` becomes `C:<BS>ackups` → backup writes to a garbage path or throws deep inside
+  `Directory.CreateDirectory`. Same for `\t` (`C:\temp`), `\f`, `\n`, `\r`. [ASSUMED — same basis.]
+
+Now compose it with the recommendation's own **required decision 0b**. B-ii demands a supervised host
+(Windows Service / Task Scheduler / something that survives a reboot). *Every one of those removes the console
+that `Program.cs:57-60` prints to.* **The recommendation's two preferred sub-decisions, taken together,
+produce a silent production-database repoint with the diagnostic switched off.**
+
+The benign version is an empty database: nobody can log in, it looks like catastrophic data loss, and it is
+recoverable in five minutes once someone reads the banner that no longer prints. **The malignant version is
+worse and more likely:** if the Windows account hosting the API ever ran the WPF desktop, then
+`Documents\TimesheetApp\timesheet.db` **already exists** with an old desktop database. Everyone logs in with
+old credentials, a day of production timesheet writes lands in the wrong file, and the real database sits
+untouched. That is a **new way to lose production data, created by the recommended procedure**, and it is
+triggered by exactly the situation the procedure exists for: someone editing that file because the backup is
+not configured.
+
+### And fork (a) is broken by the same root cause
+
+`Save()` serialises **all ten fields from in-memory state** and `File.WriteAllText`s them
+[VERIFIED: `JsonAppConfig.cs:140-157`]. If the file failed to parse at load, in-memory state is *all
+defaults*. So the **first** call through an admin route — "set the backup folder" — **permanently overwrites
+the good config file with defaults**, destroying `DbPath`, both export roots and the retention settings. The
+options file guessed at this ("a partial-write bug could clobber `DbPath`"); it is not a bug you might write,
+it is the designed behavior of `Save()` composed with the designed behavior of `LoadModel`.
+
+### What this actually means for the decision
+
+**Neither branch of the config fork is safe until a third thing exists that is in neither branch:** a
+fail-fast / validate-on-load step — `LoadModel` distinguishing "no file" (legitimate first run) from "file
+present but unparseable" (abort, or at minimum log at Error and refuse to start), and the resolved `DbPath`
+logged through `ILogger` rather than `Console.WriteLine` so it survives a windowless host.
+
+Call it **gate item 0c**. It is roughly half a day. With it, shape (b) becomes defensible again and the
+recommendation's lean survives. Without it, **(b) can repoint the production database by typo and (a) can
+repoint it by clicking Save once.**
+
+I would put 0c in the gate ahead of P1, P3 and P2 — it is cheaper than any of them and it is a precondition
+for two of them. **But whether the deletion waits on it is a scope call with an owner, not mine.**
 
 ---
 
-## H3 — SERIOUS. `%APPDATA%` is per-user: the scheduler may read a different config than WPF wrote
+## N2 — SERIOUS (FATAL if unmitigated). B-ii splits the backup writer from the backup viewer, and P3 can only ever report the viewer's half
 
-`JsonAppConfig`'s default constructor resolves the config path from the **calling account's** roaming profile:
+This is the specific cost of preferring **B-ii over B-i**, and the recommendation does not price it.
+
+Under **B-i**, one process resolves config once and hands the same singleton to both the scheduled job and the
+list route:
 
 ```
-JsonAppConfig.cs:172-175    private static string DefaultConfigPath()
-                            { var appData = Environment.GetFolderPath(
-                                  Environment.SpecialFolder.ApplicationData);
-                              return Path.Combine(appData, "TimesheetApp", "appsettings.json"); }
+Program.cs:34-36   IAppConfig appConfig = string.IsNullOrWhiteSpace(configPath) || string.IsNullOrWhiteSpace(dbPath)
+                       ? new JsonAppConfig() : new JsonAppConfig(configPath, dbPath);
+Program.cs:49      builder.Services.AddSingleton(appConfig);
 ```
 [VERIFIED]
 
-and `Program.cs` takes that default whenever the two override settings are absent — which is production:
+The job and the list **cannot disagree**. That structural guarantee is what makes P3 a check on P1 rather than
+a second opinion.
+
+Under **B-ii**, the CLI is a separate OS process that constructs its own `JsonAppConfig` — resolving
+`%APPDATA%` under **whatever account Task Scheduler runs it as** [VERIFIED: `JsonAppConfig.cs:172-175`
+`DefaultConfigPath()` reads `Environment.SpecialFolder.ApplicationData`]. Nothing in the design ties the two
+resolutions together. The realistic outcomes:
+
+- CLI writes to folder X, API's Settings list reads folder Y → **the screen shows "no backups" while backups
+  are being taken**, or, worse,
+- CLI is silently no-opping (blank `BackupFolderPath` in *its* config), API's Settings list reads a folder
+  still holding files from the WPF era → **"Latest backup: 12 March, 41 MB" is displayed as current, and it is
+  four months stale.** `ListBackups()` parses the timestamp out of the *filename*
+  [VERIFIED: `BackupService.cs:78-86, 147-155`], so old files render as perfectly legitimate rows forever.
+
+**That second one is a worse failure than the one P3 was added to fix.** An empty list at least prompts a
+question. A populated list is an affirmative false answer.
+
+The mitigation is cheap and known — pin `--config`/`--db` explicitly on **both** the Task Scheduler command
+line and the API, and have P3's route return the *resolved config path and folder it read*, not just the rows.
+It is not in the gate as written. **B-i does not need the mitigation at all**, because the disagreement is
+structurally impossible.
+
+Honest counterweight, because the options file's argument for B-ii is not wrong: B-i really does inherit the
+API's liveness, and B-ii really does survive a reboot. The trade is **liveness you can verify manually**
+(B-ii) versus **config coherence you cannot break** (B-i). See N6 before pricing B-ii's liveness advantage —
+it is smaller than claimed.
+
+---
+
+## N3 — SERIOUS. There is a fourth live "operator believes it worked", it is in the export path, and P1 proposes to automate it
+
+The audit found two. The revised options file cites a third (`POST /api/ops/backup/run`) — which, per N8
+below, has since been fixed. **This one is live right now and appears in no audit row.**
+
+`IExportHubService.ExportNowAsync()` returns a **status string**, never a path, and never null:
 
 ```
-Program.cs:34-36    IAppConfig appConfig = string.IsNullOrWhiteSpace(configPath) || string.IsNullOrWhiteSpace(dbPath)
-                        ? new JsonAppConfig()
-                        : new JsonAppConfig(configPath, dbPath);
+ExportHubService.cs:44   public Task<string> ExportNowAsync() => RunAsync(backfillOnly: false);
+ExportHubService.cs:53   if (roots.Count == 0) return "no export root configured";
+ExportHubService.cs:68   status.AppendLine($"failed: {root} — {check.Message}");
+ExportHubService.cs:79   status.AppendLine($"failed: {root} — {ex.Message}");
+ExportHubService.cs:83   return status.ToString().TrimEnd();
 ```
 [VERIFIED]
 
-`Program.cs` says the quiet part itself:
+The endpoint passes it through verbatim [VERIFIED: `SettingsEndpoints.cs:1041-1047`,
+`Results.Ok(new SettingsOpsResult(await export.ExportNowAsync()))`]. And the client renders it as a success
+sentence, unconditionally:
 
-> `A second machine that "cannot log in" almost always means the API opened a DIFFERENT database than
-> expected (there is no appsettings.json here, so the path comes from JsonAppConfig defaults, invisibly).`
-[VERIFIED: `Program.cs:52-53`]
+```
+settings.component.ts:577   this.opsResult.set(`Export written to ${r.value ?? 'the configured folder'}`);
+settings.component.ts:578   this.toast.show('Export complete');
+```
+[VERIFIED: `src/timesheet-web/src/app/pages/settings/settings.component.ts:571-580`]
 
-Whichever Windows account runs `dotnet run` therefore decides `DbPath`, `BackupFolderPath`,
-`AutoBackupEnabled` and `BackupKeepCount` — all four. If WPF was configured under one user's profile and the
-API is later hosted under another (or as a service under a system account), the scheduler reads a config where
-`BackupFolderPath` is `""` (→ H1, silent no-op) and `DbPath` falls back to
-`Documents\TimesheetApp\timesheet.db` [VERIFIED: `JsonAppConfig.cs:177-181`] — **a fresh, empty database**.
+So an admin whose export root is unwritable, or a web URL, or unconfigured, is currently shown:
 
-This is a live hazard independent of M10, but Gate 1 depends on it and never names it. Any Gate 1 that ships a
-scheduled backup must first pin the config path explicitly (`TimesheetApp:ConfigPath` /
-`TimesheetApp:DbPath` are already supported seams, `Program.cs:31-32`) rather than inheriting an invisible
-per-account default.
+> **Export written to failed: \\\\server\\share — Access to the path is denied.**
+> *Export complete* ✓
 
----
+and
 
-## H4 — SERIOUS. "Rehearse the restore against a copy" cannot exercise the failure that decides whether it works
+> **Export written to no export root configured**
+> *Export complete* ✓
 
-Gate 1 item (b) is *"a restore procedure REHEARSED once end-to-end against a copy of production."* The
-rehearsal as scoped validates the wrong thing.
+Three things follow, and the third is the one that matters for M10:
 
-What restore actually does [VERIFIED: `BackupService.cs:97-127`, `SqliteOnlineBackup.cs`]:
+1. It is live in the shipped web app today, independent of the deletion.
+2. It sits **immediately below** `runBackup()`, which was fixed for precisely this defect and carries a
+   comment calling it *"the very defect this milestone exists to remove"* [VERIFIED:
+   `settings.component.ts:554-561`]. The fix was applied to one of two adjacent functions.
+3. **P1 proposes to run this same code path unattended on a schedule.** The recommendation's Tier-1 pairing is
+   "auto-backup + export-hub catch-up backfill" in one scheduler. Automating a job whose only existing
+   feedback surface reports failures as successes means a scheduled export that has never worked can run for
+   months while the one screen that could reveal it says *Export complete*. Under **B-ii** it is worse still,
+   because the CLI has no screen at all (N6).
 
-1. `SqliteOnlineBackup.ClearPools()` — which is `SqliteConnection.ClearAllPools()`, and that is
-   **process-local** [VERIFIED: `SqliteOnlineBackup.cs`, `public static void ClearPools() =>
-   SqliteConnection.ClearAllPools();`].
-2. a safety copy of the current DB to `{dbPath}.pre-restore_{stamp}.bak` [VERIFIED: `BackupService.cs:121-122`];
-3. `SqliteOnlineBackup.Copy(backupPath, dbPath)` — which **begins** by deleting the destination and its
-   sidecars: `File.Delete(dbPath); File.Delete(dbPath + "-wal"); File.Delete(dbPath + "-shm");`
-   [VERIFIED: `SqliteOnlineBackup.Copy` → `DeleteWithSidecars(destDbPath)`].
-
-The `Copy` doc-comment states the precondition outright:
-
-> `Callers must ensure no handle is still open on the destination (see ClearPools) — otherwise this throws
-> rather than silently corrupting it.`
-[VERIFIED: `SqliteOnlineBackup.cs`, `Copy` remarks]
-
-Three consequences the recommendation does not address:
-
-- **A rehearsal against a quiet copy has no API attached, therefore no pooled WAL handles on the destination,
-  therefore it never exercises the one precondition that will decide the real attempt.** The rehearsal goes
-  green and proves nothing about the incident. That is the audit's own signature failure mode, re-created in
-  the mitigation.
-- **`ClearPools()` being process-local means an out-of-process restore tool cannot clear the API's handles at
-  all.** Any offline-CLI or manual-copy shape *must* mandate stopping the API first, and the runbook has to
-  say so explicitly. The recommendation leaves the shape open (defensible) but does not record this constraint
-  as binding on every shape (not defensible — it is the constraint that makes `SettingsEndpoints.cs:43-44`'s
-  refusal correct in the first place).
-- **A hand-written "stop the service, swap the file" runbook — the cheapest shape, and the one the audit's
-  Open Question 2 floats — gets none of the safety in `RestoreAsync`.** No `.pre-restore` copy, and, worse, no
-  sidecar deletion: the replaced database's `-wal` is left beside the restored file and SQLite replays it over
-  the restore on next open. `SqliteOnlineBackup.cs` names this exact trap
-  (*"a `-wal` left over from the REPLACED database is replayed by SQLite over the newly restored file on the
-  next open"*) and `BackupService.cs:93-96` says a plain `File.Copy` "leaves the REPLACED database's `-wal`
-  lying next to the new one". A naive runbook silently restores *the data you were trying to discard*.
-
-**What Gate 1 must add:** the rehearsal must run against a copy **with a live API process attached and
-serving**, and the accepted procedure must be the one that deletes sidecars and takes a pre-restore copy —
-i.e. it must go through `SqliteOnlineBackup`, not through Explorer.
+This is a two-line client fix. It is not on any list in M10. **I would put it in the gate** — not because it
+blocks the deletion, but because P1 without it is automating a liar. That is a judgment about scope, and it
+has an owner.
 
 ---
 
-## H5 — SERIOUS. Gate zero is framed as "answer it", but answering it is not what unblocks the deletion
+## N4 — SERIOUS. `RestoreAsync` destroys the live database before it validates the backup, and this codebase's own validator sits unused ten lines away
 
-The recommendation elevates the auth question correctly and then under-scopes the response: *"answer whether
-existing non-admin employees have non-NULL `password_hash`… That is not a porting question and no option
-fixes it."*
+The revised options file correctly establishes the three mechanical constraints on restore (process-local
+`ClearPools`, sidecar deletion, `journal_mode=DELETE`). It misses the ordering, which is the one that bites
+under pressure.
 
-True as far as it goes. But if the answer is *"they are all NULL"* — which
-`DatabaseInitializer.cs:331` makes the default expectation (`ALTER TABLE Users ADD COLUMN password_hash TEXT;`
-— no default, no backfill) and `:337` compounds (`UPDATE Users SET is_admin = 1 WHERE id = (SELECT MIN(id)
-FROM Users)` — one admin promoted, nobody else touched) [both VERIFIED] — then the deletion is blocked by
-**work that does not exist yet**, and that work is absent from Gate 1's five items.
+```
+SqliteOnlineBackup.cs:39-46   public static void Copy(string sourceDbPath, string destDbPath)
+                              {
+                                  DeleteWithSidecars(destDbPath);          // ← destination destroyed FIRST
+                                  using var source = Open(sourceDbPath, ...);   // ← source opened SECOND
+                                  using var dest   = Open(destDbPath, ...);
+                                  source.BackupDatabase(dest);
+```
+[VERIFIED]
 
-The remediation surface, verified:
+and `RestoreAsync`'s only check on the source is that the path exists:
 
-- login hard-fails a NULL hash: `AuthSetup.cs:175-177`, `if (string.IsNullOrEmpty(creds.PasswordHash)) return
-  Results.Unauthorized();` [VERIFIED];
-- self-recovery is deliberately blocked: `AuthEndpoints.cs:91-93` returns
-  `"No password is set for this account. Ask an administrator to set one."` [VERIFIED];
-- and there is **no bulk provisioning path**: `SetPasswordHashAsync` has exactly two production callers —
-  `AuthEndpoints.cs:101` (self-service change, requires the current password) and `AuthEndpoints.cs:128`
-  (admin reset), both strictly one user at a time [VERIFIED: `grep -rn SetPasswordHashAsync src --include=*.cs`].
+```
+BackupService.cs:99-100   if (string.IsNullOrWhiteSpace(backupPath) || !File.Exists(backupPath))
+                              throw new FileNotFoundException(...);
+```
+[VERIFIED: `src/TimesheetApp.Core/Services/BackupService.cs:97-125` in full]
 
-So gate zero is not one item, it is two: *answer it*, and — if the answer is bad — *build or script the sweep,
-and schedule the human comms*. Gate 1 should say so, because "the check came back non-zero" on the morning of
-the deletion is a schedule event, not a five-minute one.
+Meanwhile the same file the `Copy` lives in already contains the right validator, with a doc-comment that
+reads like it was written for this exact gap:
 
----
+```
+SqliteOnlineBackup.cs:64-79   public static bool IsIntact(string dbPath)   // PRAGMA integrity_check == "ok"
+SqliteOnlineBackup.cs:60-62   "'Exists && Length > 0' is not evidence that a file is a usable database —
+                               six arbitrary bytes pass it."
+```
+[VERIFIED. `RetentionService` calls it before permanently deleting rows; **`RestoreAsync` never calls it.**]
 
-## H6 — MINOR. The recommendation's showcase verification is unsound
+So: point the restore at a truncated, half-synced or zero-byte backup and the sequence is *delete
+`timesheet.db`, delete `-wal`, delete `-shm`, then fail.* The live database is gone before the source is ever
+read.
 
-The recommendation offers one claim as proof it checked rather than assumed:
+**Why this is not merely theoretical here, and why it is worse under B-ii.** The backup folder is a
+user-chosen path that the A1 discussion establishes may well be a sync target. A OneDrive **online-only
+placeholder** returns `true` from `File.Exists` and materialises only on open — so "the file is there" is
+exactly the check that cannot distinguish a real 40 MB backup from a 0 KB stub. B-ii's whole pitch is putting
+restore in a CLI **where the input is a file path typed by a human under pressure with the API stopped**. That
+is the highest-risk possible framing for a function that deletes before it validates.
 
-> *"I verified the one real exception, holiday shading, is already unblocked because `GET /api/holidays` is
-> deliberately open (SettingsEndpoints.cs:602-611, worklog.service.ts:1008-1012)."*
+**One thing I expected to find and did not, stated because it matters:** the `.pre-restore_{stamp}.bak` safety
+copy is **correct**. It goes through `SqliteOnlineBackup.Copy`, not `File.Copy`
+[VERIFIED: `BackupService.cs:121-122`], so it is a real online snapshot including WAL content. Recovery from
+the failure above is possible. But it requires the operator to know the `.bak` exists, find it next to the
+database, and rename it — under pressure, with the app down, from a runbook. **And the gate's rehearsal cannot
+surface any of this, because a rehearsal is run with a good backup file.**
 
-`GET /api/holidays` is **not open**. It is authenticated.
-
-- `AuthSetup.cs:146` sets `o.FallbackPolicy = o.DefaultPolicy`, and the default policy is
-  `.RequireAuthenticatedUser()` at `AuthSetup.cs:133` [VERIFIED].
-- `AuthSetup.cs:137` states the rule: *"FallbackPolicy applies to every endpoint WITHOUT its own authorization
-  metadata"* [VERIFIED].
-- `GET /api/holidays` carries no `.AllowAnonymous()` [VERIFIED: `grep -rn AllowAnonymous src/TimesheetApp.Api
-  --include=*.cs` returns only `AuthSetup.cs:207` (login), `Program.cs:238` (`/health`), and `Program.cs:282`
-  (SPA fallback) — holidays is not among them].
-- It is also mapped inside the `api` group, which runs `ClientContextFilter` on every endpoint
-  [VERIFIED: `Program.cs:250` `var api = app.MapGroup("").AddEndpointFilter<ClientContextFilter>();`,
-  `Program.cs:260` `api.MapSettingsEndpoints();`].
-
-The client comment the recommendation leaned on (`worklog.service.ts:1008-1010`, *"`GET /api/holidays` is
-OPEN"*) means **"not admin-gated"**, contrasting with the `[ADMIN]` tags on the two writes just below it — not
-"unauthenticated" [VERIFIED by reading the surrounding block].
-
-**The conclusion survives**: a Log Work user is logged in, so holiday shading really is a pure client-side
-change with no API work. But the *method* — inferring auth posture from the absence of `.RequireAuthorization`
-— is invalid in a codebase with a `FallbackPolicy`, and it was applied to the one claim held up as verified.
-Rated minor because nothing downstream changes; recorded because Option 2 freezes this document as the spec
-for the deferred work, and a wrong reason in a frozen spec propagates.
+The fix is one line — `if (!SqliteOnlineBackup.IsIntact(backupPath)) throw` before line 124 — and it belongs
+in whatever restore shape is chosen.
 
 ---
 
-## H7 — MINOR. P6's spec is wrong about the mechanism, and Option 2 freezes it as the spec
+## N5 — SERIOUS. The deletion is not "four project-file edits". It removes 190 of 652 tests in `TimesheetApp.Tests` (29%)
 
-`B4-missing-options.md` costs P6 (Backlog team filter) as *"~3 Angular files, 0.5-1 day"* with
-*"[ASSUMED] the generated `backlogList` client fn already accepts a `teamIds` param… if it does not, add a
-client regen to the cost."*
+All three options describe the mechanical deletion as *the four project-file edits the audit specifies*
+(`.sln` entry + GlobalSection rows, the `TimesheetApp.Tests.csproj` ProjectReference, the dead
+`InternalsVisibleTo`). That is not what `git rm -r src/TimesheetApp/` costs.
 
-That is the wrong axis of uncertainty. `getBacklogList`'s own doc-comment forbids the approach:
+`TimesheetApp.Tests` references the WPF project directly [VERIFIED:
+`src/TimesheetApp.Tests/TimesheetApp.Tests.csproj` — `<ProjectReference Include="..\TimesheetApp\TimesheetApp.csproj" />`],
+and **18 test files import WPF namespaces**, plus a 19th that loads WPF resources by pack URI:
 
-> `rebuildOptions derives the four dropdowns' contents FROM THE LOADED ROWS. Filter on the server and every
-> keystroke in the search box would silently delete entries out of the Project / Type / Assignee / Month
-> dropdowns — the user would watch their own filters vanish as they type. If you ever do need the server-side
-> filter, it needs its own method and its own row set, not this one.`
-[VERIFIED: `src/timesheet-web/src/app/services/worklog.service.ts:455-462`, immediately above
-`getBacklogList()` at `:463-465`, which is confirmed to send `{}`]
+| Test file | `[Fact]`/`[Theory]` |
+|---|---:|
+| `ViewModels/SettingsViewModelTests.cs` | 41 |
+| `ViewModels/TimesheetViewModelTests.cs` | 20 |
+| `ViewModels/TaskListViewModelTests.cs` | 18 |
+| `ViewModels/RequestEditorViewModelTests.cs` | 18 |
+| `ViewModels/MainViewModelTests.cs` | 16 |
+| `ViewModels/RequestsViewModelTests.cs` | 15 |
+| `ViewModels/ReportsViewModelTests.cs` | 12 |
+| `ViewModels/SmartInputPanelVmTests.cs` | 10 |
+| `ViewModels/DailyReportViewModelTests.cs` | 10 |
+| `ViewModels/TimesheetRowVmTests.cs` | 7 |
+| `ViewModels/TeamFilterViewModelTests.cs` | 6 |
+| `Views/HexToBrushConverterTests.cs` | 4 |
+| `ViewModels/UsersViewModelTests.cs` | 4 |
+| `DependencyInjectionTests.cs` | 4 |
+| `ViewModels/CrossTabSyncTests.cs` | 2 |
+| `Views/TeamFilterLoadTests.cs` | 1 |
+| `Views/TaskListTabRenderTests.cs` | 1 |
+| `Views/SettingsMembershipOverlayLoadTests.cs` | 1 |
+| **Total** | **190** |
 
-The correct port is a **client-side** team filter over the already-loaded rows, consistent with the other four
-dropdowns — probably cheaper than costed, and needing no regen. Low impact on the decision; real impact on
-whoever picks this document up in three months as the frozen spec.
+[VERIFIED: `grep -rln "TimesheetApp.ViewModels\|TimesheetApp.Views" src/TimesheetApp.Tests --include=*.cs`
+then `grep -c` per file. Repo totals: `TimesheetApp.Tests` **652**, `TimesheetApp.ApiTests` **213**, **865**
+C# tests overall.]
+
+Plus `Views/PaletteParityTests.cs`, which the namespace grep misses because it imports only `System.Windows`
+but resolves `pack://application:,,,/TimesheetApp;component/Views/Theme/Palette.Light.xaml`
+[VERIFIED: `PaletteParityTests.cs:32`] — it breaks the moment the ProjectReference goes.
+
+**Three consequences the options do not price:**
+
+1. The deletion commit is a **19-file test deletion**, not a four-line edit. Whoever executes M10 needs to
+   know that before they start, and the "regression gate" story in every option assumes a stable suite.
+2. **29% of the `TimesheetApp.Tests` net disappears at the same moment the plan starts adding new backup,
+   restore and scheduler machinery.** That is the worst possible ordering: maximum new risk, minimum
+   regression cover.
+3. The largest single file is `SettingsViewModelTests.cs` at **41 tests** — the coverage of
+   `SettingsViewModel`, which is *the only production writer of the three backup settings* and therefore the
+   exact capability P11 exists to replace. **The gate replaces a 41-test-covered writer with either a hand-edit
+   (b) or a new route (a), and no option budgets tests for the replacement.**
+
+None of this changes which option is right. It changes the size of the thing everyone is calling "just delete
+the folder."
 
 ---
 
-## H8 — MINOR. One ACCEPT is invalidated by the same option's deferral
+## N6 — SERIOUS. B-ii's liveness advantage is untracked Windows configuration with the wrong defaults, and a console job cannot report failure through the one channel it has
 
-ACCEPT A5 (Smart Fill "Full 8h") is justified by an equivalent workaround: *"single-task DistributeEven with
-Total = 8 × day-count"*. I re-traced it and the arithmetic is right — `distributeHours(40, 5)` → `[8,8,8,8,8]`
-[VERIFIED: `smart-fill.ts:19-30`].
+B-ii is chosen over B-i on one argument: *"A Task Scheduler entry survives reboots."* Two problems.
 
-But `day-count` here means **working days excluding holidays** — `FillFull8h` and `DistributeEven` both
-enumerate via `_calc.WorkingDaysBetween(from, to, holidays)` [VERIFIED:
-`SmartInputService.cs:33,53` region]. Under Option 2, holiday rendering (P7) ships *after* the deletion, so
-during that window the user cannot see which days in the week are holidays and therefore cannot compute the
-multiplier the workaround depends on. The ACCEPT is sound; its stated workaround is not available until the
-deferred item lands.
+**(a) The scheduler entry is not in the repo, and its defaults are wrong for this use.** A Task Scheduler task
+is machine-local state configured in a GUI. It is not versioned, not reviewed, not visible to anyone reading
+the codebase, and not reproducible on a rebuilt host. That is *precisely* the property the options file
+correctly condemns for the backup config — *"a config value written by a deleted application, which nobody can
+subsequently change or verify from the product."* **B-ii reproduces that property for the schedule itself.**
+
+Further, the defaults work against it [**[ASSUMED]** — Windows platform behavior, not verifiable from this
+repo, and it should be checked by whoever owns the host]: *"Run task as soon as possible after a scheduled
+start is missed"* is **off** by default, so a task scheduled at 02:00 on a machine that is off at 02:00 simply
+does not run and does not retry; *"Start the task only if the computer is on AC power"* is **on** by default;
+and *"Run only when the user is logged on"* reproduces exactly the liveness B-ii criticises B-i for. B-ii's
+advantage is real **only** if three specific checkboxes are set correctly on a machine nobody has chosen yet,
+and there is no artifact anywhere that records whether they were.
+
+**(b) The CLI's only feedback channel is an exit code, and the method it calls cannot produce one.**
+
+```
+BackupService.cs:59-69   public async Task<bool> AutoBackupIfDueAsync()
+                         {
+                             if (!_config.AutoBackupEnabled) return false;                       // disabled
+                             if (string.IsNullOrWhiteSpace(_config.BackupFolderPath)) return false; // unconfigured
+                             if (ListBackups().Any(b => b.Timestamp.Date == today)) return false;   // already done
+                             var path = await BackupNowAsync();
+                             return path is not null;                                            // null => false
+                         }
+```
+[VERIFIED. That last `null` has its own three causes — blank folder, blank `DbPath`, **or the database file
+not existing at the resolved path** — collapsed at `BackupService.cs:43-44`.]
+
+So **`false` means one of six different things**, one of which ("the database is not where I think it is") is
+catastrophic and one of which ("already backed up today") is the healthy case. A CLI that returns `false` from
+`Main` as exit code 0 gives Task Scheduler **Last Run Result: 0x0 (The operation completed successfully)** —
+the operator's only dashboard affirmatively reporting success for a backup that never happened. That is the
+audit's signature failure, recreated inside the recommended shape, on the item the gate exists for.
+
+The gate's inherited H1 remedy — *"log at Error when it returns early"* — was written for B-i, where Error
+reaches the API's logging pipeline. **In B-ii it reaches a console window that no one is attached to.** B-ii
+needs something the gate does not specify: distinct exit codes per outcome *and* a durable log destination
+(Windows Event Log or a file), *and* someone who looks at it.
+
+**Where this leaves the B-i/B-ii choice.** B-ii's advantage shrinks to "survives a reboot *if* three
+checkboxes are right on the right machine"; its costs grow by N2 (config split) and this hole (no reporting
+channel). B-i's disadvantage — inheriting an unsupervised `dotnet run` — is real, but it is **erased by the
+same decision 0b that B-ii also requires**: once the API runs under something that restarts on boot, a hosted
+service inherits that liveness for free, shares one config resolution, and logs through a pipeline that
+already exists. **B-ii's argument was strongest under the assumption that 0b would go unanswered — but B-ii
+requires 0b too.**
+
+I would pick **B-i for the backup trigger, plus a small offline console for restore only** — the restore
+genuinely does need to be a separate process (`ClearPools()` is process-local, `SqliteOnlineBackup.cs:83`,
+so the API must be stopped), and that CLI does not need a schedule, an exit-code protocol, or a config of its
+own beyond the path it is given. That splits the two Tier-1 items along the line where their requirements
+actually differ, instead of merging them because one binary is tidier. **This reverses the recommendation's
+shape choice, and it is an architecture call with an owner — I am stating my reasoning, not settling it.**
 
 ---
 
-## What I checked that HOLDS
+## N7 — MINOR (but it is the load-bearing premise of the recommendation's reason #2). "Deletion destroys `Palette.Dark.xaml`" is false
 
-Stated so the amendments below are not read as a general indictment — most of the document is solid, and two
-of its corrections are real finds.
+The recommendation justifies deferring P5-P10 on the grounds that the specs are *"recoverable from git
+history"*, and justifies the one non-code gate item on the grounds that the palette is *"the only artifact
+where deletion destroys information rather than relocating it into git history."*
 
-- **The Smart Fill math divergence is real and correctly traced.** Web: `per = round1(8/3) = 2.7`,
-  `drift = round1(8 − 8.1) = −0.1`, last day `2.6` → **[2.7, 2.7, 2.6]** [VERIFIED: `smart-fill.ts:19-30`].
-  Core: `totalTenths = 80`, `baseTenths = 80/3 = 26`, `remainder = 2` on the last day → **[2.6, 2.6, 2.8]**
-  [VERIFIED: `SmartInputService.cs:37-46`]. `smart-fill.ts:8`'s *"this is the same rule"* is false. Good catch.
-- **The "Full 8h top-up" correction is right.** `FillFull8h` is
-  `days.Select(d => new CellAssignment(d, 8m))` — no DB, no read of existing logs, a flat assignment
-  [VERIFIED: `SmartInputService.cs:56-58`], despite the "tops up to" wording at `:10`.
-- **`log-work.component.scss:52-55` really does add `.cell input.invalid`, labelled M9.2** [VERIFIED] — the
-  audit row claiming no invalid-cell styling exists is genuinely stale, as Option 3's risk section says.
-- **The `!IsEnvironment("Testing")` guard is correct for this repo.** Both test factories set it:
-  `ApiFactory.cs:112` and `SignalRTestFactory.cs:65`, and both also override `TimesheetApp:ConfigPath` /
-  `:DbPath` to a temp root [VERIFIED: `ApiFactory.cs:104-106`, `SignalRTestFactory.cs:55-57`]. A hosted
-  service gated this way will not fire in tests, and would not reach production data even if it did.
-- **The four "silent" losses are real.** No `AddHostedService` / `BackgroundService` / `IHostedService` /
-  `PeriodicTimer` anywhere in `TimesheetApp.Api` or `TimesheetApp.Core` [VERIFIED: grep returns nothing].
-- **P4's conditional-PORT flag is correct, and better-founded than stated.** `App.xaml.cs:79-107` runs the
-  export-hub backfill *only when* an export root is configured, and the two flat archive backfills only in the
-  `else` branch [VERIFIED] — so if production sets an export root, the desktop never ran them. The related
-  "whole-organisation data on shared storage" worry is also **already true today** via the manual route:
-  `ExportHubService.RunAsync` iterates `_teams.GetAllAsync()`, every team, regardless of caller
-  [VERIFIED: `ExportHubService.cs:55`]. Scheduling it adds frequency, not scope.
-- **The prune hazard is real and correctly located** — `ExportHubService.cs:145` copies the live DB into
-  `{root}/db` on every run with `BackupKeepCount` (default 30) [VERIFIED: `ExportHubService.cs:145`,
-  `JsonAppConfig.cs` `DefaultBackupKeepCount = 30`]. It does **not** cross-prune the user backup folder
-  (different folder) and it cannot eat the live DB (`Prune`'s pattern is `timesheet_*.db`, which the live
-  `timesheet.db` does not match) [VERIFIED: `BackupService.cs:130-144`]. Bounded by scheduler frequency, as
-  claimed.
-- **Every Angular claim I spot-checked is accurate**: sidebar mockup `<select>` with two hardcoded
-  `<option>`s and no binding [VERIFIED: `sidebar.component.html:47-49`]; `daily-report.component.html:196-200`
-  renders `i.issueText` and never `solutionText` [VERIFIED]; `task-list.component.html:126`'s
-  *"`project` is NOT here"* comment [VERIFIED]; `ApiCurrentTeamService.InitializeAsync` computes the fallback
-  and never writes it back [VERIFIED: `ApiCurrentTeamService.cs:57-70`].
+```
+$ git ls-files | grep -i palette
+src/TimesheetApp/Views/Theme/Palette.Dark.xaml
+src/TimesheetApp/Views/Theme/Palette.Light.xaml
+```
+[VERIFIED. 77 files are tracked under `src/TimesheetApp/`, and `.gitignore` excludes only `bin/`, `obj/` and
+build output — nothing under `Views/`.]
+
+The palette is tracked. `git rm` relocates it into history **exactly like every other file**. The two claims
+cannot both be true: either git history preserves specs (then the palette item is a convenience, not a gate
+item) or it does not (then deferring P5-P10 loses its stated safety net). The extraction costs half an hour
+and I would still do it — but **the reasoning that puts it in the gate is wrong, and it is the same reasoning
+that licenses deferring ten other items.** Worth knowing which one is actually load-bearing.
+
+Sharper version of the real loss: what deletion removes is not the hex values, it is **`PaletteParityTests`** —
+the automated guard asserting Light and Dark define identical key sets [VERIFIED:
+`src/TimesheetApp.Tests/Views/PaletteParityTests.cs:36-56`]. The gate as written replaces a *tested invariant*
+with *hex values copied into a document*. If the extraction is worth gate time, the thing to preserve is the
+parity check in whatever form the web design system takes — not the numbers.
+
+---
+
+## N8 — MINOR. One of P3's two stated justifications is already stale — the second confirmed staleness in the frozen spec
+
+The options file argues P3's urgency partly on the audit's PARTIAL row: *"paired with the audit's PARTIAL
+finding that 'Backup now' reports a backup that did not happen as success [CITED: `M10-COVERAGE-AUDIT.md:92`],
+the post-M10 state is: a button that always says it worked, and no way to check."*
+
+**That has been fixed.** [VERIFIED: `settings.component.ts:544-562`]
+
+```ts
+if (!r.value) {
+  this.opsResult.set(null);
+  this.fail(new Error('Backup did not run — no file was written.'));
+  return;
+}
+```
+
+with a comment naming the exact reasoning — *"null/empty means the server ATTEMPTED NOTHING —
+BackupService.cs:43 collapses three different preconditions … Name none of them; a false specific cause is
+worse than an honest generic one."* The endpoint still returns `200 OK` with a null value
+[VERIFIED: `SettingsEndpoints.cs:1051-1057`], but the client is honest about it.
+
+P3 survives on its remaining justification (there is genuinely no way to *see* whether backups exist, and
+`ListBackups()`'s only production caller is the WPF view-model). But this is the **second** confirmed stale row
+in the document all three options propose to freeze as the spec — after `.cell input.invalid`, which the
+options file itself caught. Two confirmed stale rows out of a handful spot-checked is a rate, not an anomaly.
+**Any option that freezes the audit as the spec should budget a re-verification pass at the moment the
+deferred work starts**, not treat the document as authoritative three months on.
+
+One further note on P3's costing: the options file prices it at *"~0.5 day, pattern-matching, not design"*
+because four `/api/ops/*` routes already exist in that shape. Per N3, **the existing pattern is the defect** —
+`200 OK` carrying a status string the client renders as success. Copying it is how P3 becomes false
+reassurance #5. The 0.5 day is fine; "pattern-matching, not design" is not.
+
+---
+
+## N9 — MINOR. `BackupKeepCount` is one knob serving two independent retention policies, and P11 makes it reachable for the first time
+
+```
+BackupService.cs:35-36     BackupNowAsync() => BackupToFolderAsync(_config.BackupFolderPath, _config.BackupKeepCount);
+ExportHubService.cs:143    await _backup.BackupToFolderAsync(Path.Combine(root, "db"), _config.BackupKeepCount);
+```
+[VERIFIED — the second runs **once per export root, per run**, inside `ExportRootAsync`.]
+
+The same integer bounds (i) how many daily user backups survive and (ii) how many whole-DB copies survive in
+`{exportRoot}/db`, for each root. Today that coupling is inert because nothing in the web product can change
+the value. **P11's entire purpose is to make it changeable** — so the first operator who sets
+`BackupKeepCount: 7` to bound disk usage on the backup folder also silently truncates the export-root DB
+history on both roots, and vice versa. Neither surface says so.
+
+Not a blocker. It belongs in P11's design note and in whatever UI or runbook shape (a)/(b) produces, because
+it is the kind of coupling that is obvious in the code and invisible from the screen.
+
+---
+
+## N10 — MINOR. The Data Protection key ring is not in the backup, despite the comment saying it is
+
+```
+Program.cs:38-39   // The Data Protection key ring MUST outlive the process (see AuthSetup). Default it next to
+                   // the database so it is picked up by whatever already backs the database up.
+Program.cs:43-46   keyRingPath = Path.Combine(dbDir, "keys");
+AuthSetup.cs:87-90 Directory.CreateDirectory(keyRingPath); services.AddDataProtection()
+                       .PersistKeysToFileSystem(new DirectoryInfo(keyRingPath)).SetApplicationName("TimesheetApp");
+```
+[VERIFIED]
+
+But the only automatic backup in the product copies **one file**:
+
+```
+BackupService.cs:50-55   Directory.CreateDirectory(folder);
+                         SqliteOnlineBackup.Copy(dbPath, backupPath);
+                         Prune(folder, keep);
+```
+[VERIFIED — no directory copy, no `keys` handling anywhere in `BackupService`.]
+
+So the stated rationale for the key ring's location is not satisfied by the mechanism the gate is about to
+automate. The blast radius is bounded — the key ring protects the auth cookie, so losing it forces everyone to
+log in again rather than losing data. Rated minor for that reason. **Recorded because it is a documented
+belief that a backup covers something it does not**, sitting inside the exact subsystem M10 is hardening, and
+because a restore runbook written from that comment would be wrong about what a full recovery requires.
+
+---
+
+## What I attacked and could not break
+
+Stated so the holes above are not read as a general indictment. The revised options file is substantially
+stronger than the version pass 1 attacked, and several things I expected to break held up.
+
+- **The `.pre-restore` safety copy is genuinely safe.** I went looking for a `File.Copy` that would silently
+  drop WAL content from the one file an operator reaches for after a bad restore. It is
+  `SqliteOnlineBackup.Copy` [VERIFIED: `BackupService.cs:121-122`]. The claim in the options file is correct.
+- **The "frozen spec" premise holds.** `.planning/` is committed — 119 tracked files, including
+  `M10-COVERAGE-AUDIT.md` and the whole of `m10-audit/` [VERIFIED: `git ls-files .planning | wc -l`], and
+  `commit_docs.planning_artifacts` is `true` [VERIFIED: `.planning/config.json`]. The spec survives the
+  deletion on every machine, not just this one. (Its *accuracy* over time is N8's problem, not its existence.)
+- **P6's port really is client-side and really does need no regen, and the TEAM column has a name source.**
+  `BacklogListItemDto` carries `teamId` but no team name [VERIFIED: `Contracts/Dtos.cs:83-85`;
+  `api/models/backlog-list-item-dto.ts:4-13`] — I expected this to force a server change. It does not:
+  `getTeamsActive(): Observable<TeamDto[]>` already exists [VERIFIED: `worklog.service.ts:875`] and `TeamDto`
+  carries `name` [VERIFIED: `api/models/team-dto.ts`]. Filter and column are both reachable from loaded data.
+- **P10's open question is answerable, and the answer helps.** The options file left *"whether WPF's
+  `SmartInputPanelVm` calls Core's `BuildPlan` today"* untraced. It does — `SmartInputPanelVm.cs:135`
+  `var result = _smartInput.BuildPlan(...)` [VERIFIED] — and Core's multi-task path is covered by five tests
+  including holiday exclusion and both divide-by-zero guards [VERIFIED: `SmartInputServiceTests.cs:182-246`].
+  **So "route P10 through Core" is an endpoint plus a client swap against tested code, not a new Core
+  implementation**, which makes the fork cheaper on the Core side than the options file assumed. (The ten
+  `SmartInputPanelVmTests` that exercise it end-to-end are among the 190 deleted by N5.)
+- **The dispositions themselves.** I re-read the PORT/ACCEPT/OBSOLETE assignments looking for one that is
+  miscategorised in a way that changes the gate. I did not find one. A3 and A10 remain correctly flagged
+  `[SIGN-OFF]`; A6 remains the most likely to be wrong and is honestly labelled as such.
+- **Gate zero.** Nothing I found weakens it. It remains the precondition for all three options and it remains
+  unanswerable without opening a copy of production, which I did not do.
 
 ---
 
 ## Verdict
 
-**Option 2's shape survives. Its Gate 1 does not, as written.**
+**The split-gate shape survives a second attack. The two sub-decisions the recommendation leaned on do not.**
 
-The split-gate reasoning is sound and I did not break it. The PORT list genuinely is two kinds of thing;
-deletion genuinely does not make the deferred UI work harder; Option 1's duration risk and Option 3's
-overlapping no-backup/no-restore window are both fairly stated. Nothing I found argues for Option 1 or
-Option 3 instead.
+The core reasoning is intact and I could not break it: the PORT list genuinely is two kinds of thing; deletion
+genuinely does not make the deferred UI work harder (N7's correction *strengthens* this — git preserves
+everything, not almost everything); Option A's duration risk and Option C's overlapping no-backup/no-restore
+window are both fairly stated. **Nothing I found argues for Option A or Option C instead.**
 
-What I found is that Gate 1 does not do what it claims. Built exactly as specified, it produces a scheduled
-backup that (H1) cannot be enabled or configured from the product and no-ops silently, (H2) runs on an
-unsupervised manually-started process with strictly worse liveness than the WPF trigger it replaces, (H3)
-may be reading a different account's config and therefore a different database, and (H4) is paired with a
-restore rehearsal that cannot exercise the precondition that will decide the real restore. H1 and H4 are each
-a fresh instance of "the operator believes it worked" — the failure this audit exists to prevent.
+What I found is that the recommendation's two open-but-leaned sub-decisions are each broken by something in
+this codebase:
 
-**Replace the recommendation with: Option 2, amended Gate 1.** Gate 1 becomes:
+- **Config fork (b)** — leaned toward — asks a human to hand-edit JSON whose parse failure silently repoints
+  the production database to an empty or stale file, with the only warning printed to a console that decision
+  0b removes (N1). Fork (a) fails the same way through `Save()`. **Neither branch is safe until a fail-fast
+  config-load guard exists**, and that guard is in neither branch.
+- **Shape B-ii** — recommended — splits the backup writer from the backup viewer so that P3, the trust
+  mechanism, can report an affirmative false answer (N2); and gives the job no failure channel, since
+  `AutoBackupIfDueAsync` collapses six outcomes into `false` and Task Scheduler reads only an exit code (N6).
+  Its one advantage over B-i evaporates once you notice **B-ii requires decision 0b too** — and 0b is what
+  fixes B-i's liveness for free.
 
-0. **Gate zero, expanded** — answer the `password_hash` question against a copy, *and* if the answer is bad,
-   build or script the provisioning sweep and schedule the user comms. Two items, not one (H5).
-0b. **Answer "who hosts it"** — this is now a blocker, not a deferred decision. Until the API runs under
-   something that survives a reboot (Windows Service / scheduled task / supervised host), no scheduled backup
-   is trustworthy. An out-of-process Task Scheduler + small CLI is a legitimate answer and probably cheaper
-   than a hosted service — and the same CLI can carry the restore (H2, H4).
-1. **P1 scheduler** — as specified, plus: pin `TimesheetApp:ConfigPath`/`:DbPath` explicitly rather than
-   inheriting the per-account `%APPDATA%` default (H3), and log at **Error** with a status field whenever the
-   job returns early because backup is disabled or unconfigured (H1).
-2. **Backup configurability** — an admin route (or a documented host-config step plus restart) for
-   `BackupFolderPath` / `AutoBackupEnabled` / `BackupKeepCount`. Without this the deletion strands three
-   settings with no writer (H1). This item is **new** and is the one I would refuse to drop.
-3. **P3 backup visibility** — as specified, plus it must distinguish *"not configured"* from *"none yet"* (H1).
-4. **P2 restore** — rehearsed against a copy **with a live API attached**, and the accepted procedure must go
-   through `SqliteOnlineBackup` (pre-restore copy + sidecar deletion), never a plain file swap (H4).
-5. **Palette.Dark.xaml extraction** — unchanged, still correct, still ~30 minutes.
+**What I would put to the human, and my reasoning — this is not a decision I am making:**
 
-Cost impact: Gate 1 moves from ~2-3 days to roughly ~4-6 days plus the hosting decision. That is still well
-short of Option 1, and the split-gate logic is unaffected.
+Keep **Option B**. Change three things inside it:
 
-**Not mine to decide, and I am not deciding them:** whether the affordance gaps are acceptable to ship (the
-recommendation's own five-minute team-structure question stands, unanswered); what shape the restore takes;
-who hosts the API; whether the archive backfills should run server-side at all; and whether anyone accepts the
-window between deletion and the provisioning sweep if gate zero comes back bad.
+1. **Add gate item 0c: fail-fast config validation** — distinguish "no config file" from "unparseable config
+   file", refuse to start on the latter, and log the resolved `DbPath`/`BackupFolderPath` through `ILogger`
+   rather than `Console.WriteLine`. ~0.5 day. It is a precondition for *both* branches of the config fork, so
+   it is cheaper than resolving the fork. With it, the recommendation's (b)+(c) lean becomes defensible again.
+2. **Switch to B-i for the trigger, and keep a console binary for restore only.** The two Tier-1 items have
+   genuinely different requirements — the scheduler needs one config resolution and a real log pipeline, the
+   restore needs a separate process because `ClearPools()` is process-local. Merging them because one binary
+   is tidier costs N2 and N6. Splitting them costs one extra project.
+3. **Add the two one-line honesty fixes** — `runExport()`'s false success (N3) and `IsIntact()` before restore
+   (N4). Together under an hour, and they close two of the three live "operator believes it worked" instances,
+   one of which P1 is about to automate.
+
+And **re-price the deletion commit itself**: it is 19 test files and 190 tests (N5), not four project-file
+edits. That does not change the decision; it changes who is surprised on the day.
+
+**Still not mine, and I am not deciding them:** whether the documented `IAppConfig.Set*` rule bends (N1 makes
+the fork *safe* either way once 0c exists — it does not make the architectural question go away); who hosts
+the API; whether the affordance gaps are acceptable to ship; whether the export-honesty fix (N3) is in scope
+for M10 at all; and whether anyone accepts the window between deletion and the provisioning sweep if gate zero
+comes back bad.
 
 ---
 

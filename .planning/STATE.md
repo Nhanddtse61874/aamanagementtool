@@ -10,7 +10,27 @@
 
 **Two things, both the user's:** (1) click `G-A`/`G-B` plus the batched `OT-13…OT-25` and M9.1's `G3`/`G6`/`G10`; (2) decide the 3 M10 blockers from `.planning/M10-BLOCKERS.md`. Nothing downstream can be planned honestly until those land.
 
-## 🔴🔴 RESTORE HAS NO INTEGRITY CHECK — found by Team B 2026-07-19, verified at source
+## ✅ USER DECISIONS 2026-07-19 — M10 unparked
+
+| Question | Answer |
+|---|---|
+| **Gate shape** | **Safety net first → delete WPF → affordances after.** Only the items that fail *silently* block the deletion; the ones a user notices and reports do not. |
+| **Four permanent losses** | **All four accepted:** logging hours on someone else's behalf · retention becoming manual-only · WPF's credential-less auto-provisioning (losing this is a security *tightening*) · the OneDrive conflict-copy banner. |
+| **Who turns backup on after WPF dies** | **Admin routes in the API.** This grows M11 — without it the shipped state is *"backup is off and there is no way to turn it on"*. |
+| **Multi-team users** | **Rare.** The active-team switcher is therefore a deferrable affordance, not a gate item. |
+| **Go-live premise** | The current database is **disposable test data**. Deploy is a **first run**: `DbPath` from `appsettings.json`, existing file opened, absent file created. |
+
+**What the first-run premise dissolved:** blocker 1 (auth cutover) in its entirety. There is no migrated user population to provision, so gate zero (counting NULL `password_hash` rows) is moot, options A–D are moot, and *"keep WPF as the transition door"* — the main argument holding M10 back — is gone with it. On an empty database `AdminBootstrap.cs:53` seeds `admin`/`admin`.
+
+⚠️ **But scenario 2 keeps a smaller version of it:** *"path already exists → open that database"* means an existing DB has users, so `admins.Count != 0` and **`admin`/`admin` is NOT seeded** — it falls to the random-password-logged-once path. Recovery is one line (`UPDATE Users SET password_hash = NULL WHERE id = <admin>`) plus a restart, not surgery. Recorded because the earlier version of this file overstated it.
+
+## 📐 NUMBERS SETTLED 2026-07-19 — three sources disagreed, so they were counted
+
+- **The WPF deletion removes 205 tests across 22 files.** Counted, not relayed: ViewModels 13 files/179 · Views **6** files/9 · `CurrentTeamServiceTests` 9 · `CurrentTeamPerUserTests` 4 · `DependencyInjectionTests` 4. The audit's **205 was right** but its file count (23) was not; the blocker memo's **190 is wrong**. `TimesheetApp.Tests` 691 → ~486.
+- **PORT is 11 items, not 16** — 10 packages grouped from 20 audit rows, plus backup configurability (a derived item, not an audit row). **Four fail silently**, and those four are the gate.
+- **`File.Delete` DOES throw on an open handle** — settled by scratch experiment, not by reasoning; the blocker memo flagged it as an unadjudicated contradiction between its own two passes (B2 §1.8 vs §1.9). Consequence: the restore hole's danger window opens only *after* `ClearPools()` releases the handles — which `RestoreAsync:116` does deliberately. **The hole is real in the real flow**, so the `IsIntact` guard (`0c739f9`) was necessary, not belt-and-braces.
+
+## 🔴🔴 RESTORE HAS NO INTEGRITY CHECK — FIXED `0c739f9`, kept for the record
 
 `RestoreAsync` (`BackupService.cs:97`) validates only that the backup file **exists** (`:99-100`). It never asks whether the file is a usable database. Then:
 
