@@ -1057,6 +1057,116 @@ public sealed class SettingsEndpointsTests
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsync("/api/ops/backup/run", content: null)).StatusCode);
     }
 
+    // ---- M10 gate (P11/P3): GET|PUT /api/ops/backup/settings, GET /api/ops/backup/list. -----------------
+
+    /// <summary>Separate from <see cref="A_non_admin_gets_403_from_every_ops_route"/> because that theory is
+    /// hard-wired to POST -- these three routes are GET/PUT/GET.</summary>
+    [Fact]
+    public async Task Non_admin_gets_403_from_backup_settings_and_backup_list()
+    {
+        using var factory = new ApiFactory();
+        await factory.SeedUserAsync("peon", ApiFactory.DefaultPassword);
+        using var client = await factory.ClientAsync("peon");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/ops/backup/settings")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync(
+            "/api/ops/backup/settings", new SettingsOpsBackupSettings("", false, 30))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/ops/backup/list")).StatusCode);
+    }
+
+    /// <summary>A fresh install: nobody has ever called the WPF equivalent (SettingsViewModel), so
+    /// JsonAppConfig's own defaults must be what the route reports -- blank folder, auto-backup off,
+    /// DefaultBackupKeepCount (30).</summary>
+    [Fact]
+    public async Task Backup_settings_default_to_off_with_a_blank_folder_on_a_fresh_install()
+    {
+        using var factory = new ApiFactory();
+        using var admin = await factory.AdminClientAsync();
+
+        var settings = await admin.GetFromJsonAsync<SettingsOpsBackupSettings>("/api/ops/backup/settings");
+
+        Assert.Equal("", settings!.BackupFolderPath);
+        Assert.False(settings.AutoBackupEnabled);
+        Assert.Equal(30, settings.BackupKeepCount);
+    }
+
+    [Fact]
+    public async Task Backup_settings_round_trip_through_PUT_then_GET()
+    {
+        using var factory = new ApiFactory();
+        using var admin = await factory.AdminClientAsync();
+        var folder = Path.Combine(factory.Root, "backups");
+
+        var putResponse = await admin.PutAsJsonAsync(
+            "/api/ops/backup/settings", new SettingsOpsBackupSettings(folder, true, 10));
+        Assert.Equal(HttpStatusCode.OK, putResponse.StatusCode);
+        var written = await putResponse.Content.ReadFromJsonAsync<SettingsOpsBackupSettings>();
+        Assert.Equal(folder, written!.BackupFolderPath);
+        Assert.True(written.AutoBackupEnabled);
+        Assert.Equal(10, written.BackupKeepCount);
+
+        var reread = await admin.GetFromJsonAsync<SettingsOpsBackupSettings>("/api/ops/backup/settings");
+        Assert.Equal(folder, reread!.BackupFolderPath);
+        Assert.True(reread.AutoBackupEnabled);
+        Assert.Equal(10, reread.BackupKeepCount);
+    }
+
+    [Fact]
+    public async Task A_non_positive_keep_count_is_rejected()
+    {
+        using var factory = new ApiFactory();
+        using var admin = await factory.AdminClientAsync();
+
+        var response = await admin.PutAsJsonAsync(
+            "/api/ops/backup/settings", new SettingsOpsBackupSettings("", false, 0));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>The trap this brief calls out by name: auto-backup ON with no folder is a silent permanent
+    /// no-op (AutoBackupIfDueAsync checks AutoBackupEnabled first, BackupFolderPath second, and bails on
+    /// either). The write must refuse to create that state rather than accept it quietly.</summary>
+    [Fact]
+    public async Task Enabling_auto_backup_with_a_blank_folder_is_rejected()
+    {
+        using var factory = new ApiFactory();
+        using var admin = await factory.AdminClientAsync();
+
+        var response = await admin.PutAsJsonAsync(
+            "/api/ops/backup/settings", new SettingsOpsBackupSettings("", true, 10));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>The row this brief calls out as non-negotiable: "no folder configured" and "folder
+    /// configured, no backups yet" must be DISTINGUISHABLE, not both a bare empty list. Walks all three
+    /// states: not configured -> configured but empty -> configured with one real backup.</summary>
+    [Fact]
+    public async Task Backup_list_distinguishes_not_configured_from_configured_but_empty_from_has_backups()
+    {
+        using var factory = new ApiFactory();
+        using var admin = await factory.AdminClientAsync();
+
+        var beforeConfig = await admin.GetFromJsonAsync<SettingsOpsBackupList>("/api/ops/backup/list");
+        Assert.False(beforeConfig!.FolderConfigured);
+        Assert.Empty(beforeConfig.Backups);
+
+        var folder = Path.Combine(factory.Root, "backups");
+        var setResponse = await admin.PutAsJsonAsync(
+            "/api/ops/backup/settings", new SettingsOpsBackupSettings(folder, false, 30));
+        Assert.Equal(HttpStatusCode.OK, setResponse.StatusCode);
+
+        var afterConfig = await admin.GetFromJsonAsync<SettingsOpsBackupList>("/api/ops/backup/list");
+        Assert.True(afterConfig!.FolderConfigured);
+        Assert.Empty(afterConfig.Backups); // configured, but nothing backed up yet -- NOT the same as above
+
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsync("/api/ops/backup/run", content: null)).StatusCode);
+
+        var afterBackup = await admin.GetFromJsonAsync<SettingsOpsBackupList>("/api/ops/backup/list");
+        Assert.True(afterBackup!.FolderConfigured);
+        Assert.Single(afterBackup.Backups);
+    }
+
     /// <summary>Belt-and-braces: the Admin POLICY reads the is_admin CLAIM, fixed at login for 30 days. A
     /// demoted admin's cookie still says admin, so the policy alone would let them through. ctx.IsAdmin is
     /// read fresh from the DB on every request and must be what actually gates the four destructive routes.</summary>

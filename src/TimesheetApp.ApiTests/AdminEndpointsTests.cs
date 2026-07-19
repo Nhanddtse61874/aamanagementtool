@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Dapper;
 using TimesheetApp.Api.Contracts;
+using TimesheetApp.Api.Endpoints;
 using Xunit;
 
 namespace TimesheetApp.ApiTests;
@@ -173,6 +174,25 @@ public sealed class AdminEndpointsTests
         var response = await bob.PostAsync(route, content: null);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>M10 gate. The three backup-config routes (GET|PUT <c>backup/settings</c>, GET
+    /// <c>backup/list</c>) join the same belt-and-braces set as the theory above -- a demoted admin's stale
+    /// cookie must not let them read or rewrite backup config either. Not folded into the theory itself
+    /// because that theory is hard-wired to POST and these three are GET/PUT/GET.</summary>
+    [Fact]
+    public async Task A_demoted_admin_is_REJECTED_by_the_backup_config_routes_too()
+    {
+        using var factory = new ApiFactory();
+        var bobId = await factory.SeedUserAsync("bob", ApiFactory.DefaultPassword, isAdmin: true);
+        var bob = await factory.ClientAsync("bob");
+
+        await DemoteAsync(factory, bobId);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await bob.GetAsync("/api/ops/backup/settings")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await bob.PutAsJsonAsync(
+            "/api/ops/backup/settings", new SettingsOpsBackupSettings("", false, 30))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await bob.GetAsync("/api/ops/backup/list")).StatusCode);
     }
 
     /// <summary>HALF THREE — the one this task ADDS, and the reason the new admin routes do not settle for

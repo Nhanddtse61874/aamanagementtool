@@ -149,6 +149,11 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
     [InlineData("/api/ops/retention/preview", "post", "200")]
     [InlineData("/api/ops/export/run", "post", "200")]
     [InlineData("/api/ops/backup/run", "post", "200")]
+    // M10 gate (P11/P3): backup config read+write + list.
+    [InlineData("/api/ops/backup/settings", "get", "200")]
+    [InlineData("/api/ops/backup/settings", "put", "200")]
+    [InlineData("/api/ops/backup/settings", "put", "400")]
+    [InlineData("/api/ops/backup/list", "get", "200")]
     // ---- M9 P2.5: the 8 routes BacklogEndpoints.cs had left unannotated. The two headline features of this
     // milestone are built ON them -- the TagPicker (both tag routes on each entity) and the Task List's
     // Continue button + inline status/type/assignee editors -- so an empty 200 here is not a cosmetic gap:
@@ -352,6 +357,9 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
     [InlineData("/api/ops/retention/run", "post", "Ops")]
     [InlineData("/api/ops/export/run", "post", "Ops")]
     [InlineData("/api/ops/backup/run", "post", "Ops")]
+    [InlineData("/api/ops/backup/settings", "get", "Ops")]
+    [InlineData("/api/ops/backup/settings", "put", "Ops")]
+    [InlineData("/api/ops/backup/list", "get", "Ops")]
     // ---- M9 P2.5: the 8 previously-unannotated routes. "Backlogs" and "Tasks" were ALREADY in
     // ng-openapi-gen.json's includeTags (the annotated routes on this file carry them), so these eight were
     // the only ones in their own file falling through to the assembly-name default tag -- and ng-openapi-gen
@@ -478,6 +486,9 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
     [InlineData("/api/ops/retention/run", "post", "OpsRetentionRun")]
     [InlineData("/api/ops/export/run", "post", "OpsExportRun")]
     [InlineData("/api/ops/backup/run", "post", "OpsBackupRun")]
+    [InlineData("/api/ops/backup/settings", "get", "OpsBackupSettingsGet")]
+    [InlineData("/api/ops/backup/settings", "put", "OpsBackupSettingsSet")]
+    [InlineData("/api/ops/backup/list", "get", "OpsBackupList")]
     // ---- M9 P2.5: the 8 previously-unannotated routes. Names follow the conventions already set in this
     // file: <Entity>Get for a read-by-id (BacklogGet), <Entity>Set<Field> for a sub-field write
     // (TaskSetActive / TaskSetOrder), and the <Entity><Collection> / <Entity>Set<Collection> pair for a

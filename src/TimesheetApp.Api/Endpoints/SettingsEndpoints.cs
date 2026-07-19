@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using TimesheetApp.Api.Auth;
 using TimesheetApp.Api.Contracts;
 using TimesheetApp.Api.Infrastructure;
+using TimesheetApp.Config;
 using TimesheetApp.Data;
 using TimesheetApp.Data.Repositories;
 using TimesheetApp.Models;
@@ -35,17 +36,27 @@ namespace TimesheetApp.Api.Endpoints;
 /// <para><b>After any DefaultTasks write, call <c>IDefaultTaskSyncService.SyncAsync()</c></b> — it reconciles
 /// DefaultTasks into every team's DEFAULT backlog. Skip it and the change never reaches any team.</para>
 ///
-/// <para><b><c>/api/ops/*</c> is exactly four routes, all <c>.RequireAuthorization(AuthSetup.AdminPolicy)</c>:</b>
+/// <para><b><c>/api/ops/*</c> is seven routes, all <c>.RequireAuthorization(AuthSetup.AdminPolicy)</c>:</b>
 /// <c>POST /retention/preview</c> · <c>POST /retention/run</c> · <c>POST /export/run</c> ·
-/// <c>POST /backup/run</c>. <c>RetentionService</c> holds one <c>BEGIN IMMEDIATE</c> across six bulk DELETEs,
+/// <c>POST /backup/run</c> · <c>GET|PUT /backup/settings</c> · <c>GET /backup/list</c>.
+/// <c>RetentionService</c> holds one <c>BEGIN IMMEDIATE</c> across six bulk DELETEs,
 /// blocking every writer app-wide — wired straight into the request path, ONE ADMIN CLICK 500s EVERYONE
 /// ELSE. Return <b>202 Accepted</b> and run it on a background queue.
 /// <c>IBackupService.RestoreAsync</c> is NOT exposed in M8.3: it overwrites the live .db in place while the
 /// API holds open connections, which corrupts live readers.</para>
 ///
-/// <para><b>Never call any <c>IAppConfig.Set*</c> from an endpoint.</b> It is a process-wide singleton with
-/// ten setters; on a server every one of them is cross-user state — one user toggling dark mode flips it for
-/// everyone, and <c>SetDbPath</c> repoints the whole server's database.</para>
+/// <para><b>Never call any <c>IAppConfig.Set*</c> from an endpoint — with ONE deliberate exception, added at
+/// M10:</b> <c>SetBackupFolderPath</c> / <c>SetAutoBackupEnabled</c> / <c>SetBackupKeepCount</c>, via
+/// <c>PUT /api/ops/backup/settings</c>. Every OTHER setter this rule still forbids mutates state that is
+/// either genuinely PER-USER on a server (<c>SetIsDarkMode</c>) or catastrophically global in a way nobody
+/// asked for (<c>SetDbPath</c> repoints the whole server's database out from under every caller). Backup
+/// config is neither: it is GLOBAL BY DESIGN — one shared install has exactly one backup destination, exactly
+/// like <c>RetentionEnabled</c>/<c>RetentionMonths</c> would be if they ever grew a route — and the route is
+/// Admin-gated, so the "one user flips it for everyone" failure mode this rule exists to prevent is the
+/// INTENDED behaviour here, not an accident. Before this route existed, WPF's <c>SettingsViewModel</c> was
+/// the ONLY production writer anywhere in the repo of these three keys; deleting WPF without it would strand
+/// every one of them at their blank/off default with no way to ever turn backup on, and would leave the
+/// startup auto-backup job doing nothing forever.</para>
 ///
 /// <para><c>Tag</c>, <c>PcaContact</c>, <c>User</c> and <c>Team</c> have no team column — they are global.
 /// Team-checking them is meaningless; gate them on the Admin policy instead.</para>
@@ -1057,6 +1068,71 @@ public static class SettingsEndpoints
             .WithName("OpsBackupRun")
             .WithTags("Ops")
             .Produces<SettingsOpsResult>();
+
+        // M10 gate (P11/P3). The read+write half of backup CONFIGURATION. Until now BackupFolderPath /
+        // AutoBackupEnabled / BackupKeepCount had exactly one production writer anywhere in the repo — WPF's
+        // SettingsViewModel — so deleting WPF stranded all three at their blank/off default with no way to
+        // turn backup on at all, and left the startup auto-backup job (P1) doing nothing forever. See the
+        // class doc for why calling IAppConfig.Set* here is the one deliberate exception to rule against it.
+        api.MapGet("/api/ops/backup/settings", (IClientContext ctx, IAppConfig config) =>
+            {
+                if (!ctx.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
+                return Results.Ok(new SettingsOpsBackupSettings(
+                    config.BackupFolderPath, config.AutoBackupEnabled, config.BackupKeepCount));
+            })
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("OpsBackupSettingsGet")
+            .WithTags("Ops")
+            .Produces<SettingsOpsBackupSettings>();
+
+        api.MapPut("/api/ops/backup/settings", (
+                [FromBody] SettingsOpsBackupSettings req, IClientContext ctx, IAppConfig config) =>
+            {
+                if (!ctx.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+                if (req.BackupKeepCount <= 0)
+                    return Results.BadRequest(new ValidationBody("Backup keep-count must be greater than zero."));
+
+                // A blank folder is legal -- it means "not configured", and both BackupService.BackupNowAsync
+                // and AutoBackupIfDueAsync already no-op on it. Auto-backup ENABLED with a blank folder is
+                // not legal: AutoBackupIfDueAsync checks AutoBackupEnabled first and the folder second, so
+                // that combination is a permanent silent no-op wearing an "on" toggle -- exactly the state
+                // this check exists to keep out of the config.
+                if (req.AutoBackupEnabled && string.IsNullOrWhiteSpace(req.BackupFolderPath))
+                    return Results.BadRequest(new ValidationBody(
+                        "Cannot enable auto-backup without a backup folder configured."));
+
+                config.SetBackupFolderPath(req.BackupFolderPath ?? "");
+                config.SetAutoBackupEnabled(req.AutoBackupEnabled);
+                config.SetBackupKeepCount(req.BackupKeepCount);
+
+                return Results.Ok(new SettingsOpsBackupSettings(
+                    config.BackupFolderPath, config.AutoBackupEnabled, config.BackupKeepCount));
+            })
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("OpsBackupSettingsSet")
+            .WithTags("Ops")
+            .Produces<SettingsOpsBackupSettings>()
+            .Produces<ValidationBody>(StatusCodes.Status400BadRequest);
+
+        // BK-04, exposed: IBackupService.ListBackups()'s only production caller was also WPF's
+        // SettingsViewModel. FolderConfigured is carried SEPARATELY from Backups, and deliberately NOT
+        // inferred from an empty list: ListBackups() itself returns an empty array for BOTH "no folder set"
+        // and "folder set, nothing backed up yet", and those are operationally opposite situations -- one
+        // means backup was never turned on, the other means it is on and has (so far) produced nothing.
+        // Collapsing them into one empty list is exactly the class of silent lie this milestone exists to
+        // close. FolderConfigured is read directly off IAppConfig rather than derived from the list, so it
+        // stays correct even if the configured folder is later deleted out from under the path.
+        api.MapGet("/api/ops/backup/list", (IClientContext ctx, IAppConfig config, IBackupService backup) =>
+            {
+                if (!ctx.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
+                var configured = !string.IsNullOrWhiteSpace(config.BackupFolderPath);
+                return Results.Ok(new SettingsOpsBackupList(configured, backup.ListBackups()));
+            })
+            .RequireAuthorization(AuthSetup.AdminPolicy)
+            .WithName("OpsBackupList")
+            .WithTags("Ops")
+            .Produces<SettingsOpsBackupList>();
     }
 
     // ===== helpers ===========================================================================================
@@ -1157,6 +1233,21 @@ public sealed record SettingsUserStandup(
     IReadOnlyList<SettingsStandupEntryView> Yesterday, IReadOnlyList<SettingsStandupEntryView> Today);
 
 public sealed record SettingsOpsResult(string? Value);
+
+/// <summary>M10 gate (P11/P3). The round-trip shape for <c>GET|PUT /api/ops/backup/settings</c> — mirrors
+/// <see cref="IAppConfig.BackupFolderPath"/>/<see cref="IAppConfig.AutoBackupEnabled"/>/
+/// <see cref="IAppConfig.BackupKeepCount"/> exactly, so a GET response can be round-tripped straight back as
+/// a PUT request. No <c>rowVersion</c>: this is a process-wide singleton config, not a DB row — there is no
+/// concurrent writer to race (the same "bump-only, nobody to race" reasoning as <c>SettingsActiveTeamRequest</c>).</summary>
+public sealed record SettingsOpsBackupSettings(string BackupFolderPath, bool AutoBackupEnabled, int BackupKeepCount);
+
+/// <summary>M10 gate (P11/P3). <c>GET /api/ops/backup/list</c>'s response. <c>FolderConfigured</c> is the
+/// field that keeps "backup was never turned on" distinguishable from "backup is on, nothing produced yet" —
+/// see the route's comment in <see cref="SettingsEndpoints"/> for why collapsing the two into a bare empty
+/// list would be wrong. <c>Backups</c> is the CORE <see cref="BackupInfo"/> type, passed straight through by
+/// the handler, exactly as <c>RetentionPreview</c> is on <c>POST /api/ops/retention/preview</c> — reshaping it
+/// into a separate Api DTO would be a contract change this task is not scoped to make.</summary>
+public sealed record SettingsOpsBackupList(bool FolderConfigured, IReadOnlyList<BackupInfo> Backups);
 
 /// <summary>Pure category marker for <see cref="ILogger{TCategoryName}"/> in the retention background task —
 /// <see cref="SettingsEndpoints"/> itself is a static class and cannot be used as a generic type argument
