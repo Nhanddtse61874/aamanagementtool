@@ -107,9 +107,17 @@ public sealed class BackupService : IBackupService
             string.Equals(Path.GetFullPath(backupPath), Path.GetFullPath(dbPath), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Cannot restore the live database file onto itself.");
 
+        // "Exists" is not "usable": SqliteOnlineBackup.Copy DELETES the live .db before it opens the
+        // source (Copy:41 runs before Copy:43). Reject a source that is not a real, intact SQLite
+        // database HERE — before that delete — so an unusable backup fails loudly instead of destroying
+        // production first and discovering the replacement is garbage only after it is gone.
+        if (!SqliteOnlineBackup.IsIntact(backupPath))
+            throw new InvalidOperationException(
+                $"Backup file is not a usable SQLite database (failed integrity check): {backupPath}. Nothing was changed.");
+
         var stamp = _clock.UtcNow.LocalDateTime.ToString(Stamp, CultureInfo.InvariantCulture);
         // Off the UI thread (see BackupToFolderAsync). Validation above stays synchronous so a bad
-        // path / self-restore surfaces immediately.
+        // path / self-restore / non-database surfaces immediately.
         await Task.Run(() =>
         {
             // Take the app's own handles off the live .db before replacing it.

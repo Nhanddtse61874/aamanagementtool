@@ -1,3 +1,4 @@
+using System.Linq;
 using Moq;
 using TimesheetApp.Config;
 using TimesheetApp.Services;
@@ -226,6 +227,53 @@ public class BackupServiceTests : IDisposable
 
         Assert.Equal(new[] { "CURRENT-DB" }, TinyDb.ReadAll(_dbPath)); // untouched
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(_dbPath)!, "*.pre-restore_*.bak")); // no safety copy made
+    }
+
+    // THE test that proves the fix: SqliteOnlineBackup.Copy deletes the destination BEFORE opening the
+    // source (Copy:41 then Copy:43), so restoring a file that merely "exists && length > 0" but is not a
+    // real database used to destroy the live db before that fact was ever discovered. RestoreAsync must
+    // now reject it up front, via SqliteOnlineBackup.IsIntact, before anything destructive runs.
+    [Fact]
+    public async Task Restore_rejects_backup_that_is_not_a_database_and_leaves_live_db_intact()
+    {
+        TinyDb.Create(_dbPath, "CURRENT-DB");
+        var (svc, _) = Make(Local(2026, 6, 27, 13, 0, 0));
+
+        Directory.CreateDirectory(_backupFolder);
+        var notADb = Path.Combine(_backupFolder, "timesheet_20260620080000000.db");
+        File.WriteAllBytes(notADb, new byte[] { 9, 9, 9, 9, 9, 9 }); // passes exists-and-non-empty, not a database
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.RestoreAsync(notADb));
+
+        // The live db must still be there AND still pass its own integrity check — not just "a file
+        // exists at the path". This is the assertion that would have failed before the fix.
+        Assert.True(File.Exists(_dbPath));
+        Assert.Equal(new[] { "CURRENT-DB" }, TinyDb.ReadAll(_dbPath));
+        Assert.Equal("ok", TinyDb.IntegrityCheck(_dbPath));
+
+        // Nothing destructive ran at all, so no safety copy was made either.
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(_dbPath)!, "*.pre-restore_*.bak"));
+    }
+
+    // A truncated database passes "exists && length > 0" too, but fails PRAGMA integrity_check — must
+    // be rejected the same way as an outright non-database file.
+    [Fact]
+    public async Task Restore_rejects_truncated_backup_and_leaves_live_db_intact()
+    {
+        TinyDb.Create(_dbPath, "CURRENT-DB");
+        var (svc, _) = Make(Local(2026, 6, 27, 13, 0, 0));
+
+        Directory.CreateDirectory(_backupFolder);
+        var goodPath = Path.Combine(_backupFolder, "timesheet_20260619080000000.db");
+        TinyDb.Create(goodPath, "SOME", "ROWS", "HERE");
+        var truncatedPath = Path.Combine(_backupFolder, "timesheet_20260620080000000.db");
+        var bytes = File.ReadAllBytes(goodPath);
+        File.WriteAllBytes(truncatedPath, bytes.Take(bytes.Length / 2).ToArray());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.RestoreAsync(truncatedPath));
+
+        Assert.Equal(new[] { "CURRENT-DB" }, TinyDb.ReadAll(_dbPath));
+        Assert.Equal("ok", TinyDb.IntegrityCheck(_dbPath));
     }
 
     // P11 (EX-05): BackupToFolderAsync copies the live .db into an arbitrary folder + prunes to keep.
