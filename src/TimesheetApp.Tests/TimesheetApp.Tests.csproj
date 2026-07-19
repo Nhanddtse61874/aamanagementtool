@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -18,7 +18,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TimesheetApp\TimesheetApp.csproj" />
     <ProjectReference Include="..\TimesheetApp.Core\TimesheetApp.Core.csproj" />
   </ItemGroup>
 
