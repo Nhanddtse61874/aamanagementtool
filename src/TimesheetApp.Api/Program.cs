@@ -59,6 +59,20 @@ Console.WriteLine($"  Database : {appConfig.DbPath}");
 Console.WriteLine($"  Config   : {(string.IsNullOrWhiteSpace(configPath) ? "(defaults)" : configPath)}");
 Console.WriteLine("======================================================================");
 
+// --- Offline restore CLI branch (M10 Blocker 2 / P2) ----------------------------------------------------
+// See RestoreCli's doc comment for the full "why" and the six amendments this shape had to satisfy. Short
+// version: WPF's Settings tab was the only production caller of IBackupService.RestoreAsync, and M10
+// deletes it -- this replaces it with an OFFLINE CLI run against a STOPPED API, never an in-app admin
+// route (restoring while the app runs is the exact hazard this design avoids).
+//
+// MUST sit AFTER the banner above, NEVER before (HOLE 11): JsonAppConfig resolves per-Windows-user paths,
+// so running this blind can restore into the WRONG database and report success -- the banner is the one
+// diagnostic that reveals a wrong resolution before anything destructive happens. Returns here, BEFORE
+// builder.Build() -- no Kestrel, no DI container is ever created for a restore; RestoreAsync only needs
+// the IAppConfig already resolved above.
+if (RestoreCli.IsRestoreCommand(args))
+    return await RestoreCli.RunAsync(args, appConfig, Console.Out);
+
 // =====================================================================================================
 // SqliteProfile.Server — EXPLICIT, because the constructor's default is Desktop.
 //
@@ -289,6 +303,7 @@ app.MapHub<DataHub>("/hubs/data");
 app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();
+return 0;
 
 // Top-level statements emit an INTERNAL Program, so WebApplicationFactory<Program> is CS0122 without this.
 public partial class Program;
