@@ -19,6 +19,12 @@
   Recon: `.planning/research/M8.7-M8.10-recon.md` · `.planning/research/M8.8-daily-report-recon.md`
 
 ## Shipped
+- **M9.2 — UI write honesty** — **MERGED to `main`** (`1d044ec`, 2026-07-19), **Mode A**. **753 Angular tests green** (baseline 742). QA **APPROVE WITH CONDITIONS**, 0 Critical, all 3 Important closed before merge.
+  Two live data-loss defects, one class — *the UI asserting a write that did not happen*. **BUG-1:** typing unparseable text over a Log Work cell **silently deleted the hours already stored there**, and dropped the day/week totals to `0` on screen while the database still held them. **BUG-2:** "Backup now" reported success when nothing had been written.
+  **No REQ-IDs added** — both violate requirements that already existed (**TS-04/XC-02/XC-04**, **BK-02**), written for WPF, satisfied by WPF, never implemented by the web port. Debt closure, not new scope.
+  Found by the **M10 coverage audit**, not by a test and not by a user. 🔴 BUG-1 had a **green test sitting on top of it** (`grid-state.spec.ts:190`) — correct about the parse, blind to the fact that the same `null` meant DELETE two files downstream.
+  🔴 **Merged un-UAT'd**, as M9.1 was, per the standing batching decision. **No test touches the DOM**, so the red border and status line are unproven by the suite — `G-A` is the only thing that proves a user sees them.
+  Spec: `docs/superpowers/specs/2026-07-19-m9.2-ui-write-honesty-design.md` · Plan: `docs/superpowers/plans/2026-07-19-M9.2-ui-write-honesty.md` · Summary: `.planning/M9.2-SUMMARY.md`
 - **M9.1 — Read-model / scope gaps** — **MERGED to `main`** (`2c2cb49`, 2026-07-19), **Mode A**. **1938 tests green** — 689 .NET + 507 API + 742 Angular (baseline 1924, +14). QA gate **APPROVE**, 0 Critical/Important.
   Closed the three fidelity gaps the 2026-07-16 code audit found still real after M9: **TL-12** Task List bands adaptively by team (>1 team checked) or project (exactly 1) — needed `teamId` on `TaskListRowDto`; **DR-11** Daily Report picker hard-scoped to the active team — needed `teamId` on `BacklogListItemDto`; **SET-05** default tasks deactivate → **reactivate** round-trip — needed `GetAllAsync` + an admin-only `GET /api/default-tasks/all`, closing a one-way hole **WPF shares** (a fix, not a port).
   All three projection-only + one read route. **No schema change.** Shape: Wave A (C#, sequential — both tasks edit `Dtos.cs`) → one client regen → Wave B (Angular, parallel, zero file overlap).

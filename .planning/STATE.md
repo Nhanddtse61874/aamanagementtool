@@ -2,13 +2,29 @@
 
 ## Current Position
 
-**Phase:** Step 9 — QA Gate (**M9.2**). Execution is COMPLETE on a branch, unmerged. M10 **parked**; M11's pre-req cleared but not started.
-**Status:** waiting_for_user — QA review in flight; UAT owed; nothing merged to `main`.
+**Phase:** Step 11 — **M9.2 SHIPPED** (`1d044ec`). M10 **parked on 3 human decisions**; M11 pre-req cleared, milestone not started.
+**Status:** waiting_for_user — everything still open needs the user's hands or the user's decisions, not more agent work.
 **Last updated:** 2026-07-19
 
 ## Next Action
 
-Read the M9.2 QA verdict, fix Critical/Important, then decide merge. UAT `G-A`/`G-B` still owed (batched).
+**Two things, both the user's:** (1) click `G-A`/`G-B` plus the batched `OT-13…OT-25` and M9.1's `G3`/`G6`/`G10`; (2) decide the 3 M10 blockers from `.planning/M10-BLOCKERS.md`. Nothing downstream can be planned honestly until those land.
+
+## ▶ WHAT IS ACTUALLY BLOCKING — read this before proposing work
+
+Every remaining item is blocked on a human, not on capacity:
+
+| Item | Blocked on | Why an agent cannot close it |
+|---|---|---|
+| **UAT `G-A`/`G-B`** | 👤 clicking | No test touches the DOM. The red border and the status line are unproven by 753 green tests. |
+| **`OT-13…OT-25`, M9.1 `G3`/`G6`/`G10`** | 👤 clicking | Merged un-accepted by standing decision. `G3` says *"matches the old WPF app"* — after M10 that oracle is gone. |
+| **M10 blocker 1 — auth cutover** | 👤 decision | An operational procedure: who sets passwords for whom, in what order, with WPF still up as the fallback until the last person is through. Not a code question. |
+| **M10 blocker 2 — restore path** | 👤 decision | A data-safety trade-off between an offline CLI, a drain-state admin route, and a documented manual runbook. Picking one is not an agent's call. |
+| **M10 blocker 3 — scheduled jobs** | ⚙️ implementable | The only purely mechanical one: four `App.xaml.cs` callers become an `IHostedService`. Needs the once-per-period guards designed so N restarts do not make N backups. |
+| **29 MISSING behaviors** | 👤 decision | PORT / ACCEPT / OBSOLETE. "Accept the loss" is a product call. |
+| **M11 config** | ⛓ M10 | `IDatabaseLocation` bridging both hosts was **dropped** on the assumption WPF dies first. Doing M11 first means rebuilding that bridge. |
+
+**F3 is CLEARED** (`09f6e44`) — `UseSetting` beats `appsettings.json`, proven with a positive control. M11's blocking pre-req is gone; **F1 and F2 remain critical.**
 
 ## 🔴 PROCESS BREACH — PLAN CHECKER WAS SKIPPED (recorded 2026-07-19)
 
