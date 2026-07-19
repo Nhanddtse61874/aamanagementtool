@@ -250,6 +250,25 @@ public sealed class ExportHubServiceTests : IDisposable
         Assert.True(File.Exists(Path.Combine(daily, "20260615_daily.md")));
     }
 
+    // B3 (M10 blocker 3): documents a pre-existing gap, not a regression the hosted-service port
+    // introduces. The per-file markdown writes above are File.Exists-guarded (this class's own doc
+    // comment: "idempotent re-run"), but the one whole-DB copy per root at the end of ExportRootAsync has
+    // NO guard of its own — it runs on every call, backfillOnly or not. A restart calls BackfillAsync()
+    // once, same as every WPF launch did, so this is the SAME exposure the desktop app already had; it is
+    // recorded here so nobody mistakes "the markdown is idempotent" for "the whole job is idempotent".
+    [Fact]
+    public async Task Backfill_called_twice_copies_the_db_again_each_time_with_no_guard()
+    {
+        var (hub, _, dbFolders) = MakeAllData(new[] { Team(1, "Team A") });
+
+        await hub.BackfillAsync();
+        await hub.BackfillAsync();
+
+        // Two calls -> two DB-copy invocations into root1/db alone (one per call), even though every
+        // markdown file the second call touched already existed and was skipped.
+        Assert.Equal(2, dbFolders.Count(f => f == Path.Combine(_root1, "db")));
+    }
+
     // I-1: two team names that sanitize to the SAME folder segment must each get a distinct folder
     // (the collision gets a -{id} suffix), so neither overwrites the other.
     [Fact]

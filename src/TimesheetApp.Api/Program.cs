@@ -115,6 +115,13 @@ builder.Services.AddSingleton<IRetentionService, RetentionService>();
 builder.Services.AddSingleton<IDefaultTaskSyncService, DefaultTaskSyncService>();
 builder.Services.AddSingleton<ITeamBootstrapService, TeamBootstrapService>();
 
+// B3 (M10 blocker 3): the four best-effort startup jobs App.xaml.cs used to run (auto-backup, export-hub
+// backfill, standup/task-list archive backfill) now that the WPF app is the thing being retired. See
+// StartupJobsHostedService's own doc comment for why this is once-per-process-start, not a recurring
+// timer, and why registration stays unconditional (including under the "Testing" environment) while
+// EXECUTION is gated inside the service itself.
+builder.Services.AddHostedService<StartupJobsHostedService>();
+
 // =====================================================================================================
 // SCOPED — everything that holds PER-USER state, and everything that transitively injects one.
 //
