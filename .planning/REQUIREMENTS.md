@@ -27,6 +27,7 @@
 | **P10** | Multi-Team (team scoping, membership, active team, multi-team view) — M4 | TM-01, TM-02, TM-03, TM-04, TM-05, TM-06, TM-07, TM-08, TM-09, TM-10 |
 | **P11** | Export Restructure (per-team folders, 2-root mirror) — M6 | EX-01, EX-02, EX-03, EX-04, EX-05, EX-06, EX-07 |
 | **P12** | 3-Month Data Retention / Prune (DESTRUCTIVE) — M7 | RT-01, RT-02, RT-03, RT-04, RT-05, RT-06, RT-07 |
+| **M9.1** | Read-model / scope gaps (web) — Task List team bands, Daily Report picker scope, default-task round-trip | TL-12, DR-11, SET-05 |
 
 Total: **45 (M1)** + **10 (M2/P7)** + **15 (M3/P8)** + **7 (M5/P9)** + **10 (M4/P10)** requirements. (P11 Export / P12 Retention authored when those phases start — see `.planning/UPCOMING-FEATURES.md`.)
 
@@ -543,6 +544,26 @@ Acceptance: Selecting a pruned month in Task List/Reports/Daily shows empty (no 
 ### RT-07 — Backup + idempotency + tests + dry-run
 Statement: Prune is transactional, backed up first (XC-10), idempotent via a persisted retention marker (last-pruned-through month), and fully unit-tested incl. a dry-run/verify path.
 Acceptance: A retention marker (Settings key or table) records progress so re-runs skip done months; a crash mid-prune leaves a consistent DB (transaction); tests cover month selection, archive-before-delete ordering, FK safety (spanning backlog), settings-not-deleted, idempotency, and disabled/no-root no-op.
+
+---
+
+## Read-model / scope gaps — web (M9.1)
+
+> Authored 2026-07-19 (retroactively registered — the three REQ-IDs were carried by the spec + plan + STATE.md during execution but never landed here; caught by `validate-state` drift check D-a).
+> Source of truth: `docs/superpowers/specs/2026-07-16-m9.1-read-model-scope-gaps-design.md` (approved 2026-07-16).
+> All three are **projection-only + one read route** — no schema change. Each restores a fidelity gap against the WPF app.
+
+### TL-12 — Task List bands adaptively by team or project
+Statement: The Task List groups rows into bands by **team name** when more than one team is selected in the filter, and by **project** when exactly one is selected — matching the WPF app's behavior.
+Acceptance: With ≥2 teams checked, band headers are team names sorted alphabetically, and a backlog with no team falls under a trailing `—` band; with exactly 1 team checked, headers revert to project names. Requires `teamId` on `TaskListRowDto`; the team **name** is resolved client-side from the already-loaded team list (no server join).
+
+### DR-11 — Daily Report backlog picker scoped to the active team
+Statement: The Daily Report Input backlog picker lists only backlogs belonging to the user's **active** team, not every team they are a member of.
+Acceptance: With an active team set, the picker shows that team's backlogs only, excluding the hidden `DEFAULT` pseudo-backlog. Requires `teamId` on `BacklogListItemDto`; the filter is a hard client-side scope. Not a security change — every backlog returned was already server-authorised for that user, and the entry is stamped with the active team regardless; this closes a **fidelity** divergence from WPF.
+
+### SET-05 — Default tasks deactivate → reactivate round-trip
+Statement: A deactivated default task remains visible in Settings and can be reactivated, replacing the one-way "Remove" that made it unreachable forever.
+Acceptance: Each default-task row exposes an Activate/Deactivate toggle; a deactivated task stays listed with an `(inactive)` label and can be returned to active. Requires `GetAllAsync` plus an admin-only `GET /api/default-tasks/all` (the existing `GET /api/default-tasks` is active-only). Closes a hole **WPF shares** — this is a fix, not a port.
 
 ---
 
