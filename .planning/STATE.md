@@ -10,6 +10,26 @@
 
 **Two things, both the user's:** (1) click `G-A`/`G-B` plus the batched `OT-13…OT-25` and M9.1's `G3`/`G6`/`G10`; (2) decide the 3 M10 blockers from `.planning/M10-BLOCKERS.md`. Nothing downstream can be planned honestly until those land.
 
+## 🔴🔴 RESTORE HAS NO INTEGRITY CHECK — found by Team B 2026-07-19, verified at source
+
+`RestoreAsync` (`BackupService.cs:97`) validates only that the backup file **exists** (`:99-100`). It never asks whether the file is a usable database. Then:
+
+```csharp
+// SqliteOnlineBackup.Copy(source, dest)
+DeleteWithSidecars(destDbPath);                     // :41  THE LIVE DB IS DELETED FIRST
+using var source = Open(sourceDbPath, ReadWrite);   // :43  ...only then is the backup opened
+```
+
+Restore is `Copy(backupFile, liveDb)`. **A corrupt backup therefore destroys the live database before anything discovers it is corrupt** — `Open` at `:43` throws with production already gone.
+
+**`IsIntact()` — SQLite's own `PRAGMA integrity_check` — sits three functions below, at `SqliteOnlineBackup.cs:64`, and `Copy` does not call it.** Its own doc comment says *"six arbitrary bytes"* pass an exists-and-non-empty test. `RetentionService` uses it before permanently deleting rows. The restore path does not.
+
+**Not as total as it first reads — the accurate version:** `RestoreAsync:122` takes a safety copy to `{dbPath}.pre-restore_{stamp}.bak` seconds beforehand, so the data is recoverable **by hand**, provided someone knows that file exists, knows to rename it, and gets there first.
+
+🔴 **The genuinely dangerous part is not the deletion — it is what happens next.** With the `.db` gone, the next start **rebuilds an empty database and the app runs perfectly normally.** No error, no warning. The company's data is gone and every screen looks like an ordinary Monday. That is the same failure shape as the two bugs M9.2 just fixed — the system reporting success for something that did not happen — at the scale of the whole database.
+
+**Applies to all three restore designs under consideration**, so it is a fix that must land regardless of which shape is chosen. Detail: `.planning/m10-blockers/B2-restore-attack.md`.
+
 ## ▶ WHAT IS ACTUALLY BLOCKING — read this before proposing work
 
 Every remaining item is blocked on a human, not on capacity:
