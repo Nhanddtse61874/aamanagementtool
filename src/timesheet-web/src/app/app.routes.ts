@@ -43,6 +43,13 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/reports/reports.component').then(m => m.ReportsComponent),
         data: { label: 'Reports' },
       },
+      // Go-live blocker fix: self-service password change. Reachable by ANY signed-in user -- deliberately
+      // NOT behind adminGuard, unlike the two routes below. See sidebar.component.ts for the nav entry.
+      {
+        path: 'change-password',
+        loadComponent: () => import('./pages/change-password/change-password.component').then(m => m.ChangePasswordComponent),
+        data: { label: 'Change Password' },
+      },
       // M9/P6a: the two ADMIN screens. `authGuard` on the parent proves you are SIGNED IN; `adminGuard` here
       // proves you are an ADMIN. Both are needed: every read these two screens make is admin-gated
       // server-side (`/api/users/all`, `/api/pca-contacts/all`, `/api/teams/all`, the membership read...), so

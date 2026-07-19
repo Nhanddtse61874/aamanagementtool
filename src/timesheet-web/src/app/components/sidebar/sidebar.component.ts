@@ -50,6 +50,13 @@ export class SidebarComponent {
     { link: '/settings', label: 'Settings', icon: 'settings' },
   ];
 
+  // Go-live blocker fix: self-service password change. Deliberately its OWN section, outside `isAdmin()` --
+  // every signed-in user needs this, including the seeded `admin`/`admin` bootstrap account, which today has
+  // no other in-app way to leave a password someone else set.
+  readonly account: NavItem[] = [
+    { link: '/change-password', label: 'Change Password', icon: 'password' },
+  ];
+
   logout(): void {
     this.auth.logout().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.router.navigateByUrl('/login');

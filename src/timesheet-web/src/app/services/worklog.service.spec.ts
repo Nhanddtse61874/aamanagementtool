@@ -691,6 +691,7 @@ describe('WorklogService — M9 P5: every mutation rides the MUTATING client', (
     { name: 'setUserAdmin', call: s => s.setUserAdmin(3, true, 1).subscribe(), url: '/api/users/3/admin', method: 'PUT' },
     { name: 'setUserActive', call: s => s.setUserActive(3, true).subscribe(), url: '/api/users/3/active', method: 'PUT' },
     { name: 'adminSetPassword', call: s => s.adminSetPassword(3, 'pw').subscribe(), url: '/api/auth/users/3/set-password', method: 'POST' },
+    { name: 'setPassword', call: s => s.setPassword('old', 'new').subscribe(), url: '/api/auth/set-password', method: 'POST' },
     // ---- teams [ADMIN] ----
     { name: 'createTeam', call: s => s.createTeam('Alpha').subscribe(), url: '/api/teams', method: 'POST' },
     { name: 'renameTeam', call: s => s.renameTeam(3, 'Beta', 1).subscribe(), url: '/api/teams/3', method: 'PUT' },

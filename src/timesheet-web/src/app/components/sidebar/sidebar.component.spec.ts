@@ -93,6 +93,22 @@ describe('SidebarComponent: the ADMIN section', () => {
   it('still shows every workspace link to an ordinary member', () => {
     setUp(MEMBER);
 
-    expect(links()).toEqual(['/log', '/backlog', '/tasklist', '/daily', '/reports']);
+    expect(links()).toEqual(['/log', '/backlog', '/tasklist', '/daily', '/reports', '/change-password']);
+  });
+
+  /**
+   * Go-live blocker fix. The OTHER half of "not admin-gated" -- an admin must see it too, and it must not
+   * depend on `isAdmin()` at all. Both roles are asserted (in separate tests -- TestBed cannot be
+   * reconfigured mid-test) so a future author cannot wire this into the `admin` array (or its `@if`)
+   * without a test going red.
+   */
+  it('shows Change Password to an ordinary member', () => {
+    setUp(MEMBER);
+    expect(links()).toContain('/change-password');
+  });
+
+  it('shows Change Password to an admin too', () => {
+    setUp(ADMIN);
+    expect(links()).toContain('/change-password');
   });
 });

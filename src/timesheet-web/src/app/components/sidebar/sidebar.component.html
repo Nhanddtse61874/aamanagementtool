@@ -39,6 +39,19 @@
         </a>
       }
     }
+
+    <!-- Go-live blocker fix: NOT inside the `isAdmin()` block above -- every signed-in user, admin or not,
+         needs a way to change their own password. -->
+    <div class="sb__section">ACCOUNT</div>
+    @for (item of account; track item.link) {
+      <a class="sb__item" [routerLink]="item.link" routerLinkActive="is-active">
+        <span class="bar"></span>
+        <ng-container [ngSwitch]="item.icon">
+          <svg *ngSwitchCase="'password'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </ng-container>
+        <span>{{ item.label }}</span>
+      </a>
+    }
   </nav>
 
   <div class="sb__foot">

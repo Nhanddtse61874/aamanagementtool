@@ -6,6 +6,7 @@ import { ApiConfiguration } from '../api/api-configuration';
 import { ConnectionIdHttpClient } from '../core/realtime.service';
 import {
   authAdminSetPassword as authAdminSetPasswordFn,
+  authSetPassword as authSetPasswordFn,
   backlogAudit as backlogAuditFn,
   backlogContinue as backlogContinueFn,
   backlogCreate as backlogCreateFn,
@@ -863,6 +864,20 @@ export class WorklogService {
    */
   adminSetPassword(userId: number, newPassword: string): Observable<void> {
     return authAdminSetPasswordFn(this.mutatingHttp, this.rootUrl, { id: userId, body: { newPassword } })
+      .pipe(map(() => void 0));
+  }
+
+  /**
+   * SELF service — the caller changes their OWN password. A MUTATION -> `mutatingHttp`. The actor is
+   * always `ctx.UserId` server-side (AuthEndpoints.cs); there is no id on the request, so nothing here can
+   * redirect the write to another user's row.
+   *
+   * 🔴 NOT the admin reset. That is `adminSetPassword`, above. This one REQUIRES the current password and
+   * returns 400 (not 401) when it is wrong — the caller's session is still valid, only the password was a
+   * typo, and a 401 here would bounce them to the login screen mid-form.
+   */
+  setPassword(currentPassword: string, newPassword: string): Observable<void> {
+    return authSetPasswordFn(this.mutatingHttp, this.rootUrl, { body: { currentPassword, newPassword } })
       .pipe(map(() => void 0));
   }
 
