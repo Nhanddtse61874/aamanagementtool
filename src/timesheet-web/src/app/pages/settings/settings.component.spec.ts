@@ -1,10 +1,11 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import {
-  DefaultTaskDto, HolidayDto, PcaContactDto, RetentionPreview, SettingDto, TagDto, TaskTemplateDto, TeamDto,
-  UserDto,
+  DefaultTaskDto, HolidayDto, PcaContactDto, RetentionPreview, SettingDto, SettingsOpsBackupList,
+  SettingsOpsBackupSettings, TagDto, TaskTemplateDto, TeamDto, UserDto,
 } from '../../api/models';
 import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
 import { ThemeService } from '../../services/theme.service';
@@ -17,10 +18,14 @@ import { SettingsComponent } from './settings.component';
  * warning-days box was `<input value="3">` bound to nothing, the calendar was HARD-CODED to July 2026 with no
  * prev/next handler, and every button called `notify('Saved')` — a toast, and no request.
  *
- * The first block below is the one that would be easiest to skip and is the most important: it asserts that
- * five whole sections are GONE. They cannot be "wired up later" — every one of them would write through
+ * The first block below is the one that would be easiest to skip and is still important: it asserts that
+ * four whole sections are GONE. They cannot be "wired up later" — every one of them would write through
  * `IAppConfig.Set*`, which is process-wide CROSS-USER state on a server, and one of them (`SetDbPath`)
  * repoints the entire server's database.
+ *
+ * 🔴 Backup folder / auto-backup / keep-count are NOT in that list anymore (M11 gate) — they are the one
+ * deliberate exception, and they are wired up for real in the "backup settings + list" block near the bottom
+ * of this file, below the Ops tests.
  */
 
 const TAGS: TagDto[] = [{ id: 1, text: 'Urgent', icon: '🔥', color: '#B91C1C', rowVersion: 3 }];
@@ -43,6 +48,10 @@ const PREVIEW: RetentionPreview = {
   cutoff: '2026-04-01',
   months: [{ month: '2026-01', timeLogs: 12, backlogs: 2, tasks: 5, standupEntries: 3, standupIssues: 1 }],
 };
+
+const BACKUP_SETTINGS_DEFAULT: SettingsOpsBackupSettings =
+  { backupFolderPath: '', autoBackupEnabled: false, backupKeepCount: 7 };
+const BACKUP_LIST_DEFAULT: SettingsOpsBackupList = { folderConfigured: false, backups: [] };
 
 describe('SettingsComponent', () => {
   let api: jasmine.SpyObj<WorklogService>;
@@ -78,6 +87,7 @@ describe('SettingsComponent', () => {
       'getDefaultTasksAll', 'createDefaultTask', 'setDefaultTaskActive', 'syncDefaultTasks',
       'getHolidayList', 'upsertHoliday', 'deleteHoliday', 'getUsersActive',
       'runBackup', 'runExport', 'previewRetention', 'runRetention', 'archiveStandupWeek',
+      'getBackupSettings', 'setBackupSettings', 'getBackupList',
     ]);
 
     api.getSetting.and.returnValue(of({ key: 'chua_log_n_days', value: '5' } satisfies SettingDto));
@@ -103,6 +113,10 @@ describe('SettingsComponent', () => {
     api.runRetention.and.returnValue(of(void 0));
     api.runBackup.and.returnValue(of({ value: '/srv/backups/db.bak' }));
 
+    api.getBackupSettings.and.returnValue(of(BACKUP_SETTINGS_DEFAULT));
+    api.getBackupList.and.returnValue(of(BACKUP_LIST_DEFAULT));
+    api.setBackupSettings.and.returnValue(of(BACKUP_SETTINGS_DEFAULT));
+
     TestBed.configureTestingModule({
       imports: [SettingsComponent],
       providers: [{ provide: WorklogService, useValue: api }, ToastService],
@@ -112,19 +126,23 @@ describe('SettingsComponent', () => {
     fixture.detectChanges();
   });
 
-  // ══ the five sections that must NOT exist ═════════════════════════════════════════════════════════
+  // ══ the four sections that must NOT exist ═════════════════════════════════════════════════════════
 
   /**
-   * 🔴 DB path · archive path · both export roots · backup folder/auto/keep-count · retention enable+months.
+   * 🔴 DB path · archive path · both export roots · retention enable+months.
    *
    * Each would have to write through `IAppConfig.Set*` — "a process-wide singleton with ten setters; on a
    * server every one of them is CROSS-USER state, and SetDbPath repoints the whole server's database."
    * They belong in `appsettings.json` on the host. Shipping them as web inputs would let any admin repoint
    * the production database from a browser tab.
    *
+   * 🔴 Backup folder / auto-backup / keep-count are deliberately NOT on this list (M11 gate) — see the
+   * "backup settings + list" block near the bottom of this file. None of the strings/selectors below collide
+   * with that section's markup; if they ever do, fix the collision in the backup markup, not here.
+   *
    * MUTATION-CHECK: put the `storageFields` array and its `@for` block back and this goes red.
    */
-  it('has NO host-configuration inputs anywhere — no DB path, no export roots, no backup folder', () => {
+  it('has NO host-configuration inputs anywhere — no DB path, no export roots, no retention window', () => {
     // Visit every tab; none of them may offer a path input.
     for (const label of ['General', 'Workflow', 'Teams', 'Operations']) {
       tab(label);
@@ -463,5 +481,138 @@ describe('SettingsComponent', () => {
     expect(TestBed.inject(ToastService).message()).toBe('Backup did not run — no file was written.');
     expect(text()).not.toContain('Backup written');      // the stale success claim is gone
     expect(text()).not.toContain('/srv/backups/db.bak');
+  });
+
+  // ══ backup settings + list (M11 gate) ═════════════════════════════════════════════════════════════
+  //
+  // `SettingsViewModel.cs:264-266` (WPF) was the only production writer of `BackupFolderPath` /
+  // `AutoBackupEnabled` / `BackupKeepCount` anywhere in the repo. With WPF deleted, this screen is the only
+  // way left to turn backup on. `GET|PUT /api/ops/backup/settings` and `GET /api/ops/backup/list` are the
+  // routes; the folder input helper below reaches inside the new `.editor` block this feature adds to the
+  // Operations tab.
+
+  function backupFolderInput(): HTMLInputElement {
+    return fixture.debugElement.query(By.css('.editor input[type="text"]')).nativeElement as HTMLInputElement;
+  }
+
+  /**
+   * `fakeAsync` + `tick()`: NgModel writes its value into the DOM on a MICROTASK — see the warning-window
+   * test near the top of this file for the full explanation. Unlike that test, this one does NOT need a
+   * fresh component: the click that opens the Operations tab, and the microtask it schedules, both happen
+   * INSIDE this test's fake zone, so `tick()` can flush it without recreating the fixture.
+   */
+  it('loads and pre-fills the backup settings form when the Operations tab opens', fakeAsync(() => {
+    api.getBackupSettings.and.returnValue(
+      of({ backupFolderPath: 'D:\\Backups', autoBackupEnabled: true, backupKeepCount: 5 }));
+
+    tab('Operations');
+    tick();
+    fixture.detectChanges();
+
+    expect(api.getBackupSettings).toHaveBeenCalled();
+    expect(backupFolderInput().value).toBe('D:\\Backups');
+  }));
+
+  it('saving backup settings sends a PUT built from the form', () => {
+    tab('Operations');
+
+    backupFolderInput().value = 'E:\\Nightly';
+    backupFolderInput().dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    api.setBackupSettings.and.returnValue(
+      of({ backupFolderPath: 'E:\\Nightly', autoBackupEnabled: false, backupKeepCount: 7 }));
+
+    buttons('Save backup settings')[0].click();
+
+    expect(api.setBackupSettings).toHaveBeenCalledOnceWith(
+      { backupFolderPath: 'E:\\Nightly', autoBackupEnabled: false, backupKeepCount: 7 });
+  });
+
+  /**
+   * 🔴 The server owns both backup-settings validation rules (keep-count > 0; auto-backup cannot be on with
+   * a blank folder) — the client must show `ValidationBody.error` VERBATIM, not restate a rule of its own.
+   * This is also a regression guard on the `readMessage()` fix: it used to read a `message` field the wire
+   * never sends (`ValidationBody` is `{ error }`), so every 400 here silently fell back to a generic
+   * "The server rejected that."
+   */
+  it('a 400 on save shows the server sentence verbatim, not a restated client rule', () => {
+    tab('Operations');
+
+    api.setBackupSettings.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 400,
+      error: { error: 'Cannot enable auto-backup without a backup folder configured.' },
+    })));
+
+    buttons('Save backup settings')[0].click();
+    fixture.detectChanges();
+
+    expect(TestBed.inject(ToastService).message())
+      .toBe('Cannot enable auto-backup without a backup folder configured.');
+  });
+
+  /**
+   * 🔴 THE WHOLE POINT of `folderConfigured`. It is NOT derivable from `backups.length` — this state and
+   * "configured, zero backups yet" (the next test) both have an empty `backups` array, and collapsing them
+   * into one empty-table state is exactly the class of lie this feature exists to remove.
+   */
+  it('folderConfigured: false renders "no folder configured" — not an empty table', () => {
+    api.getBackupList.and.returnValue(of({ folderConfigured: false, backups: [] }));
+
+    tab('Operations');
+
+    expect(text()).toContain('No backup folder is configured.');
+    expect(fixture.debugElement.queryAll(By.css('.ptable')).length).toBe(0);
+  });
+
+  it('folderConfigured: true with an empty list renders a DIFFERENT message than "not configured"', () => {
+    api.getBackupList.and.returnValue(of({ folderConfigured: true, backups: [] }));
+
+    tab('Operations');
+
+    expect(text()).toContain('Configured, but no backups yet.');
+    expect(text()).not.toContain('No backup folder is configured.');
+    expect(fixture.debugElement.queryAll(By.css('.ptable')).length).toBe(0);
+  });
+
+  it('folderConfigured: true with backups renders the rows, newest first', () => {
+    api.getBackupList.and.returnValue(of({
+      folderConfigured: true,
+      backups: [
+        { path: 'D:\\Backups\\db-2026-07-01.bak', sizeBytes: 2048, timestamp: '2026-07-01T00:00:00Z' },
+        { path: 'D:\\Backups\\db-2026-07-15.bak', sizeBytes: 4096, timestamp: '2026-07-15T00:00:00Z' },
+      ],
+    }));
+
+    tab('Operations');
+
+    const rows = fixture.debugElement.queryAll(By.css('.ptable tbody tr'));
+    expect(rows.length).toBe(2);
+    expect((rows[0].nativeElement as HTMLElement).textContent).toContain('db-2026-07-15.bak');   // newest
+    expect((rows[1].nativeElement as HTMLElement).textContent).toContain('db-2026-07-01.bak');   // oldest
+  });
+
+  it('refreshes the backup list after a successful "Back up now", without re-reading settings', () => {
+    tab('Operations');
+    expect(api.getBackupList).toHaveBeenCalledTimes(1);   // the tab-open load
+    expect(api.getBackupSettings).toHaveBeenCalledTimes(1);
+
+    api.runBackup.and.returnValue(of({ value: '/srv/backups/db.bak' }));
+    buttons('Back up now')[0].click();
+    fixture.detectChanges();
+
+    expect(api.getBackupList).toHaveBeenCalledTimes(2);        // refreshed after the successful backup
+    expect(api.getBackupSettings).toHaveBeenCalledTimes(1);    // NOT re-read — would clobber an unsaved edit
+  });
+
+  it('does NOT refresh the backup list when "Back up now" fails', () => {
+    tab('Operations');
+    expect(api.getBackupList).toHaveBeenCalledTimes(1);
+
+    api.runBackup.and.returnValue(of({ value: null }));
+    buttons('Back up now')[0].click();
+    fixture.detectChanges();
+
+    expect(api.getBackupList).toHaveBeenCalledTimes(1);   // unchanged — nothing was written
   });
 });

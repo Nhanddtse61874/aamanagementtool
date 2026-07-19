@@ -6,7 +6,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, forkJoin } from 'rxjs';
 
 import {
-  DefaultTaskDto, PcaContactDto, RetentionPreview, TagDto, TeamDto, UserDto,
+  BackupInfo, DefaultTaskDto, PcaContactDto, RetentionPreview, SettingsOpsBackupSettings, TagDto, TeamDto,
+  UserDto,
 } from '../../api/models';
 import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
 import { ThemeService } from '../../services/theme.service';
@@ -42,11 +43,10 @@ interface TemplateDraft { originalName: string | null; name: string; tasks: stri
  * ~20 [ADMIN] methods below. Never call any of them from a screen an ordinary user can reach: a 403 inside
  * the `forkJoin` here would take the whole screen down, not just the panel that asked.
  *
- * ══ FIVE SECTIONS OF THE OLD MOCKUP ARE DELIBERATELY GONE ═══════════════════════════════════════════════
+ * ══ FOUR SECTIONS OF THE OLD MOCKUP ARE DELIBERATELY GONE ════════════════════════════════════════════════
  *
- * DB path · daily-report archive path · both export roots · backup folder + auto-backup + keep-count ·
- * retention enable + retention months. All of them were `<input>`s bound to a `storageFields` array of empty
- * strings, wired to nothing.
+ * DB path · daily-report archive path · both export roots · retention enable + retention months. All of them
+ * were `<input>`s bound to a `storageFields` array of empty strings, wired to nothing.
  *
  * They are not "not wired yet" — THEY MUST NOT EXIST HERE. Every one of them would have to write through
  * `IAppConfig.Set*`, and the API's own header says why that is forbidden:
@@ -59,12 +59,21 @@ interface TemplateDraft { originalName: string | null; name: string; tasks: stri
  * a restart makes it so. Shipping them as web inputs would let any admin repoint the production database
  * from a browser tab.
  *
- * 🔴 DARK MODE IS NOT ONE OF THEM, and the distinction is the whole point: it is a PER-USER preference that
- * `ThemeService` persists to `localStorage`. It never touches the server, so it cannot leak across users.
- * It stays, accent picker and all.
+ * 🔴 BACKUP FOLDER + AUTO-BACKUP + KEEP-COUNT ARE THE ONE DELIBERATE EXCEPTION (M11 gate) and are now WIRED,
+ * below, in the Operations tab. `SettingsViewModel.cs:264-266` (WPF) was the only production writer of those
+ * three keys anywhere in the repo — with WPF deleted, leaving them here would strand backup permanently off
+ * with no way to turn it on. Unlike `DbPath`, backup config is GLOBAL BY DESIGN: one shared install has
+ * exactly one backup destination, so there is no per-user leak to guard against. `SettingsEndpoints.cs`
+ * documents this as the one deliberate exception to the `IAppConfig.Set*` rule above — see
+ * `GET|PUT /api/ops/backup/settings`.
+ *
+ * 🔴 DARK MODE IS NOT ONE OF THEM either, and the distinction is the whole point: it is a PER-USER preference
+ * that `ThemeService` persists to `localStorage`. It never touches the server, so it cannot leak across
+ * users. It stays, accent picker and all.
  *
  * What DOES stay from Ops is the four `/api/ops/*` ACTIONS — backup / export / retention preview / retention
- * run. Those are operations, not configuration: they act, they do not persist a cross-user setting.
+ * run — plus the backup CONFIGURATION pair just described. Actions act; they do not persist a cross-user
+ * setting, except for the one exception above.
  */
 @Component({
   selector: 'app-settings',
@@ -136,6 +145,18 @@ export class SettingsComponent {
   readonly opsResult = signal<string | null>(null);
   readonly archiveDate = signal(isoDate(new Date()));
 
+  // ---- ops: backup configuration + list (M11 gate) ----
+  readonly backupFolderPath = signal('');
+  readonly autoBackupEnabled = signal(false);
+  readonly backupKeepCount = signal(1);
+  readonly backupLoading = signal(false);
+  readonly backupError = signal<string | null>(null);
+  readonly folderConfigured = signal(false);
+  readonly backups = signal<BackupInfo[]>([]);
+  /** Newest first. `timestamp` is ISO-8601, so a lexicographic sort is a correct chronological sort. */
+  readonly sortedBackups = computed(() =>
+    [...this.backups()].sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? '')));
+
   constructor() {
     this.load();
   }
@@ -203,6 +224,16 @@ export class SettingsComponent {
 
   reload(): void { this.load(); }
   dismissNotice(): void { this.notice.set(null); }
+
+  /**
+   * Switches tabs and, for Operations, loads the backup configuration + list. Kept OUT of the initial
+   * `load()` forkJoin above deliberately — those two routes are Operations-only, and an admin who never
+   * opens that tab should not pay for them on every visit to Settings.
+   */
+  openTab(id: SettingsTab): void {
+    this.tab.set(id);
+    if (id === 'ops') this.loadBackup();
+  }
 
   // =======================================================================================================
   // GENERAL — the warning window (SET-02) and the holiday calendar
@@ -538,8 +569,93 @@ export class SettingsComponent {
   }
 
   // =======================================================================================================
-  // OPS — the four /api/ops/* actions, plus the standup week archive (DR-09)
+  // OPS — the four /api/ops/* actions, the backup CONFIGURATION pair (M11 gate), plus the standup week
+  // archive (DR-09)
   // =======================================================================================================
+
+  /** Loaded on Operations tab open — see `openTab()`. Both the settings form and the list, together. */
+  private loadBackup(): void {
+    this.backupError.set(null);
+    this.backupLoading.set(true);
+    forkJoin({
+      settings: this.api.getBackupSettings(),
+      list: this.api.getBackupList(),
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: r => {
+          this.backupFolderPath.set(r.settings.backupFolderPath ?? '');
+          this.autoBackupEnabled.set(r.settings.autoBackupEnabled === true);
+          this.backupKeepCount.set(r.settings.backupKeepCount ?? 1);
+          this.folderConfigured.set(r.list.folderConfigured === true);
+          this.backups.set(r.list.backups ?? []);
+          this.backupLoading.set(false);
+        },
+        error: (err: unknown) => {
+          this.backupLoading.set(false);
+          this.backupError.set(describeError(err));
+        },
+      });
+  }
+
+  /**
+   * The LIST half only — used to refresh after a successful `runBackup()` without disturbing whatever the
+   * admin currently has typed into the settings form above it.
+   */
+  private loadBackupList(): void {
+    this.api.getBackupList().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: r => {
+        this.folderConfigured.set(r.folderConfigured === true);
+        this.backups.set(r.backups ?? []);
+      },
+      error: (err: unknown) => this.fail(err),
+    });
+  }
+
+  /**
+   * PUT /api/ops/backup/settings. The server owns both validation rules (keep-count > 0; auto-backup
+   * cannot be enabled with a blank folder) — a 400 is shown VERBATIM via `fail()` -> `describeError()`,
+   * never restated client-side.
+   */
+  saveBackupSettings(): void {
+    if (this.busy() || this.backupLoading()) return;   // ← re-entrancy guard
+
+    const body: SettingsOpsBackupSettings = {
+      backupFolderPath: this.backupFolderPath().trim(),
+      autoBackupEnabled: this.autoBackupEnabled(),
+      backupKeepCount: Math.trunc(this.backupKeepCount()),
+    };
+
+    this.busy.set(true);
+    this.api.setBackupSettings(body).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: r => {
+        this.busy.set(false);
+        this.backupFolderPath.set(r.backupFolderPath ?? '');
+        this.autoBackupEnabled.set(r.autoBackupEnabled === true);
+        this.backupKeepCount.set(r.backupKeepCount ?? 1);
+        this.toast.show('Backup settings saved');
+      },
+      error: (err: unknown) => this.fail(err),
+    });
+  }
+
+  /** The list carries only a `path` — split off the file name for display. */
+  backupName(path: string | null | undefined): string {
+    if (path === null || path === undefined || path === '') return '(unnamed)';
+    const idx = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+    return idx >= 0 ? path.slice(idx + 1) : path;
+  }
+
+  /** Bytes -> a short human-readable size. */
+  formatSize(bytes: number | undefined): string {
+    if (bytes === undefined || !Number.isFinite(bytes)) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unit = -1;
+    do { value /= 1024; unit++; } while (value >= 1024 && unit < units.length - 1);
+    return `${value.toFixed(1)} ${units[unit]}`;
+  }
 
   runBackup(): void {
     if (this.busy()) return;   // ← re-entrancy guard
@@ -563,6 +679,7 @@ export class SettingsComponent {
         this.busy.set(false);
         this.opsResult.set(`Backup written to ${r.value}`);
         this.toast.show('Backup complete');
+        this.loadBackupList();   // 🔴 a new file just landed in the folder this list shows — refresh it
       },
       error: (err: unknown) => this.fail(err),
     });
@@ -714,10 +831,15 @@ export function describeError(err: unknown): string {
   return 'Something went wrong.';
 }
 
-/** `ValidationBody` is `{ message }`. Read it defensively — this is the network boundary. */
+/**
+ * `ValidationBody` is `{ error }`, NOT `{ message }` — see `api/models/validation-body.ts` and
+ * `ValidationBody.cs`. Every other screen in this app reads `(err.error as ValidationBody | null)?.error`;
+ * this used to read a `message` field that the wire has never sent, so a 400 here always fell through to
+ * the generic "The server rejected that." Read it defensively — this is the network boundary.
+ */
 function readMessage(body: unknown): string | null {
-  if (typeof body === 'object' && body !== null && 'message' in body) {
-    const message = (body as { message: unknown }).message;
+  if (typeof body === 'object' && body !== null && 'error' in body) {
+    const message = (body as { error: unknown }).error;
     if (typeof message === 'string' && message !== '') return message;
   }
   return null;

@@ -14,7 +14,7 @@
 
   <div class="stabs">
     @for (t of tabs; track t.id) {
-      <button [class.active]="tab() === t.id" (click)="tab.set(t.id)">{{ t.label }}</button>
+      <button [class.active]="tab() === t.id" (click)="openTab(t.id)">{{ t.label }}</button>
     }
   </div>
 
@@ -359,6 +359,91 @@
             <button class="btn btn-soft btn-sm" [disabled]="busy()" (click)="runBackup()">Back up now</button>
             <button class="btn btn-soft btn-sm" [disabled]="busy()" (click)="runExport()">Export now</button>
           </div>
+        </div>
+
+        <!--
+          🔴 M11 gate. `backupFolderPath` / `autoBackupEnabled` / `backupKeepCount` ARE editable here, on
+          purpose — see the class doc's "ONE DELIBERATE EXCEPTION" note. Unlike the DB path / export roots
+          above, backup config is GLOBAL BY DESIGN: one shared install has exactly one backup destination,
+          so there is no per-user leak to guard against, and the API carved out exactly this one exception.
+        -->
+        <div class="card card--pad">
+          <div class="s-title">Backup settings</div>
+          <div class="s-desc">
+            Where the server writes backups, and whether it writes them automatically. Shared by the whole
+            install, like the buttons above — not a per-user preference.
+          </div>
+
+          @if (backupError(); as err) {
+            <div class="s-desc" style="margin-bottom:10px;">{{ err }}</div>
+          }
+
+          <div class="editor">
+            <label class="field">
+              <span>Backup folder path</span>
+              <input class="input" type="text" placeholder="e.g. D:\Backups" [ngModel]="backupFolderPath()"
+                     [disabled]="busy() || backupLoading()"
+                     (ngModelChange)="backupFolderPath.set($event)" />
+            </label>
+
+            <div class="toggle-row" style="margin-top:14px;">
+              <button type="button" class="switch" role="switch" [class.on]="autoBackupEnabled()"
+                      [attr.aria-checked]="autoBackupEnabled()" aria-label="Automatic backup"
+                      [disabled]="busy() || backupLoading()"
+                      (click)="autoBackupEnabled.set(!autoBackupEnabled())">
+                <span class="knob"></span>
+              </button>
+              <span class="s-strong">Automatic backup</span>
+            </div>
+
+            <label class="field" style="margin-top:14px; max-width:160px;">
+              <span>Backup keep-count</span>
+              <input class="input num" type="number" min="1" [ngModel]="backupKeepCount()"
+                     [disabled]="busy() || backupLoading()"
+                     (ngModelChange)="backupKeepCount.set($event)" />
+            </label>
+
+            <div class="acts">
+              <button class="btn btn-primary btn-sm" [disabled]="busy() || backupLoading()"
+                      (click)="saveBackupSettings()">
+                {{ busy() ? 'Saving…' : 'Save backup settings' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!--
+          🔴 THREE DIFFERENT STATES, NOT TWO. `folderConfigured` comes straight off the server rather than
+          being derived from `backups.length` — a configured-but-empty folder and a never-configured folder
+          both produce an empty array, and collapsing them into one empty state would hide exactly the
+          distinction this screen exists to show.
+        -->
+        <div class="card card--pad">
+          <div class="s-title">Backups</div>
+          <div class="s-desc">Files written to the configured backup folder, newest first.</div>
+
+          @if (backupLoading()) {
+            <div class="listempty">Loading…</div>
+          } @else if (!folderConfigured()) {
+            <div class="listempty">No backup folder is configured.</div>
+          } @else if (backups().length === 0) {
+            <div class="listempty">Configured, but no backups yet.</div>
+          } @else {
+            <table class="ptable">
+              <thead>
+                <tr><th>File</th><th>Written</th><th>Size</th></tr>
+              </thead>
+              <tbody>
+                @for (b of sortedBackups(); track $index) {
+                  <tr>
+                    <td>{{ backupName(b.path) }}</td>
+                    <td>{{ b.timestamp }}</td>
+                    <td>{{ formatSize(b.sizeBytes) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
         </div>
 
         <div class="card card--pad">

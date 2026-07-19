@@ -27,7 +27,10 @@ import {
   logout as logoutFn,
   me as meFn,
   meSetActiveTeam as meSetActiveTeamFn,
+  opsBackupList as opsBackupListFn,
   opsBackupRun as opsBackupRunFn,
+  opsBackupSettingsGet as opsBackupSettingsGetFn,
+  opsBackupSettingsSet as opsBackupSettingsSetFn,
   opsExportRun as opsExportRunFn,
   opsRetentionPreview as opsRetentionPreviewFn,
   opsRetentionRun as opsRetentionRunFn,
@@ -97,7 +100,8 @@ import {
 import {
   ArchivedFileDto, BacklogAuditDto, BacklogCreateRequest, BacklogDto, BacklogListItemDto, BacklogUpdateRequest,
   DefaultTaskDto, HolidayDto, LoginResponse, MeResponse, MissingLogWarning, NamedRefDto, PcaContactDto,
-  RetentionPreview, SavedBody, SettingDto, SettingsOpsResult, SettingsStandupEntryCreateRequest,
+  RetentionPreview, SavedBody, SettingDto, SettingsOpsBackupList, SettingsOpsBackupSettings, SettingsOpsResult,
+  SettingsStandupEntryCreateRequest,
   SettingsStandupEntryUpdateRequest, SettingsStandupIssueCreateRequest, SettingsStandupIssueUpdateRequest,
   SettingsTagCreateRequest, SettingsTagUpdateRequest, SettingsTemplateCreateRequest, SettingsUserStandup,
   SmartFillTaskRequest, TagDto, TaskExtendedRequest, TaskItemDto, TaskListScreenDto, TaskTemplateDto,
@@ -1197,10 +1201,14 @@ export class WorklogService {
   }
 
   // =====================================================================================================
-  // OPS — backup / export / retention. 🔴 ALL FOUR ARE [ADMIN], and all four are POSTs.
+  // OPS — backup / export / retention, plus the M11 gate's backup CONFIGURATION pair. 🔴 ALL SEVEN ARE
+  // [ADMIN]. The four original routes are POSTs, on `mutatingHttp` — see below for why that still holds
+  // even though none of them notifies over SignalR today. The three backup-config routes split like every
+  // other pair in this file: `getBackupSettings` / `getBackupList` are READS -> the plain `http`;
+  // `setBackupSettings` is a MUTATION -> `mutatingHttp`, for the same reason as the four POSTs.
   //
   // They go on `mutatingHttp` because they are non-GET. None of them actually notifies over SignalR today,
-  // so the header is INERT on these four — but "every non-GET goes on mutatingHttp" is the rule precisely
+  // so the header is INERT on these — but "every non-GET goes on mutatingHttp" is the rule precisely
   // because it is mechanically checkable, and it fails SAFE: the cost of the header where it is not needed
   // is one header, while the cost of omitting it where it IS needed is a write that echoes back and clobbers
   // the user's own screen. If a notifier call is ever added to one of these, the client is already right.
@@ -1234,6 +1242,43 @@ export class WorklogService {
    */
   runRetention(): Observable<void> {
     return opsRetentionRunFn(this.mutatingHttp, this.rootUrl, {}).pipe(map(() => void 0));
+  }
+
+  /**
+   * [ADMIN] The three backup POLICY keys — folder path / auto-backup / keep-count. A READ -> the plain
+   * `http`.
+   *
+   * 🔴 M11 gate. `SettingsViewModel.cs:264-266` (WPF) was the only production writer of these three keys
+   * anywhere in the repo; with WPF deleted there is no writer left unless this screen provides one. Backup
+   * config is GLOBAL BY DESIGN — one shared install has exactly one backup destination — which is why the
+   * API carved out a deliberate exception to "never call `IAppConfig.Set*` from an endpoint" for exactly
+   * these three keys. See `SettingsEndpoints.cs`'s class doc.
+   */
+  getBackupSettings(): Observable<SettingsOpsBackupSettings> {
+    return opsBackupSettingsGetFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] Write the three backup POLICY keys. A MUTATION -> `mutatingHttp` — see the section comment.
+   *
+   * 400 (keep-count <= 0, or auto-backup enabled with a blank folder) arrives as `ValidationBody`. The
+   * server owns both rules; show `.error` VERBATIM and do not restate them client-side.
+   */
+  setBackupSettings(body: SettingsOpsBackupSettings): Observable<SettingsOpsBackupSettings> {
+    return opsBackupSettingsSetFn(this.mutatingHttp, this.rootUrl, { body }).pipe(map(r => r.body));
+  }
+
+  /**
+   * [ADMIN] The backup folder's contents, plus whether a folder is even configured. A READ -> the plain
+   * `http`.
+   *
+   * 🔴 `folderConfigured` is NOT derivable from `backups.length` — a configured folder with zero backups
+   * yet and an unconfigured folder both produce an empty array, and they are different states the caller
+   * must render differently. The server reports `folderConfigured` separately for exactly this reason; do
+   * not collapse the two back into one empty-list check on the client.
+   */
+  getBackupList(): Observable<SettingsOpsBackupList> {
+    return opsBackupListFn(this.http, this.rootUrl, {}).pipe(map(r => r.body));
   }
 
   // =====================================================================================================
