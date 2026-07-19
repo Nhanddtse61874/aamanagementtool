@@ -36,7 +36,9 @@ The audit's verdict is **DO NOT DELETE YET**. M10 cannot be planned until the 3 
 
 ## 🔴 M10 AUDIT RESULT (2026-07-19) — **DO NOT DELETE YET**
 
-**369 behaviors audited** across 22 sections: **148 COVERED · 57 PARTIAL · 43 MISSING (29 distinct) · 121 CORE-SURVIVES.** Of 194 `COVERED` claims put to adversarial refutation, **44 were attacked successfully** (the memo's own summary says 32 downgraded — ⚠️ reconcile that number against the per-section `-refute.md` files before quoting either).
+**369 behaviors audited** across 22 sections: **148 COVERED · 57 PARTIAL · 43 MISSING (29 distinct) · 121 CORE-SURVIVES.**
+
+**Refutation numbers — RECONCILED 2026-07-19, use these:** **193 `COVERED` claims asserted → 45 downgraded → 148 survived.** The earlier figures in this file (194/44) and in the memo's prose (32) were **both wrong**; 193/45/148 is the only set consistent with the memo's section table (148 survivors) and its downgrade table (45 rows). Fixed at source in `M10-COVERAGE-AUDIT.md`.
 
 **The 3 blockers — each one alone stops the deletion:**
 1. **Backup RESTORE (BK-05) has no web path at all.** The API deliberately refuses to expose it (`RestoreAsync` overwrites the live `.db` under open connections), and **no CLI or runbook replacement exists in the repo.** Deleting WPF removes the only way to restore a backup. This was already known and filed as "out of scope" — the audit reclassifies it: out-of-scope for a *screen* is not out-of-scope for *deleting the last implementation*.
@@ -57,9 +59,15 @@ These are **not** M10 blockers. They are defects in code that is on `main` and r
    `BackupService.cs:36` → `BackupToFolderAsync(_config.BackupFolderPath, …)`, and the default `BackupFolderPath` is **`""`** (`JsonAppConfigTests.cs:54` asserts it). `BackupNowAsync` returns `string?` = null. `settings.component.ts:550-551` then renders `r.value ?? 'the configured folder'` and toasts **"Backup complete"** unconditionally. Note `AutoBackupIfDueAsync` **does** guard this (`BackupService.cs:62`); the manual path does not.
    Consequence: an operator can believe they hold backups they have never had. Compounds blocker 1 — no restore path *and* possibly no backups.
 
-## 🔴 THE FIRST AUDIT RUN WAS LOST — AND THE REASON IS A PROCESS BUG, NOT BAD LUCK
+## 🔴 THE FIRST AUDIT RUN WAS *UNREACHABLE*, NOT LOST — corrected 2026-07-19
 
-`validate-state` on 2026-07-19 found this file claiming *"22 parallel auditors running"* while **no agent was running and no `M10*` file existed anywhere in the repo.** The auditors held their findings in memory, the session ended, and the entire pass evaporated — including the adversarial refutation.
+⚠️ **This section previously asserted the first pass "evaporated". That was wrong, and the correction matters more than the original claim.**
+
+The first run **completed normally**: run `wf_32b079d9-acc`, **410 agents, 0 errors, ~72 min**, returning **796 triaged behaviors**. Its output survives at `%TEMP%\claude\…\tasks\wc9hxn9o2.output` and per-agent in `…\subagents\workflows\wf_32b079d9-acc\journal.jsonl`. Nothing evaporated.
+
+What actually happened: the completion notification had not arrived when `validate-state` ran, so from that session's view there was no running agent and no `M10*` file on disk — indistinguishable from a lost run. **The results were unreachable at the moment a decision needed them, which cost exactly as much as losing them.** That is the real defect, and the fix below is still correct.
+
+🔴 **Do not treat the first run as a second opinion of equal weight.** Its brief framed the losable surface as *"ViewModels, XAML, code-behind, WPF-only helpers"* — the framing that under-weights `App.xaml.cs` startup orchestration, i.e. blocker 3 (the four scheduled behaviors). **The re-run's memo is authoritative.** The first run is worth mining for MISSING items the memo lacks, but every hit must be re-verified at the source before it is believed.
 
 **The rule that would have saved it is already written in CLAUDE.md STEP 0:** *"Artifact persistence: write to disk immediately, never hold in memory."* It was applied to plans and specs but never to agent fan-out output.
 

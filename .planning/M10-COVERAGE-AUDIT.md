@@ -148,7 +148,11 @@ All 22 section files were present and read. `B6` does not exist — `.planning/M
 
 ## Claims that did NOT survive refutation
 
-This is the audit's own error log. 19 refutation passes were run; **32 COVERED claims were downgraded**. Recorded in full because the pattern matters more than any single row: auditors consistently verified the happy path and stopped.
+This is the audit's own error log. 19 refutation passes were run; **45 COVERED claims were downgraded** — the table below has 45 rows.
+
+*(Corrected 2026-07-19. This line previously read "32" and STATE.md quoted "194 claims / 44 downgraded"; both were wrong. The arithmetic that settles it: 148 COVERED survive in the section table above, the downgrade table below has 45 rows, and 148 + 45 = **193 COVERED claims originally asserted**. Only 193/45/148 is consistent with the totals — do not re-quote 32 or 44.)*
+
+Recorded in full because the pattern matters more than any single row: auditors consistently verified the happy path and stopped.
 
 | Section | Claim | Auditor | Refuter | What decided it |
 |---|---|---|---|---|
