@@ -118,8 +118,19 @@ export class UsersComponent {
       (u.name ?? '').toLowerCase().includes(term) || (u.username ?? '').toLowerCase().includes(term));
   });
 
-  /** An account nobody can log into: no username, or created before a password was ever set. See below. */
-  readonly canLogIn = (u: UserDto): boolean => (u.username ?? '') !== '';
+  /**
+   * An account nobody can log into: no username, or no password ever set.
+   *
+   * 🔴 The second half was DESCRIBED here and never CHECKED. The old body was `(u.username ?? '') !== ''`
+   * alone, so on any database holding accounts without passwords this screen reported every one of them
+   * as able to log in — while none of them could. That is the screen an admin provisions accounts from,
+   * and it was lying to them about the exact thing they were there to fix. `hasPassword` (M11) closes it.
+   *
+   * `=== true`, not a bare truthiness test: the generated field is `boolean | undefined`, and `undefined`
+   * from an older client or a partial response must read as "cannot log in", never as "can".
+   */
+  readonly canLogIn = (u: UserDto): boolean =>
+    (u.username ?? '') !== '' && u.hasPassword === true;
 
   avatar(name: string | null | undefined): string { return this.api.avatarColor(name ?? null); }
   initial(name: string | null | undefined): string { return (name ?? '?').charAt(0).toUpperCase(); }
