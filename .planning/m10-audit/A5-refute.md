@@ -1,0 +1,45 @@
+# A5 — Daily Report (DailyInputTab + DailyBoardTab): adversarial re-audit
+
+Method: every claim traced end-to-end on BOTH sides — WPF XAML/code-behind/VM → Core service, and
+Angular template → component → `WorklogService` → API route → Core. No source file was modified; no
+command that could open a database was run.
+
+**Headline: 6 of 16 "COVERED" claims do not survive. All 6 are PARTIAL (a narrower web version), none
+are outright MISSING.** The two most consequential are the lost **arbitrary-day jump** (the auditor cited
+MainWindow.xaml:221 and :224 and skipped the `<DatePicker>` sitting between them at :222) and the
+**board no longer showing issue solution text**.
+
+| Feature | Original | Refuted? | Final | Evidence |
+|---|---|---|---|---|
+| Prev/Next day navigation | COVERED | **YES** | **PARTIAL** | `MainWindow.xaml:222-223` is a `<DatePicker>` bound to `SelectedDate` — between the two cited buttons — with no web counterpart. Web toolbar has a read-only label only: `daily-report.component.html:10` `{{ dayLabel() }}`; the sole `type="date"` on the page is the modal deadline (`html:270`). ◀/▶ themselves do work (`ts:234-242`). [VERIFIED] |
+| Archive week — weekly markdown file | COVERED | **YES** | **PARTIAL** | Markdown builder is Core and survives (`StandupArchiveService.cs:37-67`). Two narrowings: (1) WPF offers the button to **every** user with no gate (`MainWindow.xaml:225-226`), web offers it only to admins (`html:20`, `ts:195`) and the route 403s everyone else (`AdminEndpoints.cs:139`, `.RequireAuthorization(AuthSetup.AdminPolicy)` :150). (2) WPF writes to the **user's own disk** (`ExportWeekAsync` → `ArchiveDir()`, :62-66); the web writes on the **API host** and returns a path the browser cannot open (`worklog.service.ts:1151-1158`, `ts:489-497`). [VERIFIED] |
+| Add entry button + modal | COVERED | **YES** | **PARTIAL (minor)** | Every field is present and wired (`html:217-291`, `ts:253-319`), hidden when locked on both sides (`DailyInputTab.xaml:120-121` / `html:34`). Delta: WPF's description box is multi-line — `AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"` (`StandupEntryDialog.xaml:63-64`) — the web uses a single-line `<input>` (`html:264`). Multi-line descriptions become untypeable. [VERIFIED] |
+| Quick Import — clone a day's entries | COVERED | **YES** | **PARTIAL** | Core clone logic survives (`StandupService.cs:118-151`) and the endpoint takes **both** dates (`SettingsEndpoints.cs:879-882`). But WPF opens a **source-day picker** — `QuickImportDialog.xaml:29-30` `<DatePicker x:Name="SourcePicker"/>`, `QuickImportDialog.xaml.cs:13` defaults to yesterday, `:20-27` returns the chosen day, `DailyInputTab.xaml.cs:34-36` passes it. The web **hard-codes** `const source = addDays(target, -1)` (`ts:345-346`) with no UI to change it. "Import last Friday into Monday" — the Monday-standup case — is unreachable on the web. [VERIFIED] |
+| Entry card fields (code/task/status/description/deadline) | COVERED | no | COVERED | `DailyInputTab.xaml:27-38` ↔ `html:57-73`. All five render; deadline/description conditionally on both sides. [VERIFIED] |
+| Delete entry (owner + editable only) | COVERED | no | COVERED | `DailyInputTab.xaml:110-112` (`Visibility` ← `Editable`) ↔ `html:126-131` (`@if (v.editable)`). `editable` is real on the wire: `SettingsEndpoints.cs:1092`→`:1153`, sourced from Core `CanEditDay && owner` (`StandupService.cs:48`, `:84-86`), and `DeleteEntryAsync` re-gates server-side (`StandupService.cs:173-181`). [VERIFIED] |
+| Drag reorder within a section | COVERED | no | COVERED | `ts:370-394` → `worklog.service.ts:1120-1123` → `PUT /api/standup/entries/reorder` (`SettingsEndpoints.cs:841-877`) → Core `ReorderEntryAsync` (`StandupService.cs:186-215`). The "cannot land an entry last in one drag" quirk is Core's `dest.Insert(idx, dragged)` (`:203`) and is identical in WPF (`DailyInputTab.xaml.cs:76-84` passes the dropped-on entry as target). Not a regression. [VERIFIED] |
+| Drag onto other section = move section | COVERED | no | COVERED | Core `var section = target.Section` (`StandupService.cs:198`) — survives. `cdkDropListGroup` at `html:31` spans both lists; `onDrop` resolves a target inside the destination section (`ts:383-388`). Parity caveat, not a loss: **neither** side can drop into an *empty* section — web returns early (`ts:384`), WPF's `Drop` handler exists only on entry cards (`DailyInputTab.xaml:13-14`). [VERIFIED] |
+| Drag onto trash = delete | COVERED | no | COVERED | `DailyInputTab.xaml:128-135` + `.xaml.cs:100-107` ↔ `html:139-149` + `ts:375-380`; both lock-gated (`CanEditSelectedDay` / `@if (canEdit())`). [VERIFIED] |
+| Issue add (+ Issue, text required) | COVERED | **YES** | **PARTIAL** | WPF's dialog collects **three** fields — issue text, an optional solution ("leave blank = pending discussion") and a **status combo** (`StandupIssueDialog.xaml:26-35`, `.xaml.cs:29-31`) — all passed to `AddIssueAsync` (`DailyInputTab.xaml.cs:47`). The web's add box has **one** input (`html:86`) and hard-codes `{ solutionText: null, status: 'open' }` (`ts:430`). Logging an already-solved or already-pending issue in one step is gone; it now costs a second edit round-trip. WPF's issue box is also multi-line (`AcceptsReturn`), the web's is not. [VERIFIED] |
+| Issue solution add/edit inline + status | COVERED | no | COVERED | `ts:412-415` mirrors `ShowSolutionEditor => IsEditingSolution \|\| HasSolution` (`DailyReportViewModel.cs:266`) exactly; editor + status `<select>` + Save at `html:104-115`; `toIssueUpdateBody` round-trips `issueText`/`status` so the whole-record PUT does not 400 (`standup-entry.ts:101-114`). WPF's inline solution box is single-line too (`DailyInputTab.xaml:86`), so no multi-line delta here. 409 handling is an addition, not a loss. [VERIFIED] |
+| Issue delete | COVERED | no | COVERED | `DailyInputTab.xaml:59-60` ↔ `html:100-101` → `ts:475-482` → `worklog.service.ts:1145-1147`. Not lock-gated on either side (DR-04). [VERIFIED] |
+| Issue color coding: amber / green | COVERED | no | COVERED | Trigger is solution-presence, not status, on both sides: `DailyReportViewModel.cs:265` / `DataTrigger Binding=HasSolution` (`DailyInputTab.xaml:98`, `DailyBoardTab.xaml:52`) ↔ `standup-entry.ts:120-122`, `html:96` `[class.ok]/[class.warn]` + `html:99` ✓/⚠, `scss:36-37`. [VERIFIED] |
+| Board — multi-team checkbox filter | COVERED | no | COVERED | `DailyBoardTab.xaml:99-102` (`ctrl:TeamFilter`) + `TeamFilterViewModel` ↔ `html:154` `<app-team-filter>` → `ts:244-247`. Web keeps the contract: hidden for single-team users (`team-filter.component.ts` `visible`), default = active team only, `AvailableTeams` = active ∩ membership. [VERIFIED] |
+| Board — teamIds empty ⇒ board empty | COVERED | no | COVERED | Core rule survives (`StandupService.cs:59-61`); client guard `boardBlocked` refuses the call and renders locally (`ts:149`, `:212-217`, `html:159-163`). Noted divergence, a widening not a loss: if the filter's own reads **fail**, the web leaves `teamIds` `undefined` → server returns all member teams (`SettingsEndpoints.cs:749`), where WPF would have shown an empty board. [VERIFIED] |
+| Board — entry display (code/task/due/status/description) | COVERED | **YES** | **PARTIAL** | The five listed fields do match (`DailyBoardTab.xaml:20-30` ↔ `html:182-195`). But WPF's board also renders each issue's **solution text** beneath the issue — `DailyBoardTab.xaml:45-48`, bound to `SolutionText`, shown when `HasSolution`. The web board row renders **only** `{{ i.issueText }}` (`html:196-200`). The data is on the wire (`Dtos.cs:106` `StandupIssueDto.SolutionText`) and the Input tab consumes it, so this is a pure template omission: on the team board you can see an issue is resolved (green ✓) but not *how it was resolved*. [VERIFIED] |
+
+## What actually needs doing before `src/TimesheetApp/` is deleted
+
+1. **Board issue solution text** — one line of template. Highest value-per-effort; the data already arrives.
+2. **Day jump** — add a date input to the toolbar beside ◀/▶. Without it, viewing a board two months back
+   costs ~60 clicks.
+3. **Quick-import source-day picker** — the endpoint already takes `sourceDate`; only the UI is missing.
+4. **Issue add: solution + status fields** — the create DTO already carries both (`ts:430` passes literals).
+5. **Archive week: non-admin access** — decide deliberately. The web's admin gate may be the *intended*
+   tightening (the archive is whole-organisation by construction), but it is a WPF capability every user
+   had. Also note the file is no longer reachable by the person who pressed the button.
+6. **Multi-line description** on the add-entry modal (`<input>` → `<textarea>`).
+
+Nothing in A5 is MISSING outright, and every Core rule the section depends on — `CanEditDay`, the owner
+gate, `ReorderEntryAsync`'s section-move, `QuickImportDayAsync`, `GetTeamStandupAsync`'s empty-teams rule,
+`StandupArchiveService`'s markdown format — lives in `TimesheetApp.Core` and cannot be lost by this deletion.

@@ -1,0 +1,74 @@
+{
+  "assessment": "fast-lane-assessment-v1",
+  "date": "2026-07-19",
+  "source": "M10 coverage audit (.planning/M10-COVERAGE-AUDIT.md) — two PARTIALs the refuters rated more dangerous than most MISSING items",
+  "note": "Two defects assessed SEPARATELY because they score differently. Both were confirmed at the source by the controller, not taken on the auditor's word.",
+
+  "tasks": [
+    {
+      "id": "BUG-1",
+      "title": "Unparseable text in a Log Work cell silently DELETES the existing hours",
+      "evidence": {
+        "parse": "src/timesheet-web/src/app/pages/log-work/grid-state.ts:197-201 — parseHours('abc') returns null",
+        "delete": "src/timesheet-web/src/app/pages/log-work/log-work.component.ts:296-301 — wanted === null routes to clearCell(), a DELETE",
+        "green_test_pinning_it": "src/timesheet-web/src/app/pages/log-work/grid-state.spec.ts:190 'reads gibberish as null rather than sending it'",
+        "second_caller": "log-work.component.ts:252 — cellHours() does parseHours(text) ?? 0, feeding rowTotal/dayTotal/weekTotal and the >8h check"
+      },
+      "eligible": false,
+      "task_class": "normal",
+      "analysis": {
+        "scope_clear_and_unambiguous": false,
+        "small_change_1_2_files": false,
+        "no_architecture_or_api_contract_change": false,
+        "no_security_or_migration_impact": true,
+        "low_regression_risk": false
+      },
+      "reason": "Not a mechanical fix: parseHours collapses THREE outcomes (clear / number / invalid) into two, so correcting it changes an exported signature, and the right user-facing behavior on invalid input (red-border reject per XC-02/TS-04, revert-to-previous, or block-commit-and-keep-draft) is a product decision the controller must not pick silently. Blast radius is also wider than it appears — cellHours() feeds every total and the >8h day validation.",
+      "files_touched_estimate": [
+        "grid-state.ts",
+        "log-work.component.ts",
+        "grid-state.spec.ts",
+        "log-work.component.spec.ts (likely)"
+      ],
+      "recommended_skips": [],
+      "required_minimum_gates": ["brainstorm", "verification", "qa_gate", "uat"],
+      "test_edit_licence": "grid-state.spec.ts:190 pins the contract we are DELIBERATELY changing, so updating it is the recorded exception, not gate-reconciliation. It asserts a parse rule, NOT a security property — no STOP-AND-REPORT trigger. Flag it in the plan anyway.",
+      "fallback_path": "Full workflow from STEP 2 (brainstorm) to settle the invalid-input behavior before any code."
+    },
+    {
+      "id": "BUG-2",
+      "title": "'Backup now' toasts success when no backup was written",
+      "evidence": {
+        "server": "src/TimesheetApp.Core/Services/BackupService.cs:36 — BackupNowAsync() delegates to BackupToFolderAsync(_config.BackupFolderPath, ...) and returns string? (null on failure)",
+        "default_is_empty": "src/TimesheetApp.Tests/Config/JsonAppConfigTests.cs:54 — asserts default BackupFolderPath == \"\"",
+        "client_lies": "src/timesheet-web/src/app/pages/settings/settings.component.ts:550-551 — renders r.value ?? 'the configured folder' then toasts 'Backup complete' unconditionally",
+        "counterexample_in_same_class": "BackupService.cs:62 — AutoBackupIfDueAsync DOES guard on IsNullOrWhiteSpace(BackupFolderPath); only the manual path is unguarded"
+      },
+      "eligible": true,
+      "task_class": "small_task",
+      "analysis": {
+        "scope_clear_and_unambiguous": true,
+        "small_change_1_2_files": true,
+        "no_architecture_or_api_contract_change": true,
+        "no_security_or_migration_impact": true,
+        "low_regression_risk": true
+      },
+      "reason": "A null return already means 'nothing was written'; the client simply fails to branch on it. Reporting the failure is one conditional in one component plus its spec, changes no signature and no config file, and runBackup() has exactly one caller.",
+      "files_touched_estimate": [
+        "settings.component.ts",
+        "settings.component.spec.ts"
+      ],
+      "recommended_skips": ["brainstorm", "mode_gate", "research"],
+      "required_minimum_gates": ["verification", "qa_gate", "uat"],
+      "scope_boundary": "Minimal honest fix ONLY: surface the failure. Disabling the button until a folder is set — which is what BK-01 actually specifies — is a SEPARATE, larger change touching the template and arguably a small feature. Do not let it ride along; file it.",
+      "fallback_path": "If the fix turns out to need a server-side guard in BackupService (Core, shared with the WPF host until M10), STOP — that leaves Fast Lane and goes through the full path."
+    }
+  ],
+
+  "controller_recommendation": {
+    "path": "Run BOTH as one small milestone (M9.2) through the full workflow, rather than splitting.",
+    "why": "They are the same defect class — the UI reporting a write that did not happen — so one brainstorm settles the shared question ('what does this app owe the user when a write fails or is refused?') and one UAT session covers both. Splitting buys a Fast Lane on BUG-2 that saves maybe one step, at the cost of two separate gates and two UAT sessions on an app whose UAT is already batched and overdue.",
+    "sequencing": "BUG-1 first — it destroys user data every working day. BUG-2 is a lie about a safety net, serious but not actively losing hours.",
+    "relationship_to_M10": "NEITHER is an M10 blocker. Both are defects on main, independent of the WPF deletion. M10's three real blockers (restore path, auth cutover, four App.xaml.cs-only scheduled jobs) are untouched by this work."
+  }
+}

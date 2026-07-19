@@ -1,9 +1,14 @@
 # ROADMAP — TimesheetApp
 
-**Last updated:** 2026-07-13
+**Last updated:** 2026-07-19
 
 ## Active
-- **M9 UAT round-2 + close remaining code gaps.** M9 (= the four screens M8.7–M8.10) **SHIPPED & merged** (`8c12f20`, 2026-07-14); **UAT round-1 fixed 5 defects** (`e710717`, 2026-07-15 — see STATE.md). Now open: round-2 click-through (OT-13…OT-25, minus **OT-20 closed**) + three code gaps still real per the 2026-07-16 audit — **Task List group-by-team** (`TaskListRowDto` has no teamId/team name), **Daily Report picker active-team scope** (`BacklogListItemDto` has no teamId), **default-tasks round-trip** (no `GetAllAsync`).
+- **M10 — Delete the WPF app.** *(was listed below as M8.11)* Approach: **verify-then-delete**. `PROJECT.md` §Success Criteria requires every feature in `.planning/M8-FEATURE-INVENTORY.md` be reachable in the web app, so a coverage audit runs **before** the deletion — its memo lands at `.planning/M10-COVERAGE-AUDIT.md`. Deletes `src/TimesheetApp/` (ViewModels, Views, Services, `App.xaml.cs`), the 13 WPF test files (179 `[Fact]`/`[Theory]`), the `ProjectReference` in `TimesheetApp.Tests.csproj`, and the `src/TimesheetApp.sln` entry. **.NET gate 689 → ~490.** `TimesheetApp.Core` is untouched. Currently at **STEP 2 Brainstorm**; the audit's first run was lost and is re-running (see STATE.md).
+- **UAT is batched to one session after M10 + M11** (user decision 2026-07-19). `OT-13…OT-25` **plus** M9.1's `G3`/`G6`/`G10`, which were merged un-accepted. 🔴 `G3` says *"matches the old WPF app"* — after M10 that oracle is gone, which is exactly why the coverage audit must not be skipped.
+
+## Planned
+- **M11 — Settings → `IConfiguration`.** Sequenced strictly after M10 so each milestone moves the test gate for exactly one reason. `DbPath`/`ConfigPath`/`KeyRingPath` become required config; missing config = fail-fast, no fallback chain. 🔴 Blocking pre-req: prove empirically that an `appsettings.json` in `TimesheetApp.Api` does not outrank `WebApplicationFactory.UseSetting` — if it does, both API suites silently retarget the real company DB. Decisions locked in STATE.md; findings F1–F5 in `.planning/fast-lane-settings-appsettings.json`.
+- **Remote hosting** — still unsolved and still blocking everyone but the user. See STATE.md §"STILL BLOCKING EVERYONE BUT THE USER".
 - **M8.7–M8.10 — the four remaining screens, as ONE milestone with a shared Phase 1.** ✅ Shipped as **M9** (see above). *(Original plan notes retained below for history.)*
   **Task List · Daily Report · Reports · Users + Settings.**
   🔴 **They cannot be done as four independent milestones, and they cannot be fanned out naively.** Five files are needed by every one of them and owned by none — chief among them **`SettingsEndpoints.cs`: 47 routes, one file, zero annotated**, needed by all four *and* by Backlog. Plus the `includeTags` one-liner, `OpenApiContractTests.cs`, the single stub block in `worklog.service.ts`, and the generated `api/**` tree, where **a regeneration is a global event**.
@@ -14,6 +19,11 @@
   Recon: `.planning/research/M8.7-M8.10-recon.md` · `.planning/research/M8.8-daily-report-recon.md`
 
 ## Shipped
+- **M9.1 — Read-model / scope gaps** — **MERGED to `main`** (`2c2cb49`, 2026-07-19), **Mode A**. **1938 tests green** — 689 .NET + 507 API + 742 Angular (baseline 1924, +14). QA gate **APPROVE**, 0 Critical/Important.
+  Closed the three fidelity gaps the 2026-07-16 code audit found still real after M9: **TL-12** Task List bands adaptively by team (>1 team checked) or project (exactly 1) — needed `teamId` on `TaskListRowDto`; **DR-11** Daily Report picker hard-scoped to the active team — needed `teamId` on `BacklogListItemDto`; **SET-05** default tasks deactivate → **reactivate** round-trip — needed `GetAllAsync` + an admin-only `GET /api/default-tasks/all`, closing a one-way hole **WPF shares** (a fix, not a port).
+  All three projection-only + one read route. **No schema change.** Shape: Wave A (C#, sequential — both tasks edit `Dtos.cs`) → one client regen → Wave B (Angular, parallel, zero file overlap).
+  🔴 **Merged WITHOUT UAT** by explicit user decision — `G3`/`G6`/`G10` were never clicked. Acceptable only because `main` is deployed nowhere; the cost is that trunk carries three unconfirmed behaviors. Batched into the end-of-M11 UAT session.
+  Spec: `docs/superpowers/specs/2026-07-16-m9.1-read-model-scope-gaps-design.md` · Plan: `docs/superpowers/plans/2026-07-16-M9.1-read-model-scope-gaps.md` (Plan Checker 11/11 PASS) · UAT: `.planning/M9.1-UAT.md`
 - **M8.6 — Backlog screen** — **COMPLETE** (`90151d4`, 2026-07-13), **Mode A**. **1142 tests green** — 868 .NET (658 + 210) + 274 Angular. 0 warnings.
   The screen the user clicked into and found dead. *"+ New backlog"* showed a toast and did nothing; the list was empty because the service returned `of([])`. **Both toasts are gone.** Now: a real list (server-side task counts via the batched `IN` query, no N+1), create, edit, a task sub-editor, and a change-history panel fed by a route that **did not exist** (`GET /api/backlogs/{id}/audit` — the repository method had been sitting unexposed since v2).
   **Six WPF bugs fixed rather than ported** (all user-approved), including one the XAML comment *denies exists*: the `DEFAULT` pseudo-backlog is visible on the WPF Backlog list **with a working Edit button**, and its project isn't in the dropdown — so open-and-save writes `project = ''`.
@@ -37,12 +47,13 @@
   **Still open, and the user's to decide:** how the web app reaches anyone else's browser. The dev loop works same-origin through an `ng serve` proxy — the only transport where a `SameSite=Lax` cookie survives, since `SameSite=None` would require HTTPS and this project deliberately has none. **Production hosting collides with the deferred "the company has no server" blocker.**
   Spec: `docs/superpowers/specs/2026-07-12-m8-backend-foundation-design.md` (rev. 3).
 
-## Planned
-- **M8.6–M8.9** — the six remaining Angular screens: Backlog · Task List · Daily Report · Reports · Users · Settings. The backend **already serves all of them** (80 routes); each screen now needs only: annotate its routes → regenerate → wire. *(M8.4/W2 deliberately left them as `of([])` stubs: wiring all 20 service methods at once breaks the build, because 7 of 9 components bind the old view models and `tsconfig` is `strict` + `strictTemplates`.)*
-- **M8.10** — Export / Backup / Retention moved host-side.
-- **M8.11** — Delete the WPF project.
+## ~~Planned (M8.x numbering)~~ — SUPERSEDED 2026-07-19, kept for traceability
+The M8.6–M8.11 numbering was retired when the remaining screens were consolidated into **M9**. Mapping:
+- ~~**M8.6–M8.9** — the six remaining Angular screens~~ → shipped as **M8.6** (Backlog) + **M9** (Task List · Daily Report · Reports · Users · Settings), with the residual read-model gaps closed in **M9.1**.
+- **M8.10 — Export / Backup / Retention moved host-side** → 🟠 **STILL OPEN, and deliberately unresolved here.** These are inventory sections B7/B8/B9, and whether they are reachable in the web app is one of the questions the M10 coverage audit answers. Do not mark this shipped from memory — read the audit memo.
+- ~~**M8.11** — Delete the WPF project~~ → renumbered **M10** (now Active, above).
 
-## Shipped
+## Shipped — earlier (WPF era, pre-M8)
 - **P15 / P16 / P17 — Task List card layout + auto-provision user** — MERGED to `main` + pushed (`bc4c02f`, 2026-07-02), build clean, **536 tests green**. **P15** grouped section bands (adaptive Team/Project, collapsible, `Name (count)`). **P16** per-backlog **card** layout (`DataGrid`→grouped `ItemsControl`; tags full-width on top of each card, no horizontal scroll; Type/PCT/PCA → direct TwoWay) + tweaks (External in compact header, "Estimation" label, no-progress defaults to 0%). **P17** auto-provision current user on startup (unmapped Windows account → auto-create + map, no manual add / no picker). Specs+plans: `docs/superpowers/{specs,plans}/2026-07-02-*`. UAT: `.planning/P15-UAT.md`, `.planning/P16-UAT.md`. Summary: `.planning/P15-P16-P17-SUMMARY.md`. Follow-up UAT (non-blocking): live-check Type/PCT/PCA persist + auto-provision.
 - **M1 — WPF Desktop Timesheet Tool v1** — build complete, 162 tests green, QA-passed. Awaiting user UAT.
   - [x] P1 Data + Schema

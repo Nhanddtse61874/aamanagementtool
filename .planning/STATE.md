@@ -3,12 +3,43 @@
 ## Current Position
 
 **Phase:** Step 2 — Brainstorm (**M10 — delete WPF**). M9.1 merged to `main` **without UAT** (guard lifted deliberately — see below).
-**Status:** in_progress — M10 coverage audit running; **M11 (config → IConfiguration) queued** with decisions locked.
+**Status:** in_progress — M10 coverage audit **COMPLETE**; verdict **DO NOT DELETE YET** (3 blockers). **M11 (config → IConfiguration) queued** with decisions locked.
 **Last updated:** 2026-07-19
 
 ## Next Action
 
-Read the M10 coverage-audit memo, then write `docs/superpowers/specs/2026-07-19-m10-delete-wpf-design.md` → Mode Gate (STEP 3) → writing-plans.
+Decide disposition for the 3 M10 blockers + 2 live data-loss bugs (below). The WPF deletion **cannot be planned until those are dispositioned** — a delete-now plan would assert `PROJECT.md` §Success Criteria untested. Memo: `.planning/M10-COVERAGE-AUDIT.md`.
+
+## 🔴 M10 AUDIT RESULT (2026-07-19) — **DO NOT DELETE YET**
+
+**369 behaviors audited** across 22 sections: **148 COVERED · 57 PARTIAL · 43 MISSING (29 distinct) · 121 CORE-SURVIVES.** Of 194 `COVERED` claims put to adversarial refutation, **44 were attacked successfully** (the memo's own summary says 32 downgraded — ⚠️ reconcile that number against the per-section `-refute.md` files before quoting either).
+
+**The 3 blockers — each one alone stops the deletion:**
+1. **Backup RESTORE (BK-05) has no web path at all.** The API deliberately refuses to expose it (`RestoreAsync` overwrites the live `.db` under open connections), and **no CLI or runbook replacement exists in the repo.** Deleting WPF removes the only way to restore a backup. This was already known and filed as "out of scope" — the audit reclassifies it: out-of-scope for a *screen* is not out-of-scope for *deleting the last implementation*.
+2. **Auth cutover.** Existing non-admin users have `password_hash = NULL` → hard 401, no self-recovery, no bulk provisioning path. **Deleting WPF locks out the current user population.**
+3. **Four scheduled behaviors whose ONLY caller is `App.xaml.cs`**, with no hosted service anywhere in the API: auto-backup (BK-03), export-hub 12-month backfill, weekly standup-archive backfill, monthly task-list archive backfill. *(Exactly the class of loss the old "ViewModels + XAML" scope framing would have hidden.)*
+
+**Blast radius is LARGER than this file has been claiming** — verified against the repo, not copied forward:
+**78 WPF source files · 23 test files / 205 tests** (not 13/179: ViewModels 13/179 + Views 7/9 + `CurrentTeamServiceTests` 9 + `CurrentTeamPerUserTests` 4 + `DependencyInjectionTests` 4). `TimesheetApp.Tests` **652→447**; repo total **864→659**. Edits: `.sln` project entry `{5C25D2E0-…}`, `Tests.csproj:21` ProjectReference, `Core.csproj` `InternalsVisibleTo`. No deploy-script changes.
+
+## 🔴🔴 TWO LIVE DATA-LOSS BUGS IN THE SHIPPED WEB APP — found by the audit, **confirmed by me at the source**
+
+These are **not** M10 blockers. They are defects in code that is on `main` and running against the real DB **right now**.
+
+1. **Typing unparseable text in a Log Work cell SILENTLY DELETES the hours already there.**
+   `grid-state.ts:197-201` — `parseHours('abc')` → `null`. `log-work.component.ts:296-301` — `wanted === null` → `clearCell()`, a **DELETE**. So typing over `4` with a typo and tabbing away destroys the 4 with no warning.
+   🔴 **There is a green test pinning this**: `grid-state.spec.ts:190` *"reads gibberish as null rather than sending it"*. The test asserts the parse in isolation and is correct about it; **nobody traced the `null` two files onward to the delete.** A gate that cannot notice — the exact failure mode already named in this file.
+2. **"Backup now" reports success when nothing was written.**
+   `BackupService.cs:36` → `BackupToFolderAsync(_config.BackupFolderPath, …)`, and the default `BackupFolderPath` is **`""`** (`JsonAppConfigTests.cs:54` asserts it). `BackupNowAsync` returns `string?` = null. `settings.component.ts:550-551` then renders `r.value ?? 'the configured folder'` and toasts **"Backup complete"** unconditionally. Note `AutoBackupIfDueAsync` **does** guard this (`BackupService.cs:62`); the manual path does not.
+   Consequence: an operator can believe they hold backups they have never had. Compounds blocker 1 — no restore path *and* possibly no backups.
+
+## 🔴 THE FIRST AUDIT RUN WAS LOST — AND THE REASON IS A PROCESS BUG, NOT BAD LUCK
+
+`validate-state` on 2026-07-19 found this file claiming *"22 parallel auditors running"* while **no agent was running and no `M10*` file existed anywhere in the repo.** The auditors held their findings in memory, the session ended, and the entire pass evaporated — including the adversarial refutation.
+
+**The rule that would have saved it is already written in CLAUDE.md STEP 0:** *"Artifact persistence: write to disk immediately, never hold in memory."* It was applied to plans and specs but never to agent fan-out output.
+
+**Fix carried into the re-run:** every auditor writes `.planning/m10-audit/<KEY>.md` and every refuter writes `<KEY>-refute.md` **before returning**; the synthesizer reads those files off disk rather than from a return value. A crash now costs the incomplete sections only.
 
 ## Approved Mode
 
@@ -37,8 +68,10 @@ Two user decisions, recorded because both overrode something written here:
 ## ▶ M10 (ACTIVE) — delete the WPF app · Step 2 Brainstorm
 
 **Approach approved:** *verify-then-delete*. `PROJECT.md` §Success Criteria requires **every** feature in `.planning/M8-FEATURE-INVENTORY.md` be reachable in the web app — deleting without checking would assert that criterion untested.
-**Audit running:** 22 parallel auditors over the 864-line inventory (A1–A10 · B1–B5/B7–B11 · C · D) → adversarial refuters attacking every `COVERED` claim → synthesis memo.
-**Scope framing that makes the audit correct:** `TimesheetApp.Core` is **NOT** deleted. Only `src/TimesheetApp/` (ViewModels + XAML) dies, so the only losable behavior is what lives *in that directory*. Most of B1–B11 is in Core and survives regardless.
+**Audit re-running (2026-07-19):** 22 auditors over the **667-line** inventory (A1–A10 · B1–B5/B7–B11 · C · D) → adversarial refuters attacking every `COVERED` claim → synthesis memo → `.planning/M10-COVERAGE-AUDIT.md`. *(This file previously said 864 lines; the inventory is 667.)*
+**Scope framing that makes the audit correct:** `TimesheetApp.Core` is **NOT** deleted. Only `src/TimesheetApp/` dies. Most of B1–B11 is in Core and survives regardless.
+🔴 **But that directory is NOT just "ViewModels + XAML", as this file used to claim.** It also contains **`Services/CurrentTeamService.cs` (5.7 KB)**, `Services/ThemeService.cs` + `IThemeService.cs`, and **`App.xaml.cs` (13.9 KB — the entire startup lifecycle: migrations, admin bootstrap, conflict-copy detection, archive backfill)**. An audit scoped to "ViewModels + XAML" would have declared that startup behavior out of scope and never checked whether the web app reproduces it. The re-run scopes to the whole directory.
+**Asymmetry the auditors are briefed on:** a false `COVERED` deletes behavior with no replacement *and* no oracle left to catch it; a false `MISSING` costs an hour. When in doubt they must not say COVERED.
 **Blast radius measured:** `src/TimesheetApp/` · `TimesheetApp.Tests/ViewModels/` + `Views/` (13 files, **179 `[Fact]`/`[Theory]`**) · `ProjectReference` in `TimesheetApp.Tests.csproj` · `src/TimesheetApp.sln`. **.NET gate 689 → ~490.**
 **Checked, NOT a cleanup target:** `SqliteProfile.Desktop` does **not** die with WPF — `TestDb.cs:118` uses it and `HostBootTests.cs:60` guards the ctor-default trap on purpose.
 
