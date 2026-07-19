@@ -26,37 +26,69 @@ builder.Host.UseDefaultServiceProvider(o =>
 });
 
 // --- Config + paths -----------------------------------------------------------------------------------
-// The three seams the test host overrides. In production all three fall back to the desktop app's own
-// app-local locations, so the API reads the same database the WPF app already uses.
-var configPath = builder.Configuration["TimesheetApp:ConfigPath"];
-var dbPath = builder.Configuration["TimesheetApp:DbPath"];
-
-IAppConfig appConfig = string.IsNullOrWhiteSpace(configPath) || string.IsNullOrWhiteSpace(dbPath)
-    ? new JsonAppConfig()
-    : new JsonAppConfig(configPath, dbPath);
-
-// The Data Protection key ring MUST outlive the process (see AuthSetup). Default it next to the database
-// so it is picked up by whatever already backs the database up.
-var keyRingPath = builder.Configuration["TimesheetApp:KeyRingPath"];
-if (string.IsNullOrWhiteSpace(keyRingPath))
+// M11: ConfigPath / DbPath / KeyRingPath are REQUIRED IConfiguration keys, with NO fallback chain. Before
+// M11, an unset DbPath (even with ConfigPath set -- the `||` at F1) fell straight through to
+// JsonAppConfig()'s desktop-app %APPDATA% defaults: the operator got a running app pointed at the WRONG
+// database with no signal at all (fast-lane-settings-appsettings.json, F1). The fallback chain WAS the
+// bug; RequireConfig below refuses to start instead of guessing.
+//
+// appsettings.json now WINS over the persisted store for DbPath too (F2's fix, decided in
+// docs/superpowers/specs/2026-07-19-m11-configuration-design.md — the go-live requirement is
+// "DbPath from appsettings.json; existing file opened, absent file created", which is meaningless if a
+// stale %APPDATA% file could still outrank it). The value resolved below is AUTHORITATIVE -- see
+// JsonAppConfig's ctor. On a machine that has run this app before, editing appsettings.json now changes
+// which database it opens. That is the intent, and it is also a foot-gun: the banner further down prints
+// the path that ACTUALLY won, every start.
+static string RequireConfig(IConfiguration config, string key, string legacyHint)
 {
-    var dbDir = Path.GetDirectoryName(appConfig.DbPath);
-    keyRingPath = Path.Combine(
-        string.IsNullOrWhiteSpace(dbDir) ? Directory.GetCurrentDirectory() : dbDir,
-        "keys");
+    var value = config[$"TimesheetApp:{key}"];
+    if (!string.IsNullOrWhiteSpace(value)) return value;
+
+    Console.WriteLine("======================================================================");
+    Console.WriteLine($"  FATAL: required configuration key 'TimesheetApp:{key}' is not set.");
+    Console.WriteLine( "  Refusing to start rather than guess -- an unset location key used to fall");
+    Console.WriteLine( "  through to the wrong database with no warning at all.");
+    Console.WriteLine();
+    Console.WriteLine( "  Set it in appsettings.json, e.g.:");
+    Console.WriteLine($"    {{ \"TimesheetApp\": {{ \"{key}\": \"...\" }} }}");
+    Console.WriteLine($"  or as the environment variable TimesheetApp__{key}.");
+    Console.WriteLine();
+    Console.WriteLine($"  Legacy (pre-M11) value on this machine: {legacyHint}");
+    Console.WriteLine("======================================================================");
+    throw new InvalidOperationException(
+        $"Missing required configuration: TimesheetApp:{key}. See the console output above.");
 }
 
+var legacyAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+var configPath = RequireConfig(builder.Configuration, "ConfigPath",
+    Path.Combine(legacyAppData, "TimesheetApp", "appsettings.json") +
+    $" (an existing file there is migrated automatically to {JsonAppConfig.DefaultConfigPath()} -- F5 -- " +
+    "if you point ConfigPath at the new name instead)");
+var dbPath = RequireConfig(builder.Configuration, "DbPath", JsonAppConfig.DefaultDbPath());
+var keyRingPath = RequireConfig(builder.Configuration, "KeyRingPath",
+    Path.Combine(Path.GetDirectoryName(JsonAppConfig.DefaultDbPath())!, "keys"));
+
+// ArchivePath: OPTIONAL, unlike the three above -- it has a working default (a folder next to DbPath; see
+// StandupArchiveService / TaskListArchiveService) and breaking that default is not in this milestone's
+// scope. Only wired to IConfiguration so an operator CAN override it the same way, without being forced
+// to set it.
+var archivePath = builder.Configuration["TimesheetApp:ArchivePath"];
+
+IAppConfig appConfig = new JsonAppConfig(configPath, dbPath, archivePath);
 builder.Services.AddSingleton(appConfig);
 
 // --- Startup diagnostics: log WHICH database and config the process actually opened -------------------
 // A second machine that "cannot log in" almost always means the API opened a DIFFERENT database than
-// expected (there is no appsettings.json here, so the path comes from JsonAppConfig defaults, invisibly).
-// Nothing else prints the resolved path, so make it loud. Console.WriteLine, not ILogger: the logging
+// expected. This is the one place that reveals the resolved path BEFORE anything destructive (RestoreCli)
+// or confusing (a wrong login) can happen -- make it loud. Console.WriteLine, not ILogger: the logging
 // pipeline is not built yet at this point (app = builder.Build() is below), and this must print regardless
-// of how logging is later configured.
+// of how logging is later configured. appConfig.DbPath here is the path that ACTUALLY won (F2: it always
+// equals `dbPath` above, never a stale value from the persisted store).
 Console.WriteLine("======================================================================");
 Console.WriteLine($"  Database : {appConfig.DbPath}");
-Console.WriteLine($"  Config   : {(string.IsNullOrWhiteSpace(configPath) ? "(defaults)" : configPath)}");
+Console.WriteLine($"  Config   : {configPath}");
+Console.WriteLine($"  KeyRing  : {keyRingPath}");
 Console.WriteLine("======================================================================");
 
 // --- Offline restore CLI branch (M10 Blocker 2 / P2) ----------------------------------------------------

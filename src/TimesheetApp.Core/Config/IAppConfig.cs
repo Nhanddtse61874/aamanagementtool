@@ -1,12 +1,24 @@
 namespace TimesheetApp.Config;
 
-// DATA-07 / SET-01: the .db PATH is stored app-locally (%APPDATA%), never inside the
-// shared DB (avoids the chicken-and-egg of reading the path from the DB it points to).
+// DATA-07 / SET-01: the .db PATH is stored app-locally, never inside the shared DB (avoids the
+// chicken-and-egg of reading the path from the DB it points to).
+//
+// M11: DbPath is now sourced from IConfiguration (TimesheetApp:DbPath), REQUIRED, with no fallback --
+// Program.cs refuses to start if it is missing (F1) -- and it WINS over whatever JsonAppConfig's own
+// persisted store has on disk (F2). SetDbPath below still exists (no production caller uses it; kept for
+// the writable-store mechanics and existing tests), but a value it persists no longer outranks
+// IConfiguration on the NEXT start -- IConfiguration is authoritative every time. Do not read DbPath as
+// "the current runtime database" and assume SetDbPath can repoint it for a future restart; it cannot.
 public interface IAppConfig
 {
     string DbPath { get; }
     void SetDbPath(string dbPath);
 
+    // ArchivePath is also reachable from IConfiguration (TimesheetApp:ArchivePath), but -- unlike DbPath --
+    // NOT required: it has a working default (a folder next to DbPath; see StandupArchiveService /
+    // TaskListArchiveService) and M11 does not change that. When IConfiguration supplies it, Program.cs
+    // passes it into JsonAppConfig's ctor as an override; when absent, the persisted store / default apply
+    // exactly as before.
     string ArchivePath { get; }
     void SetArchivePath(string archivePath);
 
