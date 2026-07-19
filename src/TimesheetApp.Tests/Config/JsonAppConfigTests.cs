@@ -103,6 +103,31 @@ public class JsonAppConfigTests : IDisposable
         Assert.DoesNotContain("ActiveTeamId", File.ReadAllText(_configPath));
     }
 
+    // M11: IsDarkMode was REMOVED from the Model record (it was per-user/per-browser state that never
+    // belonged in a shared server process — docs/superpowers/specs/2026-07-19-m11-configuration-design.md
+    // §3). Every already-installed store may still carry an "IsDarkMode" key. Same load-bearing concern as
+    // Legacy_ActiveTeamId_Key_Is_Ignored_And_Persisted_Policy_Keys_Survive above: System.Text.Json skips
+    // unmapped members rather than throwing, so the stale key must NOT trip LoadModel's
+    // `catch (JsonException) -> return null`, which would silently reset every persisted policy key
+    // (e.g. DbPath's ArchivePath fallback, BackupKeepCount) to its default.
+    [Fact]
+    public void Legacy_IsDarkMode_Key_Is_Ignored_And_Persisted_Policy_Keys_Survive()
+    {
+        File.WriteAllText(_configPath,
+            "{\"DbPath\":\"D:\\\\OneDrive\\\\team\\\\timesheet.db\",\"IsDarkMode\":true,\"BackupKeepCount\":15}");
+
+        var cfg = new JsonAppConfig(_configPath, dbPath: @"C:\shared\timesheet.db");
+
+        // M11 (F2): DbPath is the ctor argument, not the stale persisted value.
+        Assert.Equal(@"C:\shared\timesheet.db", cfg.DbPath);
+        // BackupKeepCount is still a persisted policy key; the unmapped stale key does not disturb it.
+        Assert.Equal(15, cfg.BackupKeepCount);
+
+        // And the next write drops the dead key rather than preserving it forever.
+        cfg.SetBackupKeepCount(20);
+        Assert.DoesNotContain("IsDarkMode", File.ReadAllText(_configPath));
+    }
+
     [Fact]
     public void Backup_Settings_Persist_And_Survive_Reload()
     {

@@ -64,8 +64,6 @@ public sealed class RetentionServiceTests : IAsyncLifetime, IDisposable
         public void SetExportRoot2Path(string v) => ExportRoot2Path = v;
         public void SetRetentionEnabled(bool v) => RetentionEnabled = v;
         public void SetRetentionMonths(int v) => RetentionMonths = v;
-        public bool IsDarkMode { get; set; }
-        public void SetIsDarkMode(bool v) => IsDarkMode = v;
     }
 
     // No-op backup helper (XC-10 step verified by other tests; here we only need it not to throw).

@@ -18,7 +18,15 @@ namespace TimesheetApp.Models;
 // IsAdmin (v10 column is_admin) is appended AFTER RowVersion, not inserted next to IsActive, purely so
 // every existing construction keeps compiling: 34 call sites build a User positionally and none of them
 // would survive a parameter being spliced into the middle. Position carries no meaning here.
-public sealed record User(int Id, string Name, string? WindowsUsername, bool IsActive, long RowVersion = 0, bool IsAdmin = false);
+//
+// M11 (Users screen "everyone can log in" bug): HasPassword is appended after IsAdmin for the same
+// reason. It is `password_hash IS NOT NULL`, projected by every read in UserRepository -- NEVER the hash
+// itself (see the note on UserCredentials below for why the hash never rides on this record). It exists
+// so the admin Users screen can tell a bare username apart from an account that can actually log in,
+// instead of inferring "can log in" from username-non-empty alone.
+public sealed record User(
+    int Id, string Name, string? WindowsUsername, bool IsActive, long RowVersion = 0, bool IsAdmin = false,
+    bool HasPassword = false);
 
 // M8.3: the credential surface for login (schema v10 gave Users password_hash + is_admin, and until now
 // NOTHING read them — no repository method, no entity property, so nobody could log in and nobody could

@@ -48,8 +48,11 @@ namespace TimesheetApp.Api.Endpoints;
 /// <para><b>Never call any <c>IAppConfig.Set*</c> from an endpoint — with ONE deliberate exception, added at
 /// M10:</b> <c>SetBackupFolderPath</c> / <c>SetAutoBackupEnabled</c> / <c>SetBackupKeepCount</c>, via
 /// <c>PUT /api/ops/backup/settings</c>. Every OTHER setter this rule still forbids mutates state that is
-/// either genuinely PER-USER on a server (<c>SetIsDarkMode</c>) or catastrophically global in a way nobody
-/// asked for (<c>SetDbPath</c> repoints the whole server's database out from under every caller). Backup
+/// either genuinely PER-USER on a server (the reason <c>IsDarkMode</c> was deleted from <c>IAppConfig</c>
+/// entirely, rather than ever wired to a route, at M11 — a per-browser UI preference has no business in a
+/// process shared by every user; see docs/superpowers/specs/2026-07-19-m11-configuration-design.md §3) or
+/// catastrophically global in a way nobody asked for (<c>SetDbPath</c> repoints the whole server's database
+/// out from under every caller). Backup
 /// config is neither: it is GLOBAL BY DESIGN — one shared install has exactly one backup destination, exactly
 /// like <c>RetentionEnabled</c>/<c>RetentionMonths</c> would be if they ever grew a route — and the route is
 /// Admin-gated, so the "one user flips it for everyone" failure mode this rule exists to prevent is the
@@ -478,7 +481,7 @@ public static class SettingsEndpoints
 
                 var id = await users.InsertAsync(new User(0, req.Name, null, true));
                 await notifier.DataChangedAsync(DataKind.Users, teamId: 0, ctx.ConnectionId);
-                return Results.Ok(new UserDto(id, req.Name, null, true, false, RowVersion: 1));
+                return Results.Ok(new UserDto(id, req.Name, null, true, false, RowVersion: 1, HasPassword: false));
             })
             .RequireAuthorization(AuthSetup.AdminPolicy)
             .WithName("UserCreate")

@@ -34,6 +34,10 @@ public sealed class SwaggerFixture : IAsyncLifetime
     /// <summary>The <c>paths</c> object of <c>/swagger/v1/swagger.json</c>.</summary>
     public JsonElement Paths { get; private set; }
 
+    /// <summary>The <c>components.schemas</c> object — DTO shapes, for tests that pin a specific field
+    /// rather than a route (e.g. <c>UserDto.hasPassword</c>).</summary>
+    public JsonElement Schemas { get; private set; }
+
     public async Task InitializeAsync()
     {
         _factory = new ApiFactory();
@@ -42,6 +46,7 @@ public sealed class SwaggerFixture : IAsyncLifetime
 
         using var document = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
         Paths = document.RootElement.GetProperty("paths").Clone();
+        Schemas = document.RootElement.GetProperty("components").GetProperty("schemas").Clone();
     }
 
     public Task DisposeAsync() { _factory.Dispose(); return Task.CompletedTask; }
@@ -56,8 +61,13 @@ public sealed class SwaggerFixture : IAsyncLifetime
 public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
 {
     private readonly JsonElement _paths;
+    private readonly JsonElement _schemas;
 
-    public OpenApiContractTests(SwaggerFixture swagger) => _paths = swagger.Paths;
+    public OpenApiContractTests(SwaggerFixture swagger)
+    {
+        _paths = swagger.Paths;
+        _schemas = swagger.Schemas;
+    }
 
     // NOTE on "/api/backlogs/{id}/audit": the ROUTE is declared "{id:int}", but ApiExplorer STRIPS the route
     // constraint from the OpenAPI path. The key here is therefore "{id}" -- "{id:int}" is not in the document
@@ -575,5 +585,21 @@ public sealed class OpenApiContractTests : IClassFixture<SwaggerFixture>
         // query entry per element). A scalar schema here would make the client send "1,2" as a SINGLE value,
         // which int.TryParse rejects, which EffectiveTeamIds then drops -- leaving NO teams and a blank screen.
         Assert.Equal("array", teamIds.GetProperty("schema").GetProperty("type").GetString());
+    }
+
+    /// <summary>M11 (Users screen "everyone can log in" bug). <c>UserDto.HasPassword</c> is the whole fix:
+    /// without it in the DOCUMENT, ng-openapi-gen cannot see the field and the generated <c>UserDto</c>
+    /// model silently keeps lying by omission, exactly like the route-level failures this file otherwise
+    /// guards against. Pinned as a BOOLEAN, deliberately: this is the property that must NEVER become the
+    /// hash, its length, or any other part of it.</summary>
+    [Fact]
+    public void UserDto_schema_declares_hasPassword_as_a_boolean()
+    {
+        var properties = _schemas.GetProperty("UserDto").GetProperty("properties");
+
+        Assert.True(properties.TryGetProperty("hasPassword", out var hasPassword),
+            "UserDto's OpenAPI schema has no `hasPassword` property -- the generated client cannot see it, " +
+            "and the Users screen is back to inferring \"can log in\" from `username` alone.");
+        Assert.Equal("boolean", hasPassword.GetProperty("type").GetString());
     }
 }

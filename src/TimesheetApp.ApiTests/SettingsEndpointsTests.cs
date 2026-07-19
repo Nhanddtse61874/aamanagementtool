@@ -287,6 +287,25 @@ public sealed class SettingsEndpointsTests
         Assert.Contains(openList!, u => u.Id == user.Id && u.Name == "Bobby" && u.Username == "bob");
     }
 
+    /// <summary>M11 (Users screen "everyone can log in" bug). <c>UserDto.HasPassword</c> is
+    /// <c>password_hash IS NOT NULL</c>, projected so the admin screen can tell a bare username apart from
+    /// an account that can actually authenticate. Round-tripped through the REAL endpoint (not the
+    /// repository directly) so a wrong <c>ToDto()</c> mapping or a stale OpenAPI schema would show up
+    /// here too, not just at the repository layer.</summary>
+    [Fact]
+    public async Task UserDto_HasPassword_reflects_the_password_hash_and_survives_the_endpoint_round_trip()
+    {
+        using var factory = new ApiFactory();
+        var withPasswordId = await factory.SeedUserAsync("withpass", ApiFactory.DefaultPassword);
+        var withoutPasswordId = await factory.SeedUserWithoutPasswordAsync("nopass");
+
+        using var admin = await factory.AdminClientAsync();
+        var all = (await (await admin.GetAsync("/api/users/all")).Content.ReadFromJsonAsync<List<UserDto>>())!;
+
+        Assert.True(all.Single(u => u.Id == withPasswordId).HasPassword);
+        Assert.False(all.Single(u => u.Id == withoutPasswordId).HasPassword);
+    }
+
     [Fact]
     public async Task Users_all_list_is_admin_only_but_active_list_is_open()
     {

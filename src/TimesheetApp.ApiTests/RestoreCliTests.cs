@@ -50,8 +50,6 @@ public sealed class RestoreCliTests : IDisposable
         public void SetRetentionEnabled(bool v) => RetentionEnabled = v;
         public int RetentionMonths { get; set; } = 3;
         public void SetRetentionMonths(int v) => RetentionMonths = v;
-        public bool IsDarkMode { get; set; }
-        public void SetIsDarkMode(bool v) => IsDarkMode = v;
     }
 
     // A minimal REAL SQLite database (not a text file): CREATE TABLE + one row is enough for

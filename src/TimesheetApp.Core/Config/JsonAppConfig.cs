@@ -7,7 +7,7 @@ namespace TimesheetApp.Config;
 // fast-lane-settings-appsettings.json) because that name collided with TimesheetApp.Api's OWN
 // appsettings.json (real ASP.NET Core configuration, a completely different file/format). This class is
 // the WRITABLE POLICY STORE: BackupFolderPath/AutoBackupEnabled/BackupKeepCount, ExportRoot1/2Path,
-// RetentionEnabled/RetentionMonths, IsDarkMode. It is never read by builder.Configuration.
+// RetentionEnabled/RetentionMonths. It is never read by builder.Configuration.
 //
 // DbPath is NO LONGER read from this store (F2, "appsettings.json WINS over the persisted store" --
 // docs/superpowers/specs/2026-07-19-m11-configuration-design.md). The `dbPath` ctor argument is
@@ -35,8 +35,7 @@ public sealed class JsonAppConfig : IAppConfig
         string? ExportRoot1Path = null,
         string? ExportRoot2Path = null,
         bool? RetentionEnabled = null,
-        int? RetentionMonths = null,
-        bool? IsDarkMode = null);
+        int? RetentionMonths = null);
 
     // P9 (BK-06): default retention when no value persisted yet.
     private const int DefaultBackupKeepCount = 30;
@@ -54,7 +53,6 @@ public sealed class JsonAppConfig : IAppConfig
     private string _exportRoot2Path;
     private bool _retentionEnabled;
     private int _retentionMonths;
-    private bool _isDarkMode;
 
     // M11: the parameterless ctor (implicit %APPDATA% defaults, used when Program.cs had no explicit
     // config) is GONE. ConfigPath/DbPath/KeyRingPath are now required IConfiguration keys with no fallback
@@ -86,7 +84,6 @@ public sealed class JsonAppConfig : IAppConfig
         _exportRoot2Path = model?.ExportRoot2Path ?? "";
         _retentionEnabled = model?.RetentionEnabled ?? false;
         _retentionMonths = model?.RetentionMonths ?? DefaultRetentionMonths;
-        _isDarkMode = model?.IsDarkMode ?? false;
     }
 
     public string DbPath => _dbPath;
@@ -98,7 +95,6 @@ public sealed class JsonAppConfig : IAppConfig
     public string ExportRoot2Path => _exportRoot2Path;
     public bool RetentionEnabled => _retentionEnabled;
     public int RetentionMonths => _retentionMonths;
-    public bool IsDarkMode => _isDarkMode;
 
     public void SetDbPath(string dbPath)
     {
@@ -154,12 +150,6 @@ public sealed class JsonAppConfig : IAppConfig
         Save();
     }
 
-    public void SetIsDarkMode(bool dark)
-    {
-        _isDarkMode = dark;
-        Save();
-    }
-
     private void Save()
     {
         var dir = Path.GetDirectoryName(_configPath);
@@ -173,8 +163,7 @@ public sealed class JsonAppConfig : IAppConfig
             string.IsNullOrWhiteSpace(_exportRoot1Path) ? null : _exportRoot1Path,
             string.IsNullOrWhiteSpace(_exportRoot2Path) ? null : _exportRoot2Path,
             _retentionEnabled,
-            _retentionMonths,
-            _isDarkMode);
+            _retentionMonths);
         var json = JsonSerializer.Serialize(model, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
     }

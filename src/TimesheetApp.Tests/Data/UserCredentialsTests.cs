@@ -176,4 +176,26 @@ public class UserCredentialsTests
         Assert.True((await repo.GetActiveAsync()).Single(u => u.Id == adminId).IsAdmin);
         Assert.False((await repo.GetActiveAsync()).Single(u => u.Id == plainId).IsAdmin);
     }
+
+    // M11 (Users screen "everyone can log in" bug): the admin Users screen needs to tell a bare username
+    // apart from an account that can actually authenticate, so User has to carry HasPassword out of every
+    // read path -- same requirement, same shape, as User_reads_project_IsAdmin above. HasPassword is
+    // `password_hash IS NOT NULL`; the hash itself never leaves UserRepository (see UserRaw.password_hash).
+    [Fact]
+    public async Task User_reads_project_HasPassword()
+    {
+        using var db = await TestDb.CreateAsync();
+        var repo = new UserRepository(db);
+        var withHashId = await db.SeedUserAsync("HasPass", "haspass");
+        var noHashId = await db.SeedUserAsync("NoPass", "nopass");
+        await repo.SetPasswordHashAsync(withHashId, "HASH-1");
+
+        Assert.True((await repo.GetByIdAsync(withHashId))!.HasPassword);
+        Assert.False((await repo.GetByIdAsync(noHashId))!.HasPassword);
+        Assert.True((await repo.GetByUsernameAsync("haspass"))!.HasPassword);
+
+        Assert.True((await repo.GetAllAsync()).Single(u => u.Id == withHashId).HasPassword);
+        Assert.True((await repo.GetActiveAsync()).Single(u => u.Id == withHashId).HasPassword);
+        Assert.False((await repo.GetActiveAsync()).Single(u => u.Id == noHashId).HasPassword);
+    }
 }
