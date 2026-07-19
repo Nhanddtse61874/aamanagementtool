@@ -1,0 +1,49 @@
+{
+  "task": "Normalize settings: move the default database setting into an appsettings file",
+  "assessed": "2026-07-19",
+  "eligible": false,
+  "task_class": "normal",
+  "analysis": {
+    "scope_clear_and_unambiguous": false,
+    "small_change_1_2_files": false,
+    "no_architecture_or_api_contract_change": false,
+    "no_security_or_data_migration_impact": false,
+    "low_regression_risk": false
+  },
+  "hard_exclusions_triggered": [
+    "Touches *-config* files (skill red flag: never Fast Lane config surfaces) - src/TimesheetApp.Core/Config/JsonAppConfig.cs",
+    "Cross-cutting: config resolution is consumed by 13 files / ~39 call sites plus both test suites",
+    "New feature: no appsettings.json exists anywhere in the repo, so this creates a configuration layer rather than moving one"
+  ],
+  "reason": "The request reads as a small relocation but there is no appsettings.json in the repo at all; introducing one changes the DB-path precedence model on the exact seam STATE.md flags as having been insufficient for three milestones, and risks redirecting the API test suite or production at the wrong database.",
+  "recommended_skips": [],
+  "required_minimum_gates": ["brainstorm", "mode_gate", "research", "plan_check", "verification", "qa_gate"],
+  "fallback_path": "Full workflow from STEP 2 (brainstorm). Before any code lands, empirically prove configuration precedence: an appsettings.json in TimesheetApp.Api must NOT override WebApplicationFactory.UseSetting, or every API test silently retargets the production database.",
+  "blocking_findings": [
+    {
+      "id": "F1",
+      "severity": "critical",
+      "finding": "Program.cs:34 uses || not &&: setting TimesheetApp:DbPath alone falls through to new JsonAppConfig() (full production defaults). Putting DbPath in appsettings.json without ConfigPath is silently a no-op."
+    },
+    {
+      "id": "F2",
+      "severity": "critical",
+      "finding": "JsonAppConfig.cs:57 (_dbPath = model?.DbPath ?? defaultDbPath): the persisted %APPDATA% config wins over the ctor argument. On any machine that has run the app, an appsettings.json DbPath is dead weight."
+    },
+    {
+      "id": "F3",
+      "severity": "critical",
+      "finding": "UNVERIFIED precedence: ApiFactory.cs:104-106 and SignalRTestFactory.cs:55-57 sandbox tests via UseSetting. If a new appsettings.json in TimesheetApp.Api outranks UseSetting, both API suites point at the real DB. Must be proven empirically before shipping."
+    },
+    {
+      "id": "F4",
+      "severity": "important",
+      "finding": "AdminBootstrap.cs:143 documents overriding bootstrap credentials 'in appsettings.json' - a file that does not exist. The doc is already lying; this task either makes it true or should correct it."
+    },
+    {
+      "id": "F5",
+      "severity": "important",
+      "finding": "Naming collision: %APPDATA%\\TimesheetApp\\appsettings.json is a flat POCO written by JsonAppConfig.Save(), NOT ASP.NET Core configuration format and never read by builder.Configuration. Two different files would both be called 'appsettings.json'."
+    }
+  ]
+}

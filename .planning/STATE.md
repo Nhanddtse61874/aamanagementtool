@@ -2,14 +2,54 @@
 
 ## Current Position
 
-**Phase:** Step 8 — UAT (M9.1 executed + **Step 9 QA APPROVE**). Awaiting user click-through. Mode A, subagent-driven. M9 UAT round-2 also still open (user-driven).
-**Status:** waiting_for_user (STEP 8 UAT — do NOT merge until PASS)
-**Last updated:** 2026-07-17
+**Phase:** Step 2 — Brainstorm (**M10 — delete WPF**). M9.1 merged to `main` **without UAT** (guard lifted deliberately — see below).
+**Status:** in_progress — M10 coverage audit running; **M11 (config → IConfiguration) queued** with decisions locked.
+**Last updated:** 2026-07-19
+
+## Next Action
+
+Read the M10 coverage-audit memo, then write `docs/superpowers/specs/2026-07-19-m10-delete-wpf-design.md` → Mode Gate (STEP 3) → writing-plans.
+
+## Approved Mode
+
+**Mode A** — approved 2026-07-16 (carried forward from M9.1; M10 re-gates at STEP 3).
 
 ## ▶ RESUME HERE
 
-**`main` @ `e710717`.** M9 merged; **UAT round-1 (2026-07-15) fixed 5 defects** (below). **The app is RUNNING** — API :5080 (**real DB**), web :4200. **New:** `deploy-local.bat` runs single-process (API serves the built UI on :5080 → one origin → Lax cookie survives; no proxy).
-**Suite: was 1882 green at `8c12f20`; advanced by round-1 — RE-VERIFY with a clean build (safe ConfigPath) before trusting a count.** 0-warnings target unchanged.
+**`main` @ `2c2cb49`.** M9 + **M9.1 both merged**. **The app is RUNNING** — API :5080 (**real DB**), web :4200. `deploy-local.bat` runs single-process (API serves the built UI on :5080 → one origin → Lax cookie survives; no proxy).
+**Suite: 1938 green at `f9498f5`** (689 .NET + 507 API + 742 Angular). **Verified 2026-07-19: zero code changed since that commit** (`git diff f9498f5..HEAD -- ':(exclude).planning'` empty), so the number still holds. 0-warnings target unchanged.
+
+---
+
+## 🔻 GUARD LIFTED 2026-07-19 — M9.1 merged un-UAT'd, and UAT is now batched
+
+Two user decisions, recorded because both overrode something written here:
+
+1. **"Do NOT merge until PASS" was lifted.** M9.1 merged to `main` at `2c2cb49` with **G3/G6/G10 never clicked**.
+   **Why it was acceptable:** `main` **is not deployed anywhere** — the *"the company has no server"* blocker (below) is still open, so the trunk is not production. Merging un-accepted code costs a revert, not an outage. Code was also provably unchanged since the 1938-green gate.
+   **What it costs:** `main` now carries three behaviors no human has confirmed.
+
+2. **All UAT is deferred to one batch at the end** — M9.1 `G3/G6/G10` **plus** `OT-13…OT-25` get clicked together after M10 and M11 land.
+   🔴 **Consequence to remember:** M9.1's `G3` is specified as *"Matches the old WPF app"* — and **M10 deletes the WPF app**. After M10 there is no running oracle to compare against. Mitigations: the source stays in git history (checkout + build is possible), and the **M10 coverage audit exists precisely to write WPF's behavior down before it goes**. Do not let the audit be skipped on the grounds that it is "just paperwork" — it *is* the oracle after M10.
+
+---
+
+## ▶ M10 (ACTIVE) — delete the WPF app · Step 2 Brainstorm
+
+**Approach approved:** *verify-then-delete*. `PROJECT.md` §Success Criteria requires **every** feature in `.planning/M8-FEATURE-INVENTORY.md` be reachable in the web app — deleting without checking would assert that criterion untested.
+**Audit running:** 22 parallel auditors over the 864-line inventory (A1–A10 · B1–B5/B7–B11 · C · D) → adversarial refuters attacking every `COVERED` claim → synthesis memo.
+**Scope framing that makes the audit correct:** `TimesheetApp.Core` is **NOT** deleted. Only `src/TimesheetApp/` (ViewModels + XAML) dies, so the only losable behavior is what lives *in that directory*. Most of B1–B11 is in Core and survives regardless.
+**Blast radius measured:** `src/TimesheetApp/` · `TimesheetApp.Tests/ViewModels/` + `Views/` (13 files, **179 `[Fact]`/`[Theory]`**) · `ProjectReference` in `TimesheetApp.Tests.csproj` · `src/TimesheetApp.sln`. **.NET gate 689 → ~490.**
+**Checked, NOT a cleanup target:** `SqliteProfile.Desktop` does **not** die with WPF — `TestDb.cs:118` uses it and `HostBootTests.cs:60` guards the ctor-default trap on purpose.
+
+## ▶ M11 (QUEUED) — settings → IConfiguration · decisions locked 2026-07-19
+
+Sequenced **after** M10 so each milestone moves the gate for exactly one reason (gate drops ~200 for the deletion; then moves again for config — conflate them and a regression is untraceable).
+- **Cut:** `DbPath` / `ConfigPath` / `KeyRingPath` → `IConfiguration`, **required**. The 7 policy keys (backup / retention / export) stay in the writable store. `IsDarkMode` → client.
+- **Missing config = fail-fast.** Refuse to start, print the legacy `%APPDATA%` value so the operator can copy it. **No fallback chain** — that is the 🔴🔴 mechanism below.
+- ~~`IDatabaseLocation` bridging both hosts~~ — **dropped**, M10 removes the second host.
+- 🔴 **BLOCKING pre-req:** prove empirically that an `appsettings.json` in `TimesheetApp.Api` does **not** outrank `WebApplicationFactory.UseSetting` (`ApiFactory.cs:104-106`, `SignalRTestFactory.cs:55-57`). If it does, **both API suites silently retarget the real company DB.** Demonstrate with a run + positive control — never by reasoning.
+- Findings F1–F5 recorded in `.planning/fast-lane-settings-appsettings.json`.
 
 ### UAT round-1 (2026-07-15) — fixed (were NOT in the OT list)
 - **Dark-theme flip** ("opening Settings turns it dark"): `ThemeService.readDark()` followed `prefers-color-scheme` and disagreed with `main.ts`; dark is now explicit opt-in (`e710717`; toggle isolated to a real `role=switch` button in `60f7a17`).
@@ -42,11 +82,13 @@
 | Login · **Log Work** · **Backlog** | ✅ M8.4 · M8.5 · M8.6 |
 | **Task List** (incl. the **Gantt**) · **Daily Report** · **Reports** · **Users** · **Settings** | ✅ **M9** |
 
-**The WPF app can now be deleted (M10) — but do not, until the user has clicked through everything.**
+**The WPF app is being deleted in M10.** ~~*"but do not, until the user has clicked through everything"*~~ — **guard lifted 2026-07-19** by user decision; UAT is batched to the end instead. The coverage audit replaces the click-through as the pre-deletion check. See "GUARD LIFTED" above.
 
 ---
 
-## 🔴 OPEN — round-2 click-through (round-1 done 2026-07-15). Code-audit 2026-07-16 verdicts inline.
+## 🔴 OPEN — click-through, now BATCHED to one session after M10 + M11 (user decision 2026-07-19)
+
+Nothing below has been clicked. **Add M9.1's `G3` / `G6` / `G10`** (`.planning/M9.1-UAT.md`) to this list — they were merged un-accepted. Round-1 done 2026-07-15; code-audit 2026-07-16 verdicts inline.
 
 **M8.5:** OT-13 (delete → reorder → reload) · OT-14 (delete → add → reload)
 **M8.6:** OT-15 … OT-19
