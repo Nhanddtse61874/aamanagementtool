@@ -2,15 +2,36 @@
 
 ## Current Position
 
-**Phase:** Step 7 — **Execute (task 1 complete, 1/2 done)** for **M12 (tag icon presets)**. UAT of M9.2/M10/M11 is paused, not abandoned — see below.
-**Status:** in_progress
+**Phase:** Step 8 — **UAT** for **M12 (tag icon presets)**. Execution complete, all reviews passed. UAT of M9.2/M10/M11 is still paused, not abandoned — see below.
+**Status:** waiting_for_user — 👤 **G-1 is the only check the suite structurally cannot make.**
 **Last updated:** 2026-07-20
 
-**Branch: `feature/tag-icon-presets-2026-07-20`** (off `d69cb9a`). Execution: subagent-driven, both tasks `sonnet`.
+**Branch: `feature/tag-icon-presets-2026-07-20`** (off `d69cb9a`, **not merged**). 5 commits. Subagent-driven, both tasks `sonnet`.
+**Gate: Angular 806 → 814**, build clean, `ERROR`/`FAILED`/`reading 'pipe'` all **0** in raw output. **Re-run by the controller**, not relayed.
+**Real company DB untouched** — mtime still `2026-07-15`, verified after execution.
 
-**Next Action:** Dispatch task 2 (the button row: template + SCSS + 3 DOM tests).
+**Next Action:** 👤 run `.planning/M12-UAT.md` — rebuild the UI, restart the API, click through **G-1…G-6**, and answer the edit-path question in that file. Then STEP 9 QA → merge.
 
-✅ **Task 1 — `7739aab`.** `PresetIcon` + exported `PRESET_ICONS` + the `presetIcons` class member. Gate **806 → 810, exactly +4**; the implementer confirmed it saw the compile-error red before implementing. Spec review **COMPLIANT** (reviewer re-ran the suite and verified empirically that `'👨‍💻'.length === 5`, so the maxlength guard would genuinely fail). Quality review **APPROVED WITH CONDITIONS**.
+## 🔴 M12's real lesson: FOUR planning defects, and I caught none of them myself
+
+Every one was caught by a gate, not by the author. Recorded because the pattern matters more than the feature.
+
+| # | Defect | Caught by |
+|---|---|---|
+| 1 | The DOM test had **no `fakeAsync`/`tick()` at all** — `[ngModel]` writes model→view on a microtask, so it could not have passed | **Plan Checker** |
+| 2 | With `tick()` added, it was **in the wrong place**. Correct order is `detectChanges() → tick() → detectChanges()` | Implementer |
+| 3 | `createTag` was never stubbed → `run()` threw on `undefined.pipe()`, Angular swallowed it, **4 errors printed while the suite reported green** | Implementer |
+| 4 | The `"text untouched"` assertion was **structurally vacuous** — text is `''` before AND after on the create path, so it could catch a preset that *writes* text but never one that *clears* it. Colour was unasserted | **Final review** |
+
+🔴 **Defect 4 is the one to remember.** It is the same family as M9.2's `grid-state.spec.ts:190` — an assertion that is *correct* and *proves nothing*. It was fixed by an edit-path test, and the vacuity was then **demonstrated rather than argued**: mutating `setTagIcon` to also clear the text makes the new test fail and **the old one still pass**. Same for colour.
+
+**Plan Checker earned its keep.** M9.2 skipped it and got lucky; this time it caught the defect that would have produced a red test on first run, plus buttons that would have been invisible (`var(--surf2)` on a `var(--surf2)` panel — a true 1:1 contrast).
+
+✅ **Task 1 — `7739aab`.** `PresetIcon` + exported `PRESET_ICONS` + the `presetIcons` member. Gate **806 → 810, exactly +4**. Spec review **COMPLIANT** (reviewer verified empirically that `'👨‍💻'.length === 5`, so the maxlength guard would genuinely fail). Quality **APPROVED WITH CONDITIONS**.
+
+✅ **Task 2 — `c9f64ba` → `d0541cd` → `4d06a38` → `6d053c1`.** The row, the swallowed-throw fix, the `role="group"` a11y fix, and the vacuity fix. **814 green.** Both reviews passed; final review **READY FOR UAT**.
+
+🟠 **Open product question, in `.planning/M12-UAT.md`:** editing a tag that carries a custom glyph and clicking a preset **destroys the old glyph with no undo** — clearing by hand gives empty, not the original, and Cancel discards the whole edit. Spec §5.5 declined a deselect toggle on reasoning (*"the text input clears by hand"*) that only holds when creating. **The spec only ever discussed creating.** Controller recommends accepting it; the user decides.
 
 **The quality condition was declined, deliberately:** the reviewer suggested extracting `PRESET_ICONS` into its own `preset-icons.ts` + spec, to match the precedent set by `holiday-calendar.ts` and `settings-templates.ts` for pure TestBed-free data. The observation is correct — the constant currently takes the *placement* of one local pattern and the *test shape* of another. It was not acted on because it is a refactor outside the task's file list (spec §9) and Surgical Changes says mention rather than fix. **Worth revisiting if a second constant of this kind appears** — the reviewer's real argument was that this becomes the template the next one copies.
 
