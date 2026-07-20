@@ -14,24 +14,33 @@ import { SmartFillTaskRequest } from '../../api/models';
  *     across 3 days is 2.666…, which rounds to 2.7 × 3 = 8.1 — an hour the user never asked for, and enough
  *     to breach the 8h/day cap on a day that was already full.
  *
- * So: round every day to 1dp, then push the accumulated rounding drift onto the LAST day.
+ * 🔴 THIS FILE ONCE CLAIMED TO BE "the same rule" AS CORE AND WAS NOT.
+ *
+ * The old body rounded each day to 1dp first and then subtracted the accumulated drift from the last day.
+ * That agrees with Core whenever the division rounds DOWN, and disagrees whenever it rounds UP:
+ *
+ *     8h over 3 days    Core  [2.6, 2.6, 2.8]     old TypeScript  [2.7, 2.7, 2.6]
+ *     10h over 3 days   Core  [3.3, 3.3, 3.4]     old TypeScript  [3.3, 3.3, 3.4]   (agreed, by luck)
+ *
+ * Both summed correctly, so no test and no API validation could catch it — but they are not the same
+ * distribution, and the direction of the difference matters: SI-01 says the remainder LANDS ON the last
+ * working day. Core floors and adds the remainder there, so the last day gets MORE. The old code rounded
+ * up and then took hours OFF the last day, which is the opposite of the documented rule.
+ *
+ * This is now Core's algorithm exactly — integer tenths, floor, remainder onto the last day
+ * (SmartInputService.cs:37-39). Integer tenths also avoid the binary-float drift the Core comment cites.
  */
 export function distributeHours(total: number, dayCount: number): number[] {
   if (dayCount <= 0 || total <= 0) return [];
 
-  const per = round1(total / dayCount);
-  const cells = Array<number>(dayCount).fill(per);
+  const totalTenths = Math.round(total * 10);
+  const baseTenths = Math.floor(totalTenths / dayCount);
+  const remainder = totalTenths % dayCount;
 
-  // Whatever the rounding gained or lost across the week, settle it on the final day so the sum is exact.
-  const drift = round1(total - per * dayCount);
-  cells[dayCount - 1] = round1(cells[dayCount - 1] + drift);
+  const cells = Array<number>(dayCount).fill(baseTenths / 10);
+  cells[dayCount - 1] = (baseTenths + remainder) / 10;
 
   return cells;
-}
-
-/** One decimal place — the most the API will accept. */
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
 }
 
 /**

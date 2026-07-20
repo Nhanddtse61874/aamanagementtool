@@ -25,8 +25,23 @@ describe('distributeHours', () => {
     }
   });
 
-  it('settles the rounding drift on the last day', () => {
-    expect(distributeHours(8, 3)).toEqual([2.7, 2.7, 2.6]);   // 2.7+2.7+2.6 = 8.0 exactly
+  /**
+   * 🔴 THIS TEST USED TO ASSERT [2.7, 2.7, 2.6] AND WAS WRONG, ALONG WITH THE CODE IT PINNED.
+   *
+   * The old client rounded each day UP and then took the drift OFF the last day. Core floors and ADDS the
+   * remainder to the last day (SmartInputService.cs:37-39), which is what SI-01 actually specifies:
+   * "remainder lands on the last working day". Same total, opposite direction, different per-day hours --
+   * so the same request produced different timesheets depending on which app the user was in.
+   *
+   * Nothing could have caught it: both versions summed correctly and both respected the 1-decimal API
+   * limit, so neither the suite nor the server's validation had anything to object to. Only comparing the
+   * two implementations reveals it, and smart-fill.ts claimed they were "the same rule".
+   */
+  it('puts the remainder ON the last day, matching Core exactly', () => {
+    expect(distributeHours(8, 3)).toEqual([2.6, 2.6, 2.8]);    // was [2.7, 2.7, 2.6] -- Core disagreed
+    expect(distributeHours(10, 3)).toEqual([3.3, 3.3, 3.4]);   // SI-01's own worked example, verbatim
+    expect(distributeHours(7, 3)).toEqual([2.3, 2.3, 2.4]);
+    expect(distributeHours(5, 3)).toEqual([1.6, 1.6, 1.8]);
   });
 
   it('is empty for a nonsense request rather than sending zeros', () => {
