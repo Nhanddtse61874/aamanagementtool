@@ -714,6 +714,44 @@ describe('TaskListComponent', () => {
   });
 
   // ===================================================================================================
+  // 🔴 EVERY DROPDOWN ON THIS SCREEN SHOWED BLANK, WHATEVER THE DATA SAID. Found in UAT, 2026-07-20.
+  //
+  // The template bound `<select [value]="row.type">` with its <option>s produced by @for. Angular applies
+  // an element's property bindings BEFORE it creates that element's embedded views, so `value` was written
+  // while the select had no options to match — the browser discards such a write — and on every later pass
+  // the bound value was UNCHANGED, so Angular never wrote it again. The control sat on its first option
+  // forever while the row underneath held the right data.
+  //
+  // The user reported it as two separate bugs ("values from creation don't show" and "editing doesn't
+  // save"). It was one: the edit DID save, and the re-render showed blank again.
+  //
+  // 805 tests were green through all of it. Every existing test asserted through the component's public
+  // API or the request body, and this defect lives entirely between the model and the DOM — the one seam
+  // nothing was looking at. These assertions go through the rendered <select>.
+  // ===================================================================================================
+
+  it('🔴 every dropdown SHOWS the row\'s current value in the DOM, not its first option', async () => {
+    await setUp();
+    component.toggleExpand(ROW);          // Type / PCA / the task row live in the expanded body
+    await settle();
+
+    const el = fixture.nativeElement as HTMLElement;
+    const selects = Array.from(el.querySelectorAll('select')) as HTMLSelectElement[];
+    const byLabel = (label: string) => selects.find(s => s.getAttribute('aria-label') === label);
+
+    // ROW: type 'Implement', assigneeUserId 42, pcaContactId 9. TASK: status 'Todo', type 'IT', assignee 43.
+    expect(byLabel('Type')?.value).toBe('Implement');
+    expect(byLabel('PCT assignee')?.value).toBe('42');
+    expect(byLabel('PCA contact')?.value).toBe('9');
+    expect(byLabel('Status')?.value).toBe('Todo');
+    expect(byLabel('Assignee')?.value).toBe('43');
+
+    // ...and the month/year bar, which had the same defect and would strand the user on the wrong period.
+    const month = selects.find(s => s.value === String(component.month()));
+    expect(month).withContext('the Month select shows the selected month').toBeDefined();
+  });
+
+  // ===================================================================================================
   // 🔴 P8 — the PROJECT label, lost entirely in team-banded mode (A4 audit #30)
   // ===================================================================================================
 

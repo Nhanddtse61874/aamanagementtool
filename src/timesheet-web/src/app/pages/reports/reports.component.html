@@ -19,7 +19,12 @@
     <label for="rpt-target">Report for
       <span class="select-wrap">
         <select id="rpt-target" class="select" [value]="selectedUserId()" (change)="onTargetChange($any($event.target).value)">
-          @for (t of targets(); track t.userId) { <option [value]="t.userId">{{ t.display }}</option> }
+          <!-- 🔴 [selected] on the OPTION. A <select [value]> is applied before @for creates its children,
+               so the browser has nothing to match and drops it; later passes see an unchanged binding and
+               never rewrite it. Same defect the Task List carried on all eight of its dropdowns. -->
+          @for (t of targets(); track t.userId) {
+            <option [value]="t.userId" [selected]="t.userId === selectedUserId()">{{ t.display }}</option>
+          }
         </select>
         <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg>
       </span>
@@ -28,7 +33,7 @@
     <label for="rpt-project">Project
       <span class="select-wrap">
         <select id="rpt-project" class="select" [value]="selectedProject()" (change)="onProjectChange($any($event.target).value)">
-          @for (p of projects; track p) { <option [value]="p">{{ p }}</option> }
+          @for (p of projects; track p) { <option [value]="p" [selected]="p === selectedProject()">{{ p }}</option> }
         </select>
         <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m6 9 6 6 6-6"/></svg>
       </span>

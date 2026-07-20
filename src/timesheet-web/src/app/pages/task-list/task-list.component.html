@@ -12,9 +12,15 @@
   <div class="card card--pad tl-bar">
     <label class="tl-field">
       <span>Month</span>
+      <!-- 🔴 [selected] ON THE OPTION, not [value] on the <select>. Angular applies the element's property
+           bindings BEFORE @for creates the children, so a <select [value]> is set while it has no options
+           to match — the browser drops it — and on every later pass the bound value is UNCHANGED, so
+           Angular never writes it again. The control sits on its first option forever while the data
+           underneath is correct. Every dropdown on this screen had it; daily-report.component.html:110
+           already used [selected] and was right all along. -->
       <select [value]="month()" (change)="onMonth($event)">
         @for (m of MONTHS; track m) {
-          <option [value]="m">{{ m === ALL_MONTHS ? 'All months' : m }}</option>
+          <option [value]="m" [selected]="m === month()">{{ m === ALL_MONTHS ? 'All months' : m }}</option>
         }
       </select>
     </label>
@@ -22,7 +28,7 @@
     <label class="tl-field">
       <span>Year</span>
       <select [value]="year()" (change)="onYear($event)">
-        @for (y of YEARS; track y) { <option [value]="y">{{ y }}</option> }
+        @for (y of YEARS; track y) { <option [value]="y" [selected]="y === year()">{{ y }}</option> }
       </select>
     </label>
 
@@ -156,8 +162,10 @@
               <span class="tl-cell__lbl">PCT</span>
               <select class="tl-sel" [value]="row.assigneeUserId ?? ''" [disabled]="saving()"
                       (change)="onBacklogAssignee(row, $event)" aria-label="PCT assignee">
-                <option value="">—</option>
-                @for (o of assigneeOptionsFor(row); track o.id) { <option [value]="o.id">{{ o.label }}</option> }
+                <option value="" [selected]="row.assigneeUserId == null">—</option>
+                @for (o of assigneeOptionsFor(row); track o.id) {
+                  <option [value]="o.id" [selected]="o.id === row.assigneeUserId">{{ o.label }}</option>
+                }
               </select>
             </span>
 
@@ -233,16 +241,18 @@
                   <span class="tl-cell__lbl">Type</span>
                   <select class="tl-sel" [value]="row.type ?? ''" [disabled]="saving()"
                           (change)="onBacklogType(row, $event)" aria-label="Type">
-                    <option value="">—</option>
-                    @for (t of TYPES; track t) { <option [value]="t">{{ t }}</option> }
+                    <option value="" [selected]="!row.type">—</option>
+                    @for (t of TYPES; track t) { <option [value]="t" [selected]="t === row.type">{{ t }}</option> }
                   </select>
                 </span>
                 <span class="tl-fact">
                   <span class="tl-cell__lbl">PCA</span>
                   <select class="tl-sel" [value]="row.pcaContactId ?? ''" [disabled]="saving()"
                           (change)="onBacklogPca(row, $event)" aria-label="PCA contact">
-                    <option value="">—</option>
-                    @for (o of pcaOptionsFor(row); track o.id) { <option [value]="o.id">{{ o.label }}</option> }
+                    <option value="" [selected]="row.pcaContactId == null">—</option>
+                    @for (o of pcaOptionsFor(row); track o.id) {
+                      <option [value]="o.id" [selected]="o.id === row.pcaContactId">{{ o.label }}</option>
+                    }
                   </select>
                 </span>
                 <span class="tl-fact">
@@ -267,19 +277,23 @@
 
                   <select class="tl-sel" [value]="task.status ?? 'Todo'" [disabled]="saving()"
                           (change)="onTaskStatus(task, $event)" aria-label="Status">
-                    @for (s of STATUSES; track s) { <option [value]="s">{{ s }}</option> }
+                    @for (s of STATUSES; track s) {
+                      <option [value]="s" [selected]="s === (task.status ?? 'Todo')">{{ s }}</option>
+                    }
                   </select>
 
                   <select class="tl-sel" [value]="task.type ?? ''" [disabled]="saving()"
                           (change)="onTaskType(task, $event)" aria-label="Type">
-                    <option value="">—</option>
-                    @for (t of TYPES; track t) { <option [value]="t">{{ t }}</option> }
+                    <option value="" [selected]="!task.type">—</option>
+                    @for (t of TYPES; track t) { <option [value]="t" [selected]="t === task.type">{{ t }}</option> }
                   </select>
 
                   <select class="tl-sel" [value]="task.assigneeUserId ?? ''" [disabled]="saving()"
                           (change)="onTaskAssignee(task, $event)" aria-label="Assignee">
-                    <option value="">—</option>
-                    @for (u of assignees(); track u.id) { <option [value]="u.id">{{ u.name }}</option> }
+                    <option value="" [selected]="task.assigneeUserId == null">—</option>
+                    @for (u of assignees(); track u.id) {
+                      <option [value]="u.id" [selected]="u.id === task.assigneeUserId">{{ u.name }}</option>
+                    }
                   </select>
 
                   <button type="button" class="btn btn-ghost btn-sm"
