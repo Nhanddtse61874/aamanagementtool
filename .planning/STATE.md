@@ -2,11 +2,17 @@
 
 ## Current Position
 
-**Phase:** Step 6 — **Plan complete and Plan Checker PASSED** for **M12 (tag icon presets)**. UAT of M9.2/M10/M11 is paused, not abandoned — see below.
-**Status:** waiting_for_user — needs an execution-mode choice and a branch decision before dispatch.
+**Phase:** Step 7 — **Execute (task 1 complete, 1/2 done)** for **M12 (tag icon presets)**. UAT of M9.2/M10/M11 is paused, not abandoned — see below.
+**Status:** in_progress
 **Last updated:** 2026-07-20
 
-**Next Action:** User picks `subagent-driven-development` or `executing-plans`, and whether the code lands on `main` or a feature branch. Then execute Task 1 → Task 2, sequentially.
+**Branch: `feature/tag-icon-presets-2026-07-20`** (off `d69cb9a`). Execution: subagent-driven, both tasks `sonnet`.
+
+**Next Action:** Dispatch task 2 (the button row: template + SCSS + 3 DOM tests).
+
+✅ **Task 1 — `7739aab`.** `PresetIcon` + exported `PRESET_ICONS` + the `presetIcons` class member. Gate **806 → 810, exactly +4**; the implementer confirmed it saw the compile-error red before implementing. Spec review **COMPLIANT** (reviewer re-ran the suite and verified empirically that `'👨‍💻'.length === 5`, so the maxlength guard would genuinely fail). Quality review **APPROVED WITH CONDITIONS**.
+
+**The quality condition was declined, deliberately:** the reviewer suggested extracting `PRESET_ICONS` into its own `preset-icons.ts` + spec, to match the precedent set by `holiday-calendar.ts` and `settings-templates.ts` for pure TestBed-free data. The observation is correct — the constant currently takes the *placement* of one local pattern and the *test shape* of another. It was not acted on because it is a refactor outside the task's file list (spec §9) and Surgical Changes says mention rather than fix. **Worth revisiting if a second constant of this kind appears** — the reviewer's real argument was that this becomes the template the next one copies.
 
 **Plan:** `docs/superpowers/plans/2026-07-20-M12-tag-icon-presets.md` — 2 tasks, one wave, both `sonnet` (→ `claude-sonnet-5`).
 
