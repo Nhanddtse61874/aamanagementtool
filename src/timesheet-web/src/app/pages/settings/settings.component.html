@@ -175,6 +175,22 @@
                          (ngModelChange)="setTagColor($event)" />
                 </label>
               </div>
+
+              <!-- TAG-03 — quick-pick glyphs. Deliberately a SIBLING of .fields, not inside the icon
+                   <label>: a label delegates clicks to its control, so a button nested in one would
+                   also focus the text box. `type="button"` is required, not stylistic — an untyped
+                   <button> defaults to submit. -->
+              <div class="tagpresets">
+                <span class="tagpresets__cap">Quick icons</span>
+                <div class="tagpresets__row">
+                  @for (p of presetIcons; track p.glyph) {
+                    <button type="button" class="tagpresets__btn" [disabled]="busy()"
+                            [title]="p.label" [attr.aria-label]="p.label"
+                            (click)="setTagIcon(p.glyph)">{{ p.glyph }}</button>
+                  }
+                </div>
+              </div>
+
               <div class="acts">
                 <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="cancelTag()">Cancel</button>
                 <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveTag()">Save tag</button>

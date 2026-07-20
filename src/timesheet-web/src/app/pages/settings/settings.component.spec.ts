@@ -615,6 +615,70 @@ describe('SettingsComponent', () => {
 
     expect(api.getBackupList).toHaveBeenCalledTimes(1);   // unchanged — nothing was written
   });
+
+  // ══ TAG-03 — the preset row writes the icon and NOTHING else ══════════════════════════════════════
+  //
+  // 🔴 `fakeAsync` + `tick()` IS NOT OPTIONAL HERE. NgModel writes model→view on a MICROTASK
+  // (`resolvedPromise.then()` inside `_updateValue`), so `detectChanges()` alone leaves `input.value`
+  // EMPTY — this file already documents the trap twice, at the warning-window test near the top and
+  // again above the backup-settings test. Without `tick()` the icon assertion fails outright AND the
+  // "text untouched" assertion passes vacuously, which is worse: it would green-light a preset that
+  // overwrote the tag's text. No fresh fixture is needed — every click here happens inside the fake
+  // zone, so `tick()` can flush what they schedule.
+  it('clicking a preset glyph sets the icon and leaves the text alone', fakeAsync(() => {
+    tab('Workflow');
+    buttons('+ New tag')[0].click();
+    fixture.detectChanges();
+
+    const riskBtn = fixture.debugElement.queryAll(By.css('.tagpresets__btn'))[4]
+      .nativeElement as HTMLButtonElement;
+    expect(riskBtn.textContent?.trim()).withContext('the 5th preset is Risk').toBe('💣');
+
+    riskBtn.click();
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+
+    const inputs = fixture.debugElement.queryAll(By.css('.editor .input'))
+      .map(d => d.nativeElement as HTMLInputElement);
+    expect(inputs[0].value).withContext('the icon input').toBe('💣');
+    expect(inputs[1].value).withContext('the text input must be untouched').toBe('');
+  }));
+
+  // Every button must be type="button". A <button> with no type defaults to SUBMIT — if this editor is
+  // ever wrapped in a <form>, picking an icon would submit it. Cheap to assert, invisible when it breaks.
+  it('every preset button is type=button', () => {
+    tab('Workflow');
+    buttons('+ New tag')[0].click();
+    fixture.detectChanges();
+
+    const btns = fixture.debugElement.queryAll(By.css('.tagpresets__btn'))
+      .map(d => d.nativeElement as HTMLButtonElement);
+    expect(btns.length).toBe(10);
+    for (const b of btns) expect(b.type).toBe('button');
+  });
+
+  // TAG-03 keeps free-text entry. Asserted through the OUTGOING REQUEST rather than the input's own
+  // value, which would only prove the test typed into a box.
+  it('the free-text icon input still accepts a glyph outside the ten', fakeAsync(() => {
+    tab('Workflow');
+    buttons('+ New tag')[0].click();
+    fixture.detectChanges();
+
+    const inputs = (): HTMLInputElement[] => fixture.debugElement.queryAll(By.css('.editor .input'))
+      .map(d => d.nativeElement as HTMLInputElement);
+
+    inputs()[0].value = '🦄';                      // deliberately NOT one of the ten
+    inputs()[0].dispatchEvent(new Event('input'));
+    inputs()[1].value = 'Mythical';
+    inputs()[1].dispatchEvent(new Event('input'));
+    tick();
+    fixture.detectChanges();
+
+    buttons('Save tag')[0].click();
+    expect(api.createTag).toHaveBeenCalledWith(
+      jasmine.objectContaining({ icon: '🦄', text: 'Mythical' }));
+  }));
 });
 
 // ══ TAG-03 preset icons ════════════════════════════════════════════════════════════════════════════
