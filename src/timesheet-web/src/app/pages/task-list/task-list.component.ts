@@ -13,8 +13,8 @@ import { ToastService } from '../../services/toast.service';
 import { WorklogService, requireRowVersion } from '../../services/worklog.service';
 import {
   ALL_MONTHS, Band, Chip, PickOption, STATUSES, TYPES,
-  buildChips, groupRows, hoursText, isDone, messageOf, nextPeriod, parseProgress, pickOptions, progressText,
-  tagIdsOf, toPickOptions, toTaskExtended, toUpdateRequest,
+  buildChips, groupRows, hoursText, isDone, isGanttEmpty, messageOf, nextPeriod, parseProgress, pickOptions,
+  progressText, tagIdsOf, toPickOptions, toTaskExtended, toUpdateRequest,
 } from './task-list.model';
 
 /** Which entity's tag picker is open. Only ever one at a time. */
@@ -129,6 +129,8 @@ export class TaskListComponent {
   readonly teamMode = computed(() => (this.teamIds()?.length ?? 0) > 1);
   readonly bands = computed<Band[]>(() => groupRows(this.rows(), this.teamMode(), this.teamNames()));
   readonly gantt = computed(() => this.screen()?.gantt ?? null);
+  /** True when nothing in the current scope has a date to chart — see `isGanttEmpty` (P8). */
+  readonly ganttEmpty = computed(() => isGanttEmpty(this.gantt()));
 
   /** 🔴 True ONLY when the user unchecked every team — never when the filter merely failed. */
   readonly noTeams = computed(() => this.teamIds()?.length === 0);

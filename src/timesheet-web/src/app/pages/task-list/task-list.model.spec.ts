@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { BacklogDto, TaskItemDto, TaskListRowDto } from '../../api/models';
 import {
   SCHEDULE_LATE, SCHEDULE_NORMAL, SCHEDULE_WARNING,
-  buildChips, groupRows, isDone, messageOf, nextPeriod, parseProgress, pickOptions, tagIdsOf,
+  buildChips, groupRows, isDone, isGanttEmpty, messageOf, nextPeriod, parseProgress, pickOptions, tagIdsOf,
   toPickOptions, toTaskExtended, toUpdateRequest,
 } from './task-list.model';
 
@@ -334,6 +334,28 @@ describe('groupRows — adaptive team banding (TL-12)', () => {
       row({ backlogId: 2, teamId: 1, project: 'ARCS' }),
     ], false, names);
     expect(bands.map(b => b.key)).toEqual(['ARCS', 'Other']);
+  });
+});
+
+// =====================================================================================================
+// Gantt empty-scope caption (P8 / A4 audit #36)
+// =====================================================================================================
+describe('isGanttEmpty', () => {
+  it('is true when the axis is empty — nothing in scope has any date at all', () => {
+    expect(isGanttEmpty({ axis: [], bars: [] })).toBe(true);
+  });
+
+  it('is true when the gantt itself is missing (null or undefined)', () => {
+    expect(isGanttEmpty(null)).toBe(true);
+    expect(isGanttEmpty(undefined)).toBe(true);
+  });
+
+  it('is true when axis is null (server omitted it rather than sending an empty array)', () => {
+    expect(isGanttEmpty({ axis: null, bars: null })).toBe(true);
+  });
+
+  it('is false as soon as the axis has at least one working day', () => {
+    expect(isGanttEmpty({ axis: ['2026-07-01'], bars: [] })).toBe(false);
   });
 });
 

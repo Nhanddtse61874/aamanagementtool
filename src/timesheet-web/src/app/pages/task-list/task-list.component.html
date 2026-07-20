@@ -77,36 +77,46 @@
          excluded server-side) and every bar already carries its axis positions. No date maths here. -->
     @if (!chartCollapsed()) {
       @if (gantt(); as g) {
-        <div class="card card--pad tl-gantt">
-          <div class="tl-gantt__scroll">
-            <div class="tl-gantt__axis" [style.width.px]="(g.axis?.length ?? 0) * COL">
-              @for (day of g.axis ?? []; track day) {
-                <div class="tl-gantt__day" [style.width.px]="COL" [title]="day">{{ axisLabel(day) }}</div>
-              }
-            </div>
 
-            @for (bar of g.bars ?? []; track bar.backlogId) {
-              <div class="tl-gantt__row" [style.width.px]="(g.axis?.length ?? 0) * COL">
-                <span class="tl-gantt__code">{{ bar.backlogCode }}</span>
-
-                @if (barVisible(bar.spanWorkingDays)) {
-                  <!-- No start date → a faint dashed placeholder pinned at its deadline. -->
-                  <div class="tl-gantt__bar"
-                       [class.tl-gantt__bar--ghost]="!bar.hasStart"
-                       [class.tl-gantt__bar--late]="bar.scheduleState === 2"
-                       [class.tl-gantt__bar--warn]="bar.scheduleState === 1"
-                       [style.left.px]="barLeft(bar.startDayIndex)"
-                       [style.width.px]="barWidth(bar.spanWorkingDays)"></div>
-                }
-
-                <!-- The external deadline: a red marker on its own dashed line. -->
-                @if (bar.externalMarkerIndex !== null && bar.externalMarkerIndex !== undefined) {
-                  <div class="tl-gantt__ext" [style.left.px]="barLeft(bar.externalMarkerIndex)"></div>
+        <!-- No backlog in scope has any date at all — `g.axis` is empty. Say so; an empty canvas with no
+             caption cannot be told apart from a broken one (P8 / A4 audit #36). -->
+        @if (ganttEmpty()) {
+          <div class="card card--pad tl-empty">
+            <div class="tl-empty__title">Nothing to chart</div>
+            <div class="tl-empty__sub">No dated backlogs to chart for this month.</div>
+          </div>
+        } @else {
+          <div class="card card--pad tl-gantt">
+            <div class="tl-gantt__scroll">
+              <div class="tl-gantt__axis" [style.width.px]="(g.axis?.length ?? 0) * COL">
+                @for (day of g.axis ?? []; track day) {
+                  <div class="tl-gantt__day" [style.width.px]="COL" [title]="day">{{ axisLabel(day) }}</div>
                 }
               </div>
-            }
+
+              @for (bar of g.bars ?? []; track bar.backlogId) {
+                <div class="tl-gantt__row" [style.width.px]="(g.axis?.length ?? 0) * COL">
+                  <span class="tl-gantt__code">{{ bar.backlogCode }}</span>
+
+                  @if (barVisible(bar.spanWorkingDays)) {
+                    <!-- No start date → a faint dashed placeholder pinned at its deadline. -->
+                    <div class="tl-gantt__bar"
+                         [class.tl-gantt__bar--ghost]="!bar.hasStart"
+                         [class.tl-gantt__bar--late]="bar.scheduleState === 2"
+                         [class.tl-gantt__bar--warn]="bar.scheduleState === 1"
+                         [style.left.px]="barLeft(bar.startDayIndex)"
+                         [style.width.px]="barWidth(bar.spanWorkingDays)"></div>
+                  }
+
+                  <!-- The external deadline: a red marker on its own dashed line. -->
+                  @if (bar.externalMarkerIndex !== null && bar.externalMarkerIndex !== undefined) {
+                    <div class="tl-gantt__ext" [style.left.px]="barLeft(bar.externalMarkerIndex)"></div>
+                  }
+                </div>
+              }
+            </div>
           </div>
-        </div>
+        }
       }
     }
 
@@ -123,7 +133,9 @@
         <div class="card tl-card" [class.tl-card--done]="done(row)">
 
           <!-- ---------------- COMPACT HEADER ----------------
-               `project` is NOT here: the band above already shows it. -->
+               `project` is shown here ONLY in team-banded mode (>1 team checked): the band there keys on
+               TEAM, not project, so the project would otherwise be lost entirely (P8 / A4 audit #30). With
+               exactly one team the band above already shows the project — unchanged, nothing rendered here. -->
           <div class="tl-head">
             <button type="button" class="tl-caret" (click)="toggleExpand(row)"
                     [attr.aria-expanded]="isExpanded(row)"
@@ -132,6 +144,13 @@
             </button>
 
             <span class="tl-code">{{ row.backlogCode }}</span>
+
+            @if (teamMode()) {
+              <span class="tl-cell">
+                <span class="tl-cell__lbl">Project</span>
+                <span class="tl-cell__val">{{ row.project ?? '—' }}</span>
+              </span>
+            }
 
             <span class="tl-cell">
               <span class="tl-cell__lbl">PCT</span>

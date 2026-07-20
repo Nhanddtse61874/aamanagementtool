@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
 import {
-  BacklogDto, BacklogUpdateRequest, NamedRefDto, TagDto, TaskItemDto, TaskListRowDto, ValidationBody,
+  BacklogDto, BacklogUpdateRequest, GanttModel, NamedRefDto, TagDto, TaskItemDto, TaskListRowDto, ValidationBody,
 } from '../../api/models';
 import { requireRowVersion } from '../../services/worklog.service';
 
@@ -144,6 +144,22 @@ export function groupRows(
       a.key === '—' ? 1 : b.key === '—' ? -1 : a.key.localeCompare(b.key));
   }
   return entries.sort((a, b) => projectOrder(a.key) - projectOrder(b.key) || a.key.localeCompare(b.key));
+}
+
+// =====================================================================================================
+// GANTT — empty-scope caption (P8 / A4 audit #36).
+//
+// `GanttBuilder` (Core) returns `Axis=[]`/`Bars=[]`, not an error, when nothing in the selected scope has
+// any date at all — there is no start/end/deadline anywhere to build a working-day axis from. WPF drew an
+// explicit "No dated backlogs to chart for this month." caption for exactly this case
+// (`TaskListTab.xaml.cs:221-225,377-388`, `DrawEmptyHint`); the web silently rendered a near-blank card (a
+// 0-width axis row, no bars) with nothing to tell "no data" from "broken". This is that caption's trigger,
+// pulled out as a pure predicate so it is testable without a TestBed.
+// =====================================================================================================
+
+/** True when the scoped Gantt has no axis at all — nothing dated to chart. */
+export function isGanttEmpty(gantt: GanttModel | null | undefined): boolean {
+  return (gantt?.axis?.length ?? 0) === 0;
 }
 
 // =====================================================================================================

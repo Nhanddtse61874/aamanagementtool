@@ -713,6 +713,41 @@ describe('TaskListComponent', () => {
     expect(component.bands().map(b => b.key)).toEqual(['ARCS', 'ARMS']);
   });
 
+  // ===================================================================================================
+  // 🔴 P8 — the PROJECT label, lost entirely in team-banded mode (A4 audit #30)
+  // ===================================================================================================
+
+  it('🔴 P8: surfaces PROJECT on the row when team-banded — the band key no longer carries it (>1 team)', async () => {
+    await setUp();
+
+    const twoTeamScreen: TaskListScreenDto = {
+      gantt: SCREEN.gantt,
+      rows: [
+        { ...ROW, backlogId: 100, teamId: 2, project: 'ARCS' },
+        { ...ROW, backlogId: 200, teamId: 1, project: 'ARMS' },
+      ],
+    };
+    api.getTaskListScreen.and.returnValue(of(twoTeamScreen));
+
+    component.onTeams([1, 2]);                       // >1 team -> team mode; band keys become team names
+    await settle();
+
+    expect(component.bands().map(b => b.key)).toEqual(['Alpha', 'Beta']);   // team names, not projects
+
+    const headTexts = Array.from(fixture.nativeElement.querySelectorAll('.tl-head') as NodeListOf<HTMLElement>)
+      .map(h => h.textContent ?? '');
+    expect(headTexts.some(t => t.includes('ARCS'))).toBe(true);
+    expect(headTexts.some(t => t.includes('ARMS'))).toBe(true);
+  });
+
+  it('does NOT add a project cell to the row when exactly one team is selected (unchanged)', async () => {
+    await setUp();                                   // seeded to team [2] -> project-banded mode
+
+    expect(component.teamMode()).toBe(false);
+    const head = fixture.nativeElement.querySelector('.tl-head') as HTMLElement;
+    expect(head.textContent).not.toContain('Project');
+  });
+
   it('shows exactly ONE system chip — Late, never Late AND At risk', async () => {
     await setUp();
 
@@ -735,5 +770,33 @@ describe('TaskListComponent', () => {
   it('a backlog with no dates at all (span 0) draws no bar', async () => {
     await setUp();
     expect(component.barVisible(0)).toBe(false);
+  });
+
+  // ===================================================================================================
+  // 🔴 P8 — the Gantt empty-scope caption (A4 audit #36): "no data" must read differently from "broken"
+  // ===================================================================================================
+
+  it('🔴 P8: shows a caption when nothing in scope has a date, instead of a blank chart', async () => {
+    await setUp();
+
+    api.getTaskListScreen.and.returnValue(of({ rows: [ROW], gantt: { axis: [], bars: [] } }));
+    await component.load();
+    await settle();
+
+    component.view.set('gantt');
+    fixture.detectChanges();
+
+    expect(component.ganttEmpty()).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('No dated backlogs to chart for this month.');
+    expect(fixture.nativeElement.querySelector('.tl-gantt')).toBeNull();   // the chart card itself is not drawn
+  });
+
+  it('does not show the empty caption when the Gantt has an axis to draw', async () => {
+    await setUp();
+    component.view.set('gantt');
+    fixture.detectChanges();
+
+    expect(component.ganttEmpty()).toBe(false);
+    expect(fixture.nativeElement.textContent).not.toContain('No dated backlogs to chart for this month.');
   });
 });
