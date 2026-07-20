@@ -80,9 +80,25 @@
 
 /* ---- Add-entry modal ---- */
 .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .38); z-index: 40; animation: pop .18s ease both; }
+/* 🔴 `animation: pop` CANNOT be used here, and this is why the Add-entry box sat off the bottom of the
+   screen with its input unreachable (reported in UAT 2026-07-20).
+
+   The global `pop` keyframes end on `transform: none`, and an animation's keyframes OVERRIDE the static
+   declaration -- with `fill-mode: both` that override persists forever after the 0.22s finishes. So
+   `translate(-50%, -50%)` was silently wiped, leaving the modal's TOP-LEFT CORNER at the centre of the
+   viewport instead of its centre. The lower half, which holds the input and the Add button, fell off the
+   bottom of the screen, and no amount of window resizing helps because the error is proportional.
+
+   `modal-pop` carries the centring translate through every keyframe, so the animation composes with the
+   layout instead of erasing it. */
+@keyframes modal-pop {
+  from { opacity: 0; transform: translate(-50%, -50%) translateY(10px) scale(.98); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+
 .modal { position: fixed; z-index: 41; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto;
-  padding: 22px; animation: pop .22s ease both;
+  padding: 22px; animation: modal-pop .22s ease both;
 
   h2 { font-size: 17px; font-weight: 800; margin: 0 0 16px; }
 }
