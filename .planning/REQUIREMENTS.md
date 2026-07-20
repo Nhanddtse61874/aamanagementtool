@@ -28,6 +28,7 @@
 | **P11** | Export Restructure (per-team folders, 2-root mirror) — M6 | EX-01, EX-02, EX-03, EX-04, EX-05, EX-06, EX-07 |
 | **P12** | 3-Month Data Retention / Prune (DESTRUCTIVE) — M7 | RT-01, RT-02, RT-03, RT-04, RT-05, RT-06, RT-07 |
 | **M9.1** | Read-model / scope gaps (web) — Task List team bands, Daily Report picker scope, default-task round-trip | TL-12, DR-11, SET-05 |
+| **M12** | Tag icon presets (web) — ten preset glyphs in the tag editor, free-text entry retained | TAG-03 |
 
 Total: **45 (M1)** + **10 (M2/P7)** + **15 (M3/P8)** + **7 (M5/P9)** + **10 (M4/P10)** requirements. (P11 Export / P12 Retention authored when those phases start — see `.planning/UPCOMING-FEATURES.md`.)
 
@@ -380,6 +381,10 @@ Acceptance: Tag CRUD persists to `Tags`; a tag carries `icon` (glyph/emoji), `co
 ### TAG-02 — Render tag chips (custom + system) on backlog & Task List
 Statement: A backlog displays its assigned custom tags plus any active system chips (`warning`, `late deadline`) as chips showing the configured icon, color, and text.
 Acceptance: Custom tags render with their `icon`+`color`+`text`; system chips render with fixed styling (amber warning, red late); chips appear on both the Backlog list and the Task List overview/Gantt.
+
+### TAG-03 — Preset icons when creating a tag
+Statement: The tag editor offers ten preset status glyphs; clicking one sets the tag's icon. Free-text icon entry remains available.
+Acceptance: Ten buttons render in the tag editor. Clicking one writes its glyph to the icon field and nothing else — the tag's text is unchanged. The text input still accepts an arbitrary glyph. Every preset is at most 4 UTF-16 code units, so none is truncated by the existing `maxlength="4"`. Spec: `docs/superpowers/specs/2026-07-20-tag-icon-presets-design.md` (M12).
 
 ### HOL-01 — Holiday calendar sub-tab in Settings
 Statement: Settings has a calendar sub-tab showing a month where the user clicks a day to mark/unmark it as a holiday (non-working day).

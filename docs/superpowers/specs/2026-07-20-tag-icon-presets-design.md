@@ -30,6 +30,18 @@ This is not a defect — the field works, and a user who types a glyph gets exac
 
 Explicitly: presets write to the **icon field only**. They do not prefill, suggest, or touch the tag's text — the user types their own label. This was the user's stated emphasis and it is what keeps the feature small.
 
+## 2.1 A prior implementation existed — recorded, then set aside
+
+`.planning/M8-FEATURE-INVENTORY.md:358` records that the deleted WPF tag editor had **eight quick-pick icons** (`🔥 ⭐ 🐛 ⚠️ 🚀 📌 ✅ 🔍`), eight colour swatches, and a live preview chip. The web port carried none of the three. `TAG-01`'s acceptance line — *"[ASSUMED] icon = an emoji/Segoe glyph picker (no image upload)"* — reads, in that light, as having meant a picker literally.
+
+**Two things follow, and the user decided both.**
+
+**On scope:** this could be filed as debt closure under `TAG-01`, the way M9.2 was. **The user chose to treat it as new scope under `TAG-03`** (§8), on the grounds that the ten meanings here — `OverEstimate`, `Unclear`, `Dropped`, `Difficult` — are theirs and have no counterpart in the old set. Only 🔥 appears in both. That is a defensible reading: this is not a port of eight generic glyphs, it is a different feature that happens to occupy the same slot.
+
+**On the old app as a reference: dropped, by user decision.** WPF is deleted. This design does not defer to it, does not treat its eight glyphs as a baseline, and does not treat its choices as precedent. The finding is recorded here as fact and is not carried into the design. Notably WPF *did* ship ⚠️ as a quick-pick, accepting the collision §3.1 rejects — a divergence chosen deliberately, not inherited.
+
+**One process note, recorded here and nowhere else per user decision:** `.planning/M10-COVERAGE-AUDIT.md` — the memo STATE.md designates as the oracle for what the desktop did — contains **no row for tag icons at all**. Grepping it for `TAG-0`, `tag icon`, and `glyph` returns nothing across 369 audited behaviours. The audit did not rate this COVERED or MISSING; it never looked. Relevant only as a reminder that the memo's silence is not evidence of coverage.
+
 ## 3. The ten glyphs
 
 The user supplied the ten meanings; the glyphs were chosen against them and confirmed one at a time.
@@ -117,6 +129,8 @@ Found while mapping the feature. Each is real and verified; none is caused by th
 1. **No emoji font is pinned anywhere in CSS.** `tag-picker.component.html:37-38` states icons are emoji meant to match WPF's `Segoe UI Emoji`, and `tag-picker.component.spec.ts:75-76` asserts *"`icon` is an EMOJI GLYPH, not an icon-set name"* — yet the only `font-family` declarations in the app are body and mono (`styles.scss:53`, `:61`, `:114`). Rendering relies on system fallback. **This milestone does not make it worse** — it selects from the same glyph space the text box already accepts — but it does raise the stakes, since presets will be the path most users take.
 2. **`maxlength="4"` is browser-only.** The API validates `Text` and never `Icon` (`SettingsEndpoints.cs:176-177`, `:193-194`), so an arbitrarily long icon is accepted server-side and an empty icon is valid end to end. Unreachable through this UI; reachable by any direct API call.
 3. **`settings.component.html:187` renders `{{ t.icon }} {{ t.text }}` without a guard**, so a tag with an empty icon shows a leading space. The other two render sites (`tag-picker.component.html:40-42`, `task-list.component.html:216`) both guard with `@if`.
+4. **A live preview chip** — showing icon, colour and text together while editing — existed in the old editor and has no web equivalent. A genuine affordance gap, not requested here. **Recorded, not built** (user decision).
+5. **Eight colour swatches** also existed and were not ported. Unlike the icon field this is **not a regression**: the web colour input is the operating system's own picker (`settings.component.html:174`), which offers every colour rather than eight. The default `#0F766E` (`settings.component.ts:28`) is the old set's first swatch, so the default carried over and only the shortcut row did not. **Recorded, not built** (user decision).
 
 ## 7. Testing
 
@@ -140,7 +154,9 @@ Angular only. No .NET test changes — no C# is touched.
 > Statement: The tag editor offers ten preset status glyphs; clicking one sets the tag's icon. Free-text icon entry remains available.
 > Acceptance: Ten buttons render in the tag editor. Clicking one writes its glyph to the icon field and nothing else — the tag's text is unchanged. The text input still accepts an arbitrary glyph. Every preset is at most 4 UTF-16 code units.
 
-This differs from M9.2, which deliberately added no REQ-IDs because both its defects violated requirements that already existed. This is genuinely new scope, so it carries an ID.
+This differs from M9.2, which deliberately added no REQ-IDs because both its defects violated requirements that already existed.
+
+**The call was closer here than that comparison suggests, and §2.1 is why.** An affordance of this shape did once exist and `TAG-01` arguably already asked for it, which is the M9.2 pattern exactly. **The user decided new scope**, on the grounds that ten deliberately chosen meanings sharing one glyph with the old set is a different feature, not a restoration. Recorded so the reasoning is visible rather than implied by the ID.
 
 ## 9. Files
 

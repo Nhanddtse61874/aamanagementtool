@@ -2,15 +2,47 @@
 
 ## Current Position
 
-**Phase:** Step 8 — **UAT IN PROGRESS.** M9.2 / M10 / M11 shipped; the first real click-through began 2026-07-20 and is finding things the suite could not.
-**Status:** waiting_for_user — one reported defect is still UNDIAGNOSED (see below). Session handed off mid-UAT.
+**Phase:** Step 3 — **Mode Gate complete** for **M12 (tag icon presets)**. UAT of M9.2/M10/M11 is paused, not abandoned — see below.
+**Status:** complete — proceeding to Step 6 (writing-plans).
 **Last updated:** 2026-07-20
+
+**Next Action:** Run the `writing-plans` skill to draft the M12 implementation plan. Then Plan Checker — `workflow.plan_check: true`, and per the recorded M9.2 breach the gate runs **before** dispatch, hurry or not.
+
+**Approved Mode: Mode A** — approved 2026-07-20, 0/5 Mode B signals, no hard exclusions.
 
 **Gate: .NET 475 · ApiTests 541 · Angular 806 · 0 warnings.** Every figure re-run by the controller.
 
 ---
 
-# ▶ START HERE — UAT session handoff, 2026-07-20
+# ▶ M12 (ACTIVE) — tag icon presets · Mode A · Step 3 complete → Step 6 Plan
+
+**Spec:** `docs/superpowers/specs/2026-07-20-tag-icon-presets-design.md` (approved 2026-07-20, `36b91df` + amendments).
+**REQ-ID:** `TAG-03` — added to `REQUIREMENTS.md` under a new **M12** phase row.
+**Fast Lane:** NOT eligible — `.planning/fast-lane-tag-icon-presets.json`, hard exclusion `new_feature`.
+**Mode Gate:** 0/5 Mode B signals, risk **low**, no hard exclusions → **Mode A** (approved 2026-07-20).
+
+**Scope:** ten preset glyph buttons under the icon input in the Settings tag editor. Presets write the **icon field only** — the user still types their own text. Free-text icon entry is retained.
+
+`🔥 Urgent · ⏳ Pending · ⬇️ Low Priority · 👀 Review · 💣 Risk · 🚫 Dropped · ❓ Unclear · ⛰️ Difficult · 📈 OverEstimate · 📉 UnderEstimate`
+
+**Angular only — no C#, no schema, no contract, no regen.** `Tags.icon` has been `TEXT NOT NULL` since schema v7; presets write the field the text box already writes, through the existing `setTagIcon()`.
+
+**Three decisions worth carrying into the plan:**
+- **📈/📉 direction is load-bearing.** The arrow describes the **estimate**, not effort spent — so `Over`↔up and `Under`↔down agree with the words. The opposite reading is defensible and produces inverted tags everywhere; it was surfaced and rejected, not overlooked.
+- **⚠️ is deliberately excluded.** Task List draws its own computed `⚠ Late` / `⚠ At risk` chips; a user tag carrying ⚠ would be indistinguishable from an automatic assessment.
+- **Verified by running it, not reasoning:** all ten are ≤2 UTF-16 units against the existing `maxlength="4"`, and none uses a ZWJ sequence, skin tone, or flag. That is what makes validation/schema work unnecessary — and a test now pins it.
+
+**Recorded, not built** (user decision): the live preview chip and the eight colour swatches, both of which the deleted desktop editor had and the web port dropped. The colour one is not a regression — the web field is the OS picker.
+
+⚠️ **The old app is no longer a reference, by user decision (2026-07-20).** `M8-FEATURE-INVENTORY.md:358` shows the desktop tag editor had eight quick-pick icons; that is recorded in the spec §2.1 as fact and is **not** treated as a baseline. Only 🔥 overlaps with the ten above.
+
+---
+
+# ▶ UAT (PAUSED, not abandoned) — session handoff, 2026-07-20
+
+✅ **The Log Work >8h defect is CLOSED** — the user confirmed 2026-07-20 that it no longer reproduces. The strongest hypothesis held: it was the same display/identity family as the dropdown bug (`d36075a`), and fixing that fixed this. **No further investigation needed.** The user's own theory — *"at first it showed the wrong task I had typed into"* — was right.
+
+🔴 **Still unclicked and still owed:** `G-A`, `G-B`, and the batched `OT-13…OT-25` plus M9.1's `G3`/`G6`/`G10`. Three milestones remain merged un-accepted. Resume this after M12.
 
 ## The app is RUNNING right now
 
