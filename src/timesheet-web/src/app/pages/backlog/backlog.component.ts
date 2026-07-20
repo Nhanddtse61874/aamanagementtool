@@ -3,11 +3,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { EMPTY, Subject, catchError, forkJoin, startWith, switchMap } from 'rxjs';
 
+import { TeamFilterComponent } from '../../components/team-filter/team-filter.component';
 import { RealtimeService } from '../../core/realtime.service';
 import { WorklogService } from '../../services/worklog.service';
 import { BacklogEditorComponent } from './backlog-editor.component';
 import {
-  ALL, Filters, Options, Row, buildRows, coerceFilters, filterRows, rebuildOptions,
+  ALL, Filters, Options, Row, buildRows, coerceFilters, filterByTeams, filterRows, rebuildOptions, teamNameMap,
 } from './backlog-list';
 
 /**
@@ -56,7 +57,7 @@ function noFilters(): Filters {
 @Component({
   selector: 'app-backlog',
   standalone: true,
-  imports: [FormsModule, BacklogEditorComponent],
+  imports: [FormsModule, BacklogEditorComponent, TeamFilterComponent],
   templateUrl: './backlog.component.html',
   styleUrl: './backlog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -73,18 +74,34 @@ export class BacklogComponent {
 
   readonly filters = signal<Filters>(noFilters());
 
+  /**
+   * P6 — the shared multi-team checkbox filter (`<app-team-filter>`, TL-12's pattern reused verbatim).
+   *
+   * 🔴 Unlike the Task List, this NEVER triggers a re-fetch: `GET /api/backlogs` takes no team parameter by
+   * design (see `WorklogService.getBacklogList`'s doc) and already returns everything the caller's teams own
+   * — team filtering here is client-side, one more AND alongside the other four dropdowns. See `filterByTeams`
+   * for the three-valued contract (`undefined`/`[]`/real ids) this signal carries.
+   */
+  readonly teamIds = signal<number[] | undefined>(undefined);
+
+  /** True only once the user has explicitly unchecked every team — never on an unloaded/failed filter. */
+  readonly noTeams = computed(() => this.teamIds()?.length === 0);
+
+  /** WPF's `ShowTeamColumn`: the TEAM column stays hidden — no added noise — until >1 team is checked. */
+  readonly showTeam = computed(() => (this.teamIds()?.length ?? 0) > 1);
+
   readonly loading = signal(false);
   readonly loadError = signal<string | null>(null);
 
   readonly editing = signal<Editing | null>(null);
 
   /**
-   * 🔴 `computed`, not a template call. `filterRows` is O(n), and `@for (r of filterRows(...))` would re-run
-   * it on EVERY change-detection cycle — every keystroke, every hover, for every row. As a computed it runs
-   * only when `rows` or `filters` actually change. (`rebuildOptions` is O(n) too; it is called once per load,
-   * in `applyRows`, for the same reason.)
+   * 🔴 `computed`, not a template call. `filterRows`/`filterByTeams` are O(n), and `@for (r of ...)` calling
+   * them inline would re-run on EVERY change-detection cycle — every keystroke, every hover, for every row.
+   * As a computed it runs only when `rows`, `teamIds` or `filters` actually change. (`rebuildOptions` is O(n)
+   * too; it is called once per load, in `applyRows`, for the same reason.)
    */
-  readonly visible = computed(() => filterRows(this.rows(), this.filters()));
+  readonly visible = computed(() => filterRows(filterByTeams(this.rows(), this.teamIds()), this.filters()));
 
   /**
    * "Re-read the list" (SignalR, a save, a retry after a failed load).
@@ -105,21 +122,25 @@ export class BacklogComponent {
       switchMap(() => {
         this.loading.set(true);
 
-        return forkJoin([this.api.getBacklogList(), this.api.getUserNames()]).pipe(
+        // getTeamsActive() — P6's team-NAME source, joined alongside the other two reads and refreshed on the
+        // same cadence as getUserNames(): treated as equally essential, per this file's existing pattern,
+        // rather than degrading independently the way `TaskListComponent.loadLookups` does. A team-list
+        // failure now also blocks the grid load — see the PORT report for the trade-off.
+        return forkJoin([this.api.getBacklogList(), this.api.getUserNames(), this.api.getTeamsActive()]).pipe(
           // 🔴 catchError INSIDE the switchMap. Outside, the FIRST failed read would complete the outer
           // stream and the screen would never fetch again — no SignalR refresh, no Retry button, nothing.
           // The pipeline has to survive its own errors, because the Retry button runs through it.
           catchError(() => {
             this.loading.set(false);
-            // Both calls are plain GETs and declare only a 200 body; a ValidationBody branch here would be
-            // dead code, so there is not one. One honest sentence, and a button to try again.
+            // All three calls are plain GETs and declare only a 200 body; a ValidationBody branch here would
+            // be dead code, so there is not one. One honest sentence, and a button to try again.
             this.loadError.set('Could not load the backlogs. Please try again.');
             return EMPTY;
           }),
         );
       }),
       takeUntilDestroyed(),
-    ).subscribe(([items, names]) => this.applyRows(buildRows(items, names)));
+    ).subscribe(([items, names, teams]) => this.applyRows(buildRows(items, names, teamNameMap(teams))));
 
     // Someone ELSE changed this team's data. The server already excluded us from its own broadcast (that is
     // what X-Connection-Id buys), so there is no echo of our own writes to filter out here.
@@ -151,6 +172,11 @@ export class BacklogComponent {
 
   clearFilters(): void {
     this.filters.set(noFilters());
+  }
+
+  /** `<app-team-filter>`'s `(selectionChange)`. No re-fetch — see `teamIds`'s own doc for why. */
+  onTeams(ids: number[]): void {
+    this.teamIds.set(ids);
   }
 
   // ---- the editor ----------------------------------------------------------------------------------

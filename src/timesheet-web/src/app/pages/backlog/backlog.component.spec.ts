@@ -2,7 +2,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Subject, of, throwError } from 'rxjs';
 
-import { BacklogDto, BacklogListItemDto, NamedRefDto, PcaContactDto, UserDto } from '../../api/models';
+import {
+  BacklogDto, BacklogListItemDto, MeResponse, NamedRefDto, PcaContactDto, TeamDto, UserDto,
+} from '../../api/models';
 import { DataChange, DataKind, RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
@@ -23,6 +25,12 @@ import { BacklogComponent } from './backlog.component';
  *   W5  a failed read does NOT kill the pipeline -- `catchError` lives INSIDE the `switchMap`, so Retry and
  *       SignalR still work after an error. Move it outside and the screen is dead until an F5.
  *   W6  a filter whose value has VANISHED from the reloaded data resets to All (`coerceFilters`)
+ *
+ * P6 (M10 PORT): the team filter + TEAM column. `ME`/`TEAMS_ACTIVE` below seed a SINGLE-team world on
+ * purpose -- `<app-team-filter>` then hides itself and its seeded default (the active team) narrows to
+ * exactly what every pre-existing test already expects, so W1-W6 above needed no fixture change beyond
+ * stamping a `teamId` on every item. The multi-team behaviour (TEAM column, narrowing, "no teams selected")
+ * gets its own describe block, each test re-arranging with a second team.
  */
 
 /** Assignee of ARMS-2001. She is in `NAMES` and NOT in the active users -- she has left. See W3. */
@@ -35,15 +43,15 @@ const DEPARTED = 3;
 const ITEMS: BacklogListItemDto[] = [
   {
     id: 1, backlogCode: 'ARCS-1042', project: 'ARCS', periodMonth: '2026-07',
-    type: 'Implement', assigneeUserId: 1, taskCount: 3,
+    type: 'Implement', assigneeUserId: 1, taskCount: 3, teamId: 1,
   },
   {
     id: 2, backlogCode: 'ARMS-2001', project: 'ARMS', periodMonth: '2026-06',
-    type: 'Investigate', assigneeUserId: DEPARTED, taskCount: 1,
+    type: 'Investigate', assigneeUserId: DEPARTED, taskCount: 1, teamId: 1,
   },
   {
     id: 9, backlogCode: 'DEFAULT', project: '', periodMonth: null,
-    type: null, assigneeUserId: null, taskCount: 5,
+    type: null, assigneeUserId: null, taskCount: 5, teamId: 1,
   },
 ];
 
@@ -52,6 +60,14 @@ const NAMES: NamedRefDto[] = [
   { id: 1, name: 'Nhan' },
   { id: DEPARTED, name: 'Dana' },
 ];
+
+/**
+ * P6. `GET /api/me` + `GET /api/teams` — the reads `<app-team-filter>` makes on its own. A SINGLE-team
+ * world: the filter hides itself (nothing to choose between) and its seeded default -- the active team --
+ * is the one team every fixture item already carries, so it narrows nothing. See the class doc.
+ */
+const ME: MeResponse = { id: 1, name: 'Nhan', isAdmin: false, activeTeamId: 1, memberTeamIds: [1] };
+const TEAMS_ACTIVE: TeamDto[] = [{ id: 1, name: 'Alpha', isActive: true }];
 
 /** The ACTIVE users -- what the EDITOR's assignee dropdown offers. Dana is not here; that is the point. */
 const USERS: UserDto[] = [{ id: 1, name: 'Nhan', isActive: true }];
@@ -84,15 +100,18 @@ describe('BacklogComponent', () => {
 
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
-      // The grid's two reads, then everything the EDITOR touches -- it is really mounted in these tests (W1),
-      // so its own load path runs for real and every method it calls must answer.
-      ['getBacklogList', 'getUserNames', 'typeColor', 'avatarColor',
+      // The grid's THREE reads (P6 added `getTeamsActive`), then everything the EDITOR touches -- it is
+      // really mounted in these tests (W1), so its own load path runs for real and every method it calls
+      // must answer. `me`/`getTeamsActive` are ALSO what the real, really-mounted `<app-team-filter>` calls.
+      ['getBacklogList', 'getUserNames', 'me', 'getTeamsActive', 'typeColor', 'avatarColor',
        'getBacklog', 'getTasks', 'getBacklogAudit', 'getUsersActive', 'getPcaContactsActive',
        'createBacklog', 'updateBacklog', 'addTask', 'updateTask', 'setTaskActive'],
     );
 
     api.getBacklogList.and.returnValue(of(ITEMS));
     api.getUserNames.and.returnValue(of(NAMES));
+    api.me.and.returnValue(of(ME));
+    api.getTeamsActive.and.returnValue(of(TEAMS_ACTIVE));
 
     api.getBacklog.and.returnValue(of(BACKLOG));
     api.getTasks.and.returnValue(of([]));
@@ -391,5 +410,106 @@ describe('BacklogComponent', () => {
     fixture.detectChanges();
 
     expect(rowCodes()).toEqual(['ARCS-1042', 'ARMS-2001']);
+  });
+
+  // ---- P6: the team filter + TEAM column ---------------------------------------------------------------
+  //
+  // A second, MULTI-team world: two teams the user belongs to, one backlog on each. `<app-team-filter>`'s
+  // own seeded default is the ACTIVE team ONLY (its own doc, "not all, and not none") -- so every test below
+  // that wants BOTH teams in scope calls `component.onTeams([1, 2])` itself, exactly as
+  // `task-list.component.spec.ts` does for the identical shared component.
+
+  const ME_MULTI: MeResponse = { id: 1, name: 'Nhan', isAdmin: false, activeTeamId: 1, memberTeamIds: [1, 2] };
+  const TEAMS_MULTI: TeamDto[] = [
+    { id: 1, name: 'Alpha', isActive: true },
+    { id: 2, name: 'Beta', isActive: true },
+  ];
+  const ITEMS_MULTI: BacklogListItemDto[] = [
+    {
+      id: 1, backlogCode: 'ARCS-1042', project: 'ARCS', periodMonth: '2026-07',
+      type: 'Implement', assigneeUserId: 1, taskCount: 3, teamId: 1,
+    },
+    {
+      id: 2, backlogCode: 'ARMS-2001', project: 'ARMS', periodMonth: '2026-06',
+      type: 'Investigate', assigneeUserId: DEPARTED, taskCount: 1, teamId: 2,
+    },
+  ];
+
+  function arrangeMultiTeam(): void {
+    arrange();
+    api.me.and.returnValue(of(ME_MULTI));
+    api.getTeamsActive.and.returnValue(of(TEAMS_MULTI));
+    api.getBacklogList.and.returnValue(of(ITEMS_MULTI));
+  }
+
+  function teamPills(): string[] {
+    return fixture.debugElement
+      .queryAll(By.css('.badge--team'))
+      .map(d => (d.nativeElement as HTMLElement).textContent?.trim() ?? '');
+  }
+
+  it('hides the TEAM column for a single-team user — nothing to disambiguate', () => {
+    setUp();      // the default, single-team fixture
+
+    expect(component.showTeam()).toBeFalse();
+    expect(fixture.debugElement.query(By.css('.tbl--team'))).toBeNull();
+    expect(screenText()).not.toContain('TEAM');
+  });
+
+  it('shows the TEAM column, with each row’s resolved name, once >1 team is checked', () => {
+    arrangeMultiTeam();
+    mount();
+
+    component.onTeams([1, 2]);
+    fixture.detectChanges();
+
+    expect(component.showTeam()).toBeTrue();
+    expect(fixture.debugElement.query(By.css('.tbl--team'))).not.toBeNull();
+    expect(teamPills()).toEqual(['Alpha', 'Beta']);
+  });
+
+  it('narrows the grid to the checked teams — CLIENT-SIDE, with no re-fetch', () => {
+    arrangeMultiTeam();
+    mount();
+    component.onTeams([1, 2]);
+    fixture.detectChanges();
+    expect(rowCodes()).toEqual(['ARCS-1042', 'ARMS-2001']);
+    const callsBefore = api.getBacklogList.calls.count();
+
+    component.onTeams([1]);
+    fixture.detectChanges();
+
+    expect(rowCodes()).toEqual(['ARCS-1042']);
+    expect(api.getBacklogList).toHaveBeenCalledTimes(callsBefore);    // still no re-fetch
+  });
+
+  it('shows "No teams selected" and hides the grid when every team is unchecked', () => {
+    arrangeMultiTeam();
+    mount();
+    component.onTeams([1, 2]);
+    fixture.detectChanges();
+
+    component.onTeams([]);
+    fixture.detectChanges();
+
+    expect(component.noTeams()).toBeTrue();
+    expect(screenText()).toContain('No teams selected');
+    // Not the GENERIC "no rows match your filters" state -- its Clear-filters button would not help here.
+    expect(screenText()).not.toContain('No backlogs match your filters');
+    expect(fixture.debugElement.query(By.css('.tbl'))).toBeNull();
+  });
+
+  it('re-checking a team recovers the grid', () => {
+    arrangeMultiTeam();
+    mount();
+    component.onTeams([]);
+    fixture.detectChanges();
+    expect(component.noTeams()).toBeTrue();
+
+    component.onTeams([2]);
+    fixture.detectChanges();
+
+    expect(component.noTeams()).toBeFalse();
+    expect(rowCodes()).toEqual(['ARMS-2001']);
   });
 });
