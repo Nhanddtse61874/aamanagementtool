@@ -6,7 +6,25 @@
 **Status:** waiting_for_user — everything remaining needs a human's hands or a human's decision.
 **Last updated:** 2026-07-20
 
-**Gate: .NET 475 · ApiTests 541 · Angular 775 · 0 warnings.** Every figure re-run by the controller, none taken from an agent's report.
+**Gate: .NET 475 · ApiTests 541 · Angular 805 · 0 warnings.** Every figure re-run by the controller, none taken from an agent's report.
+
+## ✅ DEFERRED PORT ITEMS — five of the seven are done (2026-07-20)
+
+The gate-shape decision said affordances land *after* the deletion. They have.
+
+| | Item | Commit |
+|---|---|---|
+| ✅ | **P10** Smart Fill matched to Core — the two implementations genuinely disagreed | `b769879` |
+| ✅ | **P9** Daily Board shows *how* an issue was resolved, not only that it was | `0302ab5` |
+| ✅ | **P8** Task List keeps the project label in team mode; empty Gantt says why | `c5632d5` |
+| ✅ | **P7** Holidays visible before you type into one; >8h day total flagged | `98faecd` |
+| ✅ | **P6** Backlog team filter + TEAM column | `8216375` |
+| ⏸ | **P5** Active-team switcher | deferred — the user established multi-team users are **rare** |
+| ⏸ | **P7b** Week-jump, month-filter | left rather than rushed; lowest value in their group |
+
+**The audit memo held up as a specification.** P8 found it sufficient including verbatim caption text. P7 hit the first genuine silence — it never recorded how WPF sourced or refreshed its holiday list — and that was handled the way this file demands: **name the gap, decide openly, do not attribute the decision to WPF.** P6 hit a smaller one and followed the Task List precedent rather than guessing. That precedent is now the standing rule for every remaining item.
+
+**One known regression, kept deliberately:** `backlog.component.ts` joined `getTeamsActive()` into its critical `forkJoin`, so a team-list failure now blocks the whole Backlog grid — a failure mode that screen did not have before. It matches that file's own all-or-nothing pattern; Task List's independently-degrading shape is better. Recorded rather than fixed because restructuring the load exceeds what an affordance warranted. *"It matches the existing pattern"* is the weaker argument and should not be read as a neutral choice.
 
 ## Next Action
 
