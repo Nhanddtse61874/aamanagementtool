@@ -271,11 +271,23 @@ public sealed class M11ConfigurationTests
             _keyRingPath = keyRingPath;
         }
 
+        // 🔴 A null key is set to "" -- it is NOT left unset, and that distinction is the whole test now.
+        //
+        // These tests used to simply omit the UseSetting, which made the key genuinely absent and fired the
+        // fail-fast. Then appsettings.json started SHIPPING working defaults for all three (so a fresh clone
+        // runs with no setup), and an omitted UseSetting silently inherited the default instead: the host
+        // started, wrote a real database into src/TimesheetApp.Api/data/, and the assertion failed.
+        //
+        // "Missing" therefore means something different than it did. With a default in the file, the only
+        // way an operator reaches this path is by BLANKING or DELETING the key, and UseSetting("") is that
+        // state expressed at the highest-precedence layer -- which is also the layer that beats the file
+        // (F3, proven empirically). Testing absence-of-a-key would now be testing a state no deployment can
+        // actually be in.
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            if (_configPath is not null) builder.UseSetting("TimesheetApp:ConfigPath", _configPath);
-            if (_dbPath is not null) builder.UseSetting("TimesheetApp:DbPath", _dbPath);
-            if (_keyRingPath is not null) builder.UseSetting("TimesheetApp:KeyRingPath", _keyRingPath);
+            builder.UseSetting("TimesheetApp:ConfigPath", _configPath ?? "");
+            builder.UseSetting("TimesheetApp:DbPath", _dbPath ?? "");
+            builder.UseSetting("TimesheetApp:KeyRingPath", _keyRingPath ?? "");
             builder.UseSetting("TimesheetApp:SeedFirstAdmin", "false");
             builder.UseEnvironment("Testing");
         }

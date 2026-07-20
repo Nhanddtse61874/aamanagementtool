@@ -36,3 +36,8 @@ Thumbs.db
 
 ## agent worktrees
 .worktrees/
+
+# M11: the default DbPath/ConfigPath/KeyRingPath land here so a fresh clone just runs.
+# It is a real database with real local data - never commit it.
+src/TimesheetApp.Api/data/
+

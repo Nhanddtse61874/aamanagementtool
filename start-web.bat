@@ -3,8 +3,14 @@ REM ============================================================================
 REM  Worklog — start the web app locally.
 REM
 REM  Opens TWO windows:
-REM    1. the API   -> http://localhost:5080   (talks to your REAL database)
+REM    1. the API   -> http://localhost:5080   (talks to whatever DbPath names)
 REM    2. the web   -> http://localhost:4200   (this is the one you open)
+REM
+REM  ðŸ”´ WHICH DATABASE? Since M11 the API refuses to start unless
+REM     TimesheetApp:DbPath / ConfigPath / KeyRingPath are set, and there is NO
+REM     fallback to the old %%APPDATA%% defaults -- that silent fallback WAS the
+REM     bug. It is whatever src\TimesheetApp.Api\appsettings.json says, and the
+REM     API prints the resolved path in a banner on every start. READ IT.
 REM
 REM  🔴 OPEN http://localhost:4200 -- NEVER http://localhost:5080 DIRECTLY.
 REM     The web server proxies /api and /hubs to the API, so the browser sees
@@ -13,9 +19,9 @@ REM     SameSite=Lax, and a Lax cookie is NOT sent across origins. Open the API
 REM     port directly and you will log in successfully and then be logged out
 REM     on every single request.
 REM
-REM  🔴 CLOSE THE WPF APP FIRST. Both write to the same SQLite file. SQLite will
-REM     lock correctly and you will not lose data -- but two writers is exactly
-REM     the thing this migration exists to stop.
+REM  (The old "CLOSE THE WPF APP FIRST" warning is gone with the app itself: M10
+REM   deleted src\TimesheetApp\ on 2026-07-19. There is exactly one writer now,
+REM   which is the entire reason that migration existed.)
 REM ============================================================================
 
 setlocal

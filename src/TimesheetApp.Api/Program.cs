@@ -49,26 +49,48 @@ static string RequireConfig(IConfiguration config, string key, string legacyHint
     Console.WriteLine( "  Refusing to start rather than guess -- an unset location key used to fall");
     Console.WriteLine( "  through to the wrong database with no warning at all.");
     Console.WriteLine();
-    Console.WriteLine( "  Copy appsettings.Example.json (beside the executable) to appsettings.json and");
-    Console.WriteLine( "  edit the paths. Or set it directly, e.g.:");
+    Console.WriteLine( "  appsettings.json (beside the executable) ships a working default for this key.");
+    Console.WriteLine( "  If you see this, the key was DELETED rather than changed. Put it back, e.g.:");
     Console.WriteLine($"    {{ \"TimesheetApp\": {{ \"{key}\": \"...\" }} }}");
     Console.WriteLine($"  or as the environment variable TimesheetApp__{key}.");
     Console.WriteLine();
     Console.WriteLine($"  Legacy (pre-M11) value on this machine: {legacyHint}");
     Console.WriteLine("======================================================================");
+    // 🔴 THROW, do not Environment.Exit. This was briefly an Exit(78) so the console would not print a
+    // stack trace under the banner -- tidier for an operator, and WRONG: Environment.Exit inside a
+    // WebApplicationFactory test host kills the whole test RUN, not the one host under test. A throw is
+    // catchable, so the three "refuses to start" tests can assert this behaviour instead of taking the
+    // process down with them. An ugly stack trace is a cosmetic cost; an untestable guard is a real one.
     throw new InvalidOperationException(
         $"Missing required configuration: TimesheetApp:{key}. See the console output above.");
 }
 
+// A RELATIVE path in configuration resolves against the content root, so the shipped appsettings.json can
+// default to `data/…` and land beside the app instead of wherever the process happens to be launched from.
+//
+// 🔴 THIS IS NOT THE FALLBACK CHAIN F1/F2 REMOVED, AND THE DIFFERENCE IS THE WHOLE POINT.
+// The old fallback fired when a key was ABSENT and silently resolved to the desktop app's %APPDATA%
+// location — which named the REAL company database. An operator who set nothing got a running app pointed
+// at production with no signal. What is here instead is an explicit, committed, readable VALUE in
+// appsettings.json that points inside the deployment folder. A default that cannot reach real data is a
+// convenience; a default that silently reaches real data was the bug. RequireConfig above still refuses to
+// start if someone deletes the key outright.
+static string Resolve(string root, string path) =>
+    Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(root, path));
+
+var contentRoot = builder.Environment.ContentRootPath;
 var legacyAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-var configPath = RequireConfig(builder.Configuration, "ConfigPath",
+var configPath = Resolve(contentRoot, RequireConfig(builder.Configuration, "ConfigPath",
     Path.Combine(legacyAppData, "TimesheetApp", "appsettings.json") +
     $" (an existing file there is migrated automatically to {JsonAppConfig.DefaultConfigPath()} -- F5 -- " +
-    "if you point ConfigPath at the new name instead)");
-var dbPath = RequireConfig(builder.Configuration, "DbPath", JsonAppConfig.DefaultDbPath());
-var keyRingPath = RequireConfig(builder.Configuration, "KeyRingPath",
-    Path.Combine(Path.GetDirectoryName(JsonAppConfig.DefaultDbPath())!, "keys"));
+    "if you point ConfigPath at the new name instead)"));
+var dbPath = Resolve(contentRoot, RequireConfig(builder.Configuration, "DbPath", JsonAppConfig.DefaultDbPath()));
+var keyRingPath = Resolve(contentRoot, RequireConfig(builder.Configuration, "KeyRingPath",
+    Path.Combine(Path.GetDirectoryName(JsonAppConfig.DefaultDbPath())!, "keys")));
+
+// The database directory must exist before SQLite is asked to create a file in it.
+Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
 // ArchivePath: OPTIONAL, unlike the three above -- it has a working default (a folder next to DbPath; see
 // StandupArchiveService / TaskListArchiveService) and breaking that default is not in this milestone's
