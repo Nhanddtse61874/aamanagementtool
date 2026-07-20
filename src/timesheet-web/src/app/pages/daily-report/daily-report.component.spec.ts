@@ -511,6 +511,45 @@ describe('DailyReportComponent', () => {
       expect(bands[0]).toContain('nothing logged');       // YESTERDAY — empty
       expect(bands[1]).not.toContain('nothing logged');   // TODAY — has a row
     });
+
+    /**
+     * 🔴 P9 (M10 audit A5) — the board showed THAT an issue resolved, never HOW. `solutionText` was already on
+     * the wire (`StandupIssueDto`, used by the Input tab's own solution editor); this is a template-only fix.
+     */
+    it('P9 — shows a resolved issue\'s solution text on the board', async () => {
+      arrange();
+      api.getStandupBoard.and.returnValue(of([{
+        userId: 2, userName: 'Binh', yesterday: [],
+        today: [view(21, 'today', true, [issue({ status: 'resolved', solutionText: 'Restarted the pool' })])],
+      }]));
+      await settle();
+
+      component.tab.set('team');
+      await settle();
+
+      expect(text()).toContain('Restarted the pool');
+    });
+
+    /**
+     * 🔴 A resolved issue with a BLANK solution is "pending" (WPF's own rule — `hasSolution` gates on
+     * `solutionText`, not `status`), and must not render an empty container.
+     */
+    it('P9 — renders no empty solution container when solutionText is blank, even if status says resolved', async () => {
+      arrange();
+      api.getStandupBoard.and.returnValue(of([{
+        userId: 2, userName: 'Binh', yesterday: [],
+        today: [view(21, 'today', true, [issue({ status: 'resolved', solutionText: null })])],
+      }]));
+      await settle();
+
+      component.tab.set('team');
+      await settle();
+
+      const issueEl = fixture.debugElement.query(By.css('.issue.sm'));
+      expect(issueEl).not.toBeNull();
+      expect((issueEl.nativeElement as HTMLElement).textContent ?? '').not.toContain('—');
+      expect(fixture.debugElement.query(By.css('.issue.sm .faint'))).toBeNull();
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════════════════════════════

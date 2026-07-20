@@ -196,6 +196,10 @@
                     @for (i of issuesOf(v); track trackIssue($index, i)) {
                       <div class="issue sm" [class.ok]="hasSolution(i)" [class.warn]="!hasSolution(i)">
                         {{ hasSolution(i) ? '✓' : '⚠' }} {{ i.issueText }}
+                        <!-- P9 (M10 audit A5): the board showed THAT an issue resolved, never HOW. A blank
+                             solution is "pending" (hasSolution gates on solutionText, not status), so this
+                             never renders an empty container. -->
+                        @if (hasSolution(i)) { <span class="faint"> — {{ i.solutionText }}</span> }
                       </div>
                     }
                   </div>
