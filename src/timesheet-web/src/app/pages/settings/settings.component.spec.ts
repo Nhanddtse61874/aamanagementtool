@@ -11,7 +11,7 @@ import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog
 import { ThemeService } from '../../services/theme.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
-import { SettingsComponent } from './settings.component';
+import { PRESET_ICONS, SettingsComponent } from './settings.component';
 
 /**
  * The Settings screen. Every panel here was a mockup: `storageFields` was an array of empty strings, the
@@ -102,6 +102,12 @@ describe('SettingsComponent', () => {
 
     api.setSetting.and.returnValue(of(void 0));
     api.deleteTag.and.returnValue(of(void 0));
+    // 🔴 `createTag` returns Observable<TagDto>, NOT Observable<void> — `saveTag()` pipes the result, so an
+    // unstubbed spy returns undefined and throws "Cannot read properties of undefined (reading 'pipe')"
+    // INSIDE the click handler. Angular's listener error-handling swallows that, so the test still went
+    // green while the write path under test never actually ran. A green test sitting on a silent throw is
+    // the defect class this file exists to prevent — stub it so the observable really emits.
+    api.createTag.and.returnValue(of(TAGS[0]));
     api.setPcaContactActive.and.returnValue(of(void 0));
     api.setTeamMembers.and.returnValue(of({ rowVersion: 5 }));
     api.setDefaultTaskActive.and.returnValue(of(void 0));
@@ -614,5 +620,188 @@ describe('SettingsComponent', () => {
     fixture.detectChanges();
 
     expect(api.getBackupList).toHaveBeenCalledTimes(1);   // unchanged — nothing was written
+  });
+
+  // ══ TAG-03 — the preset row writes the icon and NOTHING else ══════════════════════════════════════
+
+  /**
+   * The Tags editor's three inputs, in DOM order: icon, text, colour.
+   *
+   * 🔴 Scoped through `.fields` deliberately. A bare `.editor .input` matches FOUR editors in this template
+   * — templates, tags, team members, backup settings — and the Templates card sits ABOVE the Tags card on
+   * this same Workflow tab. `[0]`/`[1]` resolve to the tag's icon/text today ONLY because `templateDraft()`
+   * happens to be null; a future test that opens a template editor first would silently retarget every
+   * assertion below onto the wrong control. `.fields` (plural) exists exactly once in this template, in the
+   * Tags editor — verified, not assumed.
+   */
+  function tagInputs(): HTMLInputElement[] {
+    return fixture.debugElement.queryAll(By.css('.editor .fields .input'))
+      .map(d => d.nativeElement as HTMLInputElement);
+  }
+
+  /**
+   * Clicks Edit on the seeded tag, loading it into the editor through the real `editTag` path.
+   *
+   * NOT `buttons('Edit')[0]` — that is the Templates card's Edit button, which renders first on this tab.
+   * Found by locating the `.listrow` that carries a `.tagchip`, which only a tag row does.
+   */
+  function editSeededTag(): void {
+    const row = fixture.debugElement.queryAll(By.css('.listrow'))
+      .find(d => (d.nativeElement as HTMLElement).querySelector('.tagchip') !== null);
+    if (row === undefined) throw new Error('the seeded tag row is missing — check the TAGS fixture');
+
+    const edit = Array.from((row.nativeElement as HTMLElement).querySelectorAll('button'))
+      .find(b => (b.textContent ?? '').trim().startsWith('Edit'));
+    if (edit === undefined) throw new Error("the tag row's Edit button is missing");
+
+    edit.click();
+    fixture.detectChanges();
+  }
+
+  //
+  // 🔴 `fakeAsync` + `tick()` IS NOT OPTIONAL HERE. NgModel writes model→view on a MICROTASK
+  // (`resolvedPromise.then()` inside `_updateValue`), so `detectChanges()` alone leaves `input.value`
+  // EMPTY — this file already documents the trap twice, at the warning-window test near the top and
+  // again above the backup-settings test. Without `tick()` the icon assertion fails outright AND the
+  // "text untouched" assertion passes vacuously, which is worse: it would green-light a preset that
+  // overwrote the tag's text. No fresh fixture is needed — every click here happens inside the fake
+  // zone, so `tick()` can flush what they schedule.
+  it('clicking a preset glyph sets the icon and leaves the text alone', fakeAsync(() => {
+    tab('Workflow');
+    buttons('+ New tag')[0].click();
+    fixture.detectChanges();
+
+    const riskBtn = fixture.debugElement.queryAll(By.css('.tagpresets__btn'))[4]
+      .nativeElement as HTMLButtonElement;
+    expect(riskBtn.textContent?.trim()).withContext('the 5th preset is Risk').toBe('💣');
+
+    riskBtn.click();
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+
+    // 🔴 The text assertion below is WEAK BY CONSTRUCTION and is kept only as a create-path smoke check:
+    // text is '' before the click and '' after, so it catches a preset that WRITES text but CANNOT catch one
+    // that CLEARS it — `setTagText('')` is indistinguishable from doing nothing against an empty baseline.
+    // The edit-path test further down is what actually holds "a preset changes nothing else" to account.
+    const inputs = tagInputs();
+    expect(inputs[0].value).withContext('the icon input').toBe('💣');
+    expect(inputs[1].value).withContext('the text input must be untouched').toBe('');
+  }));
+
+  // Every button must be type="button". A <button> with no type defaults to SUBMIT — if this editor is
+  // ever wrapped in a <form>, picking an icon would submit it. Cheap to assert, invisible when it breaks.
+  it('every preset button is type=button', () => {
+    tab('Workflow');
+    buttons('+ New tag')[0].click();
+    fixture.detectChanges();
+
+    const btns = fixture.debugElement.queryAll(By.css('.tagpresets__btn'))
+      .map(d => d.nativeElement as HTMLButtonElement);
+    expect(btns.length).toBe(10);
+    for (const b of btns) expect(b.type).toBe('button');
+
+    // The row must name itself to assistive tech, or a screen-reader user hears "Risk, button" with nothing
+    // tying these ten to the icon field above — the visible "Quick icons" caption is a plain <span> that
+    // labels nothing on its own. Asserted for the same reason as type="button" directly above: it is our
+    // markup contract, it is cheap to check, and it is completely invisible when someone breaks it.
+    const row = fixture.debugElement.query(By.css('.tagpresets__row')).nativeElement as HTMLElement;
+    expect(row.getAttribute('role')).toBe('group');
+    expect(row.getAttribute('aria-label')).toBe('Quick icons');
+  });
+
+  // TAG-03 keeps free-text entry. Asserted through the OUTGOING REQUEST rather than the input's own
+  // value, which would only prove the test typed into a box.
+  it('the free-text icon input still accepts a glyph outside the ten', fakeAsync(() => {
+    tab('Workflow');
+    buttons('+ New tag')[0].click();
+    fixture.detectChanges();
+
+    tagInputs()[0].value = '🦄';                   // deliberately NOT one of the ten
+    tagInputs()[0].dispatchEvent(new Event('input'));
+    tagInputs()[1].value = 'Mythical';
+    tagInputs()[1].dispatchEvent(new Event('input'));
+    tick();
+    fixture.detectChanges();
+
+    buttons('Save tag')[0].click();
+    expect(api.createTag).toHaveBeenCalledWith(
+      jasmine.objectContaining({ icon: '🦄', text: 'Mythical' }));
+
+    // Now that `createTag` really emits, `run()` reaches `toast.show()` — drain its 2s timer, or fakeAsync
+    // fails on "timer(s) still in the queue". Same reason as the warning-window test above. That this is
+    // now REQUIRED is itself the proof the write path executes: before the spy was stubbed, `run()` threw
+    // before ever scheduling it.
+    tick(2000);
+  }));
+
+  /**
+   * 🔴 THE EDIT PATH — the only place "a preset click changes nothing else" can actually FAIL.
+   *
+   * On the create path every other field starts empty or default, so `expect(text).toBe('')` passes whether
+   * the preset left the text alone or CLEARED it: against an empty baseline `setTagText('')` and doing
+   * nothing are the same observation. That is vacuity from an empty baseline — a sibling of the vacuity a
+   * missing `tick()` produces, and it survived three review gates because nothing about the assertion LOOKS
+   * weak. Colour was not asserted at all.
+   *
+   * Editing the seeded tag gives all three assertions something real to fail against: it arrives with
+   * text 'Urgent' and colour #B91C1C, neither of them the default a new draft would carry.
+   */
+  it('clicking a preset on an EXISTING tag changes only the icon — text and colour survive', fakeAsync(() => {
+    tab('Workflow');
+    editSeededTag();
+    tick();                  // flush NgModel's model→view microtask, or the draft's values are not in the DOM yet
+    fixture.detectChanges();
+
+    // The baseline is the whole point: if these two ever go empty/default, the assertions after the click
+    // stop proving anything and this test quietly becomes as vacuous as the one it was written to backstop.
+    // This guard has already earned itself once — without it, the missing `tick()` above would have left
+    // both fields at ''/#000000 and every assertion below would have passed against an empty baseline.
+    const before = tagInputs();
+    expect(before[1].value).withContext('the seeded tag must arrive with real text to lose').toBe('Urgent');
+    expect(before[2].value.toLowerCase())
+      .withContext('...and a non-default colour, so a clobber is visible').toBe('#b91c1c');
+
+    (fixture.debugElement.queryAll(By.css('.tagpresets__btn'))[4].nativeElement as HTMLButtonElement)
+      .click();                                                                      // 💣 Risk
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+
+    const after = tagInputs();
+    expect(after[0].value).withContext('the icon is the one field that changes').toBe('💣');
+    expect(after[1].value).withContext('a preset must NOT clear or rewrite the text').toBe('Urgent');
+    expect(after[2].value.toLowerCase()).withContext('a preset must NOT touch the colour').toBe('#b91c1c');
+  }));
+});
+
+// ══ TAG-03 preset icons ════════════════════════════════════════════════════════════════════════════
+//
+// These assert the LIST, not the UI, so they need no TestBed. The length one is the point of the
+// block: the icon input carries maxlength="4", so a ZWJ sequence (👨‍💻 = 5 units), a skin-tone modifier
+// or a regional-indicator flag would be SILENTLY TRUNCATED into a different glyph. Nothing else in the
+// app guards that — there is no server-side cap (SettingsEndpoints.cs:176-177 validates Text only).
+describe('PRESET_ICONS', () => {
+  it('offers exactly ten glyphs', () => {
+    expect(PRESET_ICONS.length).toBe(10);
+  });
+
+  it('has no duplicate glyph', () => {
+    const glyphs = PRESET_ICONS.map(p => p.glyph);
+    expect(new Set(glyphs).size).withContext('two buttons with the same glyph').toBe(glyphs.length);
+  });
+
+  // 🔴 The guard. If this fails, someone added an emoji the icon field will cut in half.
+  it('every glyph fits the icon input maxlength of 4', () => {
+    for (const p of PRESET_ICONS) {
+      expect(p.glyph.length).withContext(`${p.label} (${p.glyph}) is ${p.glyph.length} UTF-16 units`)
+        .toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('gives every glyph a non-empty accessible label', () => {
+    for (const p of PRESET_ICONS) {
+      expect(p.label.trim()).withContext(`glyph ${p.glyph} has no label`).not.toBe('');
+    }
   });
 });

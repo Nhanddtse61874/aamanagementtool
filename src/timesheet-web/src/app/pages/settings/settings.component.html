@@ -175,6 +175,28 @@
                          (ngModelChange)="setTagColor($event)" />
                 </label>
               </div>
+
+              <!-- TAG-03 — quick-pick glyphs. Deliberately a SIBLING of .fields, not inside the icon
+                   <label>: a label delegates clicks to its control, so a button nested in one would
+                   also focus the text box. `type="button"` is required, not stylistic — an untyped
+                   <button> defaults to submit. -->
+              <div class="tagpresets">
+                <span class="tagpresets__cap">Quick icons</span>
+                <!-- `role="group"` + `aria-label` ties the ten buttons to the caption above them: without it a
+                     screen reader announces only "Risk, button", with nothing saying these are icon shortcuts
+                     for the field above. Same idiom as `tag-picker.component.html:28` and
+                     `team-filter.component.html:21`, but a STATIC label — those two bind `[attr.aria-label]`
+                     because their caption is a signal (`header()`); ours is a literal, so binding would be
+                     indirection for its own sake. Keep this string and the caption above identical. -->
+                <div class="tagpresets__row" role="group" aria-label="Quick icons">
+                  @for (p of presetIcons; track p.glyph) {
+                    <button type="button" class="tagpresets__btn" [disabled]="busy()"
+                            [title]="p.label" [attr.aria-label]="p.label"
+                            (click)="setTagIcon(p.glyph)">{{ p.glyph }}</button>
+                  }
+                </div>
+              </div>
+
               <div class="acts">
                 <button class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="cancelTag()">Cancel</button>
                 <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveTag()">Save tag</button>

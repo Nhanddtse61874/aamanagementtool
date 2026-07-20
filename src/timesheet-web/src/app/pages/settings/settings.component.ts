@@ -27,6 +27,39 @@ const WARNING_DAYS_DEFAULT = 3;
 /** A tag's colour when the admin does not pick one. */
 const TAG_COLOR_DEFAULT = '#0F766E';
 
+/** One quick-pick glyph in the tag editor. `label` names the BUTTON for assistive tech — it is never
+ *  written into the tag's text. The user still types their own label. */
+export interface PresetIcon { readonly glyph: string; readonly label: string; }
+
+/**
+ * The ten quick-pick glyphs (TAG-03). Before this the icon field was the only one of the three with no
+ * assistance at all — colour has the OS picker (`settings.component.html:174`), text needs none.
+ *
+ * 🔴 EVERY GLYPH MUST STAY <= 4 UTF-16 UNITS. The input carries maxlength="4" and there is no server-side
+ * cap, so a ZWJ sequence (👨‍💻), a skin-tone modifier or a flag would be silently truncated into some other
+ * character. A test pins this — do not add an emoji without running it.
+ *
+ * ⚠️ IS DELIBERATELY ABSENT. Task List builds its own computed "⚠ Late" / "⚠ At risk" chips in
+ * `task-list.model.ts:64,66`; a user-authored tag carrying ⚠ would be indistinguishable from an
+ * automatic assessment. 💣 carries "risk" without borrowing the system's voice.
+ *
+ * 📈/📉 DESCRIBE THE ESTIMATE, not effort spent — so "Over" pairs with up and "Under" with down, and the
+ * word agrees with the picture. The opposite reading (arrow = hours spent) is defensible and was rejected:
+ * it puts an up arrow on UnderEstimate, which reads backwards to anyone skimming a report.
+ */
+export const PRESET_ICONS: readonly PresetIcon[] = [
+  { glyph: '🔥', label: 'Urgent' },
+  { glyph: '⏳', label: 'Pending' },
+  { glyph: '⬇️', label: 'Low Priority' },
+  { glyph: '👀', label: 'Review' },
+  { glyph: '💣', label: 'Risk' },
+  { glyph: '🚫', label: 'Dropped' },
+  { glyph: '❓', label: 'Unclear' },
+  { glyph: '⛰️', label: 'Difficult' },
+  { glyph: '📈', label: 'OverEstimate' },
+  { glyph: '📉', label: 'UnderEstimate' },
+];
+
 /** A question the user must answer before something irreversible happens. */
 interface PendingConfirm {
   readonly title: string;
@@ -160,6 +193,9 @@ export class SettingsComponent {
   constructor() {
     this.load();
   }
+
+  /** TAG-03 — the quick-pick row. The template cannot see a module-level const. */
+  readonly presetIcons = PRESET_ICONS;
 
   // 🔴 These exist because an Angular TEMPLATE EXPRESSION IS NOT JAVASCRIPT — its parser is a restricted
   // subset with NO SPREAD OPERATOR, so `tagDraft.set({ ...d, text: $event })` does not compile (it fails at

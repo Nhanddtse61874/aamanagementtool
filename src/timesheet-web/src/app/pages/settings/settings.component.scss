@@ -80,6 +80,17 @@ button.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 .listrow.off { opacity: .62; }
 .acts { display: flex; gap: 8px; }
 .tagchip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 5px 13px; border-radius: 20px; color: #fff; }
+
+/* TAG-03 preset glyph row */
+.tagpresets { margin-top: 10px; }
+.tagpresets__cap { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.tagpresets__row { display: flex; flex-wrap: wrap; gap: 6px; }
+.tagpresets__btn {
+  font-size: 16px; line-height: 1; padding: 6px 9px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--ink);
+}
+.tagpresets__btn:hover:not(:disabled) { border-color: var(--accent); background: var(--surf3); }
+.tagpresets__btn:disabled { opacity: .5; cursor: default; }
 .listempty { padding: 14px 2px; color: var(--muted); font-size: 13px; }
 .listempty code, code { font-family: 'Spline Sans Mono', monospace; font-size: 12.5px; }
 .badge-off { background: color-mix(in srgb, var(--faint) 18%, transparent); color: var(--faint); }
