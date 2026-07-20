@@ -11,7 +11,7 @@ import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog
 import { ThemeService } from '../../services/theme.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
-import { SettingsComponent } from './settings.component';
+import { PRESET_ICONS, SettingsComponent } from './settings.component';
 
 /**
  * The Settings screen. Every panel here was a mockup: `storageFields` was an array of empty strings, the
@@ -614,5 +614,36 @@ describe('SettingsComponent', () => {
     fixture.detectChanges();
 
     expect(api.getBackupList).toHaveBeenCalledTimes(1);   // unchanged — nothing was written
+  });
+});
+
+// ══ TAG-03 preset icons ════════════════════════════════════════════════════════════════════════════
+//
+// These assert the LIST, not the UI, so they need no TestBed. The length one is the point of the
+// block: the icon input carries maxlength="4", so a ZWJ sequence (👨‍💻 = 5 units), a skin-tone modifier
+// or a regional-indicator flag would be SILENTLY TRUNCATED into a different glyph. Nothing else in the
+// app guards that — there is no server-side cap (SettingsEndpoints.cs:176-177 validates Text only).
+describe('PRESET_ICONS', () => {
+  it('offers exactly ten glyphs', () => {
+    expect(PRESET_ICONS.length).toBe(10);
+  });
+
+  it('has no duplicate glyph', () => {
+    const glyphs = PRESET_ICONS.map(p => p.glyph);
+    expect(new Set(glyphs).size).withContext('two buttons with the same glyph').toBe(glyphs.length);
+  });
+
+  // 🔴 The guard. If this fails, someone added an emoji the icon field will cut in half.
+  it('every glyph fits the icon input maxlength of 4', () => {
+    for (const p of PRESET_ICONS) {
+      expect(p.glyph.length).withContext(`${p.label} (${p.glyph}) is ${p.glyph.length} UTF-16 units`)
+        .toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('gives every glyph a non-empty accessible label', () => {
+    for (const p of PRESET_ICONS) {
+      expect(p.label.trim()).withContext(`glyph ${p.glyph} has no label`).not.toBe('');
+    }
   });
 });
