@@ -1,0 +1,42 @@
+{
+  "task": "Offer ~10 preset status icons to pick from when creating a tag, instead of an unassisted free-text emoji field.",
+  "assessed": "2026-07-20",
+  "eligible": false,
+  "task_class": "normal",
+  "analysis": {
+    "scope_clear_and_unambiguous": false,
+    "small_change_1_to_2_files": false,
+    "no_architecture_or_api_contract_change": true,
+    "no_security_or_migration_impact": true,
+    "low_regression_risk": true
+  },
+  "hard_exclusion_triggered": "new_feature",
+  "evidence": {
+    "current_icon_input": "settings.component.html:162-166 — plain <input maxlength=\"4\" placeholder=\"🔥\">, no picker. The colour field beside it IS a native picker (:174), so icon is the only unassisted field of the three.",
+    "storage": "Tags.icon is TEXT NOT NULL, no length constraint, no CHECK (DatabaseInitializer.cs:133-139, schema v7). Entity: Entities.cs:113-114. Unchanged by this task.",
+    "no_api_change_needed": "TagDto / SettingsTagCreateRequest / SettingsTagUpdateRequest already carry Icon as string (Dtos.cs:107, SettingsEndpoints.cs:1185,1187). A preset picker writes the same field — no contract change, no client regen, no migration.",
+    "no_existing_preset_list": "Searched for ICONS/EMOJI/PRESET/PALETTE arrays across all non-node_modules source: none exists for tag icons. Nearest neighbours are TYPE_COLORS and AVATAR_COLORS (worklog.service.ts:189-201) and a single default tag colour (settings.component.ts:28).",
+    "render_sites_unaffected": "Icons render as literal interpolated glyphs at tag-picker.component.html:40-42, task-list.component.html:216, settings.component.html:187. A picker changes what gets stored, not how it renders.",
+    "likely_files": [
+      "src/timesheet-web/src/app/pages/settings/settings.component.html",
+      "src/timesheet-web/src/app/pages/settings/settings.component.ts",
+      "src/timesheet-web/src/app/pages/settings/settings.component.scss",
+      "src/timesheet-web/src/app/pages/settings/settings.component.spec.ts"
+    ],
+    "test_baseline": "No test asserts anything about icon content, length or validation anywhere. The maxlength=\"4\" cap is entirely untested. Two real icon assertions exist and both only check the glyph passes through to render (tag-picker.component.spec.ts:77, task-list.model.spec.ts:264-266)."
+  },
+  "reason": "Purely additive and client-side with no contract or schema impact, but it is a NEW FEATURE with a user-facing behaviour change — an explicit hard exclusion in STEP 1 — and the two genuinely open questions (which 10 glyphs, and whether the picker replaces or supplements free text) are product decisions no agent should settle alone.",
+  "recommended_skips": [],
+  "required_minimum_gates": ["verification", "uat"],
+  "open_questions_for_brainstorm": [
+    "Which 10 glyphs? The user said 'commonly used to describe status in reports' but did not name them — this is a product choice with no oracle in the repo.",
+    "Does the picker REPLACE the free-text input or sit beside it? Replacing caps icons at the preset set (a real loss for anyone already using a custom glyph); supplementing keeps the uncapped free-text path alive.",
+    "Existing tags carry arbitrary glyphs already. Presets must not orphan or rewrite them."
+  ],
+  "adjacent_findings_not_in_scope": [
+    "No CSS sets an emoji font-family anywhere (only body/mono at styles.scss:53,61,114), despite tag-picker.component.html:37-38 stating icons are emoji meant to match WPF's Segoe UI Emoji. Rendering currently relies on system fallback.",
+    "maxlength=\"4\" is a browser-only cap; the API validates only Text (SettingsEndpoints.cs:176-177, :193-194), so an arbitrarily long icon is accepted server-side and an empty icon is valid end-to-end.",
+    "settings.component.html:187 interpolates '{{ t.icon }} {{ t.text }}' without the @if guard the other two render sites have, so an empty icon leaves a leading space."
+  ],
+  "fallback_path": "If brainstorm settles the two open questions and the change stays inside the Settings page with no contract impact, this becomes a single small plan at STEP 6 — not a multi-wave milestone."
+}
