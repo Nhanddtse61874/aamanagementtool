@@ -61,7 +61,7 @@ The user supplied the ten meanings; the glyphs were chosen against them and conf
 
 ### 3.1 Risk: ⚠️ is unavailable, and 🎲 was not good enough
 
-The natural glyph for risk is ⚠️. **It is excluded because it collides with system output.** Task List draws its own `⚠ Late` and `⚠ At risk` chips (`task-list.component.html:216`), computed by the app from deadline and pace. A user-authored tag carrying ⚠ would be visually indistinguishable from an automatic assessment — a person reading the board could not tell which claims the system stands behind.
+The natural glyph for risk is ⚠️. **It is excluded because it collides with system output.** Task List builds its own `⚠ Late` and `⚠ At risk` chips in `task-list.model.ts:64,66`, computed by the app from deadline and pace. A user-authored tag carrying ⚠ would be visually indistinguishable from an automatic assessment — a person reading the board could not tell which claims the system stands behind.
 
 🎲 was proposed first and the user rejected it. Recorded because the reasoning matters: *dice = uncertain outcome* is a defensible metaphor but a second-order one, and this is the only slot in the ten where the obvious choice was unavailable. 💣 carries the meaning directly — something that will go off if left alone.
 
@@ -102,7 +102,11 @@ Preset buttons call the **existing** `setTagIcon()` (`settings.component.ts:168`
 
 ### 5.2 Placement
 
-A row of ten buttons directly beneath the icon input, inside the existing `<label class="field">` group (`settings.component.html:162-166`). The colour picker beside it is untouched.
+A row of ten buttons **below the `.fields` block, as a sibling of it** (`settings.component.html:177`), spanning the editor's full width. The three field labels and the colour picker are untouched.
+
+⚠️ **Amended 2026-07-20 by Plan Checker, after user approval of the original wording.** This section first said *"inside the existing `<label class="field">` group"*. That is wrong and would have produced a bug: **a `<label>` delegates clicks to its own control**, so a button nested inside the icon label would also focus the icon text box on every press. The row is therefore a sibling, which additionally gives ten buttons more room than a 110px-wide field.
+
+**Visible consequence, stated because it differs from what was approved:** the row sits under all three fields rather than tucked under the icon field alone. Recorded in CLAUDE.md's deviation table.
 
 ### 5.3 `type="button"` is required, not stylistic
 

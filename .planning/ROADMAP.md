@@ -3,7 +3,9 @@
 **Last updated:** 2026-07-20
 
 ## Active
-- **STEP 8 UAT — the batched click-through. IN PROGRESS since 2026-07-20.** M9.2 / M10 / M11 all shipped **un-UAT'd** under the 2026-07-19 batching decision; this is where they are accepted or not. Scope: `OT-13…OT-25` **plus** M9.1's `G3`/`G6`/`G10`. 🔴 `G3` is specified as *"matches the old WPF app"* and M10 deleted that oracle — compare against `.planning/M10-COVERAGE-AUDIT.md`, and if the memo is silent, say so rather than inventing what WPF would have done.
+- **M12 — Tag icon presets.** Step 6 complete, Plan Checker **APPROVE WITH CONDITIONS** (8 defects, all fixed pre-dispatch), awaiting execution-mode choice. Ten preset glyph buttons in the Settings tag editor, so the icon field stops being the only unassisted field of the three — colour already has the OS picker. Presets write the **icon only**; the user still types their own text, and free-text icon entry is retained. `REQ TAG-03` · **Angular only — no C#, no schema, no contract, no regen.** Gate expected to rise by 7.
+  Spec: `docs/superpowers/specs/2026-07-20-tag-icon-presets-design.md` · Plan: `docs/superpowers/plans/2026-07-20-M12-tag-icon-presets.md`
+- **STEP 8 UAT — the batched click-through. PAUSED for M12, not abandoned.** M9.2 / M10 / M11 all shipped **un-UAT'd** under the 2026-07-19 batching decision; this is where they are accepted or not. Scope: `OT-13…OT-25` **plus** M9.1's `G3`/`G6`/`G10`. 🔴 `G3` is specified as *"matches the old WPF app"* and M10 deleted that oracle — compare against `.planning/M10-COVERAGE-AUDIT.md`, and if the memo is silent, say so rather than inventing what WPF would have done.
   **Result so far:** two defects found and fixed (`d36075a` every dropdown rendered blank; `2b7635d` a CSS animation erased the centring transform), **one still undiagnosed** — Log Work reports a day over 8h while the user sees no hours on any task. Hypotheses, ruled-out list and the next step live in `STATE.md` §START HERE.
   **What UAT has already proved about the suite:** 806 tests were green through all three defects. A person clicking for twenty minutes found what 806 assertions could not.
 

@@ -2,11 +2,19 @@
 
 ## Current Position
 
-**Phase:** Step 3 — **Mode Gate complete** for **M12 (tag icon presets)**. UAT of M9.2/M10/M11 is paused, not abandoned — see below.
-**Status:** complete — proceeding to Step 6 (writing-plans).
+**Phase:** Step 6 — **Plan complete and Plan Checker PASSED** for **M12 (tag icon presets)**. UAT of M9.2/M10/M11 is paused, not abandoned — see below.
+**Status:** waiting_for_user — needs an execution-mode choice and a branch decision before dispatch.
 **Last updated:** 2026-07-20
 
-**Next Action:** Run the `writing-plans` skill to draft the M12 implementation plan. Then Plan Checker — `workflow.plan_check: true`, and per the recorded M9.2 breach the gate runs **before** dispatch, hurry or not.
+**Next Action:** User picks `subagent-driven-development` or `executing-plans`, and whether the code lands on `main` or a feature branch. Then execute Task 1 → Task 2, sequentially.
+
+**Plan:** `docs/superpowers/plans/2026-07-20-M12-tag-icon-presets.md` — 2 tasks, one wave, both `sonnet` (→ `claude-sonnet-5`).
+
+🔴 **Plan Checker RAN THIS TIME** — the gate M9.2 skipped. Verdict **APPROVE WITH CONDITIONS**, 8 defects, all fixed before dispatch. Every structural claim the plan made about the codebase checked out; what it got wrong was subtler:
+- **The central test could not have passed.** `[ngModel]` writes model→view on a **microtask**, so `detectChanges()` alone leaves `input.value` empty — a trap **already documented twice in the very spec file the plan was appending to**. Worse than a red test: the companion assertion *"the text input must be untouched"* would have passed **vacuously**, green-lighting a preset that overwrote the tag's text. Fixed with `fakeAsync` + `tick()`.
+- **The preset buttons would have been invisible** — `background: var(--surf2)` on `.editor`, which is *also* `var(--surf2)`. Now `var(--card)`, the file's own precedent.
+- **A wrong citation was about to be frozen into a source comment**: the ⚠ chips are built at `task-list.model.ts:64,66`, not `task-list.component.html:216` (that line is the generic chip render). Corrected in the plan and in spec §3.1.
+- **The plan silently contradicted the approved spec** on placement — recorded in CLAUDE.md's deviation table rather than quietly applied. See §5.2.
 
 **Approved Mode: Mode A** — approved 2026-07-20, 0/5 Mode B signals, no hard exclusions.
 
