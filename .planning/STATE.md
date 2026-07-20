@@ -2,15 +2,28 @@
 
 ## Current Position
 
-**Phase:** Step 8 — **UAT** for **M12 (tag icon presets)**. Execution complete, all reviews passed. UAT of M9.2/M10/M11 is still paused, not abandoned — see below.
-**Status:** waiting_for_user — 👤 **G-1 is the only check the suite structurally cannot make.**
+**Phase:** Step 11 — **Ship (complete)**. **M12 merged `f3adf0f` and PUSHED to `origin/main`.**
+**Status:** complete — ready for the next milestone.
 **Last updated:** 2026-07-20
 
-**Branch: `feature/tag-icon-presets-2026-07-20`** (off `d69cb9a`, **not merged**). 5 commits. Subagent-driven, both tasks `sonnet`.
-**Gate: Angular 806 → 814**, build clean, `ERROR`/`FAILED`/`reading 'pipe'` all **0** in raw output. **Re-run by the controller**, not relayed.
-**Real company DB untouched** — mtime still `2026-07-15`, verified after execution.
+**Gate: .NET 475 · ApiTests 541 · Angular 814 · 0 warnings.** Angular re-run by the controller on the merged result; .NET/ApiTests unchanged because **no C# was touched** (verified by diff, not re-run).
+**Real company DB untouched throughout** — SHA `80D80755…`, mtime `2026-07-15`, checked before and after every risky step.
 
-**Next Action:** 👤 run `.planning/M12-UAT.md` — rebuild the UI, restart the API, click through **G-1…G-6**, and answer the edit-path question in that file. Then STEP 9 QA → merge.
+**Next Action:** pick the next milestone from `ROADMAP.md` — or clear the UAT debt below, which is now four milestones deep.
+
+## 🔴 UAT DEBT — four milestones merged un-accepted
+
+`OT-13…OT-25` · M9.1's `G3`/`G6`/`G10` · and now **M12's `G-1`…`G-6`**. Every one merged on an explicit user decision, each individually defensible, and the total is no longer small.
+
+**M12's `G-1` is the sharpest of them:** *"do the ten glyphs render as colour emoji rather than tofu?"* No test can answer it — **no test renders a font** — and nothing in this app pins an emoji `font-family`. **⬇️ and ⛰️** are text-presentation characters promoted by a variation selector and are the two most likely to render wrong. The app was built, deployed, and verified to **serve** the feature; nobody has confirmed a human saw it. Script: `.planning/M12-UAT.md`.
+
+## 🟠 Open product question — M12, recorded not decided
+
+On the **edit** path, clicking a preset **destroys an existing custom glyph with no undo** — clearing by hand gives empty, not the original, and Cancel discards the whole edit. Spec §5.5 declined a deselect toggle reasoning *"the text input clears by hand"* — true only when creating, **and the spec only ever discussed creating**.
+
+## ⚠️ The repo is PUBLIC, and `.planning/` is committed to it
+
+`github.com/Nhanddtse61874/aamanagementtool` — **public**, confirmed 2026-07-20 via `gh repo view`. `.planning/` has been pushed since before this session and now includes the seeded `admin`/`admin` credential, the `UPDATE Users SET password_hash = NULL` recovery line, the real company DB path, and the named unfixed weaknesses (30-day demoted-admin window, restore-without-integrity-check, no HTTPS). **The user was shown this and accepted it** before the 2026-07-20 push. Recorded so nobody assumes these notes are private.
 
 ## 🔴 M12's real lesson: FOUR planning defects, and I caught none of them myself
 

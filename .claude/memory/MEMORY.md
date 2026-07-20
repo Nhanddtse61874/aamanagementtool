@@ -13,3 +13,5 @@ matches. Do not preload the whole store.
 - [Write agent output to disk before returning](write-agent-output-to-disk-before-returning.md) — unreachable results cost as much as lost ones
 - [Test-edit licence has a hard security limit](test-edit-licence-has-a-hard-security-limit.md) — a deliberately changed contract may move the gate; a security assertion never moves without a plan decision
 - [STATE.md must be verified, not trusted](state-md-must-be-verified-not-trusted.md) — an append-forward log keeps stale `(ACTIVE)` markers that do not read as stale
+- [An assertion can be vacuous because its baseline is empty](an-assertion-can-be-vacuous-because-its-baseline-is-empty.md) — "X must not change" proves nothing when X starts equal to the expected value; mutate to prove it
+- [Gates catch what the author cannot](gates-catch-what-the-author-cannot.md) — M12's plan was factually correct and still carried four defects, each found by a different gate
