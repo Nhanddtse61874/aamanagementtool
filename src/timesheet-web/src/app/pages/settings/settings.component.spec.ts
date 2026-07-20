@@ -102,6 +102,12 @@ describe('SettingsComponent', () => {
 
     api.setSetting.and.returnValue(of(void 0));
     api.deleteTag.and.returnValue(of(void 0));
+    // 🔴 `createTag` returns Observable<TagDto>, NOT Observable<void> — `saveTag()` pipes the result, so an
+    // unstubbed spy returns undefined and throws "Cannot read properties of undefined (reading 'pipe')"
+    // INSIDE the click handler. Angular's listener error-handling swallows that, so the test still went
+    // green while the write path under test never actually ran. A green test sitting on a silent throw is
+    // the defect class this file exists to prevent — stub it so the observable really emits.
+    api.createTag.and.returnValue(of(TAGS[0]));
     api.setPcaContactActive.and.returnValue(of(void 0));
     api.setTeamMembers.and.returnValue(of({ rowVersion: 5 }));
     api.setDefaultTaskActive.and.returnValue(of(void 0));
@@ -678,6 +684,12 @@ describe('SettingsComponent', () => {
     buttons('Save tag')[0].click();
     expect(api.createTag).toHaveBeenCalledWith(
       jasmine.objectContaining({ icon: '🦄', text: 'Mythical' }));
+
+    // Now that `createTag` really emits, `run()` reaches `toast.show()` — drain its 2s timer, or fakeAsync
+    // fails on "timer(s) still in the queue". Same reason as the warning-window test above. That this is
+    // now REQUIRED is itself the proof the write path executes: before the spy was stubbed, `run()` threw
+    // before ever scheduling it.
+    tick(2000);
   }));
 });
 
