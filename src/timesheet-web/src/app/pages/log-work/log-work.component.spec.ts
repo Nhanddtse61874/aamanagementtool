@@ -4,19 +4,28 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Subject, of, throwError } from 'rxjs';
 
-import { BacklogDto, SavedBody, TimeLogDto, WeekBacklogGroup } from '../../api/models';
+import { BacklogDto, HolidayDto, SavedBody, TimeLogDto, WeekBacklogGroup } from '../../api/models';
 import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
 import { DataChange, DataKind, RealtimeService } from '../../core/realtime.service';
 import { ToastService } from '../../services/toast.service';
 import { WorklogService } from '../../services/worklog.service';
 import { TaskRow } from './grid-state';
 import { LogWorkComponent } from './log-work.component';
+import { mondayOf, weekDays } from './week';
 
 /**
  * The week the component boots into is derived from `new Date()`, so these tests never hard-code a Monday:
  * they read the axis the component itself derived. (Hard-coding one would make the suite go red on a date
  * change -- a test that fails for the wrong reason.)
  */
+
+/**
+ * The holiday tests need a date to seed the FAKE `getHolidayList()` response with, and that response must be
+ * configured BEFORE `TestBed.createComponent` runs the constructor -- so, unlike every other test here, they
+ * cannot wait for `component.days()` to exist first. Computed the same way the component computes its own
+ * axis (`mondayOf(new Date())`), not hard-coded, for the same reason the file-level comment above gives.
+ */
+const TODAY_DAYS = weekDays(mondayOf(new Date()));
 
 const MONDAY_TASK = 7;      // has 4h on Monday, rowVersion 11  -> a POPULATED cell
 const EMPTY_TASK = 8;       // has nothing at all               -> an EMPTY cell
@@ -74,6 +83,28 @@ const BACKLOG: BacklogDto = {
   id: 2, backlogCode: 'ARCS-1001', project: 'ARCS', note: 'keep me',
   progressPercent: 40, periodMonth: '2026-07', rowVersion: 3,
 };
+
+/** Two tasks, EACH within the per-cell 8h cap, whose Monday hours SUM past it -- the realistic way a day
+ *  total ever exceeds 8h, since a single cell over 8 is refused before it can ever be committed. */
+function weekOverCap(): WeekBacklogGroup[] {
+  return [{
+    backlogId: 2, backlogCode: 'ARCS-1001', project: 'ARCS', type: 'Implement', assigneeName: 'Nhan',
+    tasks: [
+      {
+        taskId: MONDAY_TASK, taskName: 'Design schema', orderIndex: 0,
+        mon: { hours: 5, rowVersion: 11 },
+        tue: { hours: null, rowVersion: null }, wed: { hours: null, rowVersion: null },
+        thu: { hours: null, rowVersion: null }, fri: { hours: null, rowVersion: null },
+      },
+      {
+        taskId: EMPTY_TASK, taskName: 'Write tests', orderIndex: 1,
+        mon: { hours: 4, rowVersion: 20 },
+        tue: { hours: null, rowVersion: null }, wed: { hours: null, rowVersion: null },
+        thu: { hours: null, rowVersion: null }, fri: { hours: null, rowVersion: null },
+      },
+    ],
+  }];
+}
 
 function httpError(status: number, body: unknown): HttpErrorResponse {
   return new HttpErrorResponse({ status, error: body, url: '/api/timesheet/cell' });
@@ -163,17 +194,18 @@ describe('LogWorkComponent', () => {
   /** The ISO date of the Monday the component actually derived for itself. */
   let mon: string;
 
-  function setUp(initial: WeekBacklogGroup[] = week(4, 11)): void {
+  function setUp(initial: WeekBacklogGroup[] = week(4, 11), holidays: HolidayDto[] = []): void {
     dataChanged = new Subject<DataChange>();
 
     api = jasmine.createSpyObj<WorklogService>(
       'WorklogService',
       ['getWeek', 'saveHours', 'clearHours', 'smartFillApply', 'typeColor', 'avatarColor',
-       'getBacklog', 'updateBacklog', 'setTaskOrder', 'setTaskActive'],
+       'getBacklog', 'updateBacklog', 'setTaskOrder', 'setTaskActive', 'getHolidayList'],
     );
     api.getWeek.and.returnValue(of(initial));
     api.typeColor.and.returnValue({ bg: '#fff', c: '#000' });
     api.avatarColor.and.returnValue('#000');
+    api.getHolidayList.and.returnValue(of(holidays));   // OPEN, no year/month filter -- see the component
 
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['show']);
 
@@ -1067,4 +1099,127 @@ describe('LogWorkComponent', () => {
       expect(api.getWeek).not.toHaveBeenCalled();
       expect(component.deleting()).toBeFalse();
     });
+
+  // ---- 🔴 M10/P7: holiday shading -- the point of the port ---------------------------------------------
+  // "Today a user discovers a holiday by typing into the cell and being refused" (M10-BLOCKERS.md, P7). The
+  // server already 400s a holiday write (spec-verified elsewhere in this file, the '2026-07-15 is a holiday'
+  // 400 tests above); these tests are the other half -- that the grid SAYS SO before the user ever types.
+
+  it('fetches the holiday list once at load -- OPEN, no year/month filter', () => {
+    setUp();
+
+    expect(api.getHolidayList).toHaveBeenCalledTimes(1);
+    expect(api.getHolidayList).toHaveBeenCalledWith();
+  });
+
+  it('marks a fetched date as a holiday, and every other day as an ordinary one', () => {
+    const holidayIso = TODAY_DAYS[2].iso;   // Wednesday
+    setUp(week(4, 11), [{ date: holidayIso, description: null }]);
+
+    expect(component.isHoliday(holidayIso)).toBeTrue();
+    expect(component.isHoliday(TODAY_DAYS[0].iso)).toBeFalse();   // Monday -- not the seeded date
+  });
+
+  it('holidayLabel names the day, with the description when one exists', () => {
+    const withDesc = TODAY_DAYS[1].iso;
+    const bare = TODAY_DAYS[3].iso;
+    setUp(week(4, 11), [
+      { date: withDesc, description: 'Independence Day' },
+      { date: bare, description: null },
+    ]);
+
+    expect(component.holidayLabel(withDesc)).toBe('Holiday — Independence Day');
+    expect(component.holidayLabel(bare)).toBe('Holiday');
+    expect(component.holidayLabel(TODAY_DAYS[0].iso)).toBeNull();
+  });
+
+  it('cellTitle: an invalid commit wins over a holiday note', () => {
+    const holidayIso = TODAY_DAYS[0].iso;   // Monday -- MONDAY_TASK lives here
+    setUp(week(4, 11), [{ date: holidayIso, description: null }]);
+
+    // Before any commit, the holiday note is what a hovering/screen-reader user gets.
+    expect(component.cellTitle(MONDAY_TASK, holidayIso)).toBe('Holiday');
+
+    // A refused commit is the more pressing message -- same priority the red border already implies.
+    component.editCell(MONDAY_TASK, holidayIso, '99');
+    component.commitCell(MONDAY_TASK, holidayIso);
+    expect(component.cellTitle(MONDAY_TASK, holidayIso)).toBe('At most 8h in one cell.');
+  });
+
+  it('renders `.holiday` on the header column and on every cell of that day, not on the others', () => {
+    const holidayIso = TODAY_DAYS[2].iso;   // Wednesday
+    setUp(week(4, 11), [{ date: holidayIso, description: null }]);
+    fixture.detectChanges();
+
+    const headerDays: HTMLElement[] =
+      Array.from(fixture.nativeElement.querySelectorAll('.grid__head .c-day'));
+    expect(headerDays.length).toBe(5);
+    expect(headerDays[2].classList).toContain('holiday');
+    expect(headerDays[0].classList).not.toContain('holiday');
+    expect(headerDays[4].classList).not.toContain('holiday');
+
+    // Two task rows -- 5 `.cell`s each. Wednesday is index 2 within EACH row.
+    const cells: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.row .cell'));
+    expect(cells.length).toBe(10);
+    expect(cells[2].classList).toContain('holiday');    // row 1 (Design schema), Wednesday
+    expect(cells[7].classList).toContain('holiday');    // row 2 (Write tests), Wednesday
+    expect(cells[0].classList).not.toContain('holiday');
+  });
+
+  it('a failed holiday fetch is decorative-only -- the grid still loads, nothing is marked', () => {
+    dataChanged = new Subject<DataChange>();
+    api = jasmine.createSpyObj<WorklogService>(
+      'WorklogService',
+      ['getWeek', 'saveHours', 'clearHours', 'smartFillApply', 'typeColor', 'avatarColor',
+       'getBacklog', 'updateBacklog', 'setTaskOrder', 'setTaskActive', 'getHolidayList'],
+    );
+    api.getWeek.and.returnValue(of(week(4, 11)));
+    api.typeColor.and.returnValue({ bg: '#fff', c: '#000' });
+    api.avatarColor.and.returnValue('#000');
+    api.getHolidayList.and.returnValue(throwError(() => httpError(500, null)));
+    toast = jasmine.createSpyObj<ToastService>('ToastService', ['show']);
+    const realtime: Partial<RealtimeService> = { start: () => undefined, dataChanged: dataChanged.asObservable() };
+
+    TestBed.configureTestingModule({
+      imports: [LogWorkComponent],
+      providers: [
+        { provide: WorklogService, useValue: api },
+        { provide: ToastService, useValue: toast },
+        { provide: RealtimeService, useValue: realtime },
+      ],
+    });
+    fixture = TestBed.createComponent(LogWorkComponent);
+    component = fixture.componentInstance;
+
+    expect(() => fixture.detectChanges()).not.toThrow();
+    expect(component.groups().length).toBe(1);           // the week itself still loaded
+    expect(component.isHoliday(TODAY_DAYS[0].iso)).toBeFalse();
+  });
+
+  // ---- 🔴 M10/P7: a day over 8h is flagged -- VISUAL ONLY, never blocks the save ------------------------
+  // Blocking is a declined behaviour change (XC-03/TS-06) and not this task's to reintroduce; the cell above
+  // already proves 400/409/404 handling is unchanged. This is strictly the footer's `.over` class.
+
+  it('flags a day total over 8h -- two tasks each within the per-cell cap, summing past it', () => {
+    setUp(weekOverCap());
+    fixture.detectChanges();
+
+    expect(component.dayTotal(mon)).toBe(9);
+
+    const footerDays: HTMLElement[] =
+      Array.from(fixture.nativeElement.querySelectorAll('.grid__foot .c-day'));
+    expect(footerDays.length).toBe(5);
+    expect(footerDays[0].classList).toContain('over');     // Monday -- 5 + 4 = 9
+    expect(footerDays[1].classList).not.toContain('over');  // Tuesday -- empty, nowhere near the cap
+  });
+
+  it('does not flag a day sitting exactly at the 8h cap', () => {
+    setUp(week(8, 11));
+    fixture.detectChanges();
+
+    const footerDays: HTMLElement[] =
+      Array.from(fixture.nativeElement.querySelectorAll('.grid__foot .c-day'));
+    expect(component.dayTotal(mon)).toBe(8);
+    expect(footerDays[0].classList).not.toContain('over');
+  });
 });

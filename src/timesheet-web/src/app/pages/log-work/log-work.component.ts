@@ -6,9 +6,9 @@ import {
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { EMPTY, Subject, catchError, firstValueFrom, map, merge, switchMap } from 'rxjs';
+import { EMPTY, Subject, catchError, firstValueFrom, map, merge, of, switchMap } from 'rxjs';
 
-import { ConflictBody, TimeLogDto, ValidationBody, WeekBacklogGroup } from '../../api/models';
+import { ConflictBody, HolidayDto, TimeLogDto, ValidationBody, WeekBacklogGroup } from '../../api/models';
 import { cellKey } from '../../core/cell-key';
 import { ConfirmDialogComponent } from '../../core/confirm-dialog/confirm-dialog.component';
 import { CellConflict, ConflictDialogComponent } from '../../core/conflict-dialog/conflict-dialog.component';
@@ -111,6 +111,14 @@ export class LogWorkComponent {
   readonly groups = signal<Group[]>([]);
   /** SERVER TRUTH: hours + rowVersion per cell. The source of every `expectedVersion`. */
   private readonly cells = signal<CellMap>({});
+  /**
+   * ISO date -> the holiday's description (or `null` if it has none). Fetched ONCE at load -- see the
+   * constructor. M10/P7: "today a user discovers a holiday by typing into the cell and being refused" (the
+   * server already 400s the write; this map only needs to exist for the grid to say so BEFORE that happens).
+   * Holidays change rarely enough that tying a re-fetch to `refresh` -- which fires on nearly every write this
+   * screen makes -- is not worth the extra round trip.
+   */
+  private readonly holidays = signal<ReadonlyMap<string, string | null>>(new Map());
   /** What the user is TYPING, before it is committed. Cleared per cell once the write resolves. */
   private readonly drafts = signal<Record<string, string>>({});
   /**
@@ -237,6 +245,19 @@ export class LogWorkComponent {
     // what X-Connection-Id buys), so there is no echo of our own writes to filter out here.
     this.realtime.dataChanged.pipe(takeUntilDestroyed()).subscribe(() => this.refresh.next());
     this.realtime.start();
+
+    // Holidays are OPEN, no year/month filter -- same call `settings.component.ts` makes, for the same
+    // reason: this returns every holiday on file. Decorative only, so a failed fetch must not break the grid.
+    this.api.getHolidayList().pipe(
+      catchError(() => of<HolidayDto[]>([])),
+      takeUntilDestroyed(),
+    ).subscribe(list => {
+      const map = new Map<string, string | null>();
+      for (const h of list) {
+        if (h.date) map.set(h.date, h.description ?? null);
+      }
+      this.holidays.set(map);
+    });
   }
 
   private applyWeek(monday: string, groups: WeekBacklogGroup[]): void {
@@ -283,6 +304,25 @@ export class LogWorkComponent {
       case 'too-precise':  return 'At most 1 decimal place.';        // TimesheetRowVm.cs:54, verbatim
       default:             return null;
     }
+  }
+
+  /** Whether `iso` is a public holiday -- the grid's only way to show what the server already enforces
+   *  (a holiday write 400s). Weekends are excluded from the grid entirely already; this is the other half. */
+  isHoliday(iso: string): boolean {
+    return this.holidays().has(iso);
+  }
+
+  /** The header's tooltip and the holiday half of a cell's `title` -- `null` for an ordinary day. */
+  holidayLabel(iso: string): string | null {
+    const description = this.holidays().get(iso);
+    if (description === undefined) return null;
+    return description ? `Holiday — ${description}` : 'Holiday';
+  }
+
+  /** A cell's `title`. An invalid commit wins over a holiday note -- the same priority the red border already
+   *  implies: a refused edit is more pressing than a warning not to have typed at all. */
+  cellTitle(taskId: number, iso: string): string | null {
+    return this.invalidMessage(taskId, iso) ?? this.holidayLabel(iso);
   }
 
   /**

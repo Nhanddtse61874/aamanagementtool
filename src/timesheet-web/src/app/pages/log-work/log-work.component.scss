@@ -54,6 +54,21 @@
 .cell input.invalid { background: var(--danger-bg); color: var(--danger-c); box-shadow: inset 0 0 0 1px var(--danger-bd); }
 .cell input.invalid:focus { box-shadow: inset 0 0 0 2px var(--danger-bd); }
 
+/* M10/P7: holiday shading -- the point of the port. "Today a user discovers a holiday by typing into the
+   cell and being refused" (M10-BLOCKERS.md, P7); the server already 400s the write, this just says so first.
+   House tokens only -- --surf3 / --faint -- no new colour is invented here (task-list.component.scss:2's
+   rule). Placed AFTER `.cell.filled` so a holiday (should hours already sit on one) reads as the more urgent
+   signal of the two. */
+.grid__head .c-day.holiday, .grid__foot .c-day.holiday { background: var(--surf3); color: var(--faint); }
+.cell.holiday { background: var(--surf3); }
+.cell.holiday input { color: var(--faint); }
+.cell.holiday input:focus { background: var(--accent-soft); color: var(--accent-700); }
+
+/* M10/P7: a day over the 8h cap looks wrong. VISUAL ONLY -- it does not block the save (that behaviour change
+   is XC-03/TS-06, declined earlier and not this task's to reintroduce). --danger-c only, the same token the
+   invalid-cell state above already uses; `.grid__foot > div` is already font-weight 800. */
+.grid__foot .c-day.over { color: var(--danger-c); }
+
 .grp__foot { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
 /* ---- M8.5/Task 6: drag to reorder ------------------------------------------------------------------- */

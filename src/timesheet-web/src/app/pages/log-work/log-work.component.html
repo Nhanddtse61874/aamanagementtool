@@ -46,7 +46,10 @@
         <div class="grid__head">
           <div class="c-task">TASK</div>
           @for (d of days(); track d.iso) {
-            <div class="c-day">{{ d.dow }} <span>{{ d.label }}</span></div>
+            <!-- M10/P7: holiday shading -- the point of the port. A holiday used to be invisible until the
+                 server refused the write (400); the class marks the whole column, the title names the day for
+                 a hovering/screen-reader user. -->
+            <div class="c-day" [class.holiday]="isHoliday(d.iso)" [attr.title]="holidayLabel(d.iso)">{{ d.dow }} <span>{{ d.label }}</span></div>
           }
           <div class="c-total">TOTAL</div>
         </div>
@@ -114,7 +117,10 @@
                       <span>{{ t.taskName }}</span>
                     </div>
                     @for (d of days(); track d.iso) {
-                      <div class="c-day cell" [class.filled]="cellText(t.taskId, d.iso)">
+                      <!-- M10/P7: `.holiday` shades the whole cell, same as the header column above -- the
+                           user sees it BEFORE typing, rather than discovering it only when the write is
+                           refused. Visual only: the server still enforces the rule, unchanged. -->
+                      <div class="c-day cell" [class.filled]="cellText(t.taskId, d.iso)" [class.holiday]="isHoliday(d.iso)">
                         <!-- (ngModelChange) updates the DRAFT only. The write happens on (blur)/Enter --
                              a save per keystroke would fire "4", "4.", "4.5" as three concurrent PUTs
                              carrying the same expectedVersion, and the last two would 409 against the first. -->
@@ -122,12 +128,13 @@
                              accessible description (spec §5.6), so one attribute serves both a sighted user
                              hovering a red cell and a screen reader. The role="alert" line near the top says
                              only that SOMETHING was refused; this says the cap is 8. `|| null` so aria-invalid
-                             is dropped rather than rendered as aria-invalid="false" on every cell in the grid. -->
+                             is dropped rather than rendered as aria-invalid="false" on every cell in the grid.
+                             `cellTitle` layers the holiday note UNDER the invalid message -- see its comment. -->
                         <input inputmode="decimal" placeholder="·"
                           [class.invalid]="isInvalidCell(t.taskId, d.iso)"
                           [attr.aria-invalid]="isInvalidCell(t.taskId, d.iso) || null"
-                          [attr.title]="invalidMessage(t.taskId, d.iso)"
-                          [attr.aria-label]="t.taskName + ' — ' + d.dow + ' ' + d.label"
+                          [attr.title]="cellTitle(t.taskId, d.iso)"
+                          [attr.aria-label]="t.taskName + ' — ' + d.dow + ' ' + d.label + (isHoliday(d.iso) ? ' (holiday)' : '')"
                           [ngModel]="cellText(t.taskId, d.iso)"
                           (ngModelChange)="editCell(t.taskId, d.iso, $event)"
                           (blur)="commitCell(t.taskId, d.iso)"
@@ -200,7 +207,10 @@
           <div class="grid__foot">
             <div class="c-task">DAY TOTALS</div>
             @for (d of days(); track d.iso) {
-              <div class="c-day" [class.zero]="dayTotal(d.iso) === 0">{{ fmt(dayTotal(d.iso)) }}</div>
+              <!-- M10/P7: `.over` flags a day past the 8h cap -- VISUAL ONLY, the same limit already stated
+                   in log-work.component.ts: it does not block the save (that is a declined behaviour change,
+                   XC-03/TS-06, and not this task's to reintroduce). -->
+              <div class="c-day" [class.zero]="dayTotal(d.iso) === 0" [class.over]="dayTotal(d.iso) > 8" [class.holiday]="isHoliday(d.iso)">{{ fmt(dayTotal(d.iso)) }}</div>
             }
             <div class="c-total">{{ fmt(weekTotal()) }}</div>
           </div>
