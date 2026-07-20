@@ -623,6 +623,41 @@ describe('SettingsComponent', () => {
   });
 
   // ══ TAG-03 — the preset row writes the icon and NOTHING else ══════════════════════════════════════
+
+  /**
+   * The Tags editor's three inputs, in DOM order: icon, text, colour.
+   *
+   * 🔴 Scoped through `.fields` deliberately. A bare `.editor .input` matches FOUR editors in this template
+   * — templates, tags, team members, backup settings — and the Templates card sits ABOVE the Tags card on
+   * this same Workflow tab. `[0]`/`[1]` resolve to the tag's icon/text today ONLY because `templateDraft()`
+   * happens to be null; a future test that opens a template editor first would silently retarget every
+   * assertion below onto the wrong control. `.fields` (plural) exists exactly once in this template, in the
+   * Tags editor — verified, not assumed.
+   */
+  function tagInputs(): HTMLInputElement[] {
+    return fixture.debugElement.queryAll(By.css('.editor .fields .input'))
+      .map(d => d.nativeElement as HTMLInputElement);
+  }
+
+  /**
+   * Clicks Edit on the seeded tag, loading it into the editor through the real `editTag` path.
+   *
+   * NOT `buttons('Edit')[0]` — that is the Templates card's Edit button, which renders first on this tab.
+   * Found by locating the `.listrow` that carries a `.tagchip`, which only a tag row does.
+   */
+  function editSeededTag(): void {
+    const row = fixture.debugElement.queryAll(By.css('.listrow'))
+      .find(d => (d.nativeElement as HTMLElement).querySelector('.tagchip') !== null);
+    if (row === undefined) throw new Error('the seeded tag row is missing — check the TAGS fixture');
+
+    const edit = Array.from((row.nativeElement as HTMLElement).querySelectorAll('button'))
+      .find(b => (b.textContent ?? '').trim().startsWith('Edit'));
+    if (edit === undefined) throw new Error("the tag row's Edit button is missing");
+
+    edit.click();
+    fixture.detectChanges();
+  }
+
   //
   // 🔴 `fakeAsync` + `tick()` IS NOT OPTIONAL HERE. NgModel writes model→view on a MICROTASK
   // (`resolvedPromise.then()` inside `_updateValue`), so `detectChanges()` alone leaves `input.value`
@@ -645,8 +680,11 @@ describe('SettingsComponent', () => {
     tick();
     fixture.detectChanges();
 
-    const inputs = fixture.debugElement.queryAll(By.css('.editor .input'))
-      .map(d => d.nativeElement as HTMLInputElement);
+    // 🔴 The text assertion below is WEAK BY CONSTRUCTION and is kept only as a create-path smoke check:
+    // text is '' before the click and '' after, so it catches a preset that WRITES text but CANNOT catch one
+    // that CLEARS it — `setTagText('')` is indistinguishable from doing nothing against an empty baseline.
+    // The edit-path test further down is what actually holds "a preset changes nothing else" to account.
+    const inputs = tagInputs();
     expect(inputs[0].value).withContext('the icon input').toBe('💣');
     expect(inputs[1].value).withContext('the text input must be untouched').toBe('');
   }));
@@ -679,13 +717,10 @@ describe('SettingsComponent', () => {
     buttons('+ New tag')[0].click();
     fixture.detectChanges();
 
-    const inputs = (): HTMLInputElement[] => fixture.debugElement.queryAll(By.css('.editor .input'))
-      .map(d => d.nativeElement as HTMLInputElement);
-
-    inputs()[0].value = '🦄';                      // deliberately NOT one of the ten
-    inputs()[0].dispatchEvent(new Event('input'));
-    inputs()[1].value = 'Mythical';
-    inputs()[1].dispatchEvent(new Event('input'));
+    tagInputs()[0].value = '🦄';                   // deliberately NOT one of the ten
+    tagInputs()[0].dispatchEvent(new Event('input'));
+    tagInputs()[1].value = 'Mythical';
+    tagInputs()[1].dispatchEvent(new Event('input'));
     tick();
     fixture.detectChanges();
 
@@ -698,6 +733,45 @@ describe('SettingsComponent', () => {
     // now REQUIRED is itself the proof the write path executes: before the spy was stubbed, `run()` threw
     // before ever scheduling it.
     tick(2000);
+  }));
+
+  /**
+   * 🔴 THE EDIT PATH — the only place "a preset click changes nothing else" can actually FAIL.
+   *
+   * On the create path every other field starts empty or default, so `expect(text).toBe('')` passes whether
+   * the preset left the text alone or CLEARED it: against an empty baseline `setTagText('')` and doing
+   * nothing are the same observation. That is vacuity from an empty baseline — a sibling of the vacuity a
+   * missing `tick()` produces, and it survived three review gates because nothing about the assertion LOOKS
+   * weak. Colour was not asserted at all.
+   *
+   * Editing the seeded tag gives all three assertions something real to fail against: it arrives with
+   * text 'Urgent' and colour #B91C1C, neither of them the default a new draft would carry.
+   */
+  it('clicking a preset on an EXISTING tag changes only the icon — text and colour survive', fakeAsync(() => {
+    tab('Workflow');
+    editSeededTag();
+    tick();                  // flush NgModel's model→view microtask, or the draft's values are not in the DOM yet
+    fixture.detectChanges();
+
+    // The baseline is the whole point: if these two ever go empty/default, the assertions after the click
+    // stop proving anything and this test quietly becomes as vacuous as the one it was written to backstop.
+    // This guard has already earned itself once — without it, the missing `tick()` above would have left
+    // both fields at ''/#000000 and every assertion below would have passed against an empty baseline.
+    const before = tagInputs();
+    expect(before[1].value).withContext('the seeded tag must arrive with real text to lose').toBe('Urgent');
+    expect(before[2].value.toLowerCase())
+      .withContext('...and a non-default colour, so a clobber is visible').toBe('#b91c1c');
+
+    (fixture.debugElement.queryAll(By.css('.tagpresets__btn'))[4].nativeElement as HTMLButtonElement)
+      .click();                                                                      // 💣 Risk
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+
+    const after = tagInputs();
+    expect(after[0].value).withContext('the icon is the one field that changes').toBe('💣');
+    expect(after[1].value).withContext('a preset must NOT clear or rewrite the text').toBe('Urgent');
+    expect(after[2].value.toLowerCase()).withContext('a preset must NOT touch the colour').toBe('#b91c1c');
   }));
 });
 
