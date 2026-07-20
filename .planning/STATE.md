@@ -2,11 +2,71 @@
 
 ## Current Position
 
-**Phase:** Step 11 — **M9.2, M10 and M11 all SHIPPED.** The autonomous run is complete; nothing is in flight.
-**Status:** waiting_for_user — everything remaining needs a human's hands or a human's decision.
+**Phase:** Step 8 — **UAT IN PROGRESS.** M9.2 / M10 / M11 shipped; the first real click-through began 2026-07-20 and is finding things the suite could not.
+**Status:** waiting_for_user — one reported defect is still UNDIAGNOSED (see below). Session handed off mid-UAT.
 **Last updated:** 2026-07-20
 
-**Gate: .NET 475 · ApiTests 541 · Angular 805 · 0 warnings.** Every figure re-run by the controller, none taken from an agent's report.
+**Gate: .NET 475 · ApiTests 541 · Angular 806 · 0 warnings.** Every figure re-run by the controller.
+
+---
+
+# ▶ START HERE — UAT session handoff, 2026-07-20
+
+## The app is RUNNING right now
+
+```
+URL       http://localhost:5080          (single process: API serves the built UI)
+login     admin / admin                  (seeded; the user also has nhan.do)
+process   TimesheetApp.Api.exe  PID 13884 — kill it with Stop-Process -Id 13884
+database  src/TimesheetApp.Api/data/timesheet.db   ← DISPOSABLE, gitignored
+```
+🔴 **The real company database at `C:\Users\Admin\Documents\TimesheetApp\timesheet.db` was NOT touched at any point** — SHA `80D807…A728195`, mtime still 2026-07-15. Verified after every risky step. Keep it that way.
+
+To rebuild after a UI change: `npm run build` in `src/timesheet-web`, delete `src/TimesheetApp.Api/wwwroot`, `xcopy /e /i /y src\timesheet-web\dist\worklog\browser src\TimesheetApp.Api\wwwroot`, restart the exe with its **working directory set to `src/TimesheetApp.Api`** (that is what makes the content root resolve `data/`).
+
+## 🔴 THE MEASUREMENT TRAP THAT COST AN HOUR — read before investigating anything
+
+Every backlog/tasklist API is **scoped to the caller's teams**. The controller queried as `admin` (team 1), the user's data lives in **team 2**, and the controller therefore concluded *"your backlog does not exist in the database"* — and asked the user to justify what they had watched themselves create. **They were right; the instrument was wrong.**
+
+```
+users   1 admin (team 1)      2 nhan.do (team 2)   ← the user
+teams   1 My Team   2 Architecture Improvement   3 test
+data    the user's real test backlog is ARCS-001, id 3, TEAM 2
+```
+To see their data: add `admin` to team 2 via `PUT /api/teams/2/members` (needs the team's `rowVersion`), **then put it back**. That was done once and reverted cleanly. Log Work is per-user and cannot be viewed for another user at all — the read-only team aggregate is `GET /api/timesheet/week?allUsers=true`.
+
+## ✅ FIXED DURING UAT
+
+**1. Every dropdown on Task List and Reports showed blank, whatever the data said** (`d36075a`).
+`<select [value]="…">` with `@for`-generated `<option>`s. Angular applies element property bindings **before** creating the element's embedded views, so `value` was written while no option existed to match — the browser discards that — and later passes saw an unchanged binding and never rewrote it. 8 selects on Task List, 2 on Reports. Every other screen was already right (`daily-report.component.html:110` uses `[selected]`; backlog and log-work use `[ngModel]`).
+**The user reported it as two bugs and it was one:** "values from creation don't show" and "editing doesn't save" — the edit *did* save, and the re-render showed blank again, which is indistinguishable from a failed write. A test now goes through the rendered `<select>` and was **verified to fail without the fix** (`Expected '' to be 'Implement'`).
+
+**2. A CSS animation was erasing the transform that centred things** (`2b7635d`).
+`.modal { transform: translate(-50%,-50%); animation: pop … both }` and `@keyframes pop { to { transform: none } }`. Keyframes override the static declaration and `fill-mode: both` makes it permanent, so the modal's **top-left corner** sat at the viewport centre and its lower half — the input and the Add button — fell off the bottom. Full-screen does not help: the error is proportional.
+**The same defect was live in `.toast` (`styles.scss`)** — `translateX(-50%)` erased the same way, so *every toast in the app* has been sitting with its left edge at the screen centre since it was written. Nobody reported it because an off-centre toast still reads.
+
+## 🔴 STILL OPEN — one defect, NOT diagnosed
+
+**Log Work reports a day over 8h while the user sees no hours logged on any task.**
+
+Ruled out with evidence, do not re-check these:
+- **Not team aggregation.** `log-work.component.ts:230` calls `this.api.getWeek(monday)` with no second argument, so `allUsers` defaults to `false` and the grid is always the signed-in user's own timesheet. The user's stated rule (8h is per member per day, not per team) is what the code already does.
+- **Not `@for` row identity.** Every loop tracks properly — `track t.taskId`, `track d.iso`, `track g.backlogId`.
+
+Still live hypotheses:
+- Hours sit in a **collapsed group**: `log-work.component.html:73` renders task rows only when the group is open, while `:213` sums `dayTotal` across **all** groups. A collapsed group does still show its own total in its header, so this only explains it if the user missed that header.
+- The hours are on a different week than the one displayed.
+- Something double-counts in `dayTotal`.
+
+**Known fact:** `ARCS-001` carries `loggedHours: 12`, so the hours are real; the question is only where. The user's own theory is worth following: *"at first it showed the wrong task I had typed into, so entering again in the same place reported the error"* — i.e. a display/identity mismatch, possibly the same family as fix 1 above. **Ask them to re-test after the dropdown fix before digging further.**
+
+## ❓ UNRESOLVED QUESTION
+
+The user reports a misspelling in the Daily Report add-entry form and pointed at `— ad-hoc (type a code below) —` (`daily-report.component.html:245`). No spelling error was found there. It is an `<option>` label, not a placeholder — they may mean it is confusing rather than misspelled. **Ask which word.**
+
+## What UAT has proved about the suite
+
+806 tests were green through all three defects. Every one lived where nothing was looking: two in computed CSS, one in the gap between the model and the DOM. The existing tests assert through component APIs and outgoing request bodies. **A user clicking for twenty minutes found what 806 assertions could not** — that is the argument for finishing `OT-13…OT-25` rather than trusting the number.
 
 ## ✅ DEFERRED PORT ITEMS — five of the seven are done (2026-07-20)
 
