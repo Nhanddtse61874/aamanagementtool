@@ -187,7 +187,8 @@ Every remaining item is blocked on a human, not on capacity:
 
 **Disposition:** running Plan Checker now, after green code, would be ceremony against a spent artifact. The QA verdict stands as the gate for M9.2. **Record this in the CLAUDE.md deviation table**, and on the next milestone the gate runs before dispatch, hurry or not.
 
-## ▶ M9.2 (ACTIVE) — the UI must not report a write that did not happen · Mode A · Step 6 Plan
+## ✅ M9.2 (SHIPPED `1d044ec`, 2026-07-19) — the UI must not report a write that did not happen · Mode A
+*(Everything below is the milestone record as written at Step 6. Kept for traceability — it is not current work.)*
 
 **Spec:** `docs/superpowers/specs/2026-07-19-m9.2-ui-write-honesty-design.md` (approved 2026-07-19, `27919e3`).
 **Origin:** the two `PARTIAL` findings the M10 audit's refuters rated more dangerous than most `MISSING` items. Both confirmed at the source before the spec was written.
@@ -207,7 +208,8 @@ Every remaining item is blocked on a human, not on capacity:
 
 **UAT (batched, per the 2026-07-19 standing decision):** **G-A** type `abc` over a cell holding `4` → the `4` survives, cell red, status line shows, survives reload. **G-B** press "Backup now" with no backup folder configured → the UI reports failure.
 
-## ▶ M10 (PARKED) — delete the WPF app · blocked on 3 dispositions
+## ✅ M10 (SHIPPED `daa4192`, 2026-07-19) — delete the WPF app
+*(Historical: this section records the PARKED state and its 3 blockers. All three were closed before the deletion — that is why it was safe. Not current work.)*
 
 The audit's verdict is **DO NOT DELETE YET**. M10 cannot be planned until the 3 blockers below are dispositioned — a delete-now plan would assert `PROJECT.md` §Success Criteria untested. Memo: `.planning/M10-COVERAGE-AUDIT.md`.
 
@@ -254,10 +256,15 @@ What actually happened: the completion notification had not arrived when `valida
 
 **Mode A** — approved 2026-07-16 (carried forward from M9.1; M10 re-gates at STEP 3).
 
-## ▶ RESUME HERE
+## ⛔ SUPERSEDED — this was the resume pointer as of 2026-07-17. **Resume from §START HERE at the top of this file.**
 
-**`main` @ `2c2cb49`.** M9 + **M9.1 both merged**. **The app is RUNNING** — API :5080 (**real DB**), web :4200. `deploy-local.bat` runs single-process (API serves the built UI on :5080 → one origin → Lax cookie survives; no proxy).
-**Suite: 1938 green at `f9498f5`** (689 .NET + 507 API + 742 Angular). **Verified 2026-07-19: zero code changed since that commit** (`git diff f9498f5..HEAD -- ':(exclude).planning'` empty), so the number still holds. 0-warnings target unchanged.
+🔴 **Two things below are now WRONG and will hurt you if you act on them:**
+- *"API :5080 (**real DB**)"* — **no longer true and must not be re-created.** The running app points at the disposable `src/TimesheetApp.Api/data/timesheet.db`. The real company DB at `C:\Users\Admin\Documents\TimesheetApp\timesheet.db` has not been opened and is not to be.
+- *"`main` @ `2c2cb49`"* — `main` is at `e28659a`; M9.2, M10 and M11 have all shipped since, and the suite numbers below are three gates out of date (current: .NET 475 · ApiTests 541 · Angular 806).
+
+*Original text, kept for traceability:*
+> **`main` @ `2c2cb49`.** M9 + **M9.1 both merged**. **The app is RUNNING** — API :5080 (**real DB**), web :4200. `deploy-local.bat` runs single-process (API serves the built UI on :5080 → one origin → Lax cookie survives; no proxy).
+> **Suite: 1938 green at `f9498f5`** (689 .NET + 507 API + 742 Angular). **Verified 2026-07-19: zero code changed since that commit** (`git diff f9498f5..HEAD -- ':(exclude).planning'` empty), so the number still holds. 0-warnings target unchanged.
 
 ---
 
@@ -274,7 +281,7 @@ Two user decisions, recorded because both overrode something written here:
 
 ---
 
-## ▶ M10 (ACTIVE) — delete the WPF app · Step 2 Brainstorm
+## ✅ M10 — delete the WPF app · *(historical: the Step 2 Brainstorm record. Shipped `daa4192`.)*
 
 **Approach approved:** *verify-then-delete*. `PROJECT.md` §Success Criteria requires **every** feature in `.planning/M8-FEATURE-INVENTORY.md` be reachable in the web app — deleting without checking would assert that criterion untested.
 **Audit re-running (2026-07-19):** 22 auditors over the **667-line** inventory (A1–A10 · B1–B5/B7–B11 · C · D) → adversarial refuters attacking every `COVERED` claim → synthesis memo → `.planning/M10-COVERAGE-AUDIT.md`. *(This file previously said 864 lines; the inventory is 667.)*
@@ -284,7 +291,7 @@ Two user decisions, recorded because both overrode something written here:
 **Blast radius measured:** `src/TimesheetApp/` · `TimesheetApp.Tests/ViewModels/` + `Views/` (13 files, **179 `[Fact]`/`[Theory]`**) · `ProjectReference` in `TimesheetApp.Tests.csproj` · `src/TimesheetApp.sln`. **.NET gate 689 → ~490.**
 **Checked, NOT a cleanup target:** `SqliteProfile.Desktop` does **not** die with WPF — `TestDb.cs:118` uses it and `HostBootTests.cs:60` guards the ctor-default trap on purpose.
 
-## ▶ M11 (QUEUED) — settings → IConfiguration · decisions locked 2026-07-19
+## ✅ M11 (SHIPPED 2026-07-20) — settings → IConfiguration · *(historical: the decisions as locked 2026-07-19)*
 
 Sequenced **after** M10 so each milestone moves the gate for exactly one reason (gate drops ~200 for the deletion; then moves again for config — conflate them and a regression is untraceable).
 - **Cut:** `DbPath` / `ConfigPath` / `KeyRingPath` → `IConfiguration`, **required**. The 7 policy keys (backup / retention / export) stay in the writable store. `IsDarkMode` → client.
@@ -300,7 +307,7 @@ Sequenced **after** M10 so each milestone moves the gate for exactly one reason 
 - **Empty-DB unloggable**: seed a default admin on a fresh clone + re-run team bootstrap so it isn't in zero teams (`9f05fd8`, 2026-07-14). Gated by `TimesheetApp:SeedFirstAdmin`.
 - **Task List inline Type/PCT/PCA**: ids added to the read model; edits go GET-mutate-PUT (`9703b3b`).
 
-### ▶ M9.1 (ACTIVE) — close 3 read-model/scope gaps · Mode A · Step 6 Plan
+### ✅ M9.1 (MERGED `2c2cb49`, 2026-07-19) — close 3 read-model/scope gaps · Mode A · *(historical Step 6 record)*
 **Spec:** `docs/superpowers/specs/2026-07-16-m9.1-read-model-scope-gaps-design.md` (approved 2026-07-16).
 **REQ-IDs:** TL-12 (Task List group-by-team) · DR-11 (Daily Report picker → active team) · SET-05 (default-tasks reactivate).
 **Shape:** 1 milestone, 1 regen. **Wave A** (C#, sequential — A1/A2 both edit `Dtos.cs`): teamId→`TaskListRowDto`, teamId→`BacklogListItemDto`, `GetAllAsync` + `GET /api/default-tasks/all` (admin) + contract tests → **REGEN once** (`npm run gen:api`, API up on SAFE config) → **Wave B** (Angular, parallel, zero overlap): task-list adaptive band · daily-report active-team filter · settings toggle.

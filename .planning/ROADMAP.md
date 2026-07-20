@@ -1,13 +1,14 @@
 # ROADMAP — TimesheetApp
 
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-20
 
 ## Active
-- **M10 — Delete the WPF app.** *(was listed below as M8.11)* Approach: **verify-then-delete**. `PROJECT.md` §Success Criteria requires every feature in `.planning/M8-FEATURE-INVENTORY.md` be reachable in the web app, so a coverage audit runs **before** the deletion — its memo lands at `.planning/M10-COVERAGE-AUDIT.md`. Deletes `src/TimesheetApp/` (ViewModels, Views, Services, `App.xaml.cs`), the 13 WPF test files (179 `[Fact]`/`[Theory]`), the `ProjectReference` in `TimesheetApp.Tests.csproj`, and the `src/TimesheetApp.sln` entry. **.NET gate 689 → ~490.** `TimesheetApp.Core` is untouched. Currently at **STEP 2 Brainstorm**; the audit's first run was lost and is re-running (see STATE.md).
-- **UAT is batched to one session after M10 + M11** (user decision 2026-07-19). `OT-13…OT-25` **plus** M9.1's `G3`/`G6`/`G10`, which were merged un-accepted. 🔴 `G3` says *"matches the old WPF app"* — after M10 that oracle is gone, which is exactly why the coverage audit must not be skipped.
+- **STEP 8 UAT — the batched click-through. IN PROGRESS since 2026-07-20.** M9.2 / M10 / M11 all shipped **un-UAT'd** under the 2026-07-19 batching decision; this is where they are accepted or not. Scope: `OT-13…OT-25` **plus** M9.1's `G3`/`G6`/`G10`. 🔴 `G3` is specified as *"matches the old WPF app"* and M10 deleted that oracle — compare against `.planning/M10-COVERAGE-AUDIT.md`, and if the memo is silent, say so rather than inventing what WPF would have done.
+  **Result so far:** two defects found and fixed (`d36075a` every dropdown rendered blank; `2b7635d` a CSS animation erased the centring transform), **one still undiagnosed** — Log Work reports a day over 8h while the user sees no hours on any task. Hypotheses, ruled-out list and the next step live in `STATE.md` §START HERE.
+  **What UAT has already proved about the suite:** 806 tests were green through all three defects. A person clicking for twenty minutes found what 806 assertions could not.
 
 ## Planned
-- **M11 — Settings → `IConfiguration`.** Sequenced strictly after M10 so each milestone moves the test gate for exactly one reason. `DbPath`/`ConfigPath`/`KeyRingPath` become required config; missing config = fail-fast, no fallback chain. 🔴 Blocking pre-req: prove empirically that an `appsettings.json` in `TimesheetApp.Api` does not outrank `WebApplicationFactory.UseSetting` — if it does, both API suites silently retarget the real company DB. Decisions locked in STATE.md; findings F1–F5 in `.planning/fast-lane-settings-appsettings.json`.
+- **The two deferred PORT items** (`.planning/M10-BLOCKERS.md`): **P5** active-team switcher — deferred because the user established multi-team users are rare; **P7b** week-jump / month-filter — left rather than rushed, lowest value in its group.
 - **Remote hosting** — still unsolved and still blocking everyone but the user. See STATE.md §"STILL BLOCKING EVERYONE BUT THE USER".
 - **M8.7–M8.10 — the four remaining screens, as ONE milestone with a shared Phase 1.** ✅ Shipped as **M9** (see above). *(Original plan notes retained below for history.)*
   **Task List · Daily Report · Reports · Users + Settings.**
