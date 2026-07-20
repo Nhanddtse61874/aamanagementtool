@@ -662,6 +662,14 @@ describe('SettingsComponent', () => {
       .map(d => d.nativeElement as HTMLButtonElement);
     expect(btns.length).toBe(10);
     for (const b of btns) expect(b.type).toBe('button');
+
+    // The row must name itself to assistive tech, or a screen-reader user hears "Risk, button" with nothing
+    // tying these ten to the icon field above — the visible "Quick icons" caption is a plain <span> that
+    // labels nothing on its own. Asserted for the same reason as type="button" directly above: it is our
+    // markup contract, it is cheap to check, and it is completely invisible when someone breaks it.
+    const row = fixture.debugElement.query(By.css('.tagpresets__row')).nativeElement as HTMLElement;
+    expect(row.getAttribute('role')).toBe('group');
+    expect(row.getAttribute('aria-label')).toBe('Quick icons');
   });
 
   // TAG-03 keeps free-text entry. Asserted through the OUTGOING REQUEST rather than the input's own
