@@ -11,11 +11,19 @@
 
 **Next Action:** pick the next milestone from `ROADMAP.md` — or clear the UAT debt below, which is now four milestones deep.
 
-## 🔴 UAT DEBT — four milestones merged un-accepted
+## ✅ M12 UAT PASSED (user, 2026-07-20) — the glyphs render
 
-`OT-13…OT-25` · M9.1's `G3`/`G6`/`G10` · and now **M12's `G-1`…`G-6`**. Every one merged on an explicit user decision, each individually defensible, and the total is no longer small.
+The user ran `.planning/M12-UAT.md` and reported **UAT OK**. Recorded as an overall pass; no per-check breakdown was reported back, so none was invented.
 
-**M12's `G-1` is the sharpest of them:** *"do the ten glyphs render as colour emoji rather than tofu?"* No test can answer it — **no test renders a font** — and nothing in this app pins an emoji `font-family`. **⬇️ and ⛰️** are text-presentation characters promoted by a variation selector and are the two most likely to render wrong. The app was built, deployed, and verified to **serve** the feature; nobody has confirmed a human saw it. Script: `.planning/M12-UAT.md`.
+**`G-1` is the one that mattered** — *"do the ten glyphs render as colour emoji rather than tofu?"* **No test can answer it**, because no test renders a font and nothing in this app pins an emoji `font-family`. **⬇️ and ⛰️** were the two at risk (text-presentation characters promoted by a variation selector). The user's pass is the only evidence that exists for them.
+
+⚠️ **Confirmed on Windows only.** Emoji fonts differ by platform; an Android or iOS browser reaching this over the LAN resolves different glyphs. Nobody has looked from a phone.
+
+**The merge preceded the pass** (user instruction, per the 2026-07-19 batching decision). The gap closed — after the fact, not before.
+
+## 🔴 UAT DEBT — still three milestones deep
+
+`OT-13…OT-25` (M8.5/M8.6/M9) and M9.1's `G3`/`G6`/`G10`. All merged un-accepted on explicit user decisions, each individually defensible; the total is not small. M12 is now **out** of this list.
 
 ## 🟠 Open product question — M12, recorded not decided
 

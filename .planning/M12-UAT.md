@@ -93,16 +93,26 @@ Recommendation: **accept it for now** and revisit only if it bites in practice. 
 
 ---
 
-## Result
+## Result — ✅ PASS (user, 2026-07-20)
 
-| Check | Verdict | Notes |
-|---|---|---|
-| G-1 glyphs render | | |
-| G-2 icon only | | |
-| G-3 free text still works | | |
-| G-4 survives reload | | |
-| G-5 not confusable with system chips | | |
-| G-6 keyboard | | |
-| Edit-path overwrite | decision: | |
+**The user ran this and reported UAT OK.** Recorded as a single overall pass, which is what was reported — no per-check breakdown was given back, so none is invented here.
 
-**Do not merge to `main` until G-1 passes.** Everything else is verified by the suite; G-1 is the only check the suite structurally cannot make, because no test renders a font.
+| Check | Verdict |
+|---|---|
+| G-1 glyphs render | ✅ covered by the user's pass |
+| G-2 icon only | ✅ |
+| G-3 free text still works | ✅ |
+| G-4 survives reload | ✅ |
+| G-5 not confusable with system chips | ✅ |
+| G-6 keyboard | ✅ |
+| Edit-path overwrite | ⏸ **still undecided** — see below |
+
+🔴 **G-1 is the one that mattered**, and it is now the only evidence that exists for it. No test renders a font, so nothing in the 814-test suite touches this. The two at risk were **⬇️ (U+2B07 + FE0F)** and **⛰️ (U+26F0 + FE0F)** — text-presentation characters promoted to emoji by a variation selector, on an app that pins no emoji `font-family`. The user's pass is the record that they render.
+
+⚠️ **Scope of the evidence, stated plainly:** this was confirmed on the user's Windows machine. Emoji fonts differ by platform — an Android or iOS browser reaching this over the LAN resolves different glyphs entirely. If other people will use this from phones, that is a separate observation nobody has made yet.
+
+**Note on ordering:** the merge preceded this pass, on explicit user instruction and consistent with the 2026-07-19 batching decision. The UAT was run afterwards against the merged code and passed, so the gap closed — but it closed after the fact, not before.
+
+## ⏸ Still open: the edit-path decision
+
+The question in the section above — *editing a tag that carries a custom glyph and clicking a preset destroys it with no undo* — was **not answered**. It is a product call, not a defect, and M12 is shippable either way. Left recorded rather than defaulted.
